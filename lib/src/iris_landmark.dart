@@ -8,7 +8,7 @@ class IrisLandmark {
 
   static Future<IrisLandmark> create({InterpreterOptions? options}) async {
     final itp = await Interpreter.fromAsset(
-      'assets/models/$_irisLandmarkModel',
+      'packages/face_detector_flutter/assets/models/$_irisLandmarkModel',
       options: options ?? InterpreterOptions(),
     );
     final ishape = itp.getInputTensor(0).shape;
