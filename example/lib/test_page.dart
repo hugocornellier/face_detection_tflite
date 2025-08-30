@@ -2,7 +2,7 @@ import 'dart:typed_data';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:face_detector_flutter/face_detector_flutter.dart';
+import 'package:face_detection_tflite/face_detection_tflite.dart';
 
 class TestPage extends StatefulWidget {
   const TestPage({super.key});

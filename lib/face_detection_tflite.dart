@@ -1,4 +1,4 @@
-library face_detector_flutter;
+library;
 
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -328,7 +328,7 @@ ImageTensor _imageToTensor(img.Image src, {required int outW, required int outH}
   var k = 0;
   for (var y = 0; y < outH; y++) {
     for (var x = 0; x < outW; x++) {
-      final px = canvas.getPixel(x, y) as img.Pixel;
+      final px = canvas.getPixel(x, y);
       t[k++] = (px.r / 127.5) - 1.0;
       t[k++] = (px.g / 127.5) - 1.0;
       t[k++] = (px.b / 127.5) - 1.0;
@@ -491,7 +491,7 @@ class FaceDetection {
     final inH = opts['input_size_height'] as int;
     final anchors = _ssdGenerateAnchors(opts);
     final itp = await Interpreter.fromAsset(
-      'packages/face_detector_flutter/assets/models/${_nameFor(model)}',
+      'packages/face_detection_tflite/assets/models/${_nameFor(model)}',
       options: options ?? InterpreterOptions(),
     );
     final assumeMirrored = switch (model) {
@@ -519,7 +519,7 @@ class FaceDetection {
     _itp.resizeInputTensor(inputIdx, [1, _inH, _inW, 3]);
     _itp.allocateTensors();
 
-    int _numElements(List<int> s) => s.fold(1, (a, b) => a * b);
+    int numElements(List<int> s) => s.fold(1, (a, b) => a * b);
     final boxesShape = _itp.getOutputTensor(_bboxIndex).shape;
     final scoresShape = _itp.getOutputTensor(_scoreIndex).shape;
 
@@ -553,7 +553,7 @@ class FaceDetection {
       _scoreIndex: outScores,
     });
 
-    final rawBoxes = Float32List(_numElements(boxesShape));
+    final rawBoxes = Float32List(numElements(boxesShape));
     var k = 0;
     if (boxesShape.length == 3) {
       for (var i = 0; i < boxesShape[0]; i++) {
@@ -575,7 +575,7 @@ class FaceDetection {
       }
     }
 
-    final rawScores = Float32List(_numElements(scoresShape));
+    final rawScores = Float32List(numElements(scoresShape));
     k = 0;
     if (scoresShape.length == 3) {
       for (var i = 0; i < scoresShape[0]; i++) {
@@ -639,15 +639,6 @@ class FaceDetection {
         }
         return Detection(bbox: RectF(xmin, ymin, xmax, ymax), score: d.score, keypointsXY: kp);
       }).toList();
-    }
-
-    for (final det in mapped) {
-      final bbox = det.bbox;
-      final xminPx = (bbox.xmin * src.width).toInt();
-      final yminPx = (bbox.ymin * src.height).toInt();
-      final xmaxPx = (bbox.xmax * src.width).toInt();
-      final ymaxPx = (bbox.ymax * src.height).toInt();
-      print("BBox -> xmin: $xminPx, ymin: $yminPx, xmax: $xmaxPx, ymax: $ymaxPx, score: ${det.score}");
     }
     return mapped;
   }
@@ -717,7 +708,7 @@ class FaceLandmark {
 
   static Future<FaceLandmark> create({InterpreterOptions? options}) async {
     final itp = await Interpreter.fromAsset(
-      'packages/face_detector_flutter/assets/models/$_faceLandmarkModel',
+      'packages/face_detection_tflite/assets/models/$_faceLandmarkModel',
       options: options ?? InterpreterOptions(),
     );
     final ishape = itp.getInputTensor(0).shape;
@@ -732,7 +723,7 @@ class FaceLandmark {
     _itp.resizeInputTensor(0, [1, _inH, _inW, 3]);
     _itp.allocateTensors();
 
-    int _numElements(List<int> s) => s.fold(1, (a, b) => a * b);
+    int numElements(List<int> s) => s.fold(1, (a, b) => a * b);
 
     final input4d = List.generate(
       1,
@@ -765,7 +756,7 @@ class FaceLandmark {
     int? bestIdx;
     int bestLen = -1;
     for (final entry in shapes.entries) {
-      final len = _numElements(entry.value);
+      final len = numElements(entry.value);
       if (len > bestLen && len % 3 == 0) {
         bestLen = len;
         bestIdx = entry.key;
@@ -825,7 +816,7 @@ class IrisLandmark {
 
   static Future<IrisLandmark> create({InterpreterOptions? options}) async {
     final itp = await Interpreter.fromAsset(
-      'packages/face_detector_flutter/assets/models/$_irisLandmarkModel',
+      'packages/face_detection_tflite/assets/models/$_irisLandmarkModel',
       options: options ?? InterpreterOptions(),
     );
     final ishape = itp.getInputTensor(0).shape;
@@ -840,7 +831,7 @@ class IrisLandmark {
     _itp.resizeInputTensor(0, [1, _inH, _inW, 3]);
     _itp.allocateTensors();
 
-    int _numElements(List<int> s) => s.fold(1, (a, b) => a * b);
+    int numElements(List<int> s) => s.fold(1, (a, b) => a * b);
 
     final input4d = List.generate(
       1,
@@ -877,7 +868,7 @@ class IrisLandmark {
 
     for (final entry in outputs.entries) {
       final shape = shapes[entry.key]!;
-      final flat = _flattenToFloat32List(entry.value, _numElements(shape));
+      final flat = _flattenToFloat32List(entry.value, numElements(shape));
       final n = (flat.length / 3).floor();
       for (var i = 0; i < n; i++) {
         var x = flat[i * 3 + 0] / _inW;
@@ -940,7 +931,6 @@ class AlignedRoi {
 
 img.Image extractAlignedSquare(img.Image src, double cx, double cy, double size, double theta) {
   final side = math.max(1, size.round());
-  final half = size * 0.5;
   final ct = math.cos(theta);
   final st = math.sin(theta);
   final out = img.Image(width: side, height: side);
@@ -970,10 +960,10 @@ img.ColorRgb8 _bilinearSampleRgb8(img.Image src, double fx, double fy) {
   int cy0 = y0.clamp(0, src.height - 1);
   int cy1 = y1.clamp(0, src.height - 1);
 
-  final p00 = src.getPixel(cx0, cy0) as img.Pixel;
-  final p10 = src.getPixel(cx1, cy0) as img.Pixel;
-  final p01 = src.getPixel(cx0, cy1) as img.Pixel;
-  final p11 = src.getPixel(cx1, cy1) as img.Pixel;
+  final p00 = src.getPixel(cx0, cy0);
+  final p10 = src.getPixel(cx1, cy0);
+  final p01 = src.getPixel(cx0, cy1);
+  final p11 = src.getPixel(cx1, cy1);
 
   final r0 = p00.r * (1 - ax) + p10.r * ax;
   final g0 = p00.g * (1 - ax) + p10.g * ax;

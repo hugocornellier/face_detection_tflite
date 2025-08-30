@@ -1,5 +1,5 @@
-name: face_detector_flutter_example
-description: Example app for face_detector_flutter
+name: face_detection_tflite_example
+description: Example app for face_detection_tflite
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -15,7 +15,7 @@ dependencies:
   tflite_flutter: ^0.11.0
   file_selector: ^1.0.3
   file_selector_macos: ^0.9.4+2
-  face_detector_flutter:
+  face_detection_tflite:
     path: ../
 
 flutter:

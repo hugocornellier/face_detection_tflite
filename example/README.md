@@ -1,4 +1,4 @@
-# face_detector_flutter_example
+# face_detection_tflite_example
 
 A new Flutter project.
 

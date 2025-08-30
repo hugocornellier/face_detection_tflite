@@ -1,7 +1,7 @@
-name: face_detector_flutter
-description: "A new Flutter project."
+name: face_detection_tflite
+description: "BlazeFace-style face detector with optional face & iris landmarks."
 publish_to: 'none'
-version: 1.0.0+1
+version: 0.0.1+1
 
 environment:
   sdk: ^3.10.0-75.1.beta

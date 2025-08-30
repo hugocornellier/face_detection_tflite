@@ -8,7 +8,7 @@ class FaceLandmark {
 
   static Future<FaceLandmark> create({InterpreterOptions? options}) async {
     final itp = await Interpreter.fromAsset(
-      'packages/face_detector_flutter/assets/models/$_faceLandmarkModel',
+      'packages/face_detection_tflite/assets/models/$_faceLandmarkModel',
       options: options ?? InterpreterOptions(),
     );
     final ishape = itp.getInputTensor(0).shape;

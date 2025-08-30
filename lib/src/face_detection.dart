@@ -16,7 +16,7 @@ class FaceDetection {
     final inH = opts['input_size_height'] as int;
     final anchors = _ssdGenerateAnchors(opts);
     final itp = await Interpreter.fromAsset(
-      'packages/face_detector_flutter/assets/models/${_nameFor(model)}',
+      'packages/face_detection_tflite/assets/models/${_nameFor(model)}',
       options: options ?? InterpreterOptions(),
     );
     final assumeMirrored = switch (model) {

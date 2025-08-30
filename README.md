@@ -1,4 +1,4 @@
-# face_detector_flutter
+# face_detection_tflite
 
 This project is a Flutter port of the Python library [patlevin/face-detection-tflite](https://github.com/patlevin/face-detection-tflite). It provides on-device face detection and landmark/iris estimation using TensorFlow Lite models, packaged for Flutter applications across mobile and desktop platforms.
 
@@ -16,9 +16,9 @@ This project is a Flutter port of the Python library [patlevin/face-detection-tf
 
 ```yaml
 dependencies:
-  face_detector_flutter:
+  face_detection_tflite:
     git:
-      url: https://github.com/hugocornellier/face_detector_flutter.git
+      url: https://github.com/hugocornellier/face_detection_tflite.git
 ```
 
 2. Run `flutter pub get` to fetch dependencies.
@@ -35,7 +35,7 @@ flutter run
 A minimal usage pattern looks like this:
 
 ```dart
-import 'package:face_detector_flutter/face_detector_flutter.dart';
+import 'package:face_detection_tflite/face_detection_tflite.dart';
 
 final detector = await FaceDetection.create(FaceDetectionModel.backCamera);
 final results = await detector(imageBytes);

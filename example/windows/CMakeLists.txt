@@ -1,10 +1,10 @@
 # Project-level configuration.
 cmake_minimum_required(VERSION 3.14)
-project(face_detector_flutter_example LANGUAGES CXX)
+project(face_detection_tflite_example LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
-set(BINARY_NAME "face_detector_flutter_example")
+set(BINARY_NAME "face_detection_tflite_example")
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.
@@ -52,6 +52,8 @@ add_subdirectory(${FLUTTER_MANAGED_DIR})
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")
 
+# Enable the test target.
+set(include_face_detection_tflite_tests TRUE)
 
 # Generated plugin build rules, which manage building the plugins and adding
 # them to the application.
