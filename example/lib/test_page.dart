@@ -1,9 +1,7 @@
 import 'dart:typed_data';
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:file_selector/file_selector.dart';
 import 'package:face_detector_flutter/face_detector_flutter.dart';
 
 class TestPage extends StatefulWidget {
@@ -14,134 +12,66 @@ class TestPage extends StatefulWidget {
 
 class _TestPageState extends State<TestPage> {
   Uint8List? _imageBytes;
-  Size? _imageSize;
-  List<FaceResult> _results = [];
-  FaceDetector? _fd;
-  bool _loading = true;
-  String? _loadError;
+
+  List<Detection> _detections = [];
+  List<Offset> _faceMeshPoints = [];
+  List<Offset> _irisPoints = [];
+  Size? _originalSize;
+
+  final FaceDetector _faceDetector = FaceDetector();
 
   @override
   void initState() {
     super.initState();
-    _initModels();
+    _initFaceDetector();
   }
 
-  Future<void> _initModels() async {
-    try {
-      final fd = await FaceDetector.create(model: FaceDetectionModel.backCamera);
-      if (!mounted) return;
-      setState(() {
-        _fd = fd;
-        _loading = false;
-      });
-      print("FaceDetector ready");
-    } catch (e, st) {
-      print("FaceDetector.create failed");
-      print(e);
-      print(st);
-      if (!mounted) return;
-      setState(() {
-        _loadError = e.toString();
-        _loading = false;
-      });
-    }
-  }
-
-  Future<Uint8List?> _pickImageBytes() async {
-    try {
-      if (!kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux)) {
-        print("_pickImageBytes desktop branch called");
-
-        final typeGroup = XTypeGroup(
-          label: 'images',
-          extensions: ['jpg', 'jpeg', 'png', 'bmp', 'webp', 'tiff'],
-        );
-
-        print("_pickImageBytes here1");
-
-        final files = await openFiles(
-          acceptedTypeGroups: [typeGroup],
-          confirmButtonText: 'Select',
-        );
-        final file = files.isEmpty ? null : files.first;
-
-        print("_pickImageBytes here2");
-
-        if (file == null) {
-          print("Returning null");
-          return null;
-        }
-
-        return await file.readAsBytes();
-      } else {
-        final picker = ImagePicker();
-        final picked = await picker.pickImage(
-          source: ImageSource.gallery,
-          imageQuality: 100,
-        );
-        if (picked == null) return null;
-        return await picked.readAsBytes();
-      }
-    } catch (e) {
-      print("_pickImageBytes failure");
-      print(e);
-      return null;
-    }
+  Future<void> _initFaceDetector() async {
+    await _faceDetector.initialize(model: FaceDetectionModel.backCamera);
+    setState(() {});
   }
 
   Future<void> _pickAndRun() async {
-    try {
-      final bytes = await _pickImageBytes();
-      if (bytes == null) {
-        print("Bytes are null, returning");
-        return;
-      }
-
-      print("Bytes not null..");
-
-      final decoded = await decodeImageFromList(bytes);
-      final imgSize = Size(decoded.width.toDouble(), decoded.height.toDouble());
-
-      if (_fd == null) {
-        print("_fd == null, returning");
-        return;
-      }
-
-      final results = await _fd!.detect(
-        bytes,
-        withFaceLandmarks: false,
-        withIris: true,
-      );
-
-      print(results);
-
-      setState(() {
-        _imageBytes = bytes;
-        _imageSize = imgSize;
-        _results = results;
-      });
-    } catch (e) {
-      print("_pickAndRun failure");
-      print(e);
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 100);
+    if (picked == null) return;
+    final bytes = await picked.readAsBytes();
+    if (!_faceDetector.isReady) {
+      print("face detector not ready");
+      return;
     }
+
+    print("fetching detections");
+
+    final detections = await _faceDetector.getDetections(bytes);
+    final faceMeshPoints = await _faceDetector.getFaceMeshFromDetections(bytes, detections);
+    final irisPoints = await _faceDetector.getIrisFromMesh(bytes, faceMeshPoints);
+    final size = await _faceDetector.getOriginalSize(bytes);
+
+    setState(() {
+      _imageBytes = bytes;
+      _detections = detections;
+      _faceMeshPoints = faceMeshPoints;
+      _irisPoints = irisPoints;
+      _originalSize = size;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final hasImage = _imageBytes != null && _imageSize != null;
+    final hasImage = _imageBytes != null && _originalSize != null;
     return Scaffold(
-      appBar: AppBar(title: const Text('face_detector_flutter • example')),
+      appBar: AppBar(title: const Text('FDLite Mesh Demo')),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _fd == null ? null : _pickAndRun,
-        label: Text(_fd == null ? 'Loading…' : 'Pick Image'),
+        onPressed: _pickAndRun,
+        label: const Text('Pick Image'),
         icon: const Icon(Icons.image),
       ),
       body: Center(
         child: hasImage
             ? LayoutBuilder(
           builder: (context, constraints) {
-            final fitted =
-            _fitSize(_imageSize!, Size(constraints.maxWidth, constraints.maxHeight));
+            final fitted = _fitSize(_originalSize!, Size(constraints.maxWidth, constraints.maxHeight));
             return SizedBox(
               width: fitted.width,
               height: fitted.height,
@@ -150,9 +80,11 @@ class _TestPageState extends State<TestPage> {
                 children: [
                   Image.memory(_imageBytes!, fit: BoxFit.contain),
                   CustomPaint(
-                    painter: _ResultsPainter(
-                      results: _results,
-                      originalSize: _imageSize!,
+                    painter: _DetectionsPainter(
+                      detections: _detections,
+                      faceMeshPoints: _faceMeshPoints,
+                      irisPoints: _irisPoints,
+                      originalSize: _originalSize!,
                     ),
                   ),
                 ],
@@ -160,11 +92,7 @@ class _TestPageState extends State<TestPage> {
             );
           },
         )
-            : (_loading
-            ? const CircularProgressIndicator()
-            : (_loadError != null
-            ? Text('Init failed:\n$_loadError')
-            : const Text('Pick an image to run detection'))),
+            : const Text('Pick an image to run detection'),
       ),
     );
   }
@@ -177,11 +105,18 @@ class _TestPageState extends State<TestPage> {
   }
 }
 
-class _ResultsPainter extends CustomPainter {
-  final List<FaceResult> results;
+class _DetectionsPainter extends CustomPainter {
+  final List<Detection> detections;
+  final List<Offset> faceMeshPoints;
+  final List<Offset> irisPoints;
   final Size originalSize;
 
-  _ResultsPainter({required this.results, required this.originalSize});
+  _DetectionsPainter({
+    required this.detections,
+    required this.faceMeshPoints,
+    required this.irisPoints,
+    required this.originalSize,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -190,40 +125,55 @@ class _ResultsPainter extends CustomPainter {
       ..strokeWidth = 2
       ..color = const Color(0xFF00FFCC);
 
-    final kpPaint = Paint()
+    final detKpPaint = Paint()
       ..style = PaintingStyle.fill
       ..color = const Color(0xFF89CFF0);
 
-    final irisPaint = Paint()
-      ..style = PaintingStyle.fill
-      ..color = const Color(0xFFAA66CC);
+    final meshPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3.0
+      ..color = const Color(0xFFFF00FF);
 
-    for (final r in results) {
+    final irisPtPaint = Paint()
+      ..style = PaintingStyle.fill
+      ..color = const Color(0xFF89CFF0);
+
+    for (final d in detections) {
       final rect = Rect.fromLTRB(
-        r.bbox.xmin * size.width,
-        r.bbox.ymin * size.height,
-        r.bbox.xmax * size.width,
-        r.bbox.ymax * size.height,
+        d.bbox.xmin * size.width,
+        d.bbox.ymin * size.height,
+        d.bbox.xmax * size.width,
+        d.bbox.ymax * size.height,
       );
       canvas.drawRect(rect, boxPaint);
 
-      for (int i = 0; i < r.keypointsXY.length; i += 2) {
-        final x = r.keypointsXY[i] * size.width;
-        final y = r.keypointsXY[i + 1] * size.height;
-        canvas.drawCircle(Offset(x, y), 3, kpPaint);
+      for (int i = 0; i < d.keypointsXY.length; i += 2) {
+        final x = d.keypointsXY[i] * size.width;
+        final y = d.keypointsXY[i + 1] * size.height;
+        canvas.drawCircle(Offset(x, y), 3, detKpPaint);
       }
+    }
 
-      if (r.iris != null) {
-        for (final p in [...r.iris!.leftEye, ...r.iris!.rightEye]) {
-          final x = p[0] * size.width / originalSize.width;
-          final y = p[1] * size.height / originalSize.height;
-          canvas.drawCircle(Offset(x, y), 2, irisPaint);
-        }
-      }
+    if (faceMeshPoints.isNotEmpty) {
+      final scaled = faceMeshPoints
+          .map((p) => Offset(p.dx * size.width / originalSize.width, p.dy * size.height / originalSize.height))
+          .toList();
+      canvas.drawPoints(PointMode.points, scaled, meshPaint);
+    }
+
+    if (irisPoints.isNotEmpty) {
+      final scaledIris = irisPoints
+          .map((p) => Offset(p.dx * size.width / originalSize.width, p.dy * size.height / originalSize.height))
+          .toList();
+      canvas.drawPoints(PointMode.points, scaledIris, irisPtPaint);
     }
   }
 
   @override
-  bool shouldRepaint(covariant _ResultsPainter old) =>
-      old.results != results || old.originalSize != originalSize;
+  bool shouldRepaint(covariant _DetectionsPainter old) {
+    return old.detections != detections ||
+        old.faceMeshPoints != faceMeshPoints ||
+        old.irisPoints != irisPoints ||
+        old.originalSize != originalSize;
+  }
 }

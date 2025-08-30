@@ -53,10 +53,6 @@ On desktop platforms, you must ensure the TensorFlow Lite C library (libtensorfl
 - **Windows**: `tensorflowlite_c.dll` next to your `.exe`
 - **Linux**: `libtensorflowlite_c.so` available in the library path
 
-## License
-
-[Add your license information here]
-
 ## Credits
 
 This project is based on the excellent work by [patlevin](https://github.com/patlevin) in the [face-detection-tflite](https://github.com/patlevin/face-detection-tflite) repository.
