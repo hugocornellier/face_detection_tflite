@@ -29,6 +29,7 @@
 		33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CC11122044BFA00003C045 /* MainFlutterWindow.swift */; };
 		6B40A2D4FA2A67A84FD3399F /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9138AF9713C4371973957E70 /* Pods_RunnerTests.framework */; };
 		816D806AC97801C62B6F2A4A /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0034FCDFAC32002A1C3C3652 /* Pods_Runner.framework */; };
+		A5003EF52E64A5C00028053B /* libtensorflowlite_c-mac.dylib in CopyFiles */ = {isa = PBXBuildFile; fileRef = A5003EF42E64A5C00028053B /* libtensorflowlite_c-mac.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -59,6 +60,16 @@
 			name = "Bundle Framework";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A5003EF32E64A5B10028053B /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 7;
+			files = (
+				A5003EF52E64A5C00028053B /* libtensorflowlite_c-mac.dylib in CopyFiles */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
@@ -87,6 +98,7 @@
 		9138AF9713C4371973957E70 /* Pods_RunnerTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_RunnerTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		95B0FE386EE4805D3F5A1B58 /* Pods-Runner.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.release.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"; sourceTree = "<group>"; };
 		9740EEB21CF90195004384FC /* Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
+		A5003EF42E64A5C00028053B /* libtensorflowlite_c-mac.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = "libtensorflowlite_c-mac.dylib"; path = "../blobs/libtensorflowlite_c-mac.dylib"; sourceTree = "<group>"; };
 		F2A67CF5283803CE670BE14B /* Pods-RunnerTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.debug.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.debug.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -132,6 +144,7 @@
 		33CC10E42044A3C60003C045 = {
 			isa = PBXGroup;
 			children = (
+				A5003EF42E64A5C00028053B /* libtensorflowlite_c-mac.dylib */,
 				33FAB671232836740065AC1E /* Runner */,
 				33CEB47122A05771004F2AC0 /* Flutter */,
 				331C80D6294CF71000263BE5 /* RunnerTests */,
@@ -204,7 +217,6 @@
 				4E03322ACB13784142B91CA7 /* Pods-RunnerTests.release.xcconfig */,
 				634F538261C858DE4DAA15B9 /* Pods-RunnerTests.profile.xcconfig */,
 			);
-			name = Pods;
 			path = Pods;
 			sourceTree = "<group>";
 		};
@@ -241,6 +253,7 @@
 				33CC110E2044A8840003C045 /* Bundle Framework */,
 				3399D490228B24CF009A79C7 /* ShellScript */,
 				D2B8117B9AE6919D316F33E1 /* [CP] Embed Pods Frameworks */,
+				A5003EF32E64A5B10028053B /* CopyFiles */,
 			);
 			buildRules = (
 			);
