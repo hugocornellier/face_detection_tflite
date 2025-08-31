@@ -16,6 +16,9 @@ cmake_policy(VERSION 3.14...3.25)
 # not be changed
 set(PLUGIN_NAME "face_detection_tflite_plugin")
 
+# Path to the prebuilt TensorFlow Lite C DLL to bundle with dependents
+set(TFLITE_DLL "${CMAKE_CURRENT_SOURCE_DIR}/third_party/tflite/tensorflowlite_c.dll")
+
 # Any new source files that you add to the plugin should be added here.
 list(APPEND PLUGIN_SOURCES
   "face_detection_tflite_plugin.cpp"
@@ -52,7 +55,7 @@ target_link_libraries(${PLUGIN_NAME} PRIVATE flutter flutter_wrapper_plugin)
 # This list could contain prebuilt libraries, or libraries created by an
 # external build triggered from this build file.
 set(face_detection_tflite_bundled_libraries
-  ""
+  "${TFLITE_DLL}"
   PARENT_SCOPE
 )
 
@@ -91,7 +94,9 @@ target_link_libraries(${TEST_RUNNER} PRIVATE gtest_main gmock)
 # flutter_wrapper_plugin has link dependencies on the Flutter DLL.
 add_custom_command(TARGET ${TEST_RUNNER} POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_if_different
-  "${FLUTTER_LIBRARY}" $<TARGET_FILE_DIR:${TEST_RUNNER}>
+    "${FLUTTER_LIBRARY}" $<TARGET_FILE_DIR:${TEST_RUNNER}>
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${TFLITE_DLL}" $<TARGET_FILE_DIR:${TEST_RUNNER}>
 )
 
 # Enable automatic test discovery.
