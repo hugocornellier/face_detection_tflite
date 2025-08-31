@@ -27,7 +27,12 @@ class _TestPageState extends State<TestPage> {
   }
 
   Future<void> _initFaceDetector() async {
-    await _faceDetector.initialize(model: FaceDetectionModel.backCamera);
+    try {
+      await _faceDetector.initialize(model: FaceDetectionModel.backCamera);
+    } catch (e) {
+      print(e);
+    }
+
     setState(() {});
   }
 

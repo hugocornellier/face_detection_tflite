@@ -2,6 +2,9 @@ library;
 
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ffi' as ffi;
+import 'dart:io';
+import 'package:path/path.dart' as p;
 import 'package:image/image.dart' as img;
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'dart:ui';
@@ -87,7 +90,55 @@ class FaceDetector {
 
   bool get isReady => _detector != null && _faceLm != null && _iris != null;
 
+  static ffi.DynamicLibrary? _tfliteLib;
+  static Future<void> _ensureTFLiteLoaded() async {
+    if (_tfliteLib != null) return;
+
+    if (!Platform.isMacOS) {
+      _tfliteLib = ffi.DynamicLibrary.process();
+      return;
+    }
+
+    final exe = File(Platform.resolvedExecutable);
+    final macOSDir = exe.parent;      // .../Contents/MacOS
+    final contents = macOSDir.parent; // .../Contents
+
+    final frameworks = p.join(contents.path, 'Frameworks', 'libtensorflowlite_c-mac.dylib');
+    final resources  = p.join(contents.path, 'Resources',  'libtensorflowlite_c-mac.dylib');
+
+    // Debug: print where we're looking
+    // (Safe to keep; remove later if noisy.)
+    print('[face_detection_tflite] resolvedExecutable: ${exe.path}');
+    print('[face_detection_tflite] try Frameworks: $frameworks');
+    print('[face_detection_tflite] try Resources:  $resources');
+
+    if (File(frameworks).existsSync()) {
+      print('[face_detection_tflite] opening: $frameworks');
+      _tfliteLib = ffi.DynamicLibrary.open(frameworks);
+      return;
+    }
+    if (File(resources).existsSync()) {
+      print('[face_detection_tflite] opening: $resources');
+      _tfliteLib = ffi.DynamicLibrary.open(resources);
+      return;
+    }
+
+    // Last-ditch
+    try {
+      print('[face_detection_tflite] last-ditch open by name…');
+      _tfliteLib = ffi.DynamicLibrary.open('libtensorflowlite_c-mac.dylib');
+      return;
+    } catch (_) {
+      throw ArgumentError(
+        'Failed to locate libtensorflowlite_c-mac.dylib\n'
+            'Checked:\n - $frameworks\n - $resources\n'
+            'and loader search paths by name.',
+      );
+    }
+  }
+
   Future<void> initialize({FaceDetectionModel model = FaceDetectionModel.backCamera, InterpreterOptions? options}) async {
+    await _ensureTFLiteLoaded();
     _detector = await FaceDetection.create(model, options: options);
     _faceLm = await FaceLandmark.create(options: options);
     _iris = await IrisLandmark.create(options: options);
@@ -486,6 +537,8 @@ class FaceDetection {
   FaceDetection._(this._itp, this._inW, this._inH, this._anchors, this._assumeMirrored);
 
   static Future<FaceDetection> create(FaceDetectionModel model, {InterpreterOptions? options}) async {
+    print("Creating model..");
+
     final opts = _optsFor(model);
     final inW = opts['input_size_width'] as int;
     final inH = opts['input_size_height'] as int;
