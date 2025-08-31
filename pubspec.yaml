@@ -1,10 +1,11 @@
 name: face_detection_tflite
 description: "BlazeFace-style face detector with optional face & iris landmarks."
 publish_to: 'none'
-version: 0.0.1+1
+version: 0.1.0+1
 
 environment:
-  sdk: ^3.10.0-75.1.beta
+  sdk: ">=3.6.0 <4.0.0"
+  flutter: ">=3.22.0"
 
 dependencies:
   flutter:
