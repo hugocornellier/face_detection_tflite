@@ -94,48 +94,48 @@ class FaceDetector {
   static Future<void> _ensureTFLiteLoaded() async {
     if (_tfliteLib != null) return;
 
-    if (!Platform.isMacOS) {
-      _tfliteLib = ffi.DynamicLibrary.process();
+    if (Platform.isWindows) {
+      _tfliteLib = ffi.DynamicLibrary.open('tensorflowlite_c.dll');
       return;
     }
 
-    final exe = File(Platform.resolvedExecutable);
-    final macOSDir = exe.parent;      // .../Contents/MacOS
-    final contents = macOSDir.parent; // .../Contents
-
-    final frameworks = p.join(contents.path, 'Frameworks', 'libtensorflowlite_c-mac.dylib');
-    final resources  = p.join(contents.path, 'Resources',  'libtensorflowlite_c-mac.dylib');
-
-    // Debug: print where we're looking
-    // (Safe to keep; remove later if noisy.)
-    print('[face_detection_tflite] resolvedExecutable: ${exe.path}');
-    print('[face_detection_tflite] try Frameworks: $frameworks');
-    print('[face_detection_tflite] try Resources:  $resources');
-
-    if (File(frameworks).existsSync()) {
-      print('[face_detection_tflite] opening: $frameworks');
-      _tfliteLib = ffi.DynamicLibrary.open(frameworks);
-      return;
-    }
-    if (File(resources).existsSync()) {
-      print('[face_detection_tflite] opening: $resources');
-      _tfliteLib = ffi.DynamicLibrary.open(resources);
+    if (Platform.isLinux) {
+      _tfliteLib = ffi.DynamicLibrary.open('libtensorflowlite_c.so');
       return;
     }
 
-    // Last-ditch
-    try {
-      print('[face_detection_tflite] last-ditch open by name…');
-      _tfliteLib = ffi.DynamicLibrary.open('libtensorflowlite_c-mac.dylib');
-      return;
-    } catch (_) {
-      throw ArgumentError(
-        'Failed to locate libtensorflowlite_c-mac.dylib\n'
-            'Checked:\n - $frameworks\n - $resources\n'
-            'and loader search paths by name.',
-      );
+    if (Platform.isMacOS) {
+      final exe = File(Platform.resolvedExecutable);
+      final macOSDir = exe.parent;
+      final contents = macOSDir.parent;
+
+      final frameworks = p.join(contents.path, 'Frameworks', 'libtensorflowlite_c-mac.dylib');
+      final resources  = p.join(contents.path, 'Resources',  'libtensorflowlite_c-mac.dylib');
+
+      if (File(frameworks).existsSync()) {
+        _tfliteLib = ffi.DynamicLibrary.open(frameworks);
+        return;
+      }
+      if (File(resources).existsSync()) {
+        _tfliteLib = ffi.DynamicLibrary.open(resources);
+        return;
+      }
+
+      try {
+        _tfliteLib = ffi.DynamicLibrary.open('libtensorflowlite_c-mac.dylib');
+        return;
+      } catch (_) {
+        throw ArgumentError(
+          'Failed to locate libtensorflowlite_c-mac.dylib\n'
+              'Checked:\n - $frameworks\n - $resources\n'
+              'and loader search paths by name.',
+        );
+      }
     }
+
+    _tfliteLib = ffi.DynamicLibrary.process();
   }
+
 
   Future<void> initialize({FaceDetectionModel model = FaceDetectionModel.backCamera, InterpreterOptions? options}) async {
     await _ensureTFLiteLoaded();
