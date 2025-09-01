@@ -96,50 +96,21 @@ class FaceDetector {
     if (_tfliteLib != null) return;
 
     if (Platform.isWindows) {
-      const pkgName = 'face_detection_tflite';
-      final exeDir = File(Platform.resolvedExecutable).parent.path;
+      ffi.DynamicLibrary lib;
 
-      final candidates = <String>[
-        p.join(exeDir, 'data', 'flutter_assets', 'packages', pkgName, 'assets', 'bin', 'libtensorflowlite_c-win.dll'),
-        p.join(exeDir, 'data', 'flutter_assets', 'assets', 'bin', 'libtensorflowlite_c-win.dll'),
-        p.join(exeDir, 'data', 'flutter_assets', 'packages', pkgName, 'assets', 'bin', 'tensorflowlite_c.dll'),
-        p.join(exeDir, 'data', 'flutter_assets', 'assets', 'bin', 'tensorflowlite_c.dll'),
-        p.join(Directory.current.path, 'assets', 'bin', 'libtensorflowlite_c-win.dll'),
-        p.join(Directory.current.path, 'assets', 'bin', 'tensorflowlite_c.dll'),
-      ];
-
-      for (final path in candidates) {
-        if (File(path).existsSync()) {
-          try {
-            _tfliteLib = ffi.DynamicLibrary.open(path);
-            return;
-          } catch (_) {}
-        }
-      }
-
-      for (final name in ['libtensorflowlite_c-win.dll', 'tensorflowlite_c.dll']) {
-        try {
-          final tempPath = p.join(Directory.systemTemp.path, 'tflite_c', name);
-          Directory(p.dirname(tempPath)).createSync(recursive: true);
-          final src = candidates.firstWhere(
-                (p0) => p.basename(p0).toLowerCase() == name.toLowerCase() && File(p0).existsSync(),
-            orElse: () => '',
-          );
-          if (src.isNotEmpty) {
-            File(src).copySync(tempPath);
-            _tfliteLib = ffi.DynamicLibrary.open(tempPath);
-            return;
-          }
-        } catch (_) {}
+      if (kReleaseMode) {
+        // I'm on release mode, absolute linking
+        final String local_lib =  p.join('data',  'flutter_assets', 'assets', 'tensorflowlite_c.dll');
+        String pathToLib = p.join(Directory(Platform.resolvedExecutable).parent.path, local_lib);
+        lib = ffi.DynamicLibrary.open(pathToLib);
+      } else {
+        // I'm on debug mode, local linking
+        var path = Directory.current.path;
+        lib = ffi.DynamicLibrary.open('$path/assets/tensorflowlite_c.dll');
       }
 
       try {
-        _tfliteLib = ffi.DynamicLibrary.open('libtensorflowlite_c.dll');
-        return;
-      } catch (_) {}
-
-      try {
-        _tfliteLib = ffi.DynamicLibrary.open('tensorflowlite_c.dll');
+        _tfliteLib = lib;
         return;
       } catch (e) {
         throw ArgumentError(
