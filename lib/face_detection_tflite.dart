@@ -94,55 +94,97 @@ class FaceDetector {
 
   static ffi.DynamicLibrary? _tfliteLib;
   static Future<void> _ensureTFLiteLoaded() async {
-    if (_tfliteLib != null) return;
+    if (_tfliteLib != null) {
+        return;
+    }
 
     if (Platform.isWindows) {
-      // Name and plugin-asset path of the DLL inside this package
-      const dllFileName = 'libtensorflowlite_c.dll';
-      const pluginAssetPath = 'packages/face_detection_tflite/assets/bin/$dllFileName';
+      // Paths
+      final exeFile   = File(Platform.resolvedExecutable);        // ...\runner\Debug\example.exe
+      final exeDir    = exeFile.parent;                           // ...\runner\Debug
+      final blobsDir  = Directory(p.join(exeDir.path, 'blobs'));  // ...\runner\Debug\blobs
+      if (!blobsDir.existsSync()) blobsDir.createSync(recursive: true);
 
-      // 1) Try the file as laid out on disk by Flutter next to the executable:
-      //    <exe dir>\data\flutter_assets\packages\face_detection_tflite\assets\bin\libtensorflowlite_c.dll
-      final exeDir = Directory(Platform.resolvedExecutable).parent.path;
-      final onDiskDll = p.join(
-        exeDir,
+      // DLL names we’ll support
+      const primaryName = 'libtensorflowlite_c.dll';
+      const altName     = 'libtensorflowlite_c-win.dll';
+
+      // Where the assets live on disk (next to the exe)
+      final assetsBinDir = p.join(
+        exeDir.path,
         'data',
         'flutter_assets',
         'packages',
         'face_detection_tflite',
         'assets',
         'bin',
-        dllFileName,
       );
+      final srcPrimary = File(p.join(assetsBinDir, primaryName));
+      final srcAlt     = File(p.join(assetsBinDir, altName));
 
-      try {
-        if (File(onDiskDll).existsSync()) {
-          _tfliteLib = ffi.DynamicLibrary.open(onDiskDll);
-          return;
+      // Targets in blobs/
+      final dstPrimary = File(p.join(blobsDir.path, primaryName));
+      final dstAlt     = File(p.join(blobsDir.path, altName));
+
+      // Helper: copy if source exists
+      void copyIfExists(File src, File dst) {
+        if (src.existsSync()) {
+          try {
+            src.copySync(dst.path);
+          } catch (_) {
+            // If file is in use, try overwrite by writing bytes
+            try { dst.writeAsBytesSync(src.readAsBytesSync(), flush: true); } catch (_) {}
+          }
         }
-      } catch (_) {
-        // fall through to bundle-extract path
       }
 
-      try {
-        final data = await rootBundle.load(pluginAssetPath);
-        final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+      // 1) Prefer copying from on-disk flutter_assets (fast & reliable)
+      copyIfExists(srcAlt, dstAlt);
+      copyIfExists(srcPrimary, dstPrimary);
 
-        // Use a stable temp path for the current process; overwrite if exists.
-        final tempFile = File(p.join(Directory.systemTemp.path, dllFileName));
-        await tempFile.writeAsBytes(bytes, flush: true);
+      // 2) If still missing, fall back to rootBundle extraction
+      Future<void> extractAssetTo(File target, String assetKey) async {
+        try {
+          final data = await rootBundle.load(assetKey);
+          final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+          await target.writeAsBytes(bytes, flush: true);
+        } catch (_) {/* ignore */}
+      }
+      if (!dstAlt.existsSync()) {
+        await extractAssetTo(dstAlt, 'packages/face_detection_tflite/assets/bin/$altName');
+      }
+      if (!dstPrimary.existsSync()) {
+        await extractAssetTo(dstPrimary, 'packages/face_detection_tflite/assets/bin/$primaryName');
+      }
 
-        _tfliteLib = ffi.DynamicLibrary.open(tempFile.path);
-        return;
-      } catch (e) {
+      // 3) Open whichever the native side expects first (-win), else primary
+      String? toOpen;
+      if (dstAlt.existsSync()) {
+        toOpen = dstAlt.path;
+      } else if (dstPrimary.existsSync()) {
+        toOpen = dstPrimary.path;
+      }
+
+      // 4) As a last fallback, try opening directly from flutter_assets (works in some setups)
+      toOpen ??= srcAlt.existsSync()
+          ? srcAlt.path
+          : (srcPrimary.existsSync() ? srcPrimary.path : null);
+
+      if (toOpen == null) {
         throw ArgumentError(
-          'Unable to load TensorFlow Lite C DLL on Windows from plugin assets.\n'
-              'Tried on-disk path:\n  $onDiskDll\n'
-              'Then tried extracting bundle asset:\n  $pluginAssetPath\n'
-              'Original error: $e',
+          'Unable to deploy/load TensorFlow Lite C DLL on Windows.\n'
+          'Looked in:\n'
+          '  ${dstAlt.path}\n  ${dstPrimary.path}\n'
+          'and sources:\n'
+          '  ${srcAlt.path}\n  ${srcPrimary.path}\n'
+          'Ensure the plugin pubspec lists assets/bin/*.dll.'
         );
       }
+
+      _tfliteLib = ffi.DynamicLibrary.open(toOpen);
+      return;
     }
+
 
     if (Platform.isLinux) {
       _tfliteLib = ffi.DynamicLibrary.open('libtensorflowlite_c.so');
