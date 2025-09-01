@@ -54,7 +54,22 @@ target_link_libraries(${PLUGIN_NAME} PRIVATE flutter flutter_wrapper_plugin)
 # List of absolute paths to libraries that should be bundled with the plugin.
 # This list could contain prebuilt libraries, or libraries created by an
 # external build triggered from this build file.
+if (NOT EXISTS "${TFLITE_DLL}")
+  message(FATAL_ERROR "TFLite DLL not found at: ${TFLITE_DLL}")
+endif()
+message(STATUS "Bundling TFLite DLL: ${TFLITE_DLL}")
+
 set(face_detection_tflite_bundled_libraries
+  "${TFLITE_DLL}"
+  PARENT_SCOPE
+)
+
+set(${PROJECT_NAME}_bundled_libraries
+  "${TFLITE_DLL}"
+  PARENT_SCOPE
+)
+
+set(${PLUGIN_NAME}_bundled_libraries
   "${TFLITE_DLL}"
   PARENT_SCOPE
 )
