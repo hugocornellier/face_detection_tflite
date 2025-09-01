@@ -134,7 +134,7 @@ class FaceDetector {
       }
 
       try {
-        _tfliteLib = ffi.DynamicLibrary.open('libtensorflowlite_c-win.dll');
+        _tfliteLib = ffi.DynamicLibrary.open('libtensorflowlite_c.dll');
         return;
       } catch (_) {}
 
