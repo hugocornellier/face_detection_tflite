@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ffi' as ffi;
 import 'dart:io';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:image/image.dart' as img;
 import 'package:tflite_flutter/tflite_flutter.dart';
@@ -96,29 +97,52 @@ class FaceDetector {
     if (_tfliteLib != null) return;
 
     if (Platform.isWindows) {
-      ffi.DynamicLibrary lib;
+      // Name and plugin-asset path of the DLL inside this package
+      const dllFileName = 'libtensorflowlite_c.dll';
+      const pluginAssetPath = 'packages/face_detection_tflite/assets/bin/$dllFileName';
 
-      if (kReleaseMode) {
-        // I'm on release mode, absolute linking
-        final String local_lib =  p.join('data',  'flutter_assets', 'assets', 'tensorflowlite_c.dll');
-        String pathToLib = p.join(Directory(Platform.resolvedExecutable).parent.path, local_lib);
-        lib = ffi.DynamicLibrary.open(pathToLib);
-      } else {
-        // I'm on debug mode, local linking
-        var path = Directory.current.path;
-        lib = ffi.DynamicLibrary.open('$path/assets/tensorflowlite_c.dll');
+      // 1) Try the file as laid out on disk by Flutter next to the executable:
+      //    <exe dir>\data\flutter_assets\packages\face_detection_tflite\assets\bin\libtensorflowlite_c-win.dll
+      final exeDir = Directory(Platform.resolvedExecutable).parent.path;
+      final onDiskDll = p.join(
+        exeDir,
+        'data',
+        'flutter_assets',
+        'packages',
+        'face_detection_tflite',
+        'assets',
+        'bin',
+        dllFileName,
+      );
+
+      try {
+        if (File(onDiskDll).existsSync()) {
+          _tfliteLib = ffi.DynamicLibrary.open(onDiskDll);
+          return;
+        }
+      } catch (_) {
+        // fall through to bundle-extract path
       }
 
       try {
-        _tfliteLib = lib;
+        final data = await rootBundle.load(pluginAssetPath);
+        final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+
+        // Use a stable temp path for the current process; overwrite if exists.
+        final tempFile = File(p.join(Directory.systemTemp.path, dllFileName));
+        await tempFile.writeAsBytes(bytes, flush: true);
+
+        _tfliteLib = ffi.DynamicLibrary.open(tempFile.path);
         return;
       } catch (e) {
         throw ArgumentError(
-          'Unable to load TensorFlow Lite C DLL on Windows. Checked asset, temp, and default loader paths. Error: $e',
+          'Unable to load TensorFlow Lite C DLL on Windows from plugin assets.\n'
+              'Tried on-disk path:\n  $onDiskDll\n'
+              'Then tried extracting bundle asset:\n  $pluginAssetPath\n'
+              'Original error: $e',
         );
       }
     }
-
 
     if (Platform.isLinux) {
       _tfliteLib = ffi.DynamicLibrary.open('libtensorflowlite_c.so');
