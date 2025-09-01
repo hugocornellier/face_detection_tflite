@@ -98,11 +98,11 @@ class FaceDetector {
 
     if (Platform.isWindows) {
       // Name and plugin-asset path of the DLL inside this package
-      const dllFileName = 'libtensorflowlite_c-win.dll';
+      const dllFileName = 'libtensorflowlite_c.dll';
       const pluginAssetPath = 'packages/face_detection_tflite/assets/bin/$dllFileName';
 
       // 1) Try the file as laid out on disk by Flutter next to the executable:
-      //    <exe dir>\data\flutter_assets\packages\face_detection_tflite\assets\bin\libtensorflowlite_c-win.dll
+      //    <exe dir>\data\flutter_assets\packages\face_detection_tflite\assets\bin\libtensorflowlite_c.dll
       final exeDir = Directory(Platform.resolvedExecutable).parent.path;
       final onDiskDll = p.join(
         exeDir,
