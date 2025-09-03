@@ -847,7 +847,7 @@ class FaceDetection {
   Float32List _decodeScores(Float32List raw, List<int> shape) {
     final n = shape[1];
     final scores = Float32List(n);
-    for (var i = 0; i < n; i++) {
+    for (var i =  0; i < n; i++) {
       scores[i] = _sigmoidClipped(raw[i]);
     }
     return scores;
@@ -875,6 +875,11 @@ class FaceLandmark {
   final Interpreter _itp;
   final int _inW, _inH;
 
+  late final Map<int, List<int>> _outShapes;
+  late final Map<int, dynamic> _outBuffers;
+  late final int _bestIdx;
+  late final List<int> _bestShape;
+
   FaceLandmark._(this._itp, this._inW, this._inH);
 
   static Future<FaceLandmark> create({InterpreterOptions? options}) async {
@@ -887,16 +892,41 @@ class FaceLandmark {
     final inW = ishape[2];
     itp.resizeInputTensor(0, [1, inH, inW, 3]);
     itp.allocateTensors();
-    return FaceLandmark._(itp, inW, inH);
+
+    final obj = FaceLandmark._(itp, inW, inH);
+
+    int numElements(List<int> s) => s.fold(1, (a, b) => a * b);
+
+    final shapes = <int, List<int>>{};
+    final buffers = <int, dynamic>{};
+    for (var i = 0;; i++) {
+      try {
+        final s = itp.getOutputTensor(i).shape;
+        shapes[i] = s;
+        buffers[i] = _zerosForShape(s);
+      } catch (_) {
+        break;
+      }
+    }
+    obj._outShapes = shapes;
+    obj._outBuffers = buffers;
+
+    int bestIdx = -1;
+    int bestLen = -1;
+    for (final e in shapes.entries) {
+      final len = numElements(e.value);
+      if (len > bestLen && len % 3 == 0) {
+        bestLen = len;
+        bestIdx = e.key;
+      }
+    }
+    obj._bestIdx = bestIdx;
+    obj._bestShape = shapes[bestIdx]!;
+    return obj;
   }
 
   Future<List<List<double>>> call(img.Image faceCrop) async {
     final pack = _imageToTensor(faceCrop, outW: _inW, outH: _inH);
-
-    _itp.resizeInputTensor(0, [1, _inH, _inW, 3]);
-    _itp.allocateTensors();
-
-    int numElements(List<int> s) => s.fold(1, (a, b) => a * b);
 
     final input4d = List.generate(
       1,
@@ -912,32 +942,11 @@ class FaceLandmark {
       ),
     );
 
-    final outputs = <int, dynamic>{};
-    final shapes = <int, List<int>>{};
-    for (var i = 0;; i++) {
-      try {
-        final s = _itp.getOutputTensor(i).shape;
-        shapes[i] = s;
-        outputs[i] = _zerosForShape(s);
-      } catch (_) {
-        break;
-      }
-    }
+    final outputs = _outBuffers.map((k, v) => MapEntry(k, v as Object));
+    _itp.runForMultipleInputs([input4d], outputs);
 
-    _itp.runForMultipleInputs([input4d], outputs.cast<int, Object>());
-
-    int? bestIdx;
-    int bestLen = -1;
-    for (final entry in shapes.entries) {
-      final len = numElements(entry.value);
-      if (len > bestLen && len % 3 == 0) {
-        bestLen = len;
-        bestIdx = entry.key;
-      }
-    }
-    if (bestIdx == null) return const <List<double>>[];
-
-    final flat = _flattenToFloat32List(outputs[bestIdx], bestLen);
+    int numElements(List<int> s) => s.fold(1, (a, b) => a * b);
+    final flat = _flattenToFloat32List(_outBuffers[_bestIdx], numElements(_outShapes[_bestIdx]!));
 
     final pt = pack.padding[0], pb = pack.padding[1], pl = pack.padding[2], pr = pack.padding[3];
     final sx = 1.0 - (pl + pr);
@@ -985,6 +994,9 @@ class IrisLandmark {
   final Interpreter _itp;
   final int _inW, _inH;
 
+  late final Map<int, List<int>> _outShapes;
+  late final Map<int, dynamic> _outBuffers;
+
   IrisLandmark._(this._itp, this._inW, this._inH);
 
   static Future<IrisLandmark> create({InterpreterOptions? options}) async {
@@ -997,16 +1009,27 @@ class IrisLandmark {
     final inW = ishape[2];
     itp.resizeInputTensor(0, [1, inH, inW, 3]);
     itp.allocateTensors();
-    return IrisLandmark._(itp, inW, inH);
+
+    final obj = IrisLandmark._(itp, inW, inH);
+
+    final shapes = <int, List<int>>{};
+    final buffers = <int, dynamic>{};
+    for (var i = 0;; i++) {
+      try {
+        final s = itp.getOutputTensor(i).shape;
+        shapes[i] = s;
+        buffers[i] = _zerosForShape(s);
+      } catch (_) {
+        break;
+      }
+    }
+    obj._outShapes = shapes;
+    obj._outBuffers = buffers;
+    return obj;
   }
 
   Future<List<List<double>>> call(img.Image eyeCrop) async {
     final pack = _imageToTensor(eyeCrop, outW: _inW, outH: _inH);
-
-    _itp.resizeInputTensor(0, [1, _inH, _inW, 3]);
-    _itp.allocateTensors();
-
-    int numElements(List<int> s) => s.fold(1, (a, b) => a * b);
 
     final input4d = List.generate(
       1,
@@ -1022,27 +1045,18 @@ class IrisLandmark {
       ),
     );
 
-    final outputs = <int, dynamic>{};
-    final shapes = <int, List<int>>{};
-    for (var i = 0;; i++) {
-      try {
-        final s = _itp.getOutputTensor(i).shape;
-        shapes[i] = s;
-        outputs[i] = _zerosForShape(s);
-      } catch (_) {
-        break;
-      }
-    }
+    final outputs = _outBuffers.map((k, v) => MapEntry(k, v as Object));
+    _itp.runForMultipleInputs([input4d], outputs);
 
-    _itp.runForMultipleInputs([input4d], outputs.cast<int, Object>());
+    int numElements(List<int> s) => s.fold(1, (a, b) => a * b);
 
     final lm = <List<double>>[];
     final pt = pack.padding[0], pb = pack.padding[1], pl = pack.padding[2], pr = pack.padding[3];
     final sx = 1.0 - (pl + pr);
     final sy = 1.0 - (pt + pb);
 
-    for (final entry in outputs.entries) {
-      final shape = shapes[entry.key]!;
+    for (final entry in _outBuffers.entries) {
+      final shape = _outShapes[entry.key]!;
       final flat = _flattenToFloat32List(entry.value, numElements(shape));
       final n = (flat.length / 3).floor();
       for (var i = 0; i < n; i++) {
