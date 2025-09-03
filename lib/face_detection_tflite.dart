@@ -9,7 +9,6 @@ import 'package:path/path.dart' as p;
 import 'package:image/image.dart' as img;
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'dart:ui';
-import 'package:flutter/foundation.dart' show kReleaseMode;
 
 enum FaceIndex { leftEye, rightEye, noseTip, mouth, leftEyeTragion, rightEyeTragion }
 enum FaceDetectionModel { frontCamera, backCamera, shortRange, full, fullSparse }
@@ -63,8 +62,6 @@ const _ssdFull = {
   'interpolated_scale_aspect_ratio': 0.0,
 };
 
-
-
 class AlignedFace {
   final double cx;
   final double cy;
@@ -99,17 +96,14 @@ class FaceDetector {
     }
 
     if (Platform.isWindows) {
-      // Paths
-      final exeFile   = File(Platform.resolvedExecutable);        // ...\runner\Debug\example.exe
-      final exeDir    = exeFile.parent;                           // ...\runner\Debug
-      final blobsDir  = Directory(p.join(exeDir.path, 'blobs'));  // ...\runner\Debug\blobs
+      final exeFile   = File(Platform.resolvedExecutable);
+      final exeDir    = exeFile.parent;
+      final blobsDir  = Directory(p.join(exeDir.path, 'blobs'));
       if (!blobsDir.existsSync()) blobsDir.createSync(recursive: true);
 
-      // DLL names we’ll support
       const primaryName = 'libtensorflowlite_c.dll';
       const altName     = 'libtensorflowlite_c-win.dll';
 
-      // Where the assets live on disk (next to the exe)
       final assetsBinDir = p.join(
         exeDir.path,
         'data',
@@ -122,33 +116,28 @@ class FaceDetector {
       final srcPrimary = File(p.join(assetsBinDir, primaryName));
       final srcAlt     = File(p.join(assetsBinDir, altName));
 
-      // Targets in blobs/
       final dstPrimary = File(p.join(blobsDir.path, primaryName));
       final dstAlt     = File(p.join(blobsDir.path, altName));
 
-      // Helper: copy if source exists
       void copyIfExists(File src, File dst) {
         if (src.existsSync()) {
           try {
             src.copySync(dst.path);
           } catch (_) {
-            // If file is in use, try overwrite by writing bytes
             try { dst.writeAsBytesSync(src.readAsBytesSync(), flush: true); } catch (_) {}
           }
         }
       }
 
-      // 1) Prefer copying from on-disk flutter_assets (fast & reliable)
       copyIfExists(srcAlt, dstAlt);
       copyIfExists(srcPrimary, dstPrimary);
 
-      // 2) If still missing, fall back to rootBundle extraction
       Future<void> extractAssetTo(File target, String assetKey) async {
         try {
           final data = await rootBundle.load(assetKey);
           final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
           await target.writeAsBytes(bytes, flush: true);
-        } catch (_) {/* ignore */}
+        } catch (_) { }
       }
       if (!dstAlt.existsSync()) {
         await extractAssetTo(dstAlt, 'packages/face_detection_tflite/assets/bin/$altName');
@@ -157,7 +146,6 @@ class FaceDetector {
         await extractAssetTo(dstPrimary, 'packages/face_detection_tflite/assets/bin/$primaryName');
       }
 
-      // 3) Open whichever the native side expects first (-win), else primary
       String? toOpen;
       if (dstAlt.existsSync()) {
         toOpen = dstAlt.path;
@@ -165,7 +153,6 @@ class FaceDetector {
         toOpen = dstPrimary.path;
       }
 
-      // 4) As a last fallback, try opening directly from flutter_assets (works in some setups)
       toOpen ??= srcAlt.existsSync()
           ? srcAlt.path
           : (srcPrimary.existsSync() ? srcPrimary.path : null);
@@ -184,7 +171,6 @@ class FaceDetector {
       _tfliteLib = ffi.DynamicLibrary.open(toOpen);
       return;
     }
-
 
     if (Platform.isLinux) {
       _tfliteLib = ffi.DynamicLibrary.open('libtensorflowlite_c.so');
@@ -222,7 +208,6 @@ class FaceDetector {
 
     _tfliteLib = ffi.DynamicLibrary.process();
   }
-
 
   Future<void> initialize({FaceDetectionModel model = FaceDetectionModel.backCamera, InterpreterOptions? options}) async {
     await _ensureTFLiteLoaded();
@@ -419,9 +404,38 @@ class Detection {
   final RectF bbox;
   final double score;
   final List<double> keypointsXY;
-  Detection({required this.bbox, required this.score, required this.keypointsXY});
+  final Size? imageSize;
+
+  Detection({
+    required this.bbox,
+    required this.score,
+    required this.keypointsXY,
+    this.imageSize,
+  });
+
   double operator [](int i) => keypointsXY[i];
+
+  Map<FaceIndex, Offset> get landmarks {
+    final map = <FaceIndex, Offset>{};
+    if (imageSize == null) {
+      for (final idx in FaceIndex.values) {
+        final x = keypointsXY[idx.index * 2];
+        final y = keypointsXY[idx.index * 2 + 1];
+        map[idx] = Offset(x, y);
+      }
+      return map;
+    }
+    final w = imageSize!.width;
+    final h = imageSize!.height;
+    for (final idx in FaceIndex.values) {
+      final x = keypointsXY[idx.index * 2] * w;
+      final y = keypointsXY[idx.index * 2 + 1] * h;
+      map[idx] = Offset(x, y);
+    }
+    return map;
+  }
 }
+
 
 class ImageTensor {
   final Float32List tensorNHWC;
@@ -780,7 +794,17 @@ class FaceDetection {
         return Detection(bbox: RectF(xmin, ymin, xmax, ymax), score: d.score, keypointsXY: kp);
       }).toList();
     }
+    final imgSize = Size(src.width.toDouble(), src.height.toDouble());
+    mapped = mapped
+        .map((d) => Detection(
+      bbox: d.bbox,
+      score: d.score,
+      keypointsXY: d.keypointsXY,
+      imageSize: imgSize,
+    ))
+        .toList();
     return mapped;
+
   }
 
   List<_DecodedBox> _decodeBoxes(Float32List raw, List<int> shape) {
