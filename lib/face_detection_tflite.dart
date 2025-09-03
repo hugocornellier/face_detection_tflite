@@ -635,11 +635,16 @@ class FaceDetection {
   final Float32List _anchors;
   final bool _assumeMirrored;
 
+  late final int _inputIdx;
+  late final List<int> _boxesShape;
+  late final List<int> _scoresShape;
+  late final dynamic _outBoxes;
+  late final dynamic _outScores;
+  bool _allocated = false;
+
   FaceDetection._(this._itp, this._inW, this._inH, this._anchors, this._assumeMirrored);
 
   static Future<FaceDetection> create(FaceDetectionModel model, {InterpreterOptions? options}) async {
-    print("Creating model..");
-
     final opts = _optsFor(model);
     final inW = opts['input_size_width'] as int;
     final inH = opts['input_size_height'] as int;
@@ -652,7 +657,45 @@ class FaceDetection {
       FaceDetectionModel.backCamera => false,
       _ => true,
     };
-    return FaceDetection._(itp, inW, inH, anchors, assumeMirrored);
+    final obj = FaceDetection._(itp, inW, inH, anchors, assumeMirrored);
+
+    int foundIdx = 0;
+    for (final i in [0, 1, 2, 3]) {
+      try {
+        final s = itp.getInputTensor(i).shape;
+        if (s.length == 4) {
+          foundIdx = i;
+          break;
+        }
+      } catch (_) {}
+    }
+    obj._inputIdx = foundIdx;
+    itp.resizeInputTensor(obj._inputIdx, [1, inH, inW, 3]);
+    itp.allocateTensors();
+
+    obj._boxesShape = itp.getOutputTensor(obj._bboxIndex).shape;
+    obj._scoresShape = itp.getOutputTensor(obj._scoreIndex).shape;
+
+    if (obj._boxesShape.length == 3) {
+      obj._outBoxes = List.generate(obj._boxesShape[0], (_) =>
+          List.generate(obj._boxesShape[1], (_) => List.filled(obj._boxesShape[2], 0.0)));
+    } else if (obj._boxesShape.length == 2) {
+      obj._outBoxes = List.generate(obj._boxesShape[0], (_) => List.filled(obj._boxesShape[1], 0.0));
+    } else {
+      obj._outBoxes = List.filled(obj._boxesShape[0], 0.0);
+    }
+
+    if (obj._scoresShape.length == 3) {
+      obj._outScores = List.generate(obj._scoresShape[0], (_) =>
+          List.generate(obj._scoresShape[1], (_) => List.filled(obj._scoresShape[2], 0.0)));
+    } else if (obj._scoresShape.length == 2) {
+      obj._outScores = List.generate(obj._scoresShape[0], (_) => List.filled(obj._scoresShape[1], 0.0));
+    } else {
+      obj._outScores = List.filled(obj._scoresShape[0], 0.0);
+    }
+
+    obj._allocated = true;
+    return obj;
   }
 
   Future<List<Detection>> call(Uint8List imageBytes, {RectF? roi}) async {
@@ -660,99 +703,64 @@ class FaceDetection {
     final img.Image srcRoi = (roi == null) ? src : cropFromRoi(src, roi);
     final pack = _imageToTensor(srcRoi, outW: _inW, outH: _inH);
 
-    int inputIdx = 0;
-    for (final i in [0, 1, 2, 3]) {
-      try {
-        final s = _itp.getInputTensor(i).shape;
-        if (s.length == 4) {
-          inputIdx = i;
-          break;
-        }
-      } catch (_) {}
-    }
-    _itp.resizeInputTensor(inputIdx, [1, _inH, _inW, 3]);
-    _itp.allocateTensors();
-
-    int numElements(List<int> s) => s.fold(1, (a, b) => a * b);
-    final boxesShape = _itp.getOutputTensor(_bboxIndex).shape;
-    final scoresShape = _itp.getOutputTensor(_scoreIndex).shape;
-
     final input4d = List.generate(1, (_) => List.generate(_inH, (y) => List.generate(_inW, (x) {
       final base = (y * _inW + x) * 3;
       return [pack.tensorNHWC[base], pack.tensorNHWC[base + 1], pack.tensorNHWC[base + 2]];
     })));
 
-    dynamic outBoxes;
-    if (boxesShape.length == 3) {
-      outBoxes = List.generate(boxesShape[0], (_) =>
-          List.generate(boxesShape[1], (_) => List.filled(boxesShape[2], 0.0)));
-    } else if (boxesShape.length == 2) {
-      outBoxes = List.generate(boxesShape[0], (_) => List.filled(boxesShape[1], 0.0));
-    } else {
-      outBoxes = List.filled(boxesShape[0], 0.0);
-    }
-
-    dynamic outScores;
-    if (scoresShape.length == 3) {
-      outScores = List.generate(scoresShape[0], (_) =>
-          List.generate(scoresShape[1], (_) => List.filled(scoresShape[2], 0.0)));
-    } else if (scoresShape.length == 2) {
-      outScores = List.generate(scoresShape[0], (_) => List.filled(scoresShape[1], 0.0));
-    } else {
-      outScores = List.filled(scoresShape[0], 0.0);
-    }
-
     _itp.runForMultipleInputs([input4d], {
-      _bboxIndex: outBoxes,
-      _scoreIndex: outScores,
+      _bboxIndex: _outBoxes,
+      _scoreIndex: _outScores,
     });
 
-    final rawBoxes = Float32List(numElements(boxesShape));
+    int numElements(List<int> s) => s.fold(1, (a, b) => a * b);
+
+    final rawBoxes = Float32List(numElements(_boxesShape));
     var k = 0;
-    if (boxesShape.length == 3) {
-      for (var i = 0; i < boxesShape[0]; i++) {
-        for (var j = 0; j < boxesShape[1]; j++) {
-          for (var l = 0; l < boxesShape[2]; l++) {
-            rawBoxes[k++] = (outBoxes[i][j][l] as num).toDouble();
+    if (_boxesShape.length == 3) {
+      for (var i = 0; i < _boxesShape[0]; i++) {
+        for (var j = 0; j < _boxesShape[1]; j++) {
+          for (var l = 0; l < _boxesShape[2]; l++) {
+            rawBoxes[k++] = (_outBoxes[i][j][l] as num).toDouble();
           }
         }
       }
-    } else if (boxesShape.length == 2) {
-      for (var i = 0; i < boxesShape[0]; i++) {
-        for (var j = 0; j < boxesShape[1]; j++) {
-          rawBoxes[k++] = (outBoxes[i][j] as num).toDouble();
+    } else if (_boxesShape.length == 2) {
+      for (var i = 0; i < _boxesShape[0]; i++) {
+        for (var j = 0; j < _boxesShape[1]; j++) {
+          rawBoxes[k++] = (_outBoxes[i][j] as num).toDouble();
         }
       }
     } else {
-      for (var i = 0; i < boxesShape[0]; i++) {
-        rawBoxes[k++] = (outBoxes[i] as num).toDouble();
+      for (var i = 0; i < _boxesShape[0]; i++) {
+        rawBoxes[k++] = (_outBoxes[i] as num).toDouble();
       }
     }
 
-    final rawScores = Float32List(numElements(scoresShape));
+    final rawScores = Float32List(numElements(_scoresShape));
     k = 0;
-    if (scoresShape.length == 3) {
-      for (var i = 0; i < scoresShape[0]; i++) {
-        for (var j = 0; j < scoresShape[1]; j++) {
-          for (var l = 0; l < scoresShape[2]; l++) {
-            rawScores[k++] = (outScores[i][j][l] as num).toDouble();
+    if (_scoresShape.length == 3) {
+      for (var i = 0; i < _scoresShape[0]; i++) {
+        for (var j = 0; j < _scoresShape[1]; j++) {
+          for (var l = 0; l < _scoresShape[2]; l++) {
+            rawScores[k++] = (_outScores[i][j][l] as num).toDouble();
           }
         }
       }
-    } else if (scoresShape.length == 2) {
-      for (var i = 0; i < scoresShape[0]; i++) {
-        for (var j = 0; j < scoresShape[1]; j++) {
-          rawScores[k++] = (outScores[i][j] as num).toDouble();
+    } else if (_scoresShape.length == 2) {
+      for (var i = 0; i < _scoresShape[0]; i++) {
+        for (var j = 0; j < _scoresShape[1]; j++) {
+          rawScores[k++] = (_outScores[i][j] as num).toDouble();
         }
       }
     } else {
-      for (var i = 0; i < scoresShape[0]; i++) {
-        rawScores[k++] = (outScores[i] as num).toDouble();
+      for (var i = 0; i < _scoresShape[0]; i++) {
+        rawScores[k++] = (_outScores[i] as num).toDouble();
       }
     }
 
-    final boxes = _decodeBoxes(rawBoxes, boxesShape);
-    final scores = _decodeScores(rawScores, scoresShape);
+    final boxes = _decodeBoxes(rawBoxes, _boxesShape);
+    final scores = _decodeScores(rawScores, _scoresShape);
 
     final dets = _toDetections(boxes, scores);
     final pruned = _nms(dets, _minSuppressionThreshold, _minScore, weighted: true);
@@ -804,7 +812,6 @@ class FaceDetection {
     ))
         .toList();
     return mapped;
-
   }
 
   List<_DecodedBox> _decodeBoxes(Float32List raw, List<int> shape) {
@@ -878,6 +885,8 @@ class FaceLandmark {
     final ishape = itp.getInputTensor(0).shape;
     final inH = ishape[1];
     final inW = ishape[2];
+    itp.resizeInputTensor(0, [1, inH, inW, 3]);
+    itp.allocateTensors();
     return FaceLandmark._(itp, inW, inH);
   }
 
@@ -986,6 +995,8 @@ class IrisLandmark {
     final ishape = itp.getInputTensor(0).shape;
     final inH = ishape[1];
     final inW = ishape[2];
+    itp.resizeInputTensor(0, [1, inH, inW, 3]);
+    itp.allocateTensors();
     return IrisLandmark._(itp, inW, inH);
   }
 
