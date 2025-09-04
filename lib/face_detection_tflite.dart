@@ -816,8 +816,6 @@ class FaceLandmark {
   final int _inW, _inH;
 
   late final int _bestIdx;
-  late final List<int> _bestShape;
-
   late final Tensor _inputTensor;
   late final Tensor _bestTensor;
 
@@ -863,7 +861,6 @@ class FaceLandmark {
       }
     }
     obj._bestIdx = bestIdx;
-    obj._bestShape = shapes[bestIdx]!;
 
     obj._bestTensor = itp.getOutputTensor(obj._bestIdx);
 
@@ -905,8 +902,6 @@ class IrisLandmark {
   final int _inW, _inH;
 
   late final Tensor _inputTensor;
-  late final Map<int, List<int>> _outShapes;
-  late final Map<int, Tensor> _outTensors;
   late final Map<int, Float32List> _outBuffers;
   late final Float32List _inputBuf;
 
@@ -931,8 +926,6 @@ class IrisLandmark {
     final tensors = <int, Tensor>{};
     final buffers = <int, Float32List>{};
 
-    int numElements(List<int> s) => s.fold(1, (a, b) => a * b);
-
     for (var i = 0;; i++) {
       try {
         final t = itp.getOutputTensor(i);
@@ -945,8 +938,6 @@ class IrisLandmark {
       }
     }
 
-    obj._outShapes = shapes;
-    obj._outTensors = tensors;
     obj._outBuffers = buffers;
     obj._inputBuf = obj._inputTensor.data.buffer.asFloat32List();
 
@@ -965,7 +956,6 @@ class IrisLandmark {
     final sy = 1.0 - (pt + pb);
 
     for (final entry in _outBuffers.entries) {
-      final shape = _outShapes[entry.key]!;
       final flat = entry.value;
       final n = (flat.length / 3).floor();
       for (var i = 0; i < n; i++) {
