@@ -88,6 +88,65 @@ class FaceDetector {
 
   bool get isReady => _detector != null && _faceLm != null && _iris != null;
 
+  Future<List<Detection>> getDetectionsWithIrisCenters(Uint8List imageBytes) async {
+    final decoded = img.decodeImage(imageBytes);
+    if (decoded == null) return const <Detection>[];
+    final dets = await detectFaces(imageBytes);
+    if (dets.isEmpty) return dets;
+    final det = dets.first;
+
+    final aligned = estimateAlignedFace(decoded, det);
+    final meshPts = await meshFromAlignedFace(aligned.faceCrop, aligned);
+    final rois = eyeRoisFromMesh(meshPts, decoded.width, decoded.height);
+
+    final ir = _iris;
+    if (ir == null) return dets;
+
+    final centers = <Offset>[];
+    for (int i = 0; i < rois.length; i++) {
+      final isRight = (i == 1);
+      final raw = await ir.runOnImageAlignedIris(decoded, rois[i], isRight: isRight);
+      final pts = raw.map((p) => Offset(p[0].toDouble(), p[1].toDouble())).toList();
+      if (pts.isEmpty) {
+        centers.add(Offset(aligned.cx, aligned.cy));
+        continue;
+      }
+      int centerIdx = 0;
+      double best = double.infinity;
+      for (int k = 0; k < pts.length; k++) {
+        double s = 0;
+        for (int j = 0; j < pts.length; j++) {
+          if (j == k) continue;
+          final dx = pts[j].dx - pts[k].dx;
+          final dy = pts[j].dy - pts[k].dy;
+          s += dx * dx + dy * dy;
+        }
+        if (s < best) {
+          best = s;
+          centerIdx = k;
+        }
+      }
+      centers.add(pts[centerIdx]);
+    }
+
+    final imgW = decoded.width.toDouble();
+    final imgH = decoded.height.toDouble();
+    final kp = List<double>.from(det.keypointsXY);
+    kp[FaceIndex.leftEye.index * 2] = centers[0].dx / imgW;
+    kp[FaceIndex.leftEye.index * 2 + 1] = centers[0].dy / imgH;
+    kp[FaceIndex.rightEye.index * 2] = centers[1].dx / imgW;
+    kp[FaceIndex.rightEye.index * 2 + 1] = centers[1].dy / imgH;
+
+    final updatedFirst = Detection(
+      bbox: det.bbox,
+      score: det.score,
+      keypointsXY: kp,
+      imageSize: det.imageSize,
+    );
+
+    return [updatedFirst, ...dets.skip(1)];
+  }
+
   static ffi.DynamicLibrary? _tfliteLib;
   static Future<void> _ensureTFLiteLoaded() async {
     if (_tfliteLib != null) {
@@ -218,7 +277,65 @@ class FaceDetector {
   Future<List<Detection>> detectFaces(Uint8List imageBytes, {RectF? roi}) async {
     final d = _detector;
     if (d == null) return const <Detection>[];
-    return await d.call(imageBytes, roi: roi);
+
+    final dets = await d.call(imageBytes, roi: roi);
+    if (dets.isEmpty || _iris == null) return dets;
+
+    final decoded = img.decodeImage(imageBytes);
+    if (decoded == null) return dets;
+
+    final updated = <Detection>[];
+    for (final det in dets) {
+      final aligned = estimateAlignedFace(decoded, det);
+      final meshPts = await meshFromAlignedFace(aligned.faceCrop, aligned);
+      final rois = eyeRoisFromMesh(meshPts, decoded.width, decoded.height);
+
+      final centers = <Offset>[];
+      for (int i = 0; i < rois.length; i++) {
+        final isRight = (i == 1);
+        final raw = await _iris!.runOnImageAlignedIris(decoded, rois[i], isRight: isRight);
+        if (raw.isEmpty) {
+          final fallback = det.landmarks[i == 0 ? FaceIndex.leftEye : FaceIndex.rightEye]!;
+          centers.add(fallback);
+          continue;
+        }
+        final pts = raw.map((p) => Offset(p[0].toDouble(), p[1].toDouble())).toList();
+
+        int centerIdx = 0;
+        double best = double.infinity;
+        for (int k = 0; k < pts.length; k++) {
+          double s = 0;
+          for (int j = 0; j < pts.length; j++) {
+            if (j == k) continue;
+            final dx = pts[j].dx - pts[k].dx;
+            final dy = pts[j].dy - pts[k].dy;
+            s += dx * dx + dy * dy;
+          }
+          if (s < best) {
+            best = s;
+            centerIdx = k;
+          }
+        }
+        centers.add(pts[centerIdx]);
+      }
+
+      final imgW = det.imageSize?.width ?? decoded.width.toDouble();
+      final imgH = det.imageSize?.height ?? decoded.height.toDouble();
+      final kp = List<double>.from(det.keypointsXY);
+
+      kp[FaceIndex.leftEye.index * 2] = centers[0].dx / imgW;
+      kp[FaceIndex.leftEye.index * 2 + 1] = centers[0].dy / imgH;
+      kp[FaceIndex.rightEye.index * 2] = centers[1].dx / imgW;
+      kp[FaceIndex.rightEye.index * 2 + 1] = centers[1].dy / imgH;
+
+      updated.add(Detection(
+        bbox: det.bbox,
+        score: det.score,
+        keypointsXY: kp,
+        imageSize: det.imageSize,
+      ));
+    }
+    return updated;
   }
 
   AlignedFace estimateAlignedFace(img.Image decoded, Detection det) {
