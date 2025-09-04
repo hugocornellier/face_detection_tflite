@@ -62,6 +62,8 @@ class _TestPageState extends State<TestPage> {
     final irisPoints = await _faceDetector.getIrisFromMesh(bytes, faceMeshPoints);
     final size = await _faceDetector.getOriginalSize(bytes);
 
+    print(irisPoints);
+
     setState(() {
       _imageBytes = bytes;
       _detections = detections;
@@ -179,10 +181,62 @@ class _DetectionsPainter extends CustomPainter {
     }
 
     if (irisPoints.isNotEmpty) {
-      final scaledIris = irisPoints
-          .map((p) => Offset(p.dx * size.width / originalSize.width, p.dy * size.height / originalSize.height))
-          .toList();
-      canvas.drawPoints(PointMode.points, scaledIris, irisPtPaint);
+      final scaleX = size.width / originalSize.width;
+      final scaleY = size.height / originalSize.height;
+
+      for (int i = 0; i + 4 < irisPoints.length; i += 5) {
+        final five = irisPoints.sublist(i, i + 5);
+
+        int centerIdx = 0;
+        double best = double.infinity;
+        for (int k = 0; k < 5; k++) {
+          double s = 0;
+          for (int j = 0; j < 5; j++) {
+            if (j == k) continue;
+            final dx = five[j].dx - five[k].dx;
+            final dy = five[j].dy - five[k].dy;
+            s += dx * dx + dy * dy;
+          }
+          if (s < best) {
+            best = s;
+            centerIdx = k;
+          }
+        }
+
+        final others = <Offset>[];
+        for (int j = 0; j < 5; j++) {
+          if (j != centerIdx) others.add(five[j]);
+        }
+
+        double minX = others.first.dx, maxX = others.first.dx;
+        double minY = others.first.dy, maxY = others.first.dy;
+        for (final p in others) {
+          if (p.dx < minX) minX = p.dx;
+          if (p.dx > maxX) maxX = p.dx;
+          if (p.dy < minY) minY = p.dy;
+          if (p.dy > maxY) maxY = p.dy;
+        }
+
+        final cx = (minX + maxX) * 0.5;
+        final cy = (minY + maxY) * 0.5;
+        final rx = (maxX - minX) * 0.5;
+        final ry = (maxY - minY) * 0.5;
+
+        final centerScaled = Offset(cx * scaleX, cy * scaleY);
+        final rect = Rect.fromCenter(center: centerScaled, width: rx * 2 * scaleX, height: ry * 2 * scaleY);
+
+        final fill = Paint()
+          ..style = PaintingStyle.fill
+          ..color = const Color(0xFF22AAFF).withOpacity(0.35)
+          ..blendMode = BlendMode.srcOver;
+        final stroke = Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5
+          ..color = const Color(0xFF22AAFF).withOpacity(0.9);
+
+        canvas.drawOval(rect, fill);
+        canvas.drawOval(rect, stroke);
+      }
     }
   }
 

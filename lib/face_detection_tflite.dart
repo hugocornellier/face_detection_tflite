@@ -273,36 +273,31 @@ class FaceDetector {
     return out;
   }
 
-  List<RectF> eyeRoisFromMesh(List<Offset> meshAbs, int imgW, int imgH) {
-    RectF boxFrom(List<int> idxs) {
-      double xmin = double.infinity, ymin = double.infinity, xmax = -double.infinity, ymax = -double.infinity;
-      for (final i in idxs) {
-        final p = meshAbs[i];
-        if (p.dx < xmin) xmin = p.dx;
-        if (p.dy < ymin) ymin = p.dy;
-        if (p.dx > xmax) xmax = p.dx;
-        if (p.dy > ymax) ymax = p.dy;
-      }
-      final cx = (xmin + xmax) * 0.5;
-      final cy = (ymin + ymax) * 0.5;
-      final s = ((xmax - xmin) > (ymax - ymin) ? (xmax - xmin) : (ymax - ymin)) * 0.85;
-      final half = s * 0.5;
-      return RectF(
-        (cx - half) / imgW,
-        (cy - half) / imgH,
-        (cx + half) / imgW,
-        (cy + half) / imgH,
-      );
+  List<AlignedRoi> eyeRoisFromMesh(List<Offset> meshAbs, int imgW, int imgH) {
+    AlignedRoi fromCorners(int a, int b) {
+      final p0 = meshAbs[a];
+      final p1 = meshAbs[b];
+      final cx = (p0.dx + p1.dx) * 0.5;
+      final cy = (p0.dy + p1.dy) * 0.5;
+      final dx = p1.dx - p0.dx;
+      final dy = p1.dy - p0.dy;
+      final theta = math.atan2(dy, dx);
+      final eyeDist = math.sqrt(dx * dx + dy * dy);
+      final size = eyeDist * 2.3;
+      return AlignedRoi(cx, cy, size, theta);
     }
-    return [boxFrom(_leftEyeIdx), boxFrom(_rightEyeIdx)];
+    final left = fromCorners(33, 133);
+    final right = fromCorners(362, 263);
+    return [left, right];
   }
 
-  Future<List<Offset>> irisFromEyeRois(img.Image decoded, List<RectF> rois) async {
+  Future<List<Offset>> irisFromEyeRois(img.Image decoded, List<AlignedRoi> rois) async {
     final ir = _iris;
     if (ir == null) return const <Offset>[];
     final pts = <Offset>[];
-    for (final roi in rois) {
-      final irisLm = await ir.runOnImage(decoded, roi);
+    for (int i = 0; i < rois.length; i++) {
+      final isRight = (i == 1);
+      final irisLm = await ir.runOnImageAlignedIris(decoded, rois[i], isRight: isRight);
       for (final p in irisLm) {
         pts.add(Offset(p[0].toDouble(), p[1].toDouble()));
       }
@@ -381,6 +376,71 @@ class FaceDetector {
       irises: irisPts,
       originalSize: Size(decoded.width.toDouble(), decoded.height.toDouble()),
     );
+  }
+}
+
+extension on IrisLandmark {
+  img.Image _flipHorizontal(img.Image src) {
+    final out = img.Image(width: src.width, height: src.height);
+    for (int y = 0; y < src.height; y++) {
+      for (int x = 0; x < src.width; x++) {
+        out.setPixel(src.width - 1 - x, y, src.getPixel(x, y));
+      }
+    }
+    return out;
+  }
+
+  Future<List<List<double>>> callIrisOnly(img.Image eyeCrop) async {
+    final pack = _imageToTensor(eyeCrop, outW: _inW, outH: _inH);
+
+    _inputBuf.setAll(0, pack.tensorNHWC);
+    _itp.invoke();
+
+    Float32List? irisFlat;
+    _outBuffers.forEach((_, buf) {
+      if (buf.length == 15) {
+        irisFlat = buf;
+      }
+    });
+    if (irisFlat == null) {
+      return const <List<double>>[];
+    }
+
+    final pt = pack.padding[0], pb = pack.padding[1], pl = pack.padding[2], pr = pack.padding[3];
+    final sx = 1.0 - (pl + pr);
+    final sy = 1.0 - (pt + pb);
+
+    final flat = irisFlat!;
+    final lm = <List<double>>[];
+    for (var i = 0; i < 5; i++) {
+      var x = flat[i * 3 + 0] / _inW;
+      var y = flat[i * 3 + 1] / _inH;
+      final z = flat[i * 3 + 2];
+      x = (x - pl) / sx;
+      y = (y - pt) / sy;
+      lm.add([x, y, z]);
+    }
+    return lm;
+  }
+
+  Future<List<List<double>>> runOnImageAlignedIris(img.Image src, AlignedRoi roi, {bool isRight = false}) async {
+    final crop = extractAlignedSquare(src, roi.cx, roi.cy, roi.size, roi.theta);
+    final eye = isRight ? _flipHorizontal(crop) : crop;
+    final lmNorm = await callIrisOnly(eye);
+    final ct = math.cos(roi.theta);
+    final st = math.sin(roi.theta);
+    final s = roi.size;
+    final out = <List<double>>[];
+    for (final p in lmNorm) {
+      final px = isRight ? (1.0 - p[0]) : p[0];
+      final py = p[1];
+      final lx2 = (px - 0.5) * s;
+      final ly2 = (py - 0.5) * s;
+      final x = roi.cx + lx2 * ct - ly2 * st;
+      final y = roi.cy + lx2 * st + ly2 * ct;
+      out.add([x, y, p[2]]);
+    }
+    return out;
   }
 }
 
