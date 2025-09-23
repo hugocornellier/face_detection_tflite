@@ -154,13 +154,12 @@ class FaceDetector {
     }
 
     if (Platform.isWindows) {
-      final exeFile   = File(Platform.resolvedExecutable);
-      final exeDir    = exeFile.parent;
-      final blobsDir  = Directory(p.join(exeDir.path, 'blobs'));
+      final exeFile  = File(Platform.resolvedExecutable);
+      final exeDir   = exeFile.parent;
+      final blobsDir = Directory(p.join(exeDir.path, 'blobs'));
       if (!blobsDir.existsSync()) blobsDir.createSync(recursive: true);
 
-      const primaryName = 'libtensorflowlite_c.dll';
-      const altName     = 'libtensorflowlite_c-win.dll';
+      const dllName = 'libtensorflowlite_c-win.dll';
 
       final assetsBinDir = p.join(
         exeDir.path,
@@ -171,58 +170,38 @@ class FaceDetector {
         'assets',
         'bin',
       );
-      final srcPrimary = File(p.join(assetsBinDir, primaryName));
-      final srcAlt     = File(p.join(assetsBinDir, altName));
 
-      final dstPrimary = File(p.join(blobsDir.path, primaryName));
-      final dstAlt     = File(p.join(blobsDir.path, altName));
+      final srcDll = File(p.join(assetsBinDir, dllName));
+      final dstDll = File(p.join(blobsDir.path, dllName));
 
-      void copyIfExists(File src, File dst) {
-        if (src.existsSync()) {
-          try {
-            src.copySync(dst.path);
-          } catch (_) {
-            try { dst.writeAsBytesSync(src.readAsBytesSync(), flush: true); } catch (_) {}
-          }
-        }
-      }
-
-      copyIfExists(srcAlt, dstAlt);
-      copyIfExists(srcPrimary, dstPrimary);
-
-      Future<void> extractAssetTo(File target, String assetKey) async {
+      if (srcDll.existsSync()) {
         try {
-          final data = await rootBundle.load(assetKey);
+          if (!dstDll.existsSync()) {
+            srcDll.copySync(dstDll.path);
+          }
+        } catch (_) {}
+      } else {
+        try {
+          final data = await rootBundle.load('packages/face_detection_tflite/assets/bin/$dllName');
           final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
-          await target.writeAsBytes(bytes, flush: true);
-        } catch (_) { }
-      }
-      if (!dstAlt.existsSync()) {
-        await extractAssetTo(dstAlt, 'packages/face_detection_tflite/assets/bin/$altName');
-      }
-      if (!dstPrimary.existsSync()) {
-        await extractAssetTo(dstPrimary, 'packages/face_detection_tflite/assets/bin/$primaryName');
+          await dstDll.writeAsBytes(bytes, flush: true);
+        } catch (_) {}
       }
 
       String? toOpen;
-      if (dstAlt.existsSync()) {
-        toOpen = dstAlt.path;
-      } else if (dstPrimary.existsSync()) {
-        toOpen = dstPrimary.path;
+      if (dstDll.existsSync()) {
+        toOpen = dstDll.path;
+      } else if (srcDll.existsSync()) {
+        toOpen = srcDll.path;
       }
-
-      toOpen ??= srcAlt.existsSync()
-          ? srcAlt.path
-          : (srcPrimary.existsSync() ? srcPrimary.path : null);
 
       if (toOpen == null) {
         throw ArgumentError(
-          'Unable to deploy/load TensorFlow Lite C DLL on Windows.\n'
-          'Looked in:\n'
-          '  ${dstAlt.path}\n  ${dstPrimary.path}\n'
-          'and sources:\n'
-          '  ${srcAlt.path}\n  ${srcPrimary.path}\n'
-          'Ensure the plugin pubspec lists assets/bin/*.dll.'
+            'libtensorflowlite_c-win.dll not found. Expected at:\n'
+                '  ${dstDll.path}\n'
+                'or source:\n'
+                '  ${srcDll.path}\n'
+                'Ensure assets/bin/libtensorflowlite_c-win.dll is included in pubspec.'
         );
       }
 
