@@ -78,9 +78,6 @@ class PipelineResult {
   PipelineResult({required this.detections, required this.mesh, required this.irises, required this.originalSize});
 }
 
-const List<int> _leftEyeIdx = [33, 133, 160, 159, 158, 157, 173, 246, 161, 144, 145, 153];
-const List<int> _rightEyeIdx = [362, 263, 387, 386, 385, 384, 398, 466, 388, 373, 374, 380];
-
 class FaceDetector {
   FaceDetection? _detector;
   FaceLandmark? _faceLm;
@@ -154,12 +151,10 @@ class FaceDetector {
     }
 
     if (Platform.isWindows) {
-      final exeFile  = File(Platform.resolvedExecutable);
-      final exeDir   = exeFile.parent;
-      final blobsDir = Directory(p.join(exeDir.path, 'blobs'));
-      if (!blobsDir.existsSync()) blobsDir.createSync(recursive: true);
-
       const dllName = 'libtensorflowlite_c-win.dll';
+
+      final exeFile = File(Platform.resolvedExecutable);
+      final exeDir  = exeFile.parent;
 
       final assetsBinDir = p.join(
         exeDir.path,
@@ -172,15 +167,23 @@ class FaceDetector {
       );
 
       final srcDll = File(p.join(assetsBinDir, dllName));
-      final dstDll = File(p.join(blobsDir.path, dllName));
 
       if (srcDll.existsSync()) {
-        try {
-          if (!dstDll.existsSync()) {
-            srcDll.copySync(dstDll.path);
-          }
-        } catch (_) {}
-      } else {
+        _tfliteLib = ffi.DynamicLibrary.open(srcDll.path);
+        return;
+      }
+
+      final localAppData = Platform.environment['LOCALAPPDATA'] ?? Directory.systemTemp.path;
+      final userBlobsDir = Directory(p.join(localAppData, 'AgeLapse', 'blobs'));
+      try {
+        if (!userBlobsDir.existsSync()) {
+          userBlobsDir.createSync(recursive: true);
+        }
+      } catch (_) {}
+
+      final dstDll = File(p.join(userBlobsDir.path, dllName));
+
+      if (!dstDll.existsSync()) {
         try {
           final data = await rootBundle.load('packages/face_detection_tflite/assets/bin/$dllName');
           final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
@@ -191,17 +194,14 @@ class FaceDetector {
       String? toOpen;
       if (dstDll.existsSync()) {
         toOpen = dstDll.path;
-      } else if (srcDll.existsSync()) {
-        toOpen = srcDll.path;
       }
 
       if (toOpen == null) {
         throw ArgumentError(
-            'libtensorflowlite_c-win.dll not found. Expected at:\n'
-                '  ${dstDll.path}\n'
-                'or source:\n'
+            'libtensorflowlite_c-win.dll not found. Checked:\n'
                 '  ${srcDll.path}\n'
-                'Ensure assets/bin/libtensorflowlite_c-win.dll is included in pubspec.'
+                '  ${dstDll.path}\n'
+                'Ensure the DLL is included in assets or writable user directory is available.'
         );
       }
 
