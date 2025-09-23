@@ -151,10 +151,12 @@ class FaceDetector {
     }
 
     if (Platform.isWindows) {
-      const dllName = 'libtensorflowlite_c-win.dll';
+      final exeFile  = File(Platform.resolvedExecutable);
+      final exeDir   = exeFile.parent;
+      final blobsDir = Directory(p.join(exeDir.path, 'blobs'));
+      if (!blobsDir.existsSync()) blobsDir.createSync(recursive: true);
 
-      final exeFile = File(Platform.resolvedExecutable);
-      final exeDir  = exeFile.parent;
+      const dllName = 'libtensorflowlite_c-win.dll';
 
       final assetsBinDir = p.join(
         exeDir.path,
@@ -167,23 +169,15 @@ class FaceDetector {
       );
 
       final srcDll = File(p.join(assetsBinDir, dllName));
+      final dstDll = File(p.join(blobsDir.path, dllName));
 
       if (srcDll.existsSync()) {
-        _tfliteLib = ffi.DynamicLibrary.open(srcDll.path);
-        return;
-      }
-
-      final localAppData = Platform.environment['LOCALAPPDATA'] ?? Directory.systemTemp.path;
-      final userBlobsDir = Directory(p.join(localAppData, 'AgeLapse', 'blobs'));
-      try {
-        if (!userBlobsDir.existsSync()) {
-          userBlobsDir.createSync(recursive: true);
-        }
-      } catch (_) {}
-
-      final dstDll = File(p.join(userBlobsDir.path, dllName));
-
-      if (!dstDll.existsSync()) {
+        try {
+          if (!dstDll.existsSync()) {
+            srcDll.copySync(dstDll.path);
+          }
+        } catch (_) {}
+      } else {
         try {
           final data = await rootBundle.load('packages/face_detection_tflite/assets/bin/$dllName');
           final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
@@ -194,14 +188,17 @@ class FaceDetector {
       String? toOpen;
       if (dstDll.existsSync()) {
         toOpen = dstDll.path;
+      } else if (srcDll.existsSync()) {
+        toOpen = srcDll.path;
       }
 
       if (toOpen == null) {
         throw ArgumentError(
-            'libtensorflowlite_c-win.dll not found. Checked:\n'
-                '  ${srcDll.path}\n'
+            'libtensorflowlite_c-win.dll not found. Expected at:\n'
                 '  ${dstDll.path}\n'
-                'Ensure the DLL is included in assets or writable user directory is available.'
+                'or source:\n'
+                '  ${srcDll.path}\n'
+                'Ensure assets/bin/libtensorflowlite_c-win.dll is included in pubspec.'
         );
       }
 
