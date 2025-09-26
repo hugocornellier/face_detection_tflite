@@ -32,6 +32,7 @@ flutter:
     - assets/models/face_landmark.tflite
     - assets/models/iris_landmark.tflite
     - assets/bin/libtensorflowlite_c-win.dll
+    - assets/bin/libtensorflowlite_c-linux.dll
 
 
   # 👇 THIS is what makes Flutter generate the macOS plugin symlink (.podspec picked up)

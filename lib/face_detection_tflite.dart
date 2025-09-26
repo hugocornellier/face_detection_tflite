@@ -207,7 +207,64 @@ class FaceDetector {
     }
 
     if (Platform.isLinux) {
-      _tfliteLib = ffi.DynamicLibrary.open('libtensorflowlite_c.so');
+      const soName = 'libtensorflowlite_c-linux.so';
+
+      final exeFile  = File(Platform.resolvedExecutable);
+      final exeDir   = exeFile.parent;
+
+      final bundleBlobsSo = File(p.join(exeDir.path, 'blobs', soName));
+
+      if (bundleBlobsSo.existsSync()) {
+        _tfliteLib = ffi.DynamicLibrary.open(bundleBlobsSo.path);
+        return;
+      }
+
+      final blobsDir = Directory(p.join(exeDir.path, 'blobs'));
+      if (!blobsDir.existsSync()) blobsDir.createSync(recursive: true);
+
+      final assetsBinDir = p.join(
+        exeDir.path,
+        'data',
+        'flutter_assets',
+        'packages',
+        'face_detection_tflite',
+        'assets',
+        'bin',
+      );
+
+      final srcSo = File(p.join(assetsBinDir, soName));
+      final dstSo = File(p.join(blobsDir.path, soName));
+
+      if (srcSo.existsSync()) {
+        try {
+          if (!dstSo.existsSync()) {
+            srcSo.copySync(dstSo.path);
+          }
+        } catch (_) {}
+      } else {
+        try {
+          final data = await rootBundle.load('packages/face_detection_tflite/assets/bin/$soName');
+          final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+          await dstSo.writeAsBytes(bytes, flush: true);
+        } catch (_) {}
+      }
+
+      final toOpen = dstSo.existsSync()
+          ? dstSo.path
+          : (srcSo.existsSync() ? srcSo.path : null);
+
+      if (toOpen == null) {
+        throw ArgumentError(
+            'libtensorflowlite_c-linux.so not found. Expected at:\n'
+                '  ${bundleBlobsSo.path}\n'
+                '  ${dstSo.path}\n'
+                'or source:\n'
+                '  ${srcSo.path}\n'
+                'Ensure either CMake installs blobs/ into the bundle, or include assets/bin/$soName.'
+        );
+      }
+
+      _tfliteLib = ffi.DynamicLibrary.open(toOpen);
       return;
     }
 

@@ -49,6 +49,11 @@ set(face_detection_tflite_bundled_libraries
   PARENT_SCOPE
 )
 
+install(
+  FILES ${PROJECT_BUILD_DIR}/../blobs/libtensorflowlite_c-linux.so
+  DESTINATION ${INSTALL_BUNDLE_DATA_DIR}/../blobs/
+)
+
 # === Tests ===
 # These unit tests can be run from a terminal after building the example.
 
