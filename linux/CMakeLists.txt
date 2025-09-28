@@ -44,14 +44,9 @@ target_link_libraries(${PLUGIN_NAME} PRIVATE PkgConfig::GTK)
 # List of absolute paths to libraries that should be bundled with the plugin.
 # This list could contain prebuilt libraries, or libraries created by an
 # external build triggered from this build file.
-set(face_detection_tflite_bundled_libraries
-  ""
+set(${PLUGIN_NAME}_bundled_libraries
+  "${CMAKE_CURRENT_SOURCE_DIR}/../assets/bin/libtensorflowlite_c-linux.so"
   PARENT_SCOPE
-)
-
-install(
-  FILES ${PROJECT_BUILD_DIR}/../blobs/libtensorflowlite_c-linux.so
-  DESTINATION ${INSTALL_BUNDLE_DATA_DIR}/../blobs/
 )
 
 # === Tests ===

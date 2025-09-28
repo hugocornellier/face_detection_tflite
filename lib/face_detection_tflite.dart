@@ -151,121 +151,52 @@ class FaceDetector {
     }
 
     if (Platform.isWindows) {
-      final exeFile  = File(Platform.resolvedExecutable);
-      final exeDir   = exeFile.parent;
-      final blobsDir = Directory(p.join(exeDir.path, 'blobs'));
-      if (!blobsDir.existsSync()) blobsDir.createSync(recursive: true);
+      final exeDir = File(Platform.resolvedExecutable).parent;
+      final dllPath = p.join(exeDir.path, 'libtensorflowlite_c-win.dll');
 
-      const dllName = 'libtensorflowlite_c-win.dll';
-
-      final assetsBinDir = p.join(
-        exeDir.path,
-        'data',
-        'flutter_assets',
-        'packages',
-        'face_detection_tflite',
-        'assets',
-        'bin',
-      );
-
-      final srcDll = File(p.join(assetsBinDir, dllName));
-      final dstDll = File(p.join(blobsDir.path, dllName));
-
-      if (srcDll.existsSync()) {
-        try {
-          if (!dstDll.existsSync()) {
-            srcDll.copySync(dstDll.path);
-          }
-        } catch (_) {}
-      } else {
-        try {
-          final data = await rootBundle.load('packages/face_detection_tflite/assets/bin/$dllName');
-          final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
-          await dstDll.writeAsBytes(bytes, flush: true);
-        } catch (_) {}
+      if (File(dllPath).existsSync()) {
+        print('TFLite: loading from $dllPath');
+        _tfliteLib = ffi.DynamicLibrary.open(dllPath);
+        return;
       }
+      print('TFLite: trying load by name (PATH) -> libtensorflowlite_c-win.dll');
 
-      String? toOpen;
-      if (dstDll.existsSync()) {
-        toOpen = dstDll.path;
-      } else if (srcDll.existsSync()) {
-        toOpen = srcDll.path;
-      }
-
-      if (toOpen == null) {
+      try {
+        _tfliteLib = ffi.DynamicLibrary.open('libtensorflowlite_c-win.dll');
+        return;
+      } catch (_) {
         throw ArgumentError(
-            'libtensorflowlite_c-win.dll not found. Expected at:\n'
-                '  ${dstDll.path}\n'
-                'or source:\n'
-                '  ${srcDll.path}\n'
-                'Ensure assets/bin/libtensorflowlite_c-win.dll is included in pubspec.'
+            'libtensorflowlite_c-win.dll not found beside the executable or on PATH.\n'
+                'Expected at: $dllPath\n'
+                'Make sure your Windows plugin CMakeLists.txt sets:\n'
+                '  set(PLUGIN_NAME_bundled_libraries "...\\"libtensorflowlite_c-win.dll\\"\" PARENT_SCOPE)\n'
+                'so Flutter copies it next to the app EXE.'
         );
       }
-
-      _tfliteLib = ffi.DynamicLibrary.open(toOpen);
-      return;
     }
 
     if (Platform.isLinux) {
-      const soName = 'libtensorflowlite_c-linux.so';
+      final exeDir = File(Platform.resolvedExecutable).parent;
+      final soPath = p.join(exeDir.path, 'lib', 'libtensorflowlite_c-linux.so');
 
-      final exeFile  = File(Platform.resolvedExecutable);
-      final exeDir   = exeFile.parent;
-
-      final bundleBlobsSo = File(p.join(exeDir.path, 'blobs', soName));
-
-      if (bundleBlobsSo.existsSync()) {
-        _tfliteLib = ffi.DynamicLibrary.open(bundleBlobsSo.path);
+      if (File(soPath).existsSync()) {
+        _tfliteLib = ffi.DynamicLibrary.open(soPath);
         return;
       }
 
-      final blobsDir = Directory(p.join(exeDir.path, 'blobs'));
-      if (!blobsDir.existsSync()) blobsDir.createSync(recursive: true);
-
-      final assetsBinDir = p.join(
-        exeDir.path,
-        'data',
-        'flutter_assets',
-        'packages',
-        'face_detection_tflite',
-        'assets',
-        'bin',
-      );
-
-      final srcSo = File(p.join(assetsBinDir, soName));
-      final dstSo = File(p.join(blobsDir.path, soName));
-
-      if (srcSo.existsSync()) {
-        try {
-          if (!dstSo.existsSync()) {
-            srcSo.copySync(dstSo.path);
-          }
-        } catch (_) {}
-      } else {
-        try {
-          final data = await rootBundle.load('packages/face_detection_tflite/assets/bin/$soName');
-          final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
-          await dstSo.writeAsBytes(bytes, flush: true);
-        } catch (_) {}
-      }
-
-      final toOpen = dstSo.existsSync()
-          ? dstSo.path
-          : (srcSo.existsSync() ? srcSo.path : null);
-
-      if (toOpen == null) {
+      try {
+        _tfliteLib = ffi.DynamicLibrary.open('libtensorflowlite_c-linux.so'); // LD_LIBRARY_PATH fallback
+        return;
+      } catch (_) {
         throw ArgumentError(
-            'libtensorflowlite_c-linux.so not found. Expected at:\n'
-                '  ${bundleBlobsSo.path}\n'
-                '  ${dstSo.path}\n'
-                'or source:\n'
-                '  ${srcSo.path}\n'
-                'Ensure either CMake installs blobs/ into the bundle, or include assets/bin/$soName.'
+            'libtensorflowlite_c-linux.so not found.\n'
+                'Checked: $soPath and system loader paths.\n'
+                'Ensure linux/CMakeLists.txt sets:\n'
+                '  set(PLUGIN_NAME_bundled_libraries '
+                '\"CMAKE_CURRENT_SOURCE_DIR/../assets/bin/libtensorflowlite_c-linux.so\" PARENT_SCOPE)\n'
+                'so Flutter copies it into bundle/lib/.'
         );
       }
-
-      _tfliteLib = ffi.DynamicLibrary.open(toOpen);
-      return;
     }
 
     if (Platform.isMacOS) {
@@ -273,28 +204,26 @@ class FaceDetector {
       final macOSDir = exe.parent;
       final contents = macOSDir.parent;
 
-      final frameworks = p.join(contents.path, 'Frameworks', 'libtensorflowlite_c-mac.dylib');
-      final resources  = p.join(contents.path, 'Resources',  'libtensorflowlite_c-mac.dylib');
+      final fwkAlt = p.join(contents.path, 'Frameworks', 'libtensorflowlite_c-mac.dylib');
+      final resAlt = p.join(contents.path, 'Resources', 'libtensorflowlite_c-mac.dylib');
 
-      if (File(frameworks).existsSync()) {
-        _tfliteLib = ffi.DynamicLibrary.open(frameworks);
-        return;
-      }
-      if (File(resources).existsSync()) {
-        _tfliteLib = ffi.DynamicLibrary.open(resources);
-        return;
+      for (final candidate in [fwkAlt, resAlt]) {
+        if (File(candidate).existsSync()) {
+          _tfliteLib = ffi.DynamicLibrary.open(candidate);
+          return;
+        }
       }
 
       try {
         _tfliteLib = ffi.DynamicLibrary.open('libtensorflowlite_c-mac.dylib');
         return;
-      } catch (_) {
-        throw ArgumentError(
-          'Failed to locate libtensorflowlite_c-mac.dylib\n'
-              'Checked:\n - $frameworks\n - $resources\n'
-              'and loader search paths by name.',
-        );
-      }
+      } catch (_) {}
+
+      throw ArgumentError(
+        'Failed to locate libtensorflowlite_c-mac.dylib'
+            '\nChecked:\n - $fwkAlt\n - $resAlt\n'
+            'and loader search paths by name.',
+      );
     }
 
     _tfliteLib = ffi.DynamicLibrary.process();

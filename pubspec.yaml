@@ -12,9 +12,10 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.8
   image: ^4.5.4
-  image_picker: ^1.2.0
-  tflite_flutter: ^0.11.0
-  file_selector: ^1.0.3
+  tflite_flutter:
+    git:
+      url: https://github.com/hugocornellier/flutter-tflite.git
+      ref: 5cf2568e829bdcf129bbd3f4f6b0461e6dfa7641
 
 dev_dependencies:
   flutter_test:
@@ -34,9 +35,11 @@ flutter:
     - assets/bin/libtensorflowlite_c-win.dll
     - assets/bin/libtensorflowlite_c-linux.so
 
-
-  # 👇 THIS is what makes Flutter generate the macOS plugin symlink (.podspec picked up)
   plugin:
     platforms:
       macos:
+        pluginClass: FaceDetectionTflitePlugin
+      windows:
+        pluginClass: FaceDetectionTflitePlugin
+      linux:
         pluginClass: FaceDetectionTflitePlugin
