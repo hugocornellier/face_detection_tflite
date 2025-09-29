@@ -24,11 +24,11 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/tflite_flutter/macos
 
 SPEC CHECKSUMS:
-  face_detection_tflite: d11ad7167abc06474dc2963698fce8682b55c3be
+  face_detection_tflite: 2e848ccb3ee51fbd993a2dadd9f2d916478a5ab6
   file_selector_macos: 6280b52b459ae6c590af5d78fc35c7267a3c4b31
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
   tflite_flutter: d1496f2e968aa5a142fb282da8f5d754fcee5613
 
-PODFILE CHECKSUM: 54d867c82ac51cbd61b565781b9fada492027009
+PODFILE CHECKSUM: 346bfb2deb41d4a6ebd6f6799f92188bde2d246f
 
 COCOAPODS: 1.16.2

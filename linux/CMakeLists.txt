@@ -44,10 +44,8 @@ target_link_libraries(${PLUGIN_NAME} PRIVATE PkgConfig::GTK)
 # List of absolute paths to libraries that should be bundled with the plugin.
 # This list could contain prebuilt libraries, or libraries created by an
 # external build triggered from this build file.
-set(${PLUGIN_NAME}_bundled_libraries
-  "${CMAKE_CURRENT_SOURCE_DIR}/../assets/bin/libtensorflowlite_c-linux.so"
-  PARENT_SCOPE
-)
+set(_this_plugin_lib "${CMAKE_CURRENT_SOURCE_DIR}/../assets/bin/libtensorflowlite_c-linux.so")
+set(PLUGIN_BUNDLED_LIBRARIES "${PLUGIN_BUNDLED_LIBRARIES};${_this_plugin_lib}" PARENT_SCOPE)
 
 # === Tests ===
 # These unit tests can be run from a terminal after building the example.

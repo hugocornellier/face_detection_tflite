@@ -29,10 +29,7 @@ class _TestPageState extends State<TestPage> {
   Future<void> _initFaceDetector() async {
     try {
       await _faceDetector.initialize(model: FaceDetectionModel.backCamera);
-    } catch (e) {
-      print(e);
-    }
-
+    } catch (_) {}
     setState(() {});
   }
 
@@ -41,36 +38,50 @@ class _TestPageState extends State<TestPage> {
     final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 100);
     if (picked == null) return;
     final bytes = await picked.readAsBytes();
-    if (!_faceDetector.isReady) {
-      print("face detector not ready");
-      return;
-    }
 
-    print("fetching detections");
+    if (!_faceDetector.isReady) return;
 
-    final detections = await _faceDetector.getDetections(bytes);
-    if (detections.isNotEmpty) {
-      // Example of how to fetch specific landmarks from FaceIndex:
-      final lm = detections.first.landmarks;
-      final leftEye = lm[FaceIndex.leftEye]!;
-      final rightEye = lm[FaceIndex.rightEye]!;
-      print('Left eye pixel: $leftEye');
-      print('Right eye pixel: $rightEye');
-    }
-
-    final faceMeshPoints = await _faceDetector.getFaceMeshFromDetections(bytes, detections);
-    final irisPoints = await _faceDetector.getIrisFromMesh(bytes, faceMeshPoints);
     final size = await _faceDetector.getOriginalSize(bytes);
-
-    print(irisPoints);
-
+    if (!mounted) return;
     setState(() {
       _imageBytes = bytes;
+      _originalSize = size;
+      _detections = const [];
+      _faceMeshPoints = const [];
+      _irisPoints = const [];
+    });
+
+    final detections = await _faceDetector.getDetections(bytes);
+    List<Offset> faceMeshPoints = const [];
+    List<Offset> irisPoints = const [];
+
+    if (detections.isNotEmpty) {
+      faceMeshPoints = await _faceDetector.getFaceMeshFromDetections(bytes, detections);
+      irisPoints = await _faceDetector.getIrisFromMesh(bytes, faceMeshPoints);
+    }
+
+    if (!mounted) return;
+    setState(() {
       _detections = detections;
       _faceMeshPoints = faceMeshPoints;
       _irisPoints = irisPoints;
-      _originalSize = size;
     });
+  }
+
+  Rect _destRectForContain(Size img, Size box) {
+    final srcAR = img.width / img.height;
+    final dstAR = box.width / box.height;
+    if (srcAR > dstAR) {
+      final w = box.width;
+      final h = w / srcAR;
+      final dy = (box.height - h) / 2;
+      return Rect.fromLTWH(0, dy, w, h);
+    } else {
+      final h = box.height;
+      final w = h * srcAR;
+      final dx = (box.width - w) / 2;
+      return Rect.fromLTWH(dx, 0, w, h);
+    }
   }
 
   @override
@@ -87,23 +98,32 @@ class _TestPageState extends State<TestPage> {
         child: hasImage
             ? LayoutBuilder(
           builder: (context, constraints) {
-            final fitted = _fitSize(_originalSize!, Size(constraints.maxWidth, constraints.maxHeight));
-            return SizedBox(
-              width: fitted.width,
-              height: fitted.height,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Image.memory(_imageBytes!, fit: BoxFit.contain),
-                  CustomPaint(
-                    painter: _DetectionsPainter(
-                      detections: _detections,
-                      faceMeshPoints: _faceMeshPoints,
-                      irisPoints: _irisPoints,
-                      originalSize: _originalSize!,
+            return FittedBox(
+              fit: BoxFit.contain,
+              child: SizedBox(
+                width: _originalSize!.width,
+                height: _originalSize!.height,
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: Image.memory(_imageBytes!, fit: BoxFit.fill),
                     ),
-                  ),
-                ],
+                    Positioned.fill(
+                      child: CustomPaint(
+                        size: Size(_originalSize!.width, _originalSize!.height),
+                        painter: _DetectionsPainter(
+                          detections: _detections,
+                          faceMeshPoints: _faceMeshPoints,
+                          irisPoints: _irisPoints,
+                          originalSize: _originalSize!,
+                          imageRectOnCanvas: Rect.fromLTWH(
+                            0, 0, _originalSize!.width, _originalSize!.height,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             );
           },
@@ -126,12 +146,14 @@ class _DetectionsPainter extends CustomPainter {
   final List<Offset> faceMeshPoints;
   final List<Offset> irisPoints;
   final Size originalSize;
+  final Rect imageRectOnCanvas;
 
   _DetectionsPainter({
     required this.detections,
     required this.faceMeshPoints,
     required this.irisPoints,
     required this.originalSize,
+    required this.imageRectOnCanvas,
   });
 
   @override
@@ -150,40 +172,34 @@ class _DetectionsPainter extends CustomPainter {
       ..strokeWidth = 3.0
       ..color = const Color(0xFFFF00FF);
 
-    final irisPtPaint = Paint()
-      ..style = PaintingStyle.fill
-      ..color = const Color(0xFF89CFF0);
+    final ox = imageRectOnCanvas.left;
+    final oy = imageRectOnCanvas.top;
+    final sx = imageRectOnCanvas.width / originalSize.width;
+    final sy = imageRectOnCanvas.height / originalSize.height;
 
     for (final d in detections) {
       final rect = Rect.fromLTRB(
-        d.bbox.xmin * size.width,
-        d.bbox.ymin * size.height,
-        d.bbox.xmax * size.width,
-        d.bbox.ymax * size.height,
+        ox + d.bbox.xmin * originalSize.width * sx,
+        oy + d.bbox.ymin * originalSize.height * sy,
+        ox + d.bbox.xmax * originalSize.width * sx,
+        oy + d.bbox.ymax * originalSize.height * sy,
       );
       canvas.drawRect(rect, boxPaint);
 
-      final scaleX = size.width / originalSize.width;
-      final scaleY = size.height / originalSize.height;
       final lm = d.landmarks;
       for (final p in lm.values) {
-        final x = p.dx * scaleX;
-        final y = p.dy * scaleY;
+        final x = ox + p.dx * sx;
+        final y = oy + p.dy * sy;
         canvas.drawCircle(Offset(x, y), 3, detKpPaint);
       }
     }
 
     if (faceMeshPoints.isNotEmpty) {
-      final scaled = faceMeshPoints
-          .map((p) => Offset(p.dx * size.width / originalSize.width, p.dy * size.height / originalSize.height))
-          .toList();
+      final scaled = faceMeshPoints.map((p) => Offset(ox + p.dx * sx, oy + p.dy * sy)).toList();
       canvas.drawPoints(PointMode.points, scaled, meshPaint);
     }
 
     if (irisPoints.isNotEmpty) {
-      final scaleX = size.width / originalSize.width;
-      final scaleY = size.height / originalSize.height;
-
       for (int i = 0; i + 4 < irisPoints.length; i += 5) {
         final five = irisPoints.sublist(i, i + 5);
 
@@ -222,8 +238,12 @@ class _DetectionsPainter extends CustomPainter {
         final rx = (maxX - minX) * 0.5;
         final ry = (maxY - minY) * 0.5;
 
-        final centerScaled = Offset(cx * scaleX, cy * scaleY);
-        final rect = Rect.fromCenter(center: centerScaled, width: rx * 2 * scaleX, height: ry * 2 * scaleY);
+        final centerScaled = Offset(ox + cx * sx, oy + cy * sy);
+        final rect = Rect.fromCenter(
+          center: centerScaled,
+          width: (rx * 2) * sx,
+          height: (ry * 2) * sy,
+        );
 
         final fill = Paint()
           ..style = PaintingStyle.fill
@@ -245,6 +265,7 @@ class _DetectionsPainter extends CustomPainter {
     return old.detections != detections ||
         old.faceMeshPoints != faceMeshPoints ||
         old.irisPoints != irisPoints ||
-        old.originalSize != originalSize;
+        old.originalSize != originalSize ||
+        old.imageRectOnCanvas != imageRectOnCanvas;
   }
 }

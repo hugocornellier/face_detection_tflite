@@ -214,7 +214,7 @@ class FaceDetector {
 
   Future<void> initialize({FaceDetectionModel model = FaceDetectionModel.backCamera, InterpreterOptions? options}) async {
     await _ensureTFLiteLoaded();
-    _detector = await FaceDetection.create(model, options: options);
+    _detector = await FaceDetection.create(model, options: options, useIsolate: true);
     _faceLm = await FaceLandmark.create(options: options);
     _iris = await IrisLandmark.create(options: options);
   }
@@ -812,6 +812,8 @@ class FaceDetection {
   final Float32List _anchors;
   final bool _assumeMirrored;
 
+  IsolateInterpreter? _iso;
+
   late final int _inputIdx;
   late final List<int> _boxesShape;
   late final List<int> _scoresShape;
@@ -820,13 +822,16 @@ class FaceDetection {
   late final Tensor _boxesTensor;
   late final Tensor _scoresTensor;
 
+  late final int _boxesLen;
+  late final int _scoresLen;
+
   late final Float32List _inputBuf;
   late final Float32List _boxesBuf;
   late final Float32List _scoresBuf;
 
   FaceDetection._(this._itp, this._inW, this._inH, this._anchors, this._assumeMirrored);
 
-  static Future<FaceDetection> create(FaceDetectionModel model, {InterpreterOptions? options}) async {
+  static Future<FaceDetection> create(FaceDetectionModel model, {InterpreterOptions? options, bool useIsolate = true}) async {
     final opts = _optsFor(model);
     final inW = opts['input_size_width'] as int;
     final inH = opts['input_size_height'] as int;
@@ -842,16 +847,19 @@ class FaceDetection {
     final obj = FaceDetection._(itp, inW, inH, anchors, assumeMirrored);
 
     int foundIdx = 0;
-    for (final i in [0, 1, 2, 3]) {
+    for (var i = 0;; i++) {
       try {
         final s = itp.getInputTensor(i).shape;
-        if (s.length == 4) {
+        if (s.length == 4 && s.last == 3) {
           foundIdx = i;
           break;
         }
-      } catch (_) {}
+      } catch (_) {
+        break;
+      }
     }
     obj._inputIdx = foundIdx;
+
     itp.resizeInputTensor(obj._inputIdx, [1, inH, inW, 3]);
     itp.allocateTensors();
 
@@ -862,11 +870,57 @@ class FaceDetection {
     obj._boxesTensor = itp.getOutputTensor(obj._bboxIndex);
     obj._scoresTensor = itp.getOutputTensor(obj._scoreIndex);
 
+    obj._boxesLen = obj._boxesShape.fold(1, (a, b) => a * b);
+    obj._scoresLen = obj._scoresShape.fold(1, (a, b) => a * b);
+
     obj._inputBuf = obj._inputTensor.data.buffer.asFloat32List();
     obj._boxesBuf = obj._boxesTensor.data.buffer.asFloat32List();
     obj._scoresBuf = obj._scoresTensor.data.buffer.asFloat32List();
 
+    if (useIsolate) {
+      obj._iso = await IsolateInterpreter.create(address: itp.address);
+    }
+
     return obj;
+  }
+
+  List<List<List<List<double>>>> _asNHWC4D(Float32List flat, int h, int w) {
+    final out = List<List<List<List<double>>>>.filled(
+        1,
+        List.generate(h, (_) => List.generate(w, (_) => List<double>.filled(3, 0.0, growable: false), growable: false),
+            growable: false),
+        growable: false);
+
+    var k = 0;
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        final px = out[0][y][x];
+        px[0] = flat[k++]; // R
+        px[1] = flat[k++]; // G
+        px[2] = flat[k++]; // B
+      }
+    }
+    return out;
+  }
+
+  void _flatten3D(List<List<List<num>>> src, Float32List dst) {
+    var k = 0;
+    for (final a in src) {
+      for (final b in a) {
+        for (final c in b) {
+          dst[k++] = c.toDouble();
+        }
+      }
+    }
+  }
+
+  void _flatten2D(List<List<num>> src, Float32List dst) {
+    var k = 0;
+    for (final a in src) {
+      for (final b in a) {
+        dst[k++] = b.toDouble();
+      }
+    }
   }
 
   Future<List<Detection>> call(Uint8List imageBytes, {RectF? roi}) async {
@@ -878,11 +932,66 @@ class FaceDetection {
     final img.Image srcRoi = (roi == null) ? src : cropFromRoi(src, roi);
     final pack = _imageToTensor(srcRoi, outW: _inW, outH: _inH);
 
-    _inputBuf.setAll(0, pack.tensorNHWC);
-    _itp.invoke();
+    Float32List boxesBuf;
+    Float32List scoresBuf;
 
-    final boxes = _decodeBoxes(_boxesBuf, _boxesShape);
-    final scores = _decodeScores(_scoresBuf, _scoresShape);
+    if (_iso != null) {
+      final input4d = _asNHWC4D(pack.tensorNHWC, _inH, _inW);
+
+      final inputCount = _itp.getInputTensors().length;
+      final inputs = List<Object?>.filled(inputCount, null, growable: false);
+      inputs[_inputIdx] = input4d;
+
+      final b0 = _boxesShape[0], b1 = _boxesShape[1], b2 = _boxesShape[2];
+      final boxesOut3d = List.generate(
+          b0, (_) => List.generate(
+          b1, (_) => List<double>.filled(b2, 0.0, growable: false),
+          growable: false),
+          growable: false);
+
+      Object scoresOut;
+      if (_scoresShape.length == 3) {
+        final s0 = _scoresShape[0], s1 = _scoresShape[1], s2 = _scoresShape[2];
+        scoresOut = List.generate(
+            s0, (_) => List.generate(
+            s1, (_) => List<double>.filled(s2, 0.0, growable: false),
+            growable: false),
+            growable: false);
+      } else {
+        final s0 = _scoresShape[0], s1 = _scoresShape[1];
+        scoresOut = List.generate(
+            s0, (_) => List<double>.filled(s1, 0.0, growable: false),
+            growable: false);
+      }
+
+      final outputs = <int, Object>{
+        _bboxIndex: boxesOut3d,
+        _scoreIndex: scoresOut,
+      };
+
+      await _iso!.runForMultipleInputs(inputs.cast<Object>(), outputs);
+
+      final outBoxes = Float32List(_boxesLen);
+      _flatten3D(boxesOut3d as List<List<List<num>>>, outBoxes);
+
+      final outScores = Float32List(_scoresLen);
+      if (_scoresShape.length == 3) {
+        _flatten3D(scoresOut as List<List<List<num>>>, outScores);
+      } else {
+        _flatten2D(scoresOut as List<List<num>>, outScores);
+      }
+
+      boxesBuf = outBoxes;
+      scoresBuf = outScores;
+    } else {
+      _inputBuf.setAll(0, pack.tensorNHWC);
+      _itp.invoke();
+      boxesBuf = _boxesBuf;
+      scoresBuf = _scoresBuf;
+    }
+
+    final boxes = _decodeBoxes(boxesBuf, _boxesShape);
+    final scores = _decodeScores(scoresBuf, _scoresShape);
 
     final dets = _toDetections(boxes, scores);
     final pruned = _nms(dets, _minSuppressionThreshold, _minScore, weighted: true);

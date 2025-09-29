@@ -15,7 +15,7 @@ dependencies:
   tflite_flutter:
     git:
       url: https://github.com/hugocornellier/flutter-tflite.git
-      ref: 5cf2568e829bdcf129bbd3f4f6b0461e6dfa7641
+      ref: 3ce480cd12b910758b6b97224c54d7b8c5c1e949
 
 dev_dependencies:
   flutter_test:
