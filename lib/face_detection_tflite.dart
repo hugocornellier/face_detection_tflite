@@ -1,5 +1,3 @@
-library;
-
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ffi' as ffi;
@@ -86,53 +84,38 @@ class FaceDetector {
   bool get isReady => _detector != null && _faceLm != null && _iris != null;
 
   Future<List<Detection>> getDetectionsWithIrisCenters(Uint8List imageBytes) async {
+    if (_iris == null) {
+      throw StateError('Iris model not initialized. Call initialize() before getDetectionsWithIrisCenters().');
+    }
+
     final decoded = img.decodeImage(imageBytes);
-    if (decoded == null) return const <Detection>[];
+    if (decoded == null) {
+      throw const FormatException('Could not decode image bytes (unsupported or corrupt).');
+    }
+
     final dets = await detectFaces(imageBytes);
     if (dets.isEmpty) return dets;
-    final det = dets.first;
 
+    final det = dets.first;
     final aligned = estimateAlignedFace(decoded, det);
     final meshPts = await meshFromAlignedFace(aligned.faceCrop, aligned);
-    final rois = eyeRoisFromMesh(meshPts, decoded.width, decoded.height);
+    final rois = eyeRoisFromMesh(meshPts);
 
-    final ir = _iris;
-    if (ir == null) return dets;
-
-    final centers = <Offset>[];
-    for (int i = 0; i < rois.length; i++) {
-      final isRight = (i == 1);
-      final raw = await ir.runOnImageAlignedIris(decoded, rois[i], isRight: isRight);
-      final pts = raw.map((p) => Offset(p[0].toDouble(), p[1].toDouble())).toList();
-      if (pts.isEmpty) {
-        centers.add(Offset(aligned.cx, aligned.cy));
-        continue;
-      }
-      int centerIdx = 0;
-      double best = double.infinity;
-      for (int k = 0; k < pts.length; k++) {
-        double s = 0;
-        for (int j = 0; j < pts.length; j++) {
-          if (j == k) continue;
-          final dx = pts[j].dx - pts[k].dx;
-          final dy = pts[j].dy - pts[k].dy;
-          s += dx * dx + dy * dy;
-        }
-        if (s < best) {
-          best = s;
-          centerIdx = k;
-        }
-      }
-      centers.add(pts[centerIdx]);
-    }
+    final centers = await _computeIrisCenters(
+      _iris!,
+      decoded,
+      rois,
+      leftFallback: det.landmarks[FaceIndex.leftEye],
+      rightFallback: det.landmarks[FaceIndex.rightEye],
+    );
 
     final imgW = decoded.width.toDouble();
     final imgH = decoded.height.toDouble();
     final kp = List<double>.from(det.keypointsXY);
-    kp[FaceIndex.leftEye.index * 2] = centers[0].dx / imgW;
+    kp[FaceIndex.leftEye.index * 2]     = centers[0].dx / imgW;
     kp[FaceIndex.leftEye.index * 2 + 1] = centers[0].dy / imgH;
-    kp[FaceIndex.rightEye.index * 2] = centers[1].dx / imgW;
-    kp[FaceIndex.rightEye.index * 2 + 1] = centers[1].dy / imgH;
+    kp[FaceIndex.rightEye.index * 2]    = centers[1].dx / imgW;
+    kp[FaceIndex.rightEye.index * 2 + 1]= centers[1].dy / imgH;
 
     final updatedFirst = Detection(
       bbox: det.bbox,
@@ -238,67 +221,48 @@ class FaceDetector {
 
   Future<List<Detection>> detectFaces(Uint8List imageBytes, {RectF? roi}) async {
     final d = _detector;
-    if (d == null) return const <Detection>[];
-
-    final dets = await d.call(imageBytes, roi: roi);
-    if (dets.isEmpty || _iris == null) return dets;
+    if (d == null) {
+      throw StateError('FaceDetector not initialized. Call initialize() before detectFaces().');
+    }
+    if (_iris == null) {
+      throw StateError('Iris model not initialized. initialize() must succeed before detectFaces().');
+    }
 
     final decoded = img.decodeImage(imageBytes);
-    if (decoded == null) return dets;
+    if (decoded == null) {
+      throw const FormatException('Could not decode image bytes (unsupported or corrupt).');
+    }
+
+    final dets = await d.call(imageBytes, roi: roi);
+    if (dets.isEmpty) return dets;
 
     final updated = <Detection>[];
     for (final det in dets) {
       final aligned = estimateAlignedFace(decoded, det);
       final meshPts = await meshFromAlignedFace(aligned.faceCrop, aligned);
-      final rois = eyeRoisFromMesh(meshPts, decoded.width, decoded.height);
+      final rois = eyeRoisFromMesh(meshPts);
 
-      final centers = <Offset>[];
-      for (int i = 0; i < rois.length; i++) {
-        final isRight = (i == 1);
-        final raw = await _iris!.runOnImageAlignedIris(decoded, rois[i], isRight: isRight);
-        if (raw.isEmpty) {
-          final fallback = det.landmarks[i == 0 ? FaceIndex.leftEye : FaceIndex.rightEye]!;
-          centers.add(fallback);
-          continue;
-        }
-        final pts = raw.map((p) => Offset(p[0].toDouble(), p[1].toDouble())).toList();
-
-        int centerIdx = 0;
-        double best = double.infinity;
-        for (int k = 0; k < pts.length; k++) {
-          double s = 0;
-          for (int j = 0; j < pts.length; j++) {
-            if (j == k) continue;
-            final dx = pts[j].dx - pts[k].dx;
-            final dy = pts[j].dy - pts[k].dy;
-            s += dx * dx + dy * dy;
-          }
-          if (s < best) {
-            best = s;
-            centerIdx = k;
-          }
-        }
-        centers.add(pts[centerIdx]);
-      }
+      final centers = await _computeIrisCenters(
+        _iris!,
+        decoded,
+        rois,
+        leftFallback: det.landmarks[FaceIndex.leftEye],
+        rightFallback: det.landmarks[FaceIndex.rightEye],
+      );
 
       final imgW = det.imageSize?.width ?? decoded.width.toDouble();
       final imgH = det.imageSize?.height ?? decoded.height.toDouble();
       final kp = List<double>.from(det.keypointsXY);
-
-      kp[FaceIndex.leftEye.index * 2] = centers[0].dx / imgW;
+      kp[FaceIndex.leftEye.index * 2]     = centers[0].dx / imgW;
       kp[FaceIndex.leftEye.index * 2 + 1] = centers[0].dy / imgH;
-      kp[FaceIndex.rightEye.index * 2] = centers[1].dx / imgW;
-      kp[FaceIndex.rightEye.index * 2 + 1] = centers[1].dy / imgH;
+      kp[FaceIndex.rightEye.index * 2]    = centers[1].dx / imgW;
+      kp[FaceIndex.rightEye.index * 2 + 1]= centers[1].dy / imgH;
 
-      updated.add(Detection(
-        bbox: det.bbox,
-        score: det.score,
-        keypointsXY: kp,
-        imageSize: det.imageSize,
-      ));
+      updated.add(Detection(bbox: det.bbox, score: det.score, keypointsXY: kp, imageSize: det.imageSize));
     }
     return updated;
   }
+
 
   AlignedFace estimateAlignedFace(img.Image decoded, Detection det) {
     final imgW = decoded.width.toDouble();
@@ -352,7 +316,7 @@ class FaceDetector {
     return out;
   }
 
-  List<AlignedRoi> eyeRoisFromMesh(List<Offset> meshAbs, int imgW, int imgH) {
+  List<AlignedRoi> eyeRoisFromMesh(List<Offset> meshAbs) {
     AlignedRoi fromCorners(int a, int b) {
       final p0 = meshAbs[a];
       final p1 = meshAbs[b];
@@ -390,12 +354,15 @@ class FaceDetector {
 
   Future<List<Offset>> getFaceMesh(Uint8List imageBytes) async {
     final decoded = img.decodeImage(imageBytes);
-    if (decoded == null) return const <Offset>[];
+    if (decoded == null) {
+      throw const FormatException('Could not decode image bytes (unsupported or corrupt).');
+    }
     final dets = await detectFaces(imageBytes);
     if (dets.isEmpty) return const <Offset>[];
     final aligned = estimateAlignedFace(decoded, dets.first);
     return await meshFromAlignedFace(aligned.faceCrop, aligned);
   }
+
 
   Future<List<Offset>> getIris(Uint8List imageBytes) async {
     final decoded = img.decodeImage(imageBytes);
@@ -404,13 +371,15 @@ class FaceDetector {
     if (dets.isEmpty) return const <Offset>[];
     final aligned = estimateAlignedFace(decoded, dets.first);
     final meshPts = await meshFromAlignedFace(aligned.faceCrop, aligned);
-    final rois = eyeRoisFromMesh(meshPts, decoded.width, decoded.height);
+    final rois = eyeRoisFromMesh(meshPts);
     return await irisFromEyeRois(decoded, rois);
   }
 
   Future<Size> getOriginalSize(Uint8List imageBytes) async {
     final decoded = img.decodeImage(imageBytes);
-    if (decoded == null) return const Size(0, 0);
+    if (decoded == null) {
+      throw const FormatException('Could not decode image bytes (unsupported or corrupt).');
+    }
     return Size(decoded.width.toDouble(), decoded.height.toDouble());
   }
 
@@ -426,7 +395,7 @@ class FaceDetector {
     if (meshPts.isEmpty) return const <Offset>[];
     final decoded = img.decodeImage(imageBytes);
     if (decoded == null) return const <Offset>[];
-    final rois = eyeRoisFromMesh(meshPts, decoded.width, decoded.height);
+    final rois = eyeRoisFromMesh(meshPts);
     return await irisFromEyeRois(decoded, rois);
   }
 
@@ -447,7 +416,7 @@ class FaceDetector {
     final d = dets.first;
     final aligned = estimateAlignedFace(decoded, d);
     final meshPts = await meshFromAlignedFace(aligned.faceCrop, aligned);
-    final rois = eyeRoisFromMesh(meshPts, decoded.width, decoded.height);
+    final rois = eyeRoisFromMesh(meshPts);
     final irisPts = await irisFromEyeRois(decoded, rois);
     return PipelineResult(
       detections: dets,
@@ -574,7 +543,6 @@ class Detection {
   }
 }
 
-
 class ImageTensor {
   final Float32List tensorNHWC;
   final List<double> padding;
@@ -649,6 +617,78 @@ List<Detection> _detectionLetterboxRemoval(List<Detection> dets, List<double> pa
   return dets
       .map((d) => Detection(bbox: unpad(d.bbox), score: d.score, keypointsXY: unpadKp(d.keypointsXY)))
       .toList();
+}
+
+double _clamp01(double v) => v < 0 ? 0 : (v > 1 ? 1 : v);
+
+List<List<double>> _unpackLandmarks(Float32List flat, int inW, int inH, List<double> padding, {bool clamp = true}) {
+  final pt = padding[0], pb = padding[1], pl = padding[2], pr = padding[3];
+  final sx = 1.0 - (pl + pr);
+  final sy = 1.0 - (pt + pb);
+  final n = (flat.length / 3).floor();
+  final out = <List<double>>[];
+  for (var i = 0; i < n; i++) {
+    var x = flat[i * 3 + 0] / inW;
+    var y = flat[i * 3 + 1] / inH;
+    final z = flat[i * 3 + 2];
+    x = (x - pl) / sx;
+    y = (y - pt) / sy;
+    if (clamp) {
+      x = _clamp01(x);
+      y = _clamp01(y);
+    }
+    out.add([x, y, z]);
+  }
+  return out;
+}
+
+Offset _centralPoint(List<Offset> pts) {
+  if (pts.isEmpty) return const Offset(0, 0);
+  var bestIdx = 0;
+  var best = double.infinity;
+  for (var k = 0; k < pts.length; k++) {
+    var s = 0.0;
+    for (var j = 0; j < pts.length; j++) {
+      if (j == k) continue;
+      final dx = pts[j].dx - pts[k].dx;
+      final dy = pts[j].dy - pts[k].dy;
+      s += dx * dx + dy * dy;
+    }
+    if (s < best) {
+      best = s;
+      bestIdx = k;
+    }
+  }
+  return pts[bestIdx];
+}
+
+Future<List<Offset>> _computeIrisCenters(IrisLandmark ir, img.Image decoded, List<AlignedRoi> rois, {Offset? leftFallback, Offset? rightFallback}) async {
+  final centers = <Offset>[];
+  for (var i = 0; i < rois.length; i++) {
+    final isRight = (i == 1);
+    final raw = await ir.runOnImageAlignedIris(decoded, rois[i], isRight: isRight);
+    if (raw.isEmpty) {
+      centers.add(isRight ? (rightFallback ?? Offset.zero) : (leftFallback ?? Offset.zero));
+      continue;
+    }
+    final pts = raw.map((p) => Offset(p[0].toDouble(), p[1].toDouble())).toList();
+    centers.add(_centralPoint(pts));
+  }
+  return centers;
+}
+
+Detection _mapDetectionToRoi(Detection d, RectF roi) {
+  final dx = roi.xmin, dy = roi.ymin, sx = roi.w, sy = roi.h;
+  RectF mapRect(RectF r) => RectF(dx + r.xmin * sx, dy + r.ymin * sy, dx + r.xmax * sx, dy + r.ymax * sy);
+  List<double> mapKp(List<double> k) {
+    final o = List<double>.from(k);
+    for (int i = 0; i < o.length; i += 2) {
+      o[i] = _clamp01(dx + o[i] * sx);
+      o[i + 1] = _clamp01(dy + o[i + 1] * sy);
+    }
+    return o;
+  }
+  return Detection(bbox: mapRect(d.bbox), score: d.score, keypointsXY: mapKp(d.keypointsXY), imageSize: d.imageSize);
 }
 
 double _iou(RectF a, RectF b) {
@@ -769,7 +809,6 @@ class FaceDetection {
   final Interpreter _itp;
   final int _inW, _inH;
   final int _bboxIndex = 0, _scoreIndex = 1;
-
   final Float32List _anchors;
   final bool _assumeMirrored;
 
@@ -831,7 +870,11 @@ class FaceDetection {
   }
 
   Future<List<Detection>> call(Uint8List imageBytes, {RectF? roi}) async {
-    final src = img.decodeImage(imageBytes)!;
+    final src = img.decodeImage(imageBytes);
+    if (src == null) {
+      throw const FormatException('Could not decode image bytes (unsupported or corrupt).');
+    }
+
     final img.Image srcRoi = (roi == null) ? src : cropFromRoi(src, roi);
     final pack = _imageToTensor(srcRoi, outW: _inW, outH: _inH);
 
@@ -845,28 +888,7 @@ class FaceDetection {
     final pruned = _nms(dets, _minSuppressionThreshold, _minScore, weighted: true);
     final fixed = _detectionLetterboxRemoval(pruned, pack.padding);
 
-    List<Detection> mapped;
-    if (roi != null) {
-      final dx = roi.xmin;
-      final dy = roi.ymin;
-      final sx = roi.w;
-      final sy = roi.h;
-      mapped = fixed.map((d) {
-        RectF mapRect(RectF r) =>
-            RectF(dx + r.xmin * sx, dy + r.ymin * sy, dx + r.xmax * sx, dy + r.ymax * sy);
-        List<double> mapKp(List<double> k) {
-          final o = List<double>.from(k);
-          for (int i = 0; i < o.length; i += 2) {
-            o[i] = dx + o[i] * sx;
-            o[i + 1] = dy + o[i + 1] * sy;
-          }
-          return o;
-        }
-        return Detection(bbox: mapRect(d.bbox), score: d.score, keypointsXY: mapKp(d.keypointsXY));
-      }).toList();
-    } else {
-      mapped = fixed;
-    }
+    List<Detection> mapped = roi != null ? fixed.map((d) => _mapDetectionToRoi(d, roi)).toList() : fixed;
 
     if (_assumeMirrored) {
       mapped = mapped.map((d) {
@@ -1015,24 +1037,7 @@ class FaceLandmark {
     _inputBuf.setAll(0, pack.tensorNHWC);
     _itp.invoke();
 
-    final pt = pack.padding[0], pb = pack.padding[1], pl = pack.padding[2], pr = pack.padding[3];
-    final sx = 1.0 - (pl + pr);
-    final sy = 1.0 - (pt + pb);
-
-    final flat = _bestOutBuf;
-    final n = (flat.length / 3).floor();
-    final lm = <List<double>>[];
-    for (var i = 0; i < n; i++) {
-      var x = flat[i * 3 + 0] / _inW;
-      var y = flat[i * 3 + 1] / _inH;
-      final z = flat[i * 3 + 2];
-      x = (x - pl) / sx;
-      y = (y - pt) / sy;
-      if (x < 0) x = 0; else if (x > 1) x = 1;
-      if (y < 0) y = 0; else if (y > 1) y = 1;
-      lm.add([x, y, z]);
-    }
-    return lm;
+    return _unpackLandmarks(_bestOutBuf, _inW, _inH, pack.padding, clamp: true);
   }
 }
 
@@ -1090,23 +1095,9 @@ class IrisLandmark {
     _itp.invoke();
 
     final lm = <List<double>>[];
-    final pt = pack.padding[0], pb = pack.padding[1], pl = pack.padding[2], pr = pack.padding[3];
-    final sx = 1.0 - (pl + pr);
-    final sy = 1.0 - (pt + pb);
-
-    for (final entry in _outBuffers.entries) {
-      final flat = entry.value;
-      final n = (flat.length / 3).floor();
-      for (var i = 0; i < n; i++) {
-        var x = flat[i * 3 + 0] / _inW;
-        var y = flat[i * 3 + 1] / _inH;
-        final z = flat[i * 3 + 2];
-        x = (x - pl) / sx;
-        y = (y - pt) / sy;
-        lm.add([x, y, z]);
-      }
+    for (final flat in _outBuffers.values) {
+      lm.addAll(_unpackLandmarks(flat, _inW, _inH, pack.padding, clamp: false));
     }
-
     return lm;
   }
 
