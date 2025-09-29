@@ -184,17 +184,12 @@ class FaceDetector {
 
     if (Platform.isMacOS) {
       final exe = File(Platform.resolvedExecutable);
-      final macOSDir = exe.parent;
-      final contents = macOSDir.parent;
+      final contents = exe.parent.parent;
+      final dylibPath = p.join(contents.path, 'Resources', 'libtensorflowlite_c-mac.dylib');
 
-      final fwkAlt = p.join(contents.path, 'Frameworks', 'libtensorflowlite_c-mac.dylib');
-      final resAlt = p.join(contents.path, 'Resources', 'libtensorflowlite_c-mac.dylib');
-
-      for (final candidate in [fwkAlt, resAlt]) {
-        if (File(candidate).existsSync()) {
-          _tfliteLib = ffi.DynamicLibrary.open(candidate);
-          return;
-        }
+      if (File(dylibPath).existsSync()) {
+        _tfliteLib = ffi.DynamicLibrary.open(dylibPath);
+        return;
       }
 
       try {
@@ -204,7 +199,7 @@ class FaceDetector {
 
       throw ArgumentError(
         'Failed to locate libtensorflowlite_c-mac.dylib'
-            '\nChecked:\n - $fwkAlt\n - $resAlt\n'
+            '\nChecked:\n - $dylibPath\n'
             'and loader search paths by name.',
       );
     }
