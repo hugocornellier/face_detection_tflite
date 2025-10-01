@@ -1,12 +1,11 @@
 # face_detection_tflite
 
-A Dart/Flutter package that runs an on-device face analysis pipeline with TensorFlow Lite:
+A Dart/Flutter package that runs an on-device face and landmark detection with TensorFlow Lite:
 
 - Face detection (multiple SSD variants)
 - 468-point face mesh
-- Iris landmarks (both eyes)
-- Convenience end-to-end pipeline or step-by-step access
-- CPU-only, pure Dart API designed for Flutter apps on mobile and desktop
+- Iris landmarks
+- Convenient end-to-end pipeline or step-by-step access
 
 This package is a Flutter/Dart port inspired by and adapted from the original Python project **[patlevin/face-detection-tflite](https://github.com/patlevin/face-detection-tflite)**. Many thanks to the original author.
 
@@ -15,27 +14,19 @@ This package is a Flutter/Dart port inspired by and adapted from the original Py
 ## Table of Contents
 
 - [Features](#features)
-- [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Step-by-step Usage](#step-by-step-usage)
-- [Painting Notes](#painting-notes)
-- [Desktop Support](#desktop-support)
-- [Performance Tips](#performance-tips)
-- [Troubleshooting](#troubleshooting)
 - [Example](#example)
-- [Credits & Attribution](#credits--attribution)
-- [License](#license)
 
 ---
 
 ## Features
 
 - Face, landmark and iris detection using TensorFlow Lite models
-- 468-point face mesh with normalized→image-space mapping handled for you
-- Iris landmark detection for both eyes via mesh-derived ROIs
+- Normalized → image-space mapping handled for you
 - Works on Android, iOS, macOS, Windows, and Linux
-- Single-file API centered on `FaceDetector`
-- Example app included for testing
+- The `example/` app illustrates how to detect and render normalized results on images: 
+bounding boxes, a 468-point face mesh, and iris landmarks.
 
 ---
 
@@ -47,13 +38,13 @@ import 'package:face_detection_tflite/face_detection_tflite.dart';
 
 final detector = FaceDetector();
 
+// Initialize once; choose the model variant you prefer
 Future<void> init() async {
-  // Initialize once; choose the model variant you prefer
   await detector.initialize(model: FaceDetectionModel.backCamera);
 }
 
+// All-in-one pipeline
 Future<void> analyze(Uint8List imageBytes) async {
-  // All-in-one pipeline
   final result = await detector.runAll(imageBytes);
 
   final detections = result.detections;   // List<Detection>
@@ -94,7 +85,6 @@ Types you will encounter:
 
 ## Example
 
-A minimal example app can be placed in `example/`:
-
-```bash
-cd exam
+The `example/` directory includes a minimal Flutter app that demonstrates how to paint detections onto an 
+image: drawing face bounding boxes, the 468-point face mesh, and iris landmarks. The normalized coordinates 
+are rendered correctly so overlays align with the source image’s scale and aspect ratio.

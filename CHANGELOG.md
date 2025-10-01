@@ -1,3 +1,6 @@
+## 0.1.4
+-  Refresh iOS/Android example project files to avoid stale tool warnings.
+
 ## 0.1.3
 - Tweak analysis/lints config to match latest Flutter stable.
 
