@@ -1,6 +1,6 @@
 name: face_detection_tflite
 description: "BlazeFace-style face detector with optional face & iris landmarks."
-version: 0.1.0+1
+version: 0.1.1
 
 repository: https://github.com/hugocornellier/face_detection_tflite
 homepage: https://github.com/hugocornellier/face_detection_tflite
@@ -43,6 +43,10 @@ flutter:
 
   plugin:
     platforms:
+      ios:
+        dartPluginClass: FaceDetectionTfliteDart
+      android:
+        dartPluginClass: FaceDetectionTfliteDart
       macos:
         pluginClass: FaceDetectionTflitePlugin
       windows:
