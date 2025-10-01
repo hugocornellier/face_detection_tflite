@@ -84,18 +84,18 @@ packages:
     dependency: "direct main"
     description:
       name: file_selector
-      sha256: "5019692b593455127794d5718304ff1ae15447dea286cdda9f0db2a796a1b828"
+      sha256: "5f1d15a7f17115038f433d1b0ea57513cc9e29a9d5338d166cb0bef3fa90a7a0"
       url: "https://pub.dev"
     source: hosted
-    version: "1.0.3"
+    version: "1.0.4"
   file_selector_android:
     dependency: transitive
     description:
       name: file_selector_android
-      sha256: "4be8ae7374c81daf88e49084a1d68dfe68466ef38a6a3d711cc0b83d53e22465"
+      sha256: "1ce58b609289551f8ec07265476720e77d19764339cc1d8e4df3c4d34dac6499"
       url: "https://pub.dev"
     source: hosted
-    version: "0.5.1+16"
+    version: "0.5.1+17"
   file_selector_ios:
     dependency: transitive
     description:
@@ -198,10 +198,10 @@ packages:
     dependency: transitive
     description:
       name: image_picker_android
-      sha256: "28f3987ca0ec702d346eae1d90eda59603a2101b52f1e234ded62cff1d5cfa6e"
+      sha256: "8dfe08ea7fcf7467dbaf6889e72eebd5e0d6711caae201fdac780eb45232cd02"
       url: "https://pub.dev"
     source: hosted
-    version: "0.8.13+1"
+    version: "0.8.13+3"
   image_picker_for_web:
     dependency: transitive
     description:
@@ -375,15 +375,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.7.7"
-  tflite_flutter:
+  tflite_flutter_custom:
     dependency: transitive
     description:
-      path: "."
-      ref: "5cf2568e829bdcf129bbd3f4f6b0461e6dfa7641"
-      resolved-ref: "5cf2568e829bdcf129bbd3f4f6b0461e6dfa7641"
-      url: "https://github.com/hugocornellier/flutter-tflite.git"
-    source: git
-    version: "0.11.0"
+      name: tflite_flutter_custom
+      sha256: "54a8022365cf394ce6bb6529ed89dc4682b01ab82aa60bc775a34825ef7deb4e"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.0"
   typed_data:
     dependency: transitive
     description:
@@ -417,5 +416,5 @@ packages:
     source: hosted
     version: "6.6.1"
 sdks:
-  dart: ">=3.8.0 <4.0.0"
-  flutter: ">=3.29.0"
+  dart: ">=3.9.0 <4.0.0"
+  flutter: ">=3.35.0"

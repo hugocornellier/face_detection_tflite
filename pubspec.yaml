@@ -3,6 +3,15 @@ description: "BlazeFace-style face detector with optional face & iris landmarks.
 publish_to: 'none'
 version: 0.1.0+1
 
+repository: https://github.com/hugocornellier/face_detection_tflite
+homepage: https://github.com/hugocornellier/face_detection_tflite
+
+topics:
+  - tflite
+  - face-detection
+  - computer-vision
+  - flutter-plugin
+
 environment:
   sdk: ">=3.6.0 <4.0.0"
   flutter: ">=3.22.0"
@@ -12,10 +21,8 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.8
   image: ^4.5.4
-  tflite_flutter:
-    git:
-      url: https://github.com/hugocornellier/flutter-tflite.git
-      ref: 3ce480cd12b910758b6b97224c54d7b8c5c1e949
+  tflite_flutter_custom: ^1.0.0
+  path: ^1.9.0
 
 dev_dependencies:
   flutter_test:

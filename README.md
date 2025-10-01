@@ -41,18 +41,10 @@ This package is a Flutter/Dart port inspired by and adapted from the original Py
 
 ## Installation
 
-### Option A: pub.dev (recommended once published)
+### pub.dev
 ```yaml
 dependencies:
   face_detection_tflite: ^0.1.0
-```
-
-### Option B: Git (current)
-```yaml
-dependencies:
-  face_detection_tflite:
-    git:
-      url: https://github.com/hugocornellier/face_detection_tflite.git
 ```
 
 Run:
@@ -112,42 +104,6 @@ Types you will encounter:
 - `Detection` has `bbox` (normalized `RectF`), `score`, and `keypointsXY` (normalized).
 - Mesh and iris return `List<Offset>` in your image coordinate system.
 - `PipelineResult` packages detections, mesh, irises, and originalSize.
-
----
-
-## Painting Notes
-
-- Scale a normalized `RectF` to your image size to draw detection boxes.
-- Mesh and iris points are already returned in image coordinates; draw them directly.
-- For consistent overlays, paint against the same scaled image rectangle you used for display.
-
----
-
-## Desktop Support
-
-On desktop platforms, ensure TensorFlow Lite native libraries are available. Depending on your Flutter/TFLite setup:
-- **macOS**: `libtensorflowlite_c.dylib` inside the app bundle (e.g., `Contents/Frameworks`)
-- **Windows**: `tensorflowlite_c.dll` next to your executable
-- **Linux**: `libtensorflowlite_c.so` on the library path
-
-Some `tflite_flutter` releases bundle these automatically; if you encounter missing-library errors, add the appropriate binary for your target platform.
-
----
-
-## Performance Tips
-
-- Use `FaceDetectionModel.shortRange` or `frontCamera` for faster results on low-end devices.
-- Reuse a single `FaceDetector` instance; call `initialize` only once.
-- If you only need one output (e.g., detections only), call that method instead of `runAll`.
-- For real-time use, throttle calls and reuse buffers where possible.
-
----
-
-## Troubleshooting
-
-- **Model not found**: verify asset paths and `flutter: assets:` entries.
-- **Empty results**: confirm lighting/face size, try a different detection model variant.
-- **Slow inference**: choose a smaller model, reduce image size upstream, avoid extra copies.
 
 ---
 
