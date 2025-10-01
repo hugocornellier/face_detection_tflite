@@ -1,3 +1,7 @@
+## 0.1.2
+- Minor bug fixes & improvements
+- Clarifications in the README
+
 ## 0.1.1
 - Add iOS and Android via `dartPluginClass`
 - Keep native plugin on desktop (macOS/Windows/Linux) so CMake still bundles TFLite C libs.

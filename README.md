@@ -30,12 +30,12 @@ This package is a Flutter/Dart port inspired by and adapted from the original Py
 
 ## Features
 
-- Face detection using TensorFlow Lite models
+- Face, landmark and iris detection using TensorFlow Lite models
 - 468-point face mesh with normalized→image-space mapping handled for you
 - Iris landmark detection for both eyes via mesh-derived ROIs
-- Single-file API centered on `FaceDetector`
 - Works on Android, iOS, macOS, Windows, and Linux
-- Example app can be included for testing and demonstration
+- Single-file API centered on `FaceDetector`
+- Example app included for testing
 
 ---
 
