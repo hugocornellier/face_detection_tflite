@@ -39,21 +39,6 @@ This package is a Flutter/Dart port inspired by and adapted from the original Py
 
 ---
 
-## Installation
-
-### pub.dev
-```yaml
-dependencies:
-  face_detection_tflite: ^0.1.0
-```
-
-Run:
-```bash
-flutter pub get
-```
-
----
-
 ## Quick Start
 
 ```dart

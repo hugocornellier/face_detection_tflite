@@ -1,3 +1,6 @@
+## 0.1.3
+- Tweak analysis/lints config to match latest Flutter stable.
+
 ## 0.1.2
 - Minor bug fixes & improvements
 - Clarifications in the README
