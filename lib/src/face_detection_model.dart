@@ -119,13 +119,11 @@ class FaceDetection {
   }
 
   Future<List<Detection>> call(Uint8List imageBytes, {RectF? roi}) async {
-    final src = img.decodeImage(imageBytes);
-    if (src == null) {
-      throw const FormatException('Could not decode image bytes (unsupported or corrupt).');
-    }
+    final _DecodedRgb _d = await _decodeImageOffUi(imageBytes);
+    final img.Image decoded = _imageFromDecodedRgb(_d);
 
-    final img.Image srcRoi = (roi == null) ? src : cropFromRoi(src, roi);
-    final pack = _imageToTensor(srcRoi, outW: _inW, outH: _inH);
+    final img.Image srcRoi = (roi == null) ? decoded : await cropFromRoi(decoded, roi);
+    final pack = await _imageToTensor(srcRoi, outW: _inW, outH: _inH);
 
     Float32List boxesBuf;
     Float32List scoresBuf;
@@ -207,7 +205,7 @@ class FaceDetection {
         return Detection(bbox: RectF(xmin, ymin, xmax, ymax), score: d.score, keypointsXY: kp);
       }).toList();
     }
-    final imgSize = Size(src.width.toDouble(), src.height.toDouble());
+    final imgSize = Size(decoded.width.toDouble(), decoded.height.toDouble());
     mapped = mapped
         .map((d) => Detection(
       bbox: d.bbox,

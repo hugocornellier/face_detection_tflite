@@ -4,6 +4,8 @@ class FaceLandmark {
   final Interpreter _itp;
   final int _inW, _inH;
 
+  IsolateInterpreter? _iso;
+
   late final int _bestIdx;
   late final Tensor _inputTensor;
   late final Tensor _bestTensor;
@@ -11,9 +13,11 @@ class FaceLandmark {
   late final Float32List _inputBuf;
   late final Float32List _bestOutBuf;
 
+  late final List<List<int>> _outShapes;
+
   FaceLandmark._(this._itp, this._inW, this._inH);
 
-  static Future<FaceLandmark> create({InterpreterOptions? options}) async {
+  static Future<FaceLandmark> create({InterpreterOptions? options, bool useIsolate = true}) async {
     final itp = await Interpreter.fromAsset(
       'packages/face_detection_tflite/assets/models/$_faceLandmarkModel',
       options: options ?? InterpreterOptions(),
@@ -56,19 +60,90 @@ class FaceLandmark {
     obj._inputBuf = obj._inputTensor.data.buffer.asFloat32List();
     obj._bestOutBuf = obj._bestTensor.data.buffer.asFloat32List();
 
+    final maxIndex = shapes.keys.isEmpty ? -1 : shapes.keys.reduce((a, b) => a > b ? a : b);
+    obj._outShapes = List<List<int>>.generate(maxIndex + 1, (i) => shapes[i] ?? const <int>[]);
+
+    if (useIsolate) {
+      obj._iso = await IsolateInterpreter.create(address: itp.address);
+    }
+
     return obj;
   }
 
+  List<List<List<List<double>>>> _asNHWC4D(Float32List flat, int h, int w) {
+    final out = List<List<List<List<double>>>>.filled(
+      1,
+      List.generate(h, (_) => List.generate(w, (_) => List<double>.filled(3, 0.0, growable: false), growable: false), growable: false),
+      growable: false,
+    );
+    var k = 0;
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        final px = out[0][y][x];
+        px[0] = flat[k++];
+        px[1] = flat[k++];
+        px[2] = flat[k++];
+      }
+    }
+    return out;
+  }
+
+  Object _allocForShape(List<int> shape) {
+    if (shape.isEmpty) return <double>[];
+    Object build(List<int> s, int depth) {
+      if (depth == s.length - 1) {
+        return List<double>.filled(s[depth], 0.0, growable: false);
+      }
+      return List.generate(s[depth], (_) => build(s, depth + 1), growable: false);
+    }
+    return build(shape, 0);
+  }
+
   Future<List<List<double>>> call(img.Image faceCrop) async {
-    final pack = _imageToTensor(faceCrop, outW: _inW, outH: _inH);
+    final pack = await _imageToTensor(faceCrop, outW: _inW, outH: _inH);
 
-    _inputBuf.setAll(0, pack.tensorNHWC);
-    _itp.invoke();
+    if (_iso == null) {
+      _inputBuf.setAll(0, pack.tensorNHWC);
+      _itp.invoke();
+      return _unpackLandmarks(_bestOutBuf, _inW, _inH, pack.padding, clamp: true);
+    } else {
+      final input4d = _asNHWC4D(pack.tensorNHWC, _inH, _inW);
+      final inputs = [input4d];
+      final outputs = <int, Object>{};
+      for (var i = 0; i < _outShapes.length; i++) {
+        final s = _outShapes[i];
+        if (s.isNotEmpty) {
+          outputs[i] = _allocForShape(s);
+        }
+      }
+      await _iso!.runForMultipleInputs(inputs, outputs);
 
-    return _unpackLandmarks(_bestOutBuf, _inW, _inH, pack.padding, clamp: true);
+      final dynamic best = outputs[_bestIdx];
+
+      final flat = <double>[];
+      void walk(dynamic x) {
+        if (x is num) {
+          flat.add(x.toDouble());
+        } else if (x is List) {
+          for (final e in x) {
+            walk(e);
+          }
+        } else {
+          throw StateError('Unexpected output element type: ${x.runtimeType}');
+        }
+      }
+      walk(best);
+
+      final bestFlat = Float32List.fromList(flat);
+      return _unpackLandmarks(bestFlat, _inW, _inH, pack.padding, clamp: true);
+    }
   }
 
   void dispose() {
+    final iso = _iso;
+    if (iso != null) {
+      iso.close();
+    }
     _itp.close();
   }
 }

@@ -7,11 +7,56 @@ double _sigmoidClipped(double x, {double limit = _rawScoreLimit}) {
   return 1.0 / (1.0 + math.exp(-v));
 }
 
-ImageTensor _imageToTensor(img.Image src, {required int outW, required int outH}) {
-  final inW = src.width, inH = src.height;
-  final scale = (outW / inW < outH / inH) ? outW / inW : outH / inH;
-  final newW = (inW * scale).round();
-  final newH = (inH * scale).round();
+Future<ImageTensor> _imageToTensor(img.Image src,
+    {required int outW, required int outH}) async {
+  final rp = ReceivePort();
+  final rgb = src.getBytes(order: img.ChannelOrder.rgb);
+  final params = {
+    'sendPort': rp.sendPort,
+    'inW': src.width,
+    'inH': src.height,
+    'outW': outW,
+    'outH': outH,
+    'rgb': TransferableTypedData.fromList([rgb]),
+  };
+  await Isolate.spawn(_imageToTensorIsolate, params);
+  final Map msg = await rp.first as Map;
+  rp.close();
+
+  final ByteBuffer tBB = (msg['tensor'] as TransferableTypedData).materialize();
+  final Float32List tensor = tBB.asUint8List().buffer.asFloat32List();
+
+  final List paddingRaw = msg['padding'] as List;
+  final List<double> padding =
+  paddingRaw.map((e) => (e as num).toDouble()).toList();
+  final int ow = msg['outW'] as int;
+  final int oh = msg['outH'] as int;
+
+  return ImageTensor(tensor, padding, ow, oh);
+}
+
+@pragma('vm:entry-point')
+Future<void> _imageToTensorIsolate(Map<String, dynamic> params) async {
+  final SendPort sp = params['sendPort'] as SendPort;
+  final int inW = params['inW'] as int;
+  final int inH = params['inH'] as int;
+  final int outW = params['outW'] as int;
+  final int outH = params['outH'] as int;
+  final ByteBuffer rgbBB = (params['rgb'] as TransferableTypedData).materialize();
+  final Uint8List rgb = rgbBB.asUint8List();
+
+  final src = img.Image.fromBytes(
+    width: inW,
+    height: inH,
+    bytes: rgb.buffer,
+    order: img.ChannelOrder.rgb,
+  );
+
+  final double s1 = outW / inW;
+  final double s2 = outH / inH;
+  final double scale = s1 < s2 ? s1 : s2;
+  final int newW = (inW * scale).round();
+  final int newH = (inH * scale).round();
 
   final resized = img.copyResize(
     src,
@@ -20,23 +65,23 @@ ImageTensor _imageToTensor(img.Image src, {required int outW, required int outH}
     interpolation: img.Interpolation.linear,
   );
 
-  final dx = (outW - newW) ~/ 2;
-  final dy = (outH - newH) ~/ 2;
+  final int dx = (outW - newW) ~/ 2;
+  final int dy = (outH - newH) ~/ 2;
 
   final canvas = img.Image(width: outW, height: outH);
   img.fill(canvas, color: img.ColorRgb8(0, 0, 0));
 
-  for (var y = 0; y < resized.height; y++) {
-    for (var x = 0; x < resized.width; x++) {
+  for (int y = 0; y < resized.height; y++) {
+    for (int x = 0; x < resized.width; x++) {
       final px = resized.getPixel(x, y);
       canvas.setPixel(x + dx, y + dy, px);
     }
   }
 
   final t = Float32List(outW * outH * 3);
-  var k = 0;
-  for (var y = 0; y < outH; y++) {
-    for (var x = 0; x < outW; x++) {
+  int k = 0;
+  for (int y = 0; y < outH; y++) {
+    for (int x = 0; x < outW; x++) {
       final px = canvas.getPixel(x, y);
       t[k++] = (px.r / 127.5) - 1.0;
       t[k++] = (px.g / 127.5) - 1.0;
@@ -44,12 +89,17 @@ ImageTensor _imageToTensor(img.Image src, {required int outW, required int outH}
     }
   }
 
-  final padTop = dy / outH;
-  final padBottom = (outH - dy - newH) / outH;
-  final padLeft = dx / outW;
-  final padRight = (outW - dx - newW) / outW;
+  final double padTop = dy / outH;
+  final double padBottom = (outH - dy - newH) / outH;
+  final double padLeft = dx / outW;
+  final double padRight = (outW - dx - newW) / outW;
 
-  return ImageTensor(t, [padTop, padBottom, padLeft, padRight], outW, outH);
+  sp.send({
+    'tensor': TransferableTypedData.fromList([t.buffer.asUint8List()]),
+    'padding': [padTop, padBottom, padLeft, padRight],
+    'outW': outW,
+    'outH': outH,
+  });
 }
 
 List<Detection> _detectionLetterboxRemoval(List<Detection> dets, List<double> padding) {
@@ -91,41 +141,6 @@ List<List<double>> _unpackLandmarks(Float32List flat, int inW, int inH, List<dou
     out.add([x, y, z]);
   }
   return out;
-}
-
-Offset _centralPoint(List<Offset> pts) {
-  if (pts.isEmpty) return const Offset(0, 0);
-  var bestIdx = 0;
-  var best = double.infinity;
-  for (var k = 0; k < pts.length; k++) {
-    var s = 0.0;
-    for (var j = 0; j < pts.length; j++) {
-      if (j == k) continue;
-      final dx = pts[j].dx - pts[k].dx;
-      final dy = pts[j].dy - pts[k].dy;
-      s += dx * dx + dy * dy;
-    }
-    if (s < best) {
-      best = s;
-      bestIdx = k;
-    }
-  }
-  return pts[bestIdx];
-}
-
-Future<List<Offset>> _computeIrisCenters(IrisLandmark ir, img.Image decoded, List<AlignedRoi> rois, {Offset? leftFallback, Offset? rightFallback}) async {
-  final centers = <Offset>[];
-  for (var i = 0; i < rois.length; i++) {
-    final isRight = (i == 1);
-    final raw = await ir.runOnImageAlignedIris(decoded, rois[i], isRight: isRight);
-    if (raw.isEmpty) {
-      centers.add(isRight ? (rightFallback ?? Offset.zero) : (leftFallback ?? Offset.zero));
-      continue;
-    }
-    final pts = raw.map((p) => Offset(p[0].toDouble(), p[1].toDouble())).toList();
-    centers.add(_centralPoint(pts));
-  }
-  return centers;
 }
 
 Detection _mapDetectionToRoi(Detection d, RectF roi) {
@@ -264,34 +279,56 @@ RectF faceDetectionToRoi(RectF bbox, {double expandFraction = 0.6}) {
   return RectF(cx - s, cy - s, cx + s, cy + s);
 }
 
-img.Image cropFromRoi(img.Image src, RectF roi) {
-  final w = src.width.toDouble(), h = src.height.toDouble();
-  final x0 = (roi.xmin * w).clamp(0.0, w - 1).toInt();
-  final y0 = (roi.ymin * h).clamp(0.0, h - 1).toInt();
-  final x1 = (roi.xmax * w).clamp(0.0, w.toDouble()).toInt();
-  final y1 = (roi.ymax * h).clamp(0.0, h.toDouble()).toInt();
-  final cw = math.max(1, x1 - x0);
-  final ch = math.max(1, y1 - y0);
-  return img.copyCrop(src, x: x0, y: y0, width: cw, height: ch);
+Future<img.Image> cropFromRoi(img.Image src, RectF roi) async {
+  final rgb = src.getBytes(order: img.ChannelOrder.rgb);
+  final rp = ReceivePort();
+  final params = {
+    'sendPort': rp.sendPort,
+    'op': 'crop',
+    'w': src.width,
+    'h': src.height,
+    'rgb': TransferableTypedData.fromList([rgb]),
+    'roi': {
+      'xmin': roi.xmin,
+      'ymin': roi.ymin,
+      'xmax': roi.xmax,
+      'ymax': roi.ymax,
+    },
+  };
+  await Isolate.spawn(_imageTransformIsolate, params);
+  final Map msg = await rp.first as Map;
+  rp.close();
+  final ByteBuffer outBB = (msg['rgb'] as TransferableTypedData).materialize();
+  final Uint8List outRgb = outBB.asUint8List();
+  final int ow = msg['w'] as int;
+  final int oh = msg['h'] as int;
+  return img.Image.fromBytes(width: ow, height: oh, bytes: outRgb.buffer, order: img.ChannelOrder.rgb);
 }
 
-img.Image extractAlignedSquare(img.Image src, double cx, double cy, double size, double theta) {
-  final side = math.max(1, size.round());
-  final ct = math.cos(theta);
-  final st = math.sin(theta);
-  final out = img.Image(width: side, height: side);
-  for (int y = 0; y < side; y++) {
-    final vy = ((y + 0.5) / side - 0.5) * size;
-    for (int x = 0; x < side; x++) {
-      final vx = ((x + 0.5) / side - 0.5) * size;
-      final sx = cx + vx * ct - vy * st;
-      final sy = cy + vx * st + vy * ct;
-      final px = _bilinearSampleRgb8(src, sx, sy);
-      out.setPixel(x, y, px);
-    }
-  }
-  return out;
+Future<img.Image> extractAlignedSquare(img.Image src, double cx, double cy, double size, double theta) async {
+  final rgb = src.getBytes(order: img.ChannelOrder.rgb);
+  final rp = ReceivePort();
+  final params = {
+    'sendPort': rp.sendPort,
+    'op': 'extract',
+    'w': src.width,
+    'h': src.height,
+    'rgb': TransferableTypedData.fromList([rgb]),
+    'cx': cx,
+    'cy': cy,
+    'size': size,
+    'theta': theta,
+  };
+  await Isolate.spawn(_imageTransformIsolate, params);
+  final Map msg = await rp.first as Map;
+  rp.close();
+  final ByteBuffer outBB = (msg['rgb'] as TransferableTypedData).materialize();
+  final Uint8List outRgb = outBB.asUint8List();
+  final int ow = msg['w'] as int;
+  final int oh = msg['h'] as int;
+  return img.Image.fromBytes(width: ow, height: oh, bytes: outRgb.buffer, order: img.ChannelOrder.rgb);
 }
+
 
 img.ColorRgb8 _bilinearSampleRgb8(img.Image src, double fx, double fy) {
   final x0 = fx.floor();
@@ -324,4 +361,131 @@ img.ColorRgb8 _bilinearSampleRgb8(img.Image src, double fx, double fy) {
   final b = (b0 * (1 - ay) + b1 * ay).round().clamp(0, 255);
 
   return img.ColorRgb8(r, g, b);
+}
+
+class _DecodedRgb {
+  final int width;
+  final int height;
+  final Uint8List rgb; // RGB, 3 bytes per pixel
+  const _DecodedRgb(this.width, this.height, this.rgb);
+}
+
+Future<_DecodedRgb> _decodeImageOffUi(Uint8List bytes) async {
+  final rp = ReceivePort();
+  final params = {
+    'sendPort': rp.sendPort,
+    'bytes': TransferableTypedData.fromList([bytes]),
+  };
+  await Isolate.spawn(_decodeImageIsolate, params);
+  final Map msg = await rp.first as Map;
+  rp.close();
+
+  if (msg['ok'] != true) {
+    throw const FormatException('Could not decode image bytes (unsupported or corrupt).');
+  }
+
+  final ByteBuffer rgbBB = (msg['rgb'] as TransferableTypedData).materialize();
+  final Uint8List rgb = rgbBB.asUint8List();
+  final int w = msg['w'] as int;
+  final int h = msg['h'] as int;
+  return _DecodedRgb(w, h, rgb);
+}
+
+img.Image _imageFromDecodedRgb(_DecodedRgb d) {
+  return img.Image.fromBytes(
+    width: d.width,
+    height: d.height,
+    bytes: d.rgb.buffer,
+    order: img.ChannelOrder.rgb,
+  );
+}
+
+@pragma('vm:entry-point')
+Future<void> _decodeImageIsolate(Map<String, dynamic> params) async {
+  final SendPort sp = params['sendPort'] as SendPort;
+  final ByteBuffer bb = (params['bytes'] as TransferableTypedData).materialize();
+  final Uint8List inBytes = bb.asUint8List();
+
+  final img.Image? decoded = img.decodeImage(inBytes);
+  if (decoded == null) {
+    sp.send({'ok': false});
+    return;
+  }
+
+  final Uint8List rgb = decoded.getBytes(order: img.ChannelOrder.rgb);
+  sp.send({
+    'ok': true,
+    'w': decoded.width,
+    'h': decoded.height,
+    'rgb': TransferableTypedData.fromList([rgb]),
+  });
+}
+
+@pragma('vm:entry-point')
+Future<void> _imageTransformIsolate(Map<String, dynamic> params) async {
+  final SendPort sp = params['sendPort'] as SendPort;
+  final String op = params['op'] as String;
+  final int w = params['w'] as int;
+  final int h = params['h'] as int;
+  final ByteBuffer inBB = (params['rgb'] as TransferableTypedData).materialize();
+  final Uint8List inRgb = inBB.asUint8List();
+
+  final src = img.Image.fromBytes(width: w, height: h, bytes: inRgb.buffer, order: img.ChannelOrder.rgb);
+
+  img.Image out;
+
+  if (op == 'crop') {
+    final m = params['roi'] as Map;
+    final xmin = (m['xmin'] as num).toDouble();
+    final ymin = (m['ymin'] as num).toDouble();
+    final xmax = (m['xmax'] as num).toDouble();
+    final ymax = (m['ymax'] as num).toDouble();
+
+    final W = src.width.toDouble(), H = src.height.toDouble();
+    final x0 = (xmin * W).clamp(0.0, W - 1).toInt();
+    final y0 = (ymin * H).clamp(0.0, H - 1).toInt();
+    final x1 = (xmax * W).clamp(0.0, W).toInt();
+    final y1 = (ymax * H).clamp(0.0, H).toInt();
+    final cw = math.max(1, x1 - x0);
+    final ch = math.max(1, y1 - y0);
+    out = img.copyCrop(src, x: x0, y: y0, width: cw, height: ch);
+  } else if (op == 'extract') {
+    final cx = (params['cx'] as num).toDouble();
+    final cy = (params['cy'] as num).toDouble();
+    final size = (params['size'] as num).toDouble();
+    final theta = (params['theta'] as num).toDouble();
+
+    final side = math.max(1, size.round());
+    final ct = math.cos(theta);
+    final st = math.sin(theta);
+    out = img.Image(width: side, height: side);
+    for (int y = 0; y < side; y++) {
+      final vy = ((y + 0.5) / side - 0.5) * size;
+      for (int x = 0; x < side; x++) {
+        final vx = ((x + 0.5) / side - 0.5) * size;
+        final sx = cx + vx * ct - vy * st;
+        final sy = cy + vx * st + vy * ct;
+        final px = _bilinearSampleRgb8(src, sx, sy);
+        out.setPixel(x, y, px);
+      }
+    }
+  } else if (op == 'flipH') {
+    out = img.Image(width: src.width, height: src.height);
+    for (int y = 0; y < src.height; y++) {
+      for (int x = 0; x < src.width; x++) {
+        out.setPixel(src.width - 1 - x, y, src.getPixel(x, y));
+      }
+    }
+  } else {
+    sp.send({'ok': false});
+    return;
+  }
+
+  final outRgb = out.getBytes(order: img.ChannelOrder.rgb);
+  sp.send({
+    'ok': true,
+    'w': out.width,
+    'h': out.height,
+    'rgb': TransferableTypedData.fromList([outRgb]),
+  });
 }

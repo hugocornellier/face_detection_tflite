@@ -1,9 +1,11 @@
 library face_detection_tflite;
 
+import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ffi' as ffi;
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:image/image.dart' as img;

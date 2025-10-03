@@ -12,22 +12,19 @@ class FaceDetector {
       throw StateError('Iris model not initialized. Call initialize() before getDetectionsWithIrisCenters().');
     }
 
-    final decoded = img.decodeImage(imageBytes);
-    if (decoded == null) {
-      throw const FormatException('Could not decode image bytes (unsupported or corrupt).');
-    }
+    final _DecodedRgb _d = await _decodeImageOffUi(imageBytes);
+    final img.Image decoded = _imageFromDecodedRgb(_d);
 
     final dets = await detectFaces(imageBytes);
     if (dets.isEmpty) return dets;
 
     final det = dets.first;
-    final aligned = estimateAlignedFace(decoded, det);
+    final aligned = await estimateAlignedFace(decoded, det);
     final meshPts = await meshFromAlignedFace(aligned.faceCrop, aligned);
     final rois = eyeRoisFromMesh(meshPts);
 
-    final centers = await _computeIrisCenters(
-      _iris!,
-      decoded,
+    final centers = await _computeIrisCentersInIsolate(
+      imageBytes,
       rois,
       leftFallback: det.landmarks[FaceIndex.leftEye],
       rightFallback: det.landmarks[FaceIndex.rightEye],
@@ -116,8 +113,8 @@ class FaceDetector {
   Future<void> initialize({FaceDetectionModel model = FaceDetectionModel.backCamera, InterpreterOptions? options}) async {
     await _ensureTFLiteLoaded();
     _detector = await FaceDetection.create(model, options: options, useIsolate: true);
-    _faceLm = await FaceLandmark.create(options: options);
-    _iris = await IrisLandmark.create(options: options);
+    _faceLm = await FaceLandmark.create(options: options, useIsolate: true);
+    _iris = await IrisLandmark.create(options: options, useIsolate: true);
   }
 
   Future<List<Detection>> detectFaces(Uint8List imageBytes, {RectF? roi}) async {
@@ -129,23 +126,20 @@ class FaceDetector {
       throw StateError('Iris model not initialized. initialize() must succeed before detectFaces().');
     }
 
-    final decoded = img.decodeImage(imageBytes);
-    if (decoded == null) {
-      throw const FormatException('Could not decode image bytes (unsupported or corrupt).');
-    }
+    final _DecodedRgb _d = await _decodeImageOffUi(imageBytes);
+    final img.Image decoded = _imageFromDecodedRgb(_d);
 
     final dets = await d.call(imageBytes, roi: roi);
     if (dets.isEmpty) return dets;
 
     final updated = <Detection>[];
     for (final det in dets) {
-      final aligned = estimateAlignedFace(decoded, det);
+      final aligned = await estimateAlignedFace(decoded, det);
       final meshPts = await meshFromAlignedFace(aligned.faceCrop, aligned);
       final rois = eyeRoisFromMesh(meshPts);
 
-      final centers = await _computeIrisCenters(
-        _iris!,
-        decoded,
+      final centers = await _computeIrisCentersInIsolate(
+        imageBytes,
         rois,
         leftFallback: det.landmarks[FaceIndex.leftEye],
         rightFallback: det.landmarks[FaceIndex.rightEye],
@@ -164,7 +158,7 @@ class FaceDetector {
     return updated;
   }
 
-  AlignedFace estimateAlignedFace(img.Image decoded, Detection det) {
+  Future<AlignedFace> estimateAlignedFace(img.Image decoded, Detection det) async {
     final imgW = decoded.width.toDouble();
     final imgH = decoded.height.toDouble();
 
@@ -191,7 +185,7 @@ class FaceDetector {
     final cx = eyeCx + vMx * 0.1;
     final cy = eyeCy + vMy * 0.1;
 
-    final faceCrop = extractAlignedSquare(decoded, cx, cy, size, -theta);
+    final faceCrop = await extractAlignedSquare(decoded, cx, cy, size, -theta);
 
     return AlignedFace(cx: cx, cy: cy, size: size, theta: theta, faceCrop: faceCrop);
   }
@@ -253,56 +247,54 @@ class FaceDetector {
   }
 
   Future<List<Offset>> getFaceMesh(Uint8List imageBytes) async {
-    final decoded = img.decodeImage(imageBytes);
-    if (decoded == null) {
-      throw const FormatException('Could not decode image bytes (unsupported or corrupt).');
-    }
+    final _DecodedRgb _d = await _decodeImageOffUi(imageBytes);
+    final img.Image decoded = _imageFromDecodedRgb(_d);
+
     final dets = await detectFaces(imageBytes);
     if (dets.isEmpty) return const <Offset>[];
-    final aligned = estimateAlignedFace(decoded, dets.first);
+    final aligned = await estimateAlignedFace(decoded, dets.first);
     return await meshFromAlignedFace(aligned.faceCrop, aligned);
   }
 
   Future<List<Offset>> getIris(Uint8List imageBytes) async {
-    final decoded = img.decodeImage(imageBytes);
-    if (decoded == null) return const <Offset>[];
+    final _DecodedRgb _d = await _decodeImageOffUi(imageBytes);
+    final img.Image decoded = _imageFromDecodedRgb(_d);
+
     final dets = await detectFaces(imageBytes);
     if (dets.isEmpty) return const <Offset>[];
-    final aligned = estimateAlignedFace(decoded, dets.first);
+    final aligned = await estimateAlignedFace(decoded, dets.first);
     final meshPts = await meshFromAlignedFace(aligned.faceCrop, aligned);
     final rois = eyeRoisFromMesh(meshPts);
     return await irisFromEyeRois(decoded, rois);
   }
 
   Future<Size> getOriginalSize(Uint8List imageBytes) async {
-    final decoded = img.decodeImage(imageBytes);
-    if (decoded == null) {
-      throw const FormatException('Could not decode image bytes (unsupported or corrupt).');
-    }
+    final _DecodedRgb _d = await _decodeImageOffUi(imageBytes);
+    final img.Image decoded = _imageFromDecodedRgb(_d);
+
     return Size(decoded.width.toDouble(), decoded.height.toDouble());
   }
 
   Future<List<Offset>> getFaceMeshFromDetections(Uint8List imageBytes, List<Detection> dets) async {
     if (dets.isEmpty) return const <Offset>[];
-    final decoded = img.decodeImage(imageBytes);
-    if (decoded == null) return const <Offset>[];
-    final aligned = estimateAlignedFace(decoded, dets.first);
+    final _DecodedRgb _d = await _decodeImageOffUi(imageBytes);
+    final img.Image decoded = _imageFromDecodedRgb(_d);
+    final aligned = await estimateAlignedFace(decoded, dets.first);
     return await meshFromAlignedFace(aligned.faceCrop, aligned);
   }
 
   Future<List<Offset>> getIrisFromMesh(Uint8List imageBytes, List<Offset> meshPts) async {
     if (meshPts.isEmpty) return const <Offset>[];
-    final decoded = img.decodeImage(imageBytes);
-    if (decoded == null) return const <Offset>[];
+    final _DecodedRgb _d = await _decodeImageOffUi(imageBytes);
+    final img.Image decoded = _imageFromDecodedRgb(_d);
     final rois = eyeRoisFromMesh(meshPts);
     return await irisFromEyeRois(decoded, rois);
   }
 
   Future<PipelineResult> runAll(Uint8List imageBytes) async {
-    final decoded = img.decodeImage(imageBytes);
-    if (decoded == null) {
-      return PipelineResult(detections: const [], mesh: const [], irises: const [], originalSize: const Size(0, 0));
-    }
+    final _DecodedRgb _d = await _decodeImageOffUi(imageBytes);
+    final img.Image decoded = _imageFromDecodedRgb(_d);
+
     final dets = await detectFaces(imageBytes);
     if (dets.isEmpty) {
       return PipelineResult(
@@ -313,7 +305,7 @@ class FaceDetector {
       );
     }
     final d = dets.first;
-    final aligned = estimateAlignedFace(decoded, d);
+    final aligned = await estimateAlignedFace(decoded, d);
     final meshPts = await meshFromAlignedFace(aligned.faceCrop, aligned);
     final rois = eyeRoisFromMesh(meshPts);
     final irisPts = await irisFromEyeRois(decoded, rois);
@@ -329,5 +321,91 @@ class FaceDetector {
     _detector?.dispose();
     _faceLm?.dispose();
     _iris?.dispose();
+  }
+
+  Future<List<Offset>> _computeIrisCentersInIsolate(
+      Uint8List imageBytes,
+      List<AlignedRoi> rois, {
+        Offset? leftFallback,
+        Offset? rightFallback,
+      }) async {
+    final rp = ReceivePort();
+    final params = {
+      'sendPort': rp.sendPort,
+      'rootToken': RootIsolateToken.instance,
+      'imageBytes': imageBytes,
+      'rois': rois.map((r) => {'cx': r.cx, 'cy': r.cy, 'size': r.size, 'theta': r.theta}).toList(),
+      'leftFx': leftFallback?.dx,
+      'leftFy': leftFallback?.dy,
+      'rightFx': rightFallback?.dx,
+      'rightFy': rightFallback?.dy,
+    };
+    final iso = await Isolate.spawn(_irisCentersIsolate, params);
+    final msg = await rp.first as Map;
+    rp.close();
+    iso.kill(priority: Isolate.immediate);
+    if (msg['ok'] == true) {
+      final List centers = msg['centers'] as List;
+      return centers
+          .map<Offset>((m) => Offset((m['x'] as num).toDouble(), (m['y'] as num).toDouble()))
+          .toList();
+    } else {
+      final lx = (params['leftFx'] as double?) ?? 0.0;
+      final ly = (params['leftFy'] as double?) ?? 0.0;
+      final rx = (params['rightFx'] as double?) ?? 0.0;
+      final ry = (params['rightFy'] as double?) ?? 0.0;
+      return [Offset(lx, ly), Offset(rx, ry)];
+    }
+  }
+
+  @pragma('vm:entry-point')
+  static Future<void> _irisCentersIsolate(Map<String, dynamic> params) async {
+    final RootIsolateToken token = params['rootToken'] as RootIsolateToken;
+    DartPluginRegistrant.ensureInitialized();
+    BackgroundIsolateBinaryMessenger.ensureInitialized(token);
+
+    final SendPort sp = params['sendPort'] as SendPort;
+    final Uint8List bytes = params['imageBytes'] as Uint8List;
+    final List roisData = params['rois'] as List;
+
+    try {
+      final iris = await IrisLandmark.create(useIsolate: false);
+      final img.Image? decoded = img.decodeImage(bytes);
+      if (decoded == null) {
+        sp.send({'ok': false});
+        return;
+      }
+
+      final centers = <Map<String, double>>[];
+      for (int i = 0; i < roisData.length; i++) {
+        final m = roisData[i] as Map;
+        final roi = AlignedRoi(
+          (m['cx'] as num).toDouble(),
+          (m['cy'] as num).toDouble(),
+          (m['size'] as num).toDouble(),
+          (m['theta'] as num).toDouble(),
+        );
+        final lm = await iris.runOnImageAlignedIris(decoded, roi, isRight: i == 1);
+        if (lm.isEmpty) {
+          final fx = i == 0 ? (params['leftFx'] as double?) : (params['rightFx'] as double?);
+          final fy = i == 0 ? (params['leftFy'] as double?) : (params['rightFy'] as double?);
+          centers.add({'x': (fx ?? 0.0), 'y': (fy ?? 0.0)});
+        } else {
+          double sx = 0.0, sy = 0.0;
+          for (final p in lm) {
+            sx += (p[0] as num).toDouble();
+            sy += (p[1] as num).toDouble();
+          }
+          final cx = sx / lm.length;
+          final cy = sy / lm.length;
+          centers.add({'x': cx, 'y': cy});
+        }
+      }
+
+      iris.dispose();
+      sp.send({'ok': true, 'centers': centers});
+    } catch (_) {
+      sp.send({'ok': false});
+    }
   }
 }
