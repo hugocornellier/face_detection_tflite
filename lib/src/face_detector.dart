@@ -5,6 +5,11 @@ class FaceDetector {
   FaceLandmark? _faceLm;
   IrisLandmark? _iris;
 
+  int irisOkCount = 0;
+  int irisFailCount = 0;
+  int irisUsedFallbackCount = 0;
+  Duration lastIrisTime = Duration.zero;
+
   bool get isReady => _detector != null && _faceLm != null && _iris != null;
 
   Future<List<Detection>> getDetectionsWithIrisCenters(Uint8List imageBytes) async {
@@ -114,7 +119,7 @@ class FaceDetector {
     await _ensureTFLiteLoaded();
     _detector = await FaceDetection.create(model, options: options, useIsolate: true);
     _faceLm = await FaceLandmark.create(options: options, useIsolate: true);
-    _iris = await IrisLandmark.create(options: options, useIsolate: true);
+    _iris = await IrisLandmark.create(options: options, useIsolate: false);
   }
 
   Future<List<Detection>> detectFaces(Uint8List imageBytes, {RectF? roi}) async {
@@ -139,11 +144,18 @@ class FaceDetector {
       final rois = eyeRoisFromMesh(meshPts);
 
       final centers = await _computeIrisCentersInIsolate(
-        imageBytes,
-        rois,
+        imageBytes, rois,
         leftFallback: det.landmarks[FaceIndex.leftEye],
         rightFallback: det.landmarks[FaceIndex.rightEye],
       );
+
+      bool same(Offset a, Offset b) => (a.dx - b.dx).abs() < 1e-6 && (a.dy - b.dy).abs() < 1e-6;
+      final lf = det.landmarks[FaceIndex.leftEye]!;
+      final rf = det.landmarks[FaceIndex.rightEye]!;
+      final usedFallback = same(centers[0], lf) || same(centers[1], rf);
+
+      print('[detectFaces] iris ${usedFallback ? "FALLBACK" : "OK"} time=$lastIrisTime bbox=${det.bbox.xmin.toStringAsFixed(3)},... score=${det.score.toStringAsFixed(3)}');
+
 
       final imgW = det.imageSize?.width ?? decoded.width.toDouble();
       final imgH = det.imageSize?.height ?? decoded.height.toDouble();
@@ -329,33 +341,66 @@ class FaceDetector {
         Offset? leftFallback,
         Offset? rightFallback,
       }) async {
-    final rp = ReceivePort();
-    final params = {
-      'sendPort': rp.sendPort,
-      'rootToken': RootIsolateToken.instance,
-      'imageBytes': imageBytes,
-      'rois': rois.map((r) => {'cx': r.cx, 'cy': r.cy, 'size': r.size, 'theta': r.theta}).toList(),
-      'leftFx': leftFallback?.dx,
-      'leftFy': leftFallback?.dy,
-      'rightFx': rightFallback?.dx,
-      'rightFy': rightFallback?.dy,
-    };
-    final iso = await Isolate.spawn(_irisCentersIsolate, params);
-    final msg = await rp.first as Map;
-    rp.close();
-    iso.kill(priority: Isolate.immediate);
-    if (msg['ok'] == true) {
-      final List centers = msg['centers'] as List;
-      return centers
-          .map<Offset>((m) => Offset((m['x'] as num).toDouble(), (m['y'] as num).toDouble()))
-          .toList();
-    } else {
-      final lx = (params['leftFx'] as double?) ?? 0.0;
-      final ly = (params['leftFy'] as double?) ?? 0.0;
-      final rx = (params['rightFx'] as double?) ?? 0.0;
-      final ry = (params['rightFy'] as double?) ?? 0.0;
+    final sw = Stopwatch()..start();
+    final decoded = img.decodeImage(imageBytes);
+    if (decoded == null) {
+      irisFailCount++;
+      lastIrisTime = sw.elapsed;
+      final lx = leftFallback?.dx ?? 0.0;
+      final ly = leftFallback?.dy ?? 0.0;
+      final rx = rightFallback?.dx ?? 0.0;
+      final ry = rightFallback?.dy ?? 0.0;
       return [Offset(lx, ly), Offset(rx, ry)];
     }
+
+    final iris = _iris!;
+    final centers = <Offset>[];
+
+    Offset _pickCenter(List<List<double>> lm, Offset? fallback) {
+      if (lm.isEmpty) return fallback ?? const Offset(0, 0);
+      final pts = lm.map((p) => Offset(p[0].toDouble(), p[1].toDouble())).toList();
+      int bestIdx = 0;
+      double bestScore = double.infinity;
+      for (int k = 0; k < pts.length; k++) {
+        double s = 0;
+        for (int j = 0; j < pts.length; j++) {
+          if (j == k) continue;
+          final dx = pts[j].dx - pts[k].dx;
+          final dy = pts[j].dy - pts[k].dy;
+          s += dx * dx + dy * dy;
+        }
+        if (s < bestScore) {
+          bestScore = s;
+          bestIdx = k;
+        }
+      }
+      return pts[bestIdx];
+    }
+
+    for (int i = 0; i < rois.length; i++) {
+      final isRight = i == 1;
+      final lm = await iris.runOnImageAlignedIris(decoded, rois[i], isRight: isRight);
+      final fb = i == 0 ? leftFallback : rightFallback;
+      centers.add(_pickCenter(lm, fb));
+    }
+
+    final usedFallback =
+        (centers[0] == (leftFallback ?? const Offset(0, 0))) ||
+            (centers[1] == (rightFallback ?? const Offset(0, 0)));
+
+    sw.stop();
+    lastIrisTime = sw.elapsed;
+
+    if (centers.isNotEmpty) {
+      irisOkCount++;
+      if (usedFallback) irisUsedFallbackCount++;
+      print('[iris] OK=true time=$lastIrisTime');
+    } else {
+      irisFailCount++;
+      print('[iris] OK=false time=$lastIrisTime');
+    }
+
+    return centers;
   }
 
   @pragma('vm:entry-point')
@@ -404,8 +449,9 @@ class FaceDetector {
 
       iris.dispose();
       sp.send({'ok': true, 'centers': centers});
-    } catch (_) {
-      sp.send({'ok': false});
+    } catch (e, st) {
+      print(st);
+      sp.send({'ok': false, 'err': e.toString()});
     }
   }
 }
