@@ -1,3 +1,8 @@
+## 1.0.0
+-  Provide end-user with pre-normalized, image-space coords. 
+-  Improved readme/documentation & public API as a whole,
+-  Removed obsolete methods, change Offset objects to Point.
+
 ## 0.1.6
 -  Fix bug where IrisLandmark inferences would fail in an Isolate
 
