@@ -12,6 +12,7 @@ const _faceLandmarkModel = 'face_landmark.tflite';
 const _irisLandmarkModel = 'iris_landmark.tflite';
 
 const _rawScoreLimit = 80.0;
+const int kMeshPoints = 468;
 const _minScore = 0.5;
 const _minSuppressionThreshold = 0.3;
 
@@ -61,12 +62,40 @@ class AlignedFace {
   AlignedFace({required this.cx, required this.cy, required this.size, required this.theta, required this.faceCrop});
 }
 
-class PipelineResult {
-  final List<Detection> detections;
-  final List<Offset> mesh;
-  final List<Offset> irises;
+class FaceResult {
+  final Detection detection;
+  final List<math.Point<double>> mesh;
+  final List<math.Point<double>> irises;
   final Size originalSize;
-  PipelineResult({required this.detections, required this.mesh, required this.irises, required this.originalSize});
+
+  FaceResult({
+    required this.detection,
+    required this.mesh,
+    required this.irises,
+    required this.originalSize,
+  });
+
+  List<math.Point<double>> get bboxCorners {
+    final r = detection.bbox;
+    final w = originalSize.width.toDouble();
+    final h = originalSize.height.toDouble();
+    return [
+      math.Point<double>(r.xmin * w, r.ymin * h),
+      math.Point<double>(r.xmax * w, r.ymin * h),
+      math.Point<double>(r.xmax * w, r.ymax * h),
+      math.Point<double>(r.xmin * w, r.ymax * h),
+    ];
+  }
+
+  Map<FaceIndex, math.Point<double>> get landmarks => detection.landmarks;
+}
+
+class PipelineResult {
+  final List<FaceResult> faces;
+  final Size originalSize;
+  PipelineResult({required this.faces, required this.originalSize});
+
+  List<FaceResult> get perFace => faces;
 }
 
 class RectF {
@@ -99,22 +128,17 @@ class Detection {
 
   double operator [](int i) => keypointsXY[i];
 
-  Map<FaceIndex, Offset> get landmarks {
-    final map = <FaceIndex, Offset>{};
-    if (imageSize == null) {
-      for (final idx in FaceIndex.values) {
-        final x = keypointsXY[idx.index * 2];
-        final y = keypointsXY[idx.index * 2 + 1];
-        map[idx] = Offset(x, y);
-      }
-      return map;
+  Map<FaceIndex, math.Point<double>> get landmarks {
+    final sz = imageSize;
+    if (sz == null) {
+      throw StateError('Detection.imageSize is null; cannot produce pixel landmarks.');
     }
-    final w = imageSize!.width;
-    final h = imageSize!.height;
+    final w = sz.width.toDouble(), h = sz.height.toDouble();
+    final map = <FaceIndex, math.Point<double>>{};
     for (final idx in FaceIndex.values) {
-      final x = keypointsXY[idx.index * 2] * w;
-      final y = keypointsXY[idx.index * 2 + 1] * h;
-      map[idx] = Offset(x, y);
+      final xn = keypointsXY[idx.index * 2];
+      final yn = keypointsXY[idx.index * 2 + 1];
+      map[idx] = math.Point<double>(xn * w, yn * h);
     }
     return map;
   }
@@ -139,4 +163,14 @@ class _DecodedBox {
   final RectF bbox;
   final List<double> keypointsXY;
   _DecodedBox(this.bbox, this.keypointsXY);
+}
+
+extension DetectionPoints on Detection {
+  Map<FaceIndex, math.Point<double>> get landmarksPoints => landmarks;
+}
+
+extension FaceResultPoints on FaceResult {
+  List<math.Point<double>> get bboxCornersPoints => bboxCorners;
+  List<math.Point<double>> get meshPoints => mesh;
+  List<math.Point<double>> get irisesPoints => irises;
 }

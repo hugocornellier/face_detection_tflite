@@ -205,15 +205,7 @@ class FaceDetection {
         return Detection(bbox: RectF(xmin, ymin, xmax, ymax), score: d.score, keypointsXY: kp);
       }).toList();
     }
-    final imgSize = Size(decoded.width.toDouble(), decoded.height.toDouble());
-    mapped = mapped
-        .map((d) => Detection(
-      bbox: d.bbox,
-      score: d.score,
-      keypointsXY: d.keypointsXY,
-      imageSize: imgSize,
-    ))
-        .toList();
+
     return mapped;
   }
 
