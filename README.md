@@ -6,12 +6,7 @@ A Dart/Flutter package that runs an on-device face and landmark detection with T
 
 ---
 
-## Features
-
-- Face detection (multiple SSD variants)
-- 468-point face mesh
-- Face landmarks, iris landmarks and bounding boxes
-- Convenient end-to-end pipeline
+## Inspiration
 
 This package is a Flutter/Dart port inspired by and adapted from the original Python project **[patlevin/face-detection-tflite](https://github.com/patlevin/face-detection-tflite)**. Many thanks to the original author.
 
@@ -21,6 +16,7 @@ This package is a Flutter/Dart port inspired by and adapted from the original Py
 
 - [Features](#features)
 - [Quick Start](#quick-start)
+- [Models](#models)
 - [Types](#types)
 - [Example](#example)
 
@@ -28,9 +24,10 @@ This package is a Flutter/Dart port inspired by and adapted from the original Py
 
 ## Features
 
-- Face (with bounding box), landmark and iris detection using TensorFlow Lite models
-- All coordinates are returned directly in **pixel space** (`Point<double>`), no normalization or scaling required
-- Works on Android, iOS, macOS, Windows, and Linux
+- On-device face detection (multiple SSD variants)
+- 468-point face mesh, face landmarks, iris landmarks and bounding boxes
+- All coordinates returned in **pre-normalized pixel space** (`Point<double>`)
+- Truly cross-platform: compatible with Android, iOS, macOS, Windows, and Linux
 - The `example/` app illustrates how to detect and render results on images: bounding boxes, a 468-point face mesh, and iris landmarks.
 
 ---
