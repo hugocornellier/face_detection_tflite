@@ -1,3 +1,8 @@
+## 1.0.1
+-  Improved error handling 
+-  Added samples, improved documentation 
+-  Improved example (see example tab on pub.dev)
+
 ## 1.0.0
 -  Provide end-user with pre-normalized, image-space coords. 
 -  Improved readme/documentation & public API as a whole,
