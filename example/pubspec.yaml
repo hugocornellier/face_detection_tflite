@@ -16,6 +16,7 @@ dependencies:
   file_selector_macos: ^0.9.4+2
   face_detection_tflite:
     path: ../
+  flutter_colorpicker: ^1.1.0
 
 flutter:
   uses-material-design: true
