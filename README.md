@@ -1,16 +1,14 @@
 # face_detection_tflite
 
-A Dart/Flutter package that runs an on-device face and landmark detection with TensorFlow Lite:
+A pure Dart/Flutter implementation of Google's MediaPipe face detection and facial landmark models using TensorFlow Lite. 
+This package provides on-device face and landmark detection with minimal dependencies, just TensorFlow Lite and image.
 
 ![Example Screenshot](assets/screenshots/example1.png)
 
----
-
 ## Inspiration
 
-This package is a Flutter/Dart port inspired by and adapted from the original Python project **[patlevin/face-detection-tflite](https://github.com/patlevin/face-detection-tflite)**. Many thanks to the original author.
-
----
+At the time of development, there was no open-source solution for cross-platform, on-device face and landmark detection. 
+This package took inspiration and was ported from the original Python project **[patlevin/face-detection-tflite](https://github.com/patlevin/face-detection-tflite)**. Many thanks to the original author.
 
 ## Table of Contents
 
@@ -20,72 +18,58 @@ This package is a Flutter/Dart port inspired by and adapted from the original Py
 - [Types](#types)
 - [Example](#example)
 
----
-
 ## Features
 
 - On-device face detection (multiple SSD variants)
 - 468-point face mesh, face landmarks, iris landmarks and bounding boxes
-- All coordinates returned in **pre-normalized pixel space** (`Point<double>`)
+- All coordinates are in **absolute pixel coordinates** (`Point<double>`)
+  - `x` ranges from `0` to `image.width`
+  - `y` ranges from `0` to `image.height`
+  - Ready to use co-ordinates without any scaling
 - Truly cross-platform: compatible with Android, iOS, macOS, Windows, and Linux
 - The `example/` app illustrates how to detect and render results on images: bounding boxes, a 468-point face mesh, and iris landmarks.
-
----
 
 ## Quick Start
 
 ```dart
-import 'dart:typed_data';
+import 'dart:io';
 import 'package:face_detection_tflite/face_detection_tflite.dart';
 
-final detector = FaceDetector();
-
-// Initialize once; choose the model variant you prefer
-Future<void> init() async {
+Future main() async {
+  // 1. create and initialize
+  final detector = FaceDetector();
   await detector.initialize(model: FaceDetectionModel.backCamera);
-}
 
-// Full pipeline
-Future<void> analyze(Uint8List imageBytes) async {
+  // 2. detect
+  final imageBytes = await File('path/to/image.jpg').readAsBytes();
   final result = await detector.detectFaces(imageBytes);
 
+  // 3. access results
   for (final face in result.faces) {
-    final bbox    = face.bboxCorners;     // List<Point<double>> (4 pixel corners)
-    final mesh    = face.mesh;            // List<Point<double>> (468-point mesh in pixels)
-    final irises  = face.irises;          // List<Point<double>> (iris landmarks in pixels)
-    final lm      = face.landmarks;       // Map<FaceIndex, Point<double>> (keypoints in pixels)
+    final bbox = face.bboxCorners;  
+    final mesh = face.mesh;     
+    final irises = face.irises;
 
-    // Iterate all landmarks with their FaceIndex keys
-    for (final entry in lm.entries) {
-      final idx = entry.key;              // FaceIndex.leftEye, rightEye, noseTip, etc.
-      final pt  = entry.value;            // Point<double> in pixels
-      final px  = pt.x;
-      final py  = pt.y;
-    }
+    final leftEye = face.landmarks[FaceIndex.leftEye];
+    final rightEye = face.landmarks[FaceIndex.rightEye];
 
-    // Access landmarks directly by enum
-    final leftEye  = face.landmarks[FaceIndex.leftEye];    // Point<double> in pixels
-    final rightEye = face.landmarks[FaceIndex.rightEye];   // Point<double> in pixels
+    print('Left eye: (${leftEye.x}, ${leftEye.y})');
   }
+
+  // 4. clean-up
+  detector.dispose();
 }
-
-// When you're done with it
-detector.dispose();
 ```
-
----
 
 ## Models
 
 You can choose from several detection models depending on your use case:
 
-- **FaceDetectionModel.backCamera** – larger model for group shots or images with smaller faces (default).
-- **FaceDetectionModel.frontCamera** – optimized for selfies and close-up portraits.
-- **FaceDetectionModel.short** – best for short-range images (faces within ~2m).
-- **FaceDetectionModel.full** – best for mid-range images (faces within ~5m).
-- **FaceDetectionModel.fullSparse** – same detection quality as `full` but runs up to 30% faster on CPU (slightly higher precision, slightly lower recall).
-
----
+- **FaceDetectionModel.backCamera**: larger model for group shots or images with smaller faces (default).
+- **FaceDetectionModel.frontCamera**: optimized for selfies and close-up portraits.
+- **FaceDetectionModel.short**: best for short-range images (faces within ~2m).
+- **FaceDetectionModel.full**: best for mid-range images (faces within ~5m).
+- **FaceDetectionModel.fullSparse**: same detection quality as `full` but runs up to 30% faster on CPU (slightly higher precision, slightly lower recall).
 
 ## Types
 
@@ -98,8 +82,6 @@ You can choose from several detection models depending on your use case:
     - `FaceIndex.leftEyeTragion`
     - `FaceIndex.rightEyeTragion`
 - All coordinates are **absolute pixel positions**, ready to use for drawing or measurement.
-
----
 
 ## Example
 

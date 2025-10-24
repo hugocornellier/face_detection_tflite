@@ -126,9 +126,19 @@ class FaceDetector {
 
   Future<void> initialize({FaceDetectionModel model = FaceDetectionModel.backCamera, InterpreterOptions? options}) async {
     await _ensureTFLiteLoaded();
-    _detector = await FaceDetection.create(model, options: options, useIsolate: true);
-    _faceLm = await FaceLandmark.create(options: options, useIsolate: true);
-    _iris = await IrisLandmark.create(options: options, useIsolate: false);
+    try {
+      _detector = await FaceDetection.create(model, options: options, useIsolate: true);
+      _faceLm = await FaceLandmark.create(options: options, useIsolate: true);
+      _iris = await IrisLandmark.create(options: options, useIsolate: false);
+    } catch (e) {
+      _detector?.dispose();
+      _faceLm?.dispose();
+      _iris?.dispose();
+      _detector = null;
+      _faceLm = null;
+      _iris = null;
+      rethrow;
+    }
   }
 
   Future<List<Detection>> _detectDetections(Uint8List imageBytes, {RectF? roi}) async {

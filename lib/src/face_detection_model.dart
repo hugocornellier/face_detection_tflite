@@ -41,8 +41,8 @@ class FaceDetection {
     };
     final obj = FaceDetection._(itp, inW, inH, anchors, assumeMirrored);
 
-    int foundIdx = 0;
-    for (var i = 0;; i++) {
+    int foundIdx = -1;
+    for (var i = 0; i < 10; i++) {
       try {
         final s = itp.getInputTensor(i).shape;
         if (s.length == 4 && s.last == 3) {
@@ -52,6 +52,10 @@ class FaceDetection {
       } catch (_) {
         break;
       }
+    }
+    if (foundIdx == -1) {
+      itp.close();
+      throw StateError('No valid input tensor found with shape [batch, height, width, 3]');
     }
     obj._inputIdx = foundIdx;
 
@@ -119,6 +123,9 @@ class FaceDetection {
   }
 
   Future<List<Detection>> call(Uint8List imageBytes, {RectF? roi}) async {
+    if (imageBytes.isEmpty) {
+      throw ArgumentError('Image bytes cannot be empty');
+    }
     final _DecodedRgb _d = await _decodeImageOffUi(imageBytes);
     final img.Image decoded = _imageFromDecodedRgb(_d);
 

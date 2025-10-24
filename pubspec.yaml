@@ -18,7 +18,6 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  cupertino_icons: ^1.0.8
   image: ^4.5.4
   tflite_flutter_custom: ^1.0.0
   path: ^1.9.0
