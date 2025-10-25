@@ -353,23 +353,7 @@ class IrisLandmark {
 
 extension on IrisLandmark {
   Future<img.Image> _flipHorizontal(img.Image src) async {
-    final rgb = src.getBytes(order: img.ChannelOrder.rgb);
-    final rp = ReceivePort();
-    final params = {
-      'sendPort': rp.sendPort,
-      'op': 'flipH',
-      'w': src.width,
-      'h': src.height,
-      'rgb': TransferableTypedData.fromList([rgb]),
-    };
-    await Isolate.spawn(_imageTransformIsolate, params);
-    final Map msg = await rp.first as Map;
-    rp.close();
-    final ByteBuffer outBB = (msg['rgb'] as TransferableTypedData).materialize();
-    final Uint8List outRgb = outBB.asUint8List();
-    final int ow = msg['w'] as int;
-    final int oh = msg['h'] as int;
-    return img.Image.fromBytes(width: ow, height: oh, bytes: outRgb.buffer, order: img.ChannelOrder.rgb);
+    return img.flipHorizontal(src);
   }
 }
 
