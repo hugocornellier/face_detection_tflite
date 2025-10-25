@@ -122,8 +122,8 @@ class _ExampleState extends State<Example> {
       _imageBytes = bytes;
       _originalSize = result.originalSize;
       _faces = result.faces;
-      _hasProcessedMesh = _showMesh;
-      _hasProcessedIris = _showIrises;
+      _hasProcessedMesh = mode == FaceDetectionMode.standard || mode == FaceDetectionMode.full;
+      _hasProcessedIris = mode == FaceDetectionMode.full;
       _isLoading = false;
       _detectionTimeMs = detectionTime;
       _meshTimeMs = meshTime;
@@ -192,43 +192,6 @@ class _ExampleState extends State<Example> {
           ],
         );
       },
-    );
-  }
-
-  Widget _buildInferenceTimingCard() {
-    if (_detectionTimeMs == null) return const SizedBox.shrink();
-
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.timer, size: 20, color: Colors.blue),
-                const SizedBox(width: 8),
-                const Text(
-                  'Inference Timing',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            _buildTimingRow('Face Detection', _detectionTimeMs!, Colors.green),
-            if (_meshTimeMs != null)
-              _buildTimingRow('Mesh Landmarks', _meshTimeMs!, Colors.orange),
-            if (_irisTimeMs != null)
-              _buildTimingRow('Iris Detection', _irisTimeMs!, Colors.purple),
-            const Divider(height: 16),
-            _buildTimingRow('Total Time', _totalTimeMs!, Colors.blue, isBold: true),
-            const SizedBox(height: 8),
-            _buildPerformanceIndicator(),
-          ],
-        ),
-      ),
     );
   }
 
@@ -346,6 +309,12 @@ class _ExampleState extends State<Example> {
             _buildStatusRow('Detection', true, Colors.green),
             _buildStatusRow('Mesh', _hasProcessedMesh, _showMesh ? Colors.green : Colors.grey),
             _buildStatusRow('Iris', _hasProcessedIris, _showIrises ? Colors.green : Colors.grey),
+            if (_totalTimeMs != null) ...[
+              const Divider(height: 16),
+              _buildTimingRow('Inference Time', _totalTimeMs!, Colors.blue, isBold: true),
+              const SizedBox(height: 8),
+              _buildPerformanceIndicator(),
+            ],
           ],
         ),
       ),
@@ -509,7 +478,6 @@ class _ExampleState extends State<Example> {
                     ],
                   ),
                 ),
-              _buildInferenceTimingCard(),
               _buildFeatureStatus(),
               Expanded(
                 child: Center(
@@ -542,23 +510,29 @@ class _ExampleState extends State<Example> {
                               ),
                             ),
                           ),
-                          CustomPaint(
-                            size: Size(constraints.maxWidth, constraints.maxHeight),
-                            painter: _DetectionsPainter(
-                              faces: _faces,
-                              imageRectOnCanvas: imageRect,
-                              originalImageSize: _originalSize!,
-                              showBoundingBoxes: _showBoundingBoxes,
-                              showMesh: _showMesh,
-                              showLandmarks: _showLandmarks,
-                              showIrises: _showIrises,
-                              boundingBoxColor: _boundingBoxColor,
-                              landmarkColor: _landmarkColor,
-                              meshColor: _meshColor,
-                              irisColor: _irisColor,
-                              boundingBoxThickness: _boundingBoxThickness,
-                              landmarkSize: _landmarkSize,
-                              meshSize: _meshSize,
+                          Positioned(
+                              left: left,
+                              top: top,
+                              width: displayWidth,
+                              height: displayHeight,
+                              child: CustomPaint(
+                                size: Size(displayWidth, displayHeight),
+                                painter: _DetectionsPainter(
+                                  faces: _faces,
+                                  imageRectOnCanvas: Rect.fromLTWH(0, 0, displayWidth, displayHeight),
+                                  originalImageSize: _originalSize!,
+                                  showBoundingBoxes: _showBoundingBoxes,
+                                  showMesh: _showMesh,
+                                  showLandmarks: _showLandmarks,
+                                  showIrises: _showIrises,
+                                  boundingBoxColor: _boundingBoxColor,
+                                  landmarkColor: _landmarkColor,
+                                  meshColor: _meshColor,
+                                  irisColor: _irisColor,
+                                  boundingBoxThickness: _boundingBoxThickness,
+                                  landmarkSize: _landmarkSize,
+                                  meshSize: _meshSize,
+                                ),
                             ),
                           ),
                         ],

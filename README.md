@@ -72,6 +72,38 @@ Future main() async {
 }
 ```
 
+## Face Detection Modes
+
+This app supports three detection modes that determine which facial features are detected:
+
+| Mode | Features | Est. Time per Face* |
+|------|----------|---------------------|
+| **Full** (default) | Bounding boxes, landmarks, 468-point mesh, iris tracking | ~80-120ms           |
+| **Standard** | Bounding boxes, landmarks, 468-point mesh | ~60ms               |
+| **Fast** | Bounding boxes, landmarks | ~30ms               |
+
+*Est. times per faces are based on 640x480 resolution on modern hardware. Performance scales with image size and number of faces.
+
+### Code Examples
+```dart
+// full mode (default): bounding boxes, 6 basic landmarks + mesh + iris
+// note: full mode provides superior accuracy for left and right eye landmarks
+// compared to fast/standard modes. use full mode when precise eye landmark
+// detection is required for your application. trade-off: longer inference
+await _faceDetector.detectFaces(bytes);
+
+// standard mode: bounding boxes, 6 basic landmarks + mesh. inference time 
+// is faster than full mode, but slower than fast mode.
+await _faceDetector.detectFaces(bytes, mode: FaceDetectionMode.standard);
+
+// fast mode: bounding boxes + 6 basic landmarks only. fastest inference 
+// time of the three modes.
+await _faceDetector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+```
+
+Try the [sample code](https://pub.dev/packages/face_detection_tflite/example) from the pub.dev example tab to easily compare
+modes and inferences timing. 
+
 ## Models
 
 You can choose from several detection models depending on your use case:
@@ -96,9 +128,9 @@ You can choose from several detection models depending on your use case:
 
 ## Example
 
-The `example/` directory includes a minimal Flutter app that demonstrates how to paint detections onto an  
-image: drawing face bounding boxes, the 468-point face mesh, and iris landmarks.  
-Because results are already in pixel space, overlays align directly with the source image without any extra scaling.
+The [sample code](https://pub.dev/packages/face_detection_tflite/example) from the pub.dev example tab includes a 
+Flutter app that paints detections onto an image: bounding boxes, landmarks, mesh, and iris. The 
+example code provides inference time, and demonstrates when to use `FaceDetectionMode.standard` or `FaceDetectionMode.fast`.  
 
 ## Inspiration
 
