@@ -373,9 +373,13 @@ class FaceDetector {
     final imgH = decoded.height.toDouble();
     final imgSize = Size(imgW, imgH);
 
-    for (final det in dets) {
+    final alignedFutures = dets.map((det) => estimateAlignedFace(decoded, det));
+    final allAligned = await Future.wait(alignedFutures);
+
+    for (int i = 0; i < dets.length; i++) {
       try {
-        final aligned = await estimateAlignedFace(decoded, det);
+        final det = dets[i];
+        final aligned = allAligned[i];
         final meshAbs = await meshFromAlignedFace(aligned.faceCrop, aligned);
         final rois = eyeRoisFromMesh(meshAbs);
         final irisAbs = await irisFromEyeRois(decoded, rois);
