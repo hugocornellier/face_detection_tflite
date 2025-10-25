@@ -374,20 +374,25 @@ class FaceDetector {
     final imgSize = Size(imgW, imgH);
 
     for (final det in dets) {
-      final aligned = await estimateAlignedFace(decoded, det);
-      final meshAbs = await meshFromAlignedFace(aligned.faceCrop, aligned);
-      final rois = eyeRoisFromMesh(meshAbs);
-      final irisAbs = await irisFromEyeRois(decoded, rois);
+      try {
+        final aligned = await estimateAlignedFace(decoded, det);
+        final meshAbs = await meshFromAlignedFace(aligned.faceCrop, aligned);
+        final rois = eyeRoisFromMesh(meshAbs);
+        final irisAbs = await irisFromEyeRois(decoded, rois);
 
-      final meshPx = meshAbs.map((p) => math.Point<double>(p.dx, p.dy)).toList(growable: false);
-      final irisPx = irisAbs.map((p) => math.Point<double>(p.dx, p.dy)).toList(growable: false);
+        final meshPx = meshAbs.map((p) => math.Point<double>(p.dx, p.dy)).toList(growable: false);
+        final irisPx = irisAbs.map((p) => math.Point<double>(p.dx, p.dy)).toList(growable: false);
 
-      faces.add(FaceResult(
-        detection: det,
-        mesh: meshPx,
-        irises: irisPx,
-        originalSize: imgSize,
-      ));
+        faces.add(FaceResult(
+          detection: det,
+          mesh: meshPx,
+          irises: irisPx,
+          originalSize: imgSize,
+        ));
+      } catch (e, stackTrace) {
+        print('Warning: Failed to process face at bbox ${det.bbox}: $e');
+        print('Stack trace: $stackTrace');
+      }
     }
 
     return PipelineResult(

@@ -33,13 +33,11 @@ class _SandboxState extends State<Sandbox> {
   bool _showIrises = true;
   bool _showSettings = true;
 
-  // Color controls
   Color _boundingBoxColor = const Color(0xFF00FFCC);
   Color _landmarkColor = const Color(0xFF89CFF0);
   Color _meshColor = const Color(0xFFF4C2C2);
   Color _irisColor = const Color(0xFF22AAFF);
 
-  // Size controls
   double _boundingBoxThickness = 2.0;
   double _landmarkSize = 3.0;
   double _meshSize = 1.25;
@@ -62,7 +60,6 @@ class _SandboxState extends State<Sandbox> {
     final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 100);
     if (picked == null) return;
 
-    // Immediately clear old image and show loading state
     setState(() {
       _imageBytes = null;
       _faces = [];
@@ -133,7 +130,6 @@ class _SandboxState extends State<Sandbox> {
         children: [
           Column(
             children: [
-              // Checkboxes panel
               if (_showSettings)
                 Container(
                   padding: const EdgeInsets.all(16),
@@ -171,7 +167,6 @@ class _SandboxState extends State<Sandbox> {
                         ],
                       ),
                       const SizedBox(height: 16),
-                      // Visibility toggles
                       Wrap(
                         spacing: 16,
                         runSpacing: 8,
@@ -199,7 +194,6 @@ class _SandboxState extends State<Sandbox> {
                         ],
                       ),
                       const SizedBox(height: 16),
-                      // Color pickers
                       Wrap(
                         spacing: 12,
                         runSpacing: 8,
@@ -227,7 +221,6 @@ class _SandboxState extends State<Sandbox> {
                         ],
                       ),
                       const SizedBox(height: 16),
-                      // Size controls
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -258,7 +251,6 @@ class _SandboxState extends State<Sandbox> {
                   ),
                 ),
               if (_showSettings) const Divider(height: 1),
-              // Image display area
               Expanded(
                 child: Center(
                   child: _isLoading
@@ -316,7 +308,6 @@ class _SandboxState extends State<Sandbox> {
               ),
             ],
           ),
-          // Floating button to show settings when hidden
           if (!_showSettings)
             Positioned(
               top: 16,
@@ -489,7 +480,7 @@ class _DetectionsPainter extends CustomPainter {
     final oy = imageRectOnCanvas.top;
 
     for (final face in faces) {
-      // Draw bounding box
+      // draw bounding boxes:
       if (showBoundingBoxes) {
         final c = face.bboxCorners;
         final rect = Rect.fromLTRB(
@@ -501,14 +492,14 @@ class _DetectionsPainter extends CustomPainter {
         canvas.drawRect(rect, boxPaint);
       }
 
-      // Draw landmarks
+      // draw landmarks:
       if (showLandmarks) {
         for (final p in face.landmarks.values) {
           canvas.drawCircle(Offset(ox + p.x, oy + p.y), landmarkSize, detKpPaint);
         }
       }
 
-      // Draw mesh
+      // draw mesh:
       if (showMesh) {
         final mesh = face.mesh;
         if (mesh.isNotEmpty) {
@@ -521,7 +512,7 @@ class _DetectionsPainter extends CustomPainter {
         }
       }
 
-      // Draw irises
+      // draw irises:
       if (showIrises) {
         final iris = face.irises;
         for (int i = 0; i + 4 < iris.length; i += 5) {

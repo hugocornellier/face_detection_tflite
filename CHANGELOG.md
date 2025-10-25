@@ -1,3 +1,6 @@
+## 1.0.2
+-  Performance optimization
+
 ## 1.0.1
 -  Improved error handling 
 -  Added samples, improved documentation 
