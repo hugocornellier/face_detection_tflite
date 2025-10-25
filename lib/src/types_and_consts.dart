@@ -2,6 +2,7 @@ part of face_detection_tflite;
 
 enum FaceIndex { leftEye, rightEye, noseTip, mouth, leftEyeTragion, rightEyeTragion }
 enum FaceDetectionModel { frontCamera, backCamera, shortRange, full, fullSparse }
+enum FaceDetectionMode { fast, standard, full }
 
 const _modelNameBack = 'face_detection_back.tflite';
 const _modelNameFront = 'face_detection_front.tflite';

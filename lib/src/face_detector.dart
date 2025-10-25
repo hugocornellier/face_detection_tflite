@@ -141,7 +141,7 @@ class FaceDetector {
     }
   }
 
-  Future<List<Detection>> _detectDetections(Uint8List imageBytes, {RectF? roi}) async {
+  Future<List<Detection>> _detectDetections(Uint8List imageBytes, {RectF? roi, bool refineEyesWithIris = true}) async {
     final d = _detector;
     if (d == null) {
       throw StateError('FaceDetector not initialized. Call initialize() before detectDetections().');
@@ -155,6 +155,17 @@ class FaceDetector {
 
     final dets = await d.call(imageBytes, roi: roi);
     if (dets.isEmpty) return dets;
+
+    if (!refineEyesWithIris) {
+      final imgW = decoded.width.toDouble();
+      final imgH = decoded.height.toDouble();
+      return dets.map((det) => Detection(
+        bbox: det.bbox,
+        score: det.score,
+        keypointsXY: det.keypointsXY,
+        imageSize: Size(imgW, imgH),
+      )).toList();
+    }
 
     final updated = <Detection>[];
     for (final det in dets) {
@@ -362,30 +373,55 @@ class FaceDetector {
     return out;
   }
 
-  Future<PipelineResult> detectFaces(Uint8List imageBytes) async {
+  Future<List<math.Point<double>>> _getMeshForFace(AlignedFace aligned) async {
+    final meshAbs = await meshFromAlignedFace(aligned.faceCrop, aligned);
+    return meshAbs.map((p) => math.Point<double>(p.dx, p.dy)).toList(growable: false);
+  }
+
+  Future<List<math.Point<double>>> _getIrisForFace(
+    img.Image decoded,
+    List<math.Point<double>> meshPx,
+  ) async {
+    if (meshPx.isEmpty) return <math.Point<double>>[];
+
+    final meshAbs = meshPx.map((p) => Offset(p.x, p.y)).toList(growable: false);
+    final rois = eyeRoisFromMesh(meshAbs);
+    final irisAbs = await irisFromEyeRois(decoded, rois);
+    return irisAbs.map((p) => math.Point<double>(p.dx, p.dy)).toList(growable: false);
+  }
+
+  Future<PipelineResult> detectFaces(
+    Uint8List imageBytes, {
+    FaceDetectionMode mode = FaceDetectionMode.full,
+  }) async {
     final _DecodedRgb _d = await _decodeImageOffUi(imageBytes);
     final img.Image decoded = _imageFromDecodedRgb(_d);
 
-    final dets = await _detectDetections(imageBytes);
+    final computeIris = mode == FaceDetectionMode.full;
+    final computeMesh = mode == FaceDetectionMode.standard || mode == FaceDetectionMode.full;
+
+    final dets = await _detectDetections(imageBytes, refineEyesWithIris: computeIris);
     final faces = <FaceResult>[];
 
     final imgW = decoded.width.toDouble();
     final imgH = decoded.height.toDouble();
     final imgSize = Size(imgW, imgH);
 
-    final alignedFutures = dets.map((det) => estimateAlignedFace(decoded, det));
-    final allAligned = await Future.wait(alignedFutures);
+    final allAligned = computeMesh
+        ? await Future.wait(dets.map((det) => estimateAlignedFace(decoded, det)))
+        : <AlignedFace>[];
 
     for (int i = 0; i < dets.length; i++) {
       try {
         final det = dets[i];
-        final aligned = allAligned[i];
-        final meshAbs = await meshFromAlignedFace(aligned.faceCrop, aligned);
-        final rois = eyeRoisFromMesh(meshAbs);
-        final irisAbs = await irisFromEyeRois(decoded, rois);
 
-        final meshPx = meshAbs.map((p) => math.Point<double>(p.dx, p.dy)).toList(growable: false);
-        final irisPx = irisAbs.map((p) => math.Point<double>(p.dx, p.dy)).toList(growable: false);
+        final meshPx = computeMesh && i < allAligned.length
+            ? await _getMeshForFace(allAligned[i])
+            : <math.Point<double>>[];
+
+        final irisPx = computeIris && i < allAligned.length
+            ? await _getIrisForFace(decoded, meshPx)
+            : <math.Point<double>>[];
 
         faces.add(FaceResult(
           detection: det,
@@ -394,7 +430,7 @@ class FaceDetector {
           originalSize: imgSize,
         ));
       } catch (e, stackTrace) {
-        print('Warning: Failed to process face at bbox ${det.bbox}: $e');
+        print('Warning: Failed to process face at bbox ${dets[i].bbox}: $e');
         print('Stack trace: $stackTrace');
       }
     }

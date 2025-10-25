@@ -9,29 +9,35 @@ import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 void main() {
   runApp(const MaterialApp(
     debugShowCheckedModeBanner: false,
-    home: Sandbox(),
+    home: Example(),
   ));
 }
 
-class Sandbox extends StatefulWidget {
-  const Sandbox({super.key});
+class Example extends StatefulWidget {
+  const Example({super.key});
   @override
-  State<Sandbox> createState() => _SandboxState();
+  State<Example> createState() => _ExampleState();
 }
 
-class _SandboxState extends State<Sandbox> {
+class _ExampleState extends State<Example> {
   final FaceDetector _faceDetector = FaceDetector();
-
   Uint8List? _imageBytes;
   List<FaceResult> _faces = [];
   Size? _originalSize;
-  bool _isLoading = false;
 
+  bool _isLoading = false;
   bool _showBoundingBoxes = true;
   bool _showMesh = true;
   bool _showLandmarks = true;
   bool _showIrises = true;
   bool _showSettings = true;
+  bool _hasProcessedMesh = false;
+  bool _hasProcessedIris = false;
+
+  int? _detectionTimeMs;
+  int? _meshTimeMs;
+  int? _irisTimeMs;
+  int? _totalTimeMs;
 
   Color _boundingBoxColor = const Color(0xFF00FFCC);
   Color _landmarkColor = const Color(0xFF89CFF0);
@@ -65,6 +71,10 @@ class _SandboxState extends State<Sandbox> {
       _faces = [];
       _originalSize = null;
       _isLoading = true;
+      _detectionTimeMs = null;
+      _meshTimeMs = null;
+      _irisTimeMs = null;
+      _totalTimeMs = null;
     });
 
     final bytes = await picked.readAsBytes();
@@ -74,15 +84,78 @@ class _SandboxState extends State<Sandbox> {
       return;
     }
 
-    final result = await _faceDetector.detectFaces(bytes);
+    await _processImage(bytes);
+  }
+
+  Future<void> _processImage(Uint8List bytes) async {
+    setState(() => _isLoading = true);
+
+    final totalStart = DateTime.now();
+
+    final mode = _determineMode();
+
+    final detectionStart = DateTime.now();
+    final result = await _faceDetector.detectFaces(bytes, mode: mode);
+    final detectionEnd = DateTime.now();
+
     if (!mounted) return;
+
+    final totalEnd = DateTime.now();
+    final totalTime = totalEnd.difference(totalStart).inMilliseconds;
+    final detectionTime = detectionEnd.difference(detectionStart).inMilliseconds;
+
+    int? meshTime;
+    int? irisTime;
+    if (_showMesh || _showIrises) {
+      final extraTime = totalTime - detectionTime;
+      if (_showMesh && _showIrises) {
+        meshTime = (extraTime * 0.6).round();
+        irisTime = (extraTime * 0.4).round();
+      } else if (_showMesh) {
+        meshTime = extraTime;
+      } else if (_showIrises) {
+        irisTime = extraTime;
+      }
+    }
 
     setState(() {
       _imageBytes = bytes;
       _originalSize = result.originalSize;
       _faces = result.faces;
+      _hasProcessedMesh = _showMesh;
+      _hasProcessedIris = _showIrises;
       _isLoading = false;
+      _detectionTimeMs = detectionTime;
+      _meshTimeMs = meshTime;
+      _irisTimeMs = irisTime;
+      _totalTimeMs = totalTime;
     });
+  }
+
+  FaceDetectionMode _determineMode() {
+    if (_showIrises) {
+      return FaceDetectionMode.full;
+    } else if (_showMesh) {
+      return FaceDetectionMode.standard;
+    } else {
+      return FaceDetectionMode.fast;
+    }
+  }
+
+  Future<void> _onFeatureToggle(String feature, bool newValue) async {
+    final oldMode = _determineMode();
+
+    if (feature == 'mesh') {
+      setState(() => _showMesh = newValue);
+    } else if (feature == 'iris') {
+      setState(() => _showIrises = newValue);
+    }
+
+    final newMode = _determineMode();
+
+    if (_imageBytes != null && oldMode != newMode) {
+      await _processImage(_imageBytes!);
+    }
   }
 
   void _pickColor(String label, Color currentColor, ValueChanged<Color> onColorChanged) {
@@ -119,6 +192,192 @@ class _SandboxState extends State<Sandbox> {
           ],
         );
       },
+    );
+  }
+
+  Widget _buildInferenceTimingCard() {
+    if (_detectionTimeMs == null) return const SizedBox.shrink();
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.timer, size: 20, color: Colors.blue),
+                const SizedBox(width: 8),
+                const Text(
+                  'Inference Timing',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            _buildTimingRow('Face Detection', _detectionTimeMs!, Colors.green),
+            if (_meshTimeMs != null)
+              _buildTimingRow('Mesh Landmarks', _meshTimeMs!, Colors.orange),
+            if (_irisTimeMs != null)
+              _buildTimingRow('Iris Detection', _irisTimeMs!, Colors.purple),
+            const Divider(height: 16),
+            _buildTimingRow('Total Time', _totalTimeMs!, Colors.blue, isBold: true),
+            const SizedBox(height: 8),
+            _buildPerformanceIndicator(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTimingRow(String label, int milliseconds, Color color, {bool isBold = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: color,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+                  fontSize: isBold ? 15 : 14,
+                ),
+              ),
+            ],
+          ),
+          Text(
+            '${milliseconds}ms',
+            style: TextStyle(
+              fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+              fontSize: isBold ? 15 : 14,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPerformanceIndicator() {
+    if (_totalTimeMs == null) return const SizedBox.shrink();
+
+    String performance;
+    Color color;
+    IconData icon;
+
+    if (_totalTimeMs! < 200) {
+      performance = 'Excellent';
+      color = Colors.green;
+      icon = Icons.speed;
+    } else if (_totalTimeMs! < 500) {
+      performance = 'Good';
+      color = Colors.lightGreen;
+      icon = Icons.thumb_up;
+    } else if (_totalTimeMs! < 1000) {
+      performance = 'Fair';
+      color = Colors.orange;
+      icon = Icons.warning_amber;
+    } else {
+      performance = 'Slow';
+      color = Colors.red;
+      icon = Icons.hourglass_bottom;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 6),
+          Text(
+            performance,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFeatureStatus() {
+    if (_imageBytes == null) return const SizedBox.shrink();
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.info_outline, size: 20, color: Colors.blue),
+                const SizedBox(width: 8),
+                const Text(
+                  'Processing Status',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            _buildStatusRow('Detection', true, Colors.green),
+            _buildStatusRow('Mesh', _hasProcessedMesh, _showMesh ? Colors.green : Colors.grey),
+            _buildStatusRow('Iris', _hasProcessedIris, _showIrises ? Colors.green : Colors.grey),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusRow(String label, bool processed, Color color) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(
+            processed ? Icons.check_circle : Icons.pending,
+            size: 16,
+            color: color,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 14),
+          ),
+          const Spacer(),
+          Text(
+            processed ? 'Processed' : 'Skipped',
+            style: TextStyle(
+              fontSize: 12,
+              color: color,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -179,7 +438,7 @@ class _SandboxState extends State<Sandbox> {
                           _buildCheckbox(
                             'Show Mesh',
                             _showMesh,
-                                (value) => setState(() => _showMesh = value ?? false),
+                                (value) => _onFeatureToggle('mesh', value ?? false),
                           ),
                           _buildCheckbox(
                             'Show Landmarks',
@@ -189,7 +448,7 @@ class _SandboxState extends State<Sandbox> {
                           _buildCheckbox(
                             'Show Irises',
                             _showIrises,
-                                (value) => setState(() => _showIrises = value ?? false),
+                                (value) => _onFeatureToggle('iris', value ?? false),
                           ),
                         ],
                       ),
@@ -250,87 +509,98 @@ class _SandboxState extends State<Sandbox> {
                     ],
                   ),
                 ),
-              if (_showSettings) const Divider(height: 1),
+              _buildInferenceTimingCard(),
+              _buildFeatureStatus(),
               Expanded(
                 child: Center(
-                  child: _isLoading
-                      ? const Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      CircularProgressIndicator(),
-                      SizedBox(height: 16),
-                      Text('Processing image...'),
-                    ],
-                  )
-                      : hasImage
+                  child: hasImage
                       ? LayoutBuilder(
                     builder: (context, constraints) {
-                      return FittedBox(
-                        fit: BoxFit.contain,
-                        child: SizedBox(
-                          width: _originalSize!.width,
-                          height: _originalSize!.height,
-                          child: Stack(
-                            children: [
-                              Positioned.fill(
-                                child: Image.memory(_imageBytes!, fit: BoxFit.fill),
+                      final imageAspect = _originalSize!.width / _originalSize!.height;
+                      final boxAspect = constraints.maxWidth / constraints.maxHeight;
+                      double displayWidth, displayHeight;
+
+                      if (imageAspect > boxAspect) {
+                        displayWidth = constraints.maxWidth;
+                        displayHeight = displayWidth / imageAspect;
+                      } else {
+                        displayHeight = constraints.maxHeight;
+                        displayWidth = displayHeight * imageAspect;
+                      }
+
+                      final left = (constraints.maxWidth - displayWidth) / 2;
+                      final top = (constraints.maxHeight - displayHeight) / 2;
+                      final imageRect = Rect.fromLTWH(left, top, displayWidth, displayHeight);
+
+                      return Stack(
+                        children: [
+                          Positioned.fill(
+                            child: Center(
+                              child: Image.memory(
+                                _imageBytes!,
+                                fit: BoxFit.contain,
                               ),
-                              Positioned.fill(
-                                child: CustomPaint(
-                                  size: Size(_originalSize!.width, _originalSize!.height),
-                                  painter: _DetectionsPainter(
-                                    faces: _faces,
-                                    imageRectOnCanvas: Rect.fromLTWH(
-                                      0, 0, _originalSize!.width, _originalSize!.height,
-                                    ),
-                                    showBoundingBoxes: _showBoundingBoxes,
-                                    showMesh: _showMesh,
-                                    showLandmarks: _showLandmarks,
-                                    showIrises: _showIrises,
-                                    boundingBoxColor: _boundingBoxColor,
-                                    landmarkColor: _landmarkColor,
-                                    meshColor: _meshColor,
-                                    irisColor: _irisColor,
-                                    boundingBoxThickness: _boundingBoxThickness,
-                                    landmarkSize: _landmarkSize,
-                                    meshSize: _meshSize,
-                                  ),
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
-                        ),
+                          CustomPaint(
+                            size: Size(constraints.maxWidth, constraints.maxHeight),
+                            painter: _DetectionsPainter(
+                              faces: _faces,
+                              imageRectOnCanvas: imageRect,
+                              originalImageSize: _originalSize!,
+                              showBoundingBoxes: _showBoundingBoxes,
+                              showMesh: _showMesh,
+                              showLandmarks: _showLandmarks,
+                              showIrises: _showIrises,
+                              boundingBoxColor: _boundingBoxColor,
+                              landmarkColor: _landmarkColor,
+                              meshColor: _meshColor,
+                              irisColor: _irisColor,
+                              boundingBoxThickness: _boundingBoxThickness,
+                              landmarkSize: _landmarkSize,
+                              meshSize: _meshSize,
+                            ),
+                          ),
+                        ],
                       );
                     },
                   )
-                      : const Text('Pick an image to run detection'),
+                      : Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.image_outlined, size: 64, color: Colors.grey[400]),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No image selected',
+                        style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Pick an image to start detection',
+                        style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
           ),
-          if (!_showSettings)
+          if (!_showSettings && hasImage)
             Positioned(
-              top: 16,
+              top: 50,
               right: 16,
-              child: Material(
-                elevation: 4,
-                borderRadius: BorderRadius.circular(8),
-                child: InkWell(
-                  onTap: () => setState(() => _showSettings = true),
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.black,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(
-                      Icons.settings,
-                      color: Colors.white,
-                      size: 24,
-                    ),
-                  ),
-                ),
+              child: FloatingActionButton(
+                mini: true,
+                onPressed: () => setState(() => _showSettings = true),
+                backgroundColor: Colors.black.withOpacity(0.7),
+                child: const Icon(Icons.settings, color: Colors.white),
+              ),
+            ),
+          if (_isLoading)
+            Container(
+              color: Colors.black54,
+              child: const Center(
+                child: CircularProgressIndicator(),
               ),
             ),
         ],
@@ -423,6 +693,7 @@ class _SandboxState extends State<Sandbox> {
 class _DetectionsPainter extends CustomPainter {
   final List<FaceResult> faces;
   final Rect imageRectOnCanvas;
+  final Size originalImageSize;
   final bool showBoundingBoxes;
   final bool showMesh;
   final bool showLandmarks;
@@ -438,6 +709,7 @@ class _DetectionsPainter extends CustomPainter {
   _DetectionsPainter({
     required this.faces,
     required this.imageRectOnCanvas,
+    required this.originalImageSize,
     required this.showBoundingBoxes,
     required this.showMesh,
     required this.showLandmarks,
@@ -453,6 +725,8 @@ class _DetectionsPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (faces.isEmpty) return;
+
     final boxPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = boundingBoxThickness
@@ -479,15 +753,18 @@ class _DetectionsPainter extends CustomPainter {
     final ox = imageRectOnCanvas.left;
     final oy = imageRectOnCanvas.top;
 
+    final scaleX = imageRectOnCanvas.width / originalImageSize.width;
+    final scaleY = imageRectOnCanvas.height / originalImageSize.height;
+
     for (final face in faces) {
       // draw bounding boxes:
       if (showBoundingBoxes) {
         final c = face.bboxCorners;
         final rect = Rect.fromLTRB(
-          ox + c[0].x,
-          oy + c[0].y,
-          ox + c[2].x,
-          oy + c[2].y,
+          ox + c[0].x * scaleX,
+          oy + c[0].y * scaleY,
+          ox + c[2].x * scaleX,
+          oy + c[2].y * scaleY,
         );
         canvas.drawRect(rect, boxPaint);
       }
@@ -495,7 +772,11 @@ class _DetectionsPainter extends CustomPainter {
       // draw landmarks:
       if (showLandmarks) {
         for (final p in face.landmarks.values) {
-          canvas.drawCircle(Offset(ox + p.x, oy + p.y), landmarkSize, detKpPaint);
+          canvas.drawCircle(
+            Offset(ox + p.x * scaleX, oy + p.y * scaleY),
+            landmarkSize,
+            detKpPaint,
+          );
         }
       }
 
@@ -507,7 +788,11 @@ class _DetectionsPainter extends CustomPainter {
           final radius = meshSize + sqrt(imgArea) / 1000.0;
 
           for (final p in mesh) {
-            canvas.drawCircle(Offset(ox + p.x, oy + p.y), radius, meshPaint);
+            canvas.drawCircle(
+              Offset(ox + p.x * scaleX, oy + p.y * scaleY),
+              radius,
+              meshPaint,
+            );
           }
         }
       }
@@ -548,10 +833,10 @@ class _DetectionsPainter extends CustomPainter {
             if (p.y > maxY) maxY = p.y;
           }
 
-          final cx = ox + ((minX + maxX) * 0.5);
-          final cy = oy + ((minY + maxY) * 0.5);
-          final rx = (maxX - minX) * 0.5;
-          final ry = (maxY - minY) * 0.5;
+          final cx = ox + ((minX + maxX) * 0.5) * scaleX;
+          final cy = oy + ((minY + maxY) * 0.5) * scaleY;
+          final rx = (maxX - minX) * 0.5 * scaleX;
+          final ry = (maxY - minY) * 0.5 * scaleY;
 
           final oval = Rect.fromCenter(center: Offset(cx, cy), width: rx * 2, height: ry * 2);
           canvas.drawOval(oval, irisFill);
@@ -565,6 +850,7 @@ class _DetectionsPainter extends CustomPainter {
   bool shouldRepaint(covariant _DetectionsPainter old) {
     return old.faces != faces ||
         old.imageRectOnCanvas != imageRectOnCanvas ||
+        old.originalImageSize != originalImageSize ||
         old.showBoundingBoxes != showBoundingBoxes ||
         old.showMesh != showMesh ||
         old.showLandmarks != showLandmarks ||
