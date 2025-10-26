@@ -1,7 +1,7 @@
 name: face_detection_tflite_example
 description: Example app for face_detection_tflite
 publish_to: 'none'
-version: 1.0.2+3
+version: 1.0.3+4
 
 environment:
   sdk: '>=3.4.0 <4.0.0'

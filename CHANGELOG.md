@@ -1,7 +1,8 @@
+## 1.0.3
+-  Minor performance optimization, tests
+
 ## 1.0.2
 -  Three detection modes: fast, standard & full. Enables faster inferences when the full detection set is not needed.
-  - 
--  Performance optimization
 
 ## 1.0.1
 -  Improved error handling 
