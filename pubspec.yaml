@@ -19,7 +19,7 @@ dependencies:
   flutter:
     sdk: flutter
   image: ^4.5.4
-  tflite_flutter_custom: ^1.0.0
+  tflite_flutter_custom: ^1.0.2
   path: ^1.9.0
 
 dev_dependencies:

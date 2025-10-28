@@ -1,5 +1,7 @@
 ## 1.0.3
--  Minor performance optimization, tests
+-  Update tflite_flutter_custom to 1.0.1, equivalent to tflite_flutter 0.12.0.
+-  Unit tests
+-  Performance optimization(s) by enabling parallel inferences in images with multiple faces
 
 ## 1.0.2
 -  Three detection modes: fast, standard & full. Enables faster inferences when the full detection set is not needed.
