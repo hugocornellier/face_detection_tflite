@@ -7,8 +7,11 @@ double _sigmoidClipped(double x, {double limit = _rawScoreLimit}) {
   return 1.0 / (1.0 + math.exp(-v));
 }
 
-Future<_ImageTensor> _imageToTensor(img.Image src,
-    {required int outW, required int outH}) async {
+Future<_ImageTensor> _imageToTensor(
+  img.Image src, {
+  required int outW,
+  required int outH
+}) async {
   final rp = ReceivePort();
   final rgb = src.getBytes(order: img.ChannelOrder.rgb);
   final params = {
@@ -102,11 +105,19 @@ Future<void> _imageToTensorIsolate(Map<String, dynamic> params) async {
   });
 }
 
-List<_Detection> _detectionLetterboxRemoval(List<_Detection> dets, List<double> padding) {
+List<_Detection> _detectionLetterboxRemoval(
+  List<_Detection> dets,
+  List<double> padding
+) {
   final pt = padding[0], pb = padding[1], pl = padding[2], pr = padding[3];
   final sx = 1.0 - (pl + pr);
   final sy = 1.0 - (pt + pb);
-  _RectF unpad(_RectF r) => _RectF((r.xmin - pl) / sx, (r.ymin - pt) / sy, (r.xmax - pl) / sx, (r.ymax - pt) / sy);
+  _RectF unpad(_RectF r) => _RectF(
+    (r.xmin - pl) / sx,
+    (r.ymin - pt) / sy,
+    (r.xmax - pl) / sx,
+    (r.ymax - pt) / sy
+  );
   List<double> unpadKp(List<double> kps) {
     final out = List<double>.from(kps);
     for (var i = 0; i < out.length; i += 2) {
@@ -116,13 +127,23 @@ List<_Detection> _detectionLetterboxRemoval(List<_Detection> dets, List<double> 
     return out;
   }
   return dets
-      .map((d) => _Detection(bbox: unpad(d.bbox), score: d.score, keypointsXY: unpadKp(d.keypointsXY)))
+      .map((d) => _Detection(
+        bbox: unpad(d.bbox),
+        score: d.score,
+        keypointsXY: unpadKp(d.keypointsXY)
+      ))
       .toList();
 }
 
 double _clamp01(double v) => v < 0 ? 0 : (v > 1 ? 1 : v);
 
-List<List<double>> _unpackLandmarks(Float32List flat, int inW, int inH, List<double> padding, {bool clamp = true}) {
+List<List<double>> _unpackLandmarks(
+  Float32List flat,
+  int inW,
+  int inH,
+  List<double> padding, {
+  bool clamp = true
+}) {
   final pt = padding[0], pb = padding[1], pl = padding[2], pr = padding[3];
   final sx = 1.0 - (pl + pr);
   final sy = 1.0 - (pt + pb);

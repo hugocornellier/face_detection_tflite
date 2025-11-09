@@ -54,8 +54,11 @@ class IrisLandmark {
     return obj;
   }
 
-  static Future<IrisLandmark> createFromFile(String modelPath,
-      {InterpreterOptions? options, bool useIsolate = true}) async {
+  static Future<IrisLandmark> createFromFile(
+    String modelPath, {
+    InterpreterOptions? options,
+    bool useIsolate = true
+  }) async {
     final itp = await Interpreter.fromFile(
       File(modelPath),
       options: options ?? InterpreterOptions(),
@@ -96,11 +99,13 @@ class IrisLandmark {
     final out = List<List<List<List<double>>>>.filled(
       1,
       List.generate(
-          h,
-              (_) => List.generate(
-              w, (_) => List<double>.filled(3, 0.0, growable: false),
-              growable: false),
-          growable: false),
+        h,
+        (_) => List.generate(
+          w, (_) => List<double>.filled(3, 0.0, growable: false),
+          growable: false
+        ),
+        growable: false
+      ),
       growable: false,
     );
     var k = 0;
@@ -327,7 +332,13 @@ class IrisLandmark {
     img.Image src, _AlignedRoi roi, {
     bool isRight = false
   }) async {
-    final crop = await extractAlignedSquare(src, roi.cx, roi.cy, roi.size, roi.theta);
+    final crop = await extractAlignedSquare(
+      src,
+      roi.cx,
+      roi.cy,
+      roi.size,
+      roi.theta
+    );
     final eye = isRight ? await _flipHorizontal(crop) : crop;
     final lmNorm = await callIrisOnly(eye);
     final ct = math.cos(roi.theta);
@@ -357,4 +368,3 @@ extension on IrisLandmark {
     return img.flipHorizontal(src);
   }
 }
-

@@ -348,7 +348,10 @@ class FaceDetector {
     return [left, right];
   }
 
-  Future<List<Offset>> irisFromEyeRois(img.Image decoded, List<_AlignedRoi> rois) async {
+  Future<List<Offset>> irisFromEyeRois(
+    img.Image decoded,
+    List<_AlignedRoi> rois
+  ) async {
     final ir = _iris;
     if (ir == null) return const <Offset>[];
     final pts = <Offset>[];
@@ -449,7 +452,9 @@ class FaceDetector {
     return out;
   }
 
-  List<List<math.Point<double>>> splitMeshesIfConcatenated(List<math.Point<double>> meshPts) {
+  List<List<math.Point<double>>> splitMeshesIfConcatenated(
+    List<math.Point<double>> meshPts
+  ) {
     if (meshPts.isEmpty) return const <List<math.Point<double>>>[];
     if (meshPts.length % kMeshPoints != 0) return [meshPts];
     final faces = meshPts.length ~/ kMeshPoints;

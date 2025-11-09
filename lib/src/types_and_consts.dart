@@ -203,13 +203,3 @@ class _DecodedBox {
   final List<double> keypointsXY;
   _DecodedBox(this.bbox, this.keypointsXY);
 }
-
-extension _DetectionPoints on _Detection {
-  Map<FaceIndex, math.Point<double>> get landmarksPoints => landmarks;
-}
-
-extension _FaceResultPoints on FaceResult {
-  List<math.Point<double>> get bboxCornersPoints => bboxCorners;
-  List<math.Point<double>> get meshPoints => mesh;
-  List<math.Point<double>> get irisesPoints => irises;
-}
