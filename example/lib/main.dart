@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
 import 'dart:math';
 import 'dart:typed_data';
-import 'dart:ui';
+
+import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:face_detection_tflite/face_detection_tflite.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
@@ -95,7 +95,7 @@ class _ExampleState extends State<Example> {
     final mode = _determineMode();
 
     final detectionStart = DateTime.now();
-    final result = await _faceDetector.detectFaces(bytes, mode: mode);
+    final FaceDetectionResults result = await _faceDetector.detectFaces(bytes, mode: mode);
     final detectionEnd = DateTime.now();
 
     if (!mounted) return;
@@ -262,9 +262,9 @@ class _ExampleState extends State<Example> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withAlpha(26),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withAlpha(77)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -498,7 +498,6 @@ class _ExampleState extends State<Example> {
 
                       final left = (constraints.maxWidth - displayWidth) / 2;
                       final top = (constraints.maxHeight - displayHeight) / 2;
-                      final imageRect = Rect.fromLTWH(left, top, displayWidth, displayHeight);
 
                       return Stack(
                         children: [
@@ -566,7 +565,7 @@ class _ExampleState extends State<Example> {
               child: FloatingActionButton(
                 mini: true,
                 onPressed: () => setState(() => _showSettings = true),
-                backgroundColor: Colors.black.withOpacity(0.7),
+                backgroundColor: Colors.black.withAlpha(179),
                 child: const Icon(Icons.settings, color: Colors.white),
               ),
             ),
@@ -716,13 +715,13 @@ class _DetectionsPainter extends CustomPainter {
 
     final irisFill = Paint()
       ..style = PaintingStyle.fill
-      ..color = irisColor.withOpacity(0.6)
+      ..color = irisColor.withAlpha(153)
       ..blendMode = BlendMode.srcOver;
 
     final irisStroke = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5
-      ..color = irisColor.withOpacity(0.9);
+      ..color = irisColor.withAlpha(230);
 
     final ox = imageRectOnCanvas.left;
     final oy = imageRectOnCanvas.top;

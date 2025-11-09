@@ -14,9 +14,10 @@ class IrisLandmark {
 
   IrisLandmark._(this._itp, this._inW, this._inH);
 
-  static Future<IrisLandmark> create(
-    {InterpreterOptions? options, bool useIsolate = true}
-  ) async {
+  static Future<IrisLandmark> create({
+    InterpreterOptions? options,
+    bool useIsolate = true
+  }) async {
     final itp = await Interpreter.fromAsset(
       'packages/face_detection_tflite/assets/models/$_irisLandmarkModel',
       options: options ?? InterpreterOptions(),
@@ -177,7 +178,7 @@ class IrisLandmark {
     }
   }
 
-  Future<List<List<double>>> runOnImage(img.Image src, RectF eyeRoi) async {
+  Future<List<List<double>>> runOnImage(img.Image src, _RectF eyeRoi) async {
     final eyeCrop = await cropFromRoi(src, eyeRoi);
     final lmNorm = await call(eyeCrop);
     final imgW = src.width.toDouble();
@@ -323,9 +324,9 @@ class IrisLandmark {
   }
 
   Future<List<List<double>>> runOnImageAlignedIris(
-    img.Image src, AlignedRoi roi,
-    { bool isRight = false }
-  ) async {
+    img.Image src, _AlignedRoi roi, {
+    bool isRight = false
+  }) async {
     final crop = await extractAlignedSquare(src, roi.cx, roi.cy, roi.size, roi.theta);
     final eye = isRight ? await _flipHorizontal(crop) : crop;
     final lmNorm = await callIrisOnly(eye);

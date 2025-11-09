@@ -19,25 +19,13 @@ This package provides on-device face and landmark detection with minimal depende
 
 ![Example Screenshot](assets/screenshots/iris-detection-ex1.png)
 
-## Table of Contents
-
-- [Features](#features)
-- [Quick Start](#quick-start)
-- [Models](#models)
-- [Types](#types)
-- [Example](#example)
-- [Inspiration](#inspiration)
-
 ## Features
 
-- On-device face detection (multiple SSD variants)
-- 468-point face mesh, face landmarks, iris landmarks and bounding boxes
-- All coordinates are in **absolute pixel coordinates** (`Point<double>`)
-  - `x` ranges from `0` to `image.width`
-  - `y` ranges from `0` to `image.height`
-  - Ready to use co-ordinates without any scaling
+- On-device face detection, runs fully offline
+- 468 point mesh, face landmarks, iris landmarks and bounding boxes
+- All coordinates are in absolute pixel coordinates
 - Truly cross-platform: compatible with Android, iOS, macOS, Windows, and Linux
-- The `example/` app illustrates how to detect and render results on images: bounding boxes, a 468-point face mesh, and iris landmarks.
+- The `example` app illustrates how to detect and render results on images: bounding boxes, a 468-point face mesh, and iris landmarks.
 
 ## Quick Start
 

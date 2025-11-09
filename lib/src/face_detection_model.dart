@@ -26,7 +26,11 @@ class FaceDetection {
 
   FaceDetection._(this._itp, this._inW, this._inH, this._anchors, this._assumeMirrored);
 
-  static Future<FaceDetection> create(FaceDetectionModel model, {InterpreterOptions? options, bool useIsolate = true}) async {
+  static Future<FaceDetection> create(
+    FaceDetectionModel model, {
+    InterpreterOptions? options,
+    bool useIsolate = true
+  }) async {
     final opts = _optsFor(model);
     final inW = opts['input_size_width'] as int;
     final inH = opts['input_size_height'] as int;
@@ -85,10 +89,16 @@ class FaceDetection {
 
   List<List<List<List<double>>>> _asNHWC4D(Float32List flat, int h, int w) {
     final out = List<List<List<List<double>>>>.filled(
-        1,
-        List.generate(h, (_) => List.generate(w, (_) => List<double>.filled(3, 0.0, growable: false), growable: false),
-            growable: false),
-        growable: false);
+      1,
+      List.generate(
+        h, (_) => List.generate(
+          w,
+          (_) => List<double>.filled(3, 0.0, growable: false), growable: false
+        ),
+        growable: false
+      ),
+      growable: false
+    );
 
     var k = 0;
     for (var y = 0; y < h; y++) {
@@ -122,7 +132,7 @@ class FaceDetection {
     }
   }
 
-  Future<List<Detection>> call(Uint8List imageBytes, {RectF? roi}) async {
+  Future<List<_Detection>> call(Uint8List imageBytes, {_RectF? roi}) async {
     if (imageBytes.isEmpty) {
       throw ArgumentError('Image bytes cannot be empty');
     }
@@ -197,7 +207,7 @@ class FaceDetection {
     final pruned = _nms(dets, _minSuppressionThreshold, _minScore, weighted: true);
     final fixed = _detectionLetterboxRemoval(pruned, pack.padding);
 
-    List<Detection> mapped = roi != null ? fixed.map((d) => _mapDetectionToRoi(d, roi)).toList() : fixed;
+    List<_Detection> mapped = roi != null ? fixed.map((d) => _mapDetectionToRoi(d, roi)).toList() : fixed;
 
     if (_assumeMirrored) {
       mapped = mapped.map((d) {
@@ -209,7 +219,7 @@ class FaceDetection {
         for (int i = 0; i < kp.length; i += 2) {
           kp[i] = 1.0 - kp[i];
         }
-        return Detection(bbox: RectF(xmin, ymin, xmax, ymax), score: d.score, keypointsXY: kp);
+        return _Detection(bbox: _RectF(xmin, ymin, xmax, ymax), score: d.score, keypointsXY: kp);
       }).toList();
     }
 
@@ -241,7 +251,7 @@ class FaceDetection {
         kp.add(tmp[j + 0]);
         kp.add(tmp[j + 1]);
       }
-      out.add(_DecodedBox(RectF(xmin, ymin, xmax, ymax), kp));
+      out.add(_DecodedBox(_RectF(xmin, ymin, xmax, ymax), kp));
     }
     return out;
   }
@@ -255,13 +265,13 @@ class FaceDetection {
     return scores;
   }
 
-  List<Detection> _toDetections(List<_DecodedBox> boxes, Float32List scores) {
-    final res = <Detection>[];
+  List<_Detection> _toDetections(List<_DecodedBox> boxes, Float32List scores) {
+    final res = <_Detection>[];
     final n = math.min(boxes.length, scores.length);
     for (var i = 0; i < n; i++) {
       final b = boxes[i].bbox;
       if (b.xmax <= b.xmin || b.ymax <= b.ymin) continue;
-      res.add(Detection(bbox: b, score: scores[i], keypointsXY: boxes[i].keypointsXY));
+      res.add(_Detection(bbox: b, score: scores[i], keypointsXY: boxes[i].keypointsXY));
     }
     return res;
   }

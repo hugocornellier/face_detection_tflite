@@ -7,7 +7,7 @@ double _sigmoidClipped(double x, {double limit = _rawScoreLimit}) {
   return 1.0 / (1.0 + math.exp(-v));
 }
 
-Future<ImageTensor> _imageToTensor(img.Image src,
+Future<_ImageTensor> _imageToTensor(img.Image src,
     {required int outW, required int outH}) async {
   final rp = ReceivePort();
   final rgb = src.getBytes(order: img.ChannelOrder.rgb);
@@ -32,7 +32,7 @@ Future<ImageTensor> _imageToTensor(img.Image src,
   final int ow = msg['outW'] as int;
   final int oh = msg['outH'] as int;
 
-  return ImageTensor(tensor, padding, ow, oh);
+  return _ImageTensor(tensor, padding, ow, oh);
 }
 
 @pragma('vm:entry-point')
@@ -102,11 +102,11 @@ Future<void> _imageToTensorIsolate(Map<String, dynamic> params) async {
   });
 }
 
-List<Detection> _detectionLetterboxRemoval(List<Detection> dets, List<double> padding) {
+List<_Detection> _detectionLetterboxRemoval(List<_Detection> dets, List<double> padding) {
   final pt = padding[0], pb = padding[1], pl = padding[2], pr = padding[3];
   final sx = 1.0 - (pl + pr);
   final sy = 1.0 - (pt + pb);
-  RectF unpad(RectF r) => RectF((r.xmin - pl) / sx, (r.ymin - pt) / sy, (r.xmax - pl) / sx, (r.ymax - pt) / sy);
+  _RectF unpad(_RectF r) => _RectF((r.xmin - pl) / sx, (r.ymin - pt) / sy, (r.xmax - pl) / sx, (r.ymax - pt) / sy);
   List<double> unpadKp(List<double> kps) {
     final out = List<double>.from(kps);
     for (var i = 0; i < out.length; i += 2) {
@@ -116,7 +116,7 @@ List<Detection> _detectionLetterboxRemoval(List<Detection> dets, List<double> pa
     return out;
   }
   return dets
-      .map((d) => Detection(bbox: unpad(d.bbox), score: d.score, keypointsXY: unpadKp(d.keypointsXY)))
+      .map((d) => _Detection(bbox: unpad(d.bbox), score: d.score, keypointsXY: unpadKp(d.keypointsXY)))
       .toList();
 }
 
@@ -143,9 +143,9 @@ List<List<double>> _unpackLandmarks(Float32List flat, int inW, int inH, List<dou
   return out;
 }
 
-Detection _mapDetectionToRoi(Detection d, RectF roi) {
+_Detection _mapDetectionToRoi(_Detection d, _RectF roi) {
   final dx = roi.xmin, dy = roi.ymin, sx = roi.w, sy = roi.h;
-  RectF mapRect(RectF r) => RectF(dx + r.xmin * sx, dy + r.ymin * sy, dx + r.xmax * sx, dy + r.ymax * sy);
+  _RectF mapRect(_RectF r) => _RectF(dx + r.xmin * sx, dy + r.ymin * sy, dx + r.xmax * sx, dy + r.ymax * sy);
   List<double> mapKp(List<double> k) {
     final o = List<double>.from(k);
     for (int i = 0; i < o.length; i += 2) {
@@ -154,10 +154,10 @@ Detection _mapDetectionToRoi(Detection d, RectF roi) {
     }
     return o;
   }
-  return Detection(bbox: mapRect(d.bbox), score: d.score, keypointsXY: mapKp(d.keypointsXY), imageSize: d.imageSize);
+  return _Detection(bbox: mapRect(d.bbox), score: d.score, keypointsXY: mapKp(d.keypointsXY), imageSize: d.imageSize);
 }
 
-double _iou(RectF a, RectF b) {
+double _iou(_RectF a, _RectF b) {
   final x1 = math.max(a.xmin, b.xmin);
   final y1 = math.max(a.ymin, b.ymin);
   final x2 = math.min(a.xmax, b.xmax);
@@ -171,13 +171,13 @@ double _iou(RectF a, RectF b) {
   return uni <= 0 ? 0.0 : inter / uni;
 }
 
-List<Detection> _nms(List<Detection> dets, double iouThresh, double scoreThresh, {bool weighted = true}) {
-  final kept = <Detection>[];
+List<_Detection> _nms(List<_Detection> dets, double iouThresh, double scoreThresh, {bool weighted = true}) {
+  final kept = <_Detection>[];
   final cand = dets.where((d) => d.score >= scoreThresh).toList()
     ..sort((a, b) => b.score.compareTo(a.score));
   while (cand.isNotEmpty) {
     final base = cand.removeAt(0);
-    final merged = <Detection>[base];
+    final merged = <_Detection>[base];
     cand.removeWhere((d) {
       if (_iou(base.bbox, d.bbox) >= iouThresh) {
         merged.add(d);
@@ -196,8 +196,8 @@ List<Detection> _nms(List<Detection> dets, double iouThresh, double scoreThresh,
         xmax += m.bbox.xmax * m.score;
         ymax += m.bbox.ymax * m.score;
       }
-      kept.add(Detection(
-        bbox: RectF(xmin / sw, ymin / sw, xmax / sw, ymax / sw),
+      kept.add(_Detection(
+        bbox: _RectF(xmin / sw, ymin / sw, xmax / sw, ymax / sw),
         score: base.score,
         keypointsXY: base.keypointsXY,
       ));
@@ -271,15 +271,15 @@ String _nameFor(FaceDetectionModel m) {
   }
 }
 
-RectF faceDetectionToRoi(RectF bbox, {double expandFraction = 0.6}) {
+_RectF faceDetectionToRoi(_RectF bbox, {double expandFraction = 0.6}) {
   final e = bbox.expand(expandFraction);
   final cx = (e.xmin + e.xmax) * 0.5;
   final cy = (e.ymin + e.ymax) * 0.5;
   final s = math.max(e.w, e.h) * 0.5;
-  return RectF(cx - s, cy - s, cx + s, cy + s);
+  return _RectF(cx - s, cy - s, cx + s, cy + s);
 }
 
-Future<img.Image> cropFromRoi(img.Image src, RectF roi) async {
+Future<img.Image> cropFromRoi(img.Image src, _RectF roi) async {
   if (roi.xmin < 0 || roi.ymin < 0 || roi.xmax > 1 || roi.ymax > 1) {
     throw ArgumentError('ROI coordinates must be normalized [0,1], got: (${roi.xmin}, ${roi.ymin}, ${roi.xmax}, ${roi.ymax})');
   }
@@ -382,7 +382,7 @@ img.ColorRgb8 _bilinearSampleRgb8(img.Image src, double fx, double fy) {
 class _DecodedRgb {
   final int width;
   final int height;
-  final Uint8List rgb; // RGB, 3 bytes per pixel
+  final Uint8List rgb;
   const _DecodedRgb(this.width, this.height, this.rgb);
 }
 
