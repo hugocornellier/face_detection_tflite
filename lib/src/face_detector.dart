@@ -125,12 +125,12 @@ class FaceDetector {
     final imgW = decoded.width.toDouble();
     final imgH = decoded.height.toDouble();
     final lf = Offset(
-      det.keypointsXY[FaceIndex.leftEye.index * 2] * imgW,
-      det.keypointsXY[FaceIndex.leftEye.index * 2 + 1] * imgH,
+      det.keypointsXY[FaceLandmarkType.leftEye.index * 2] * imgW,
+      det.keypointsXY[FaceLandmarkType.leftEye.index * 2 + 1] * imgH,
     );
     final rf = Offset(
-      det.keypointsXY[FaceIndex.rightEye.index * 2] * imgW,
-      det.keypointsXY[FaceIndex.rightEye.index * 2 + 1] * imgH,
+      det.keypointsXY[FaceLandmarkType.rightEye.index * 2] * imgW,
+      det.keypointsXY[FaceLandmarkType.rightEye.index * 2 + 1] * imgH,
     );
 
     final centers = await _computeIrisCentersOnMainThread(
@@ -140,10 +140,10 @@ class FaceDetector {
     );
 
     final kp = List<double>.from(det.keypointsXY);
-    kp[FaceIndex.leftEye.index * 2]     = centers[0].dx / imgW;
-    kp[FaceIndex.leftEye.index * 2 + 1] = centers[0].dy / imgH;
-    kp[FaceIndex.rightEye.index * 2]    = centers[1].dx / imgW;
-    kp[FaceIndex.rightEye.index * 2 + 1]= centers[1].dy / imgH;
+    kp[FaceLandmarkType.leftEye.index * 2]     = centers[0].dx / imgW;
+    kp[FaceLandmarkType.leftEye.index * 2 + 1] = centers[0].dy / imgH;
+    kp[FaceLandmarkType.rightEye.index * 2]    = centers[1].dx / imgW;
+    kp[FaceLandmarkType.rightEye.index * 2 + 1]= centers[1].dy / imgH;
 
     final updatedFirst = _Detection(
       bbox: det.bbox,
@@ -248,12 +248,12 @@ class FaceDetector {
       final imgW = decoded.width.toDouble();
       final imgH = decoded.height.toDouble();
       final lf = Offset(
-        det.keypointsXY[FaceIndex.leftEye.index * 2] * imgW,
-        det.keypointsXY[FaceIndex.leftEye.index * 2 + 1] * imgH,
+        det.keypointsXY[FaceLandmarkType.leftEye.index * 2] * imgW,
+        det.keypointsXY[FaceLandmarkType.leftEye.index * 2 + 1] * imgH,
       );
       final rf = Offset(
-        det.keypointsXY[FaceIndex.rightEye.index * 2] * imgW,
-        det.keypointsXY[FaceIndex.rightEye.index * 2 + 1] * imgH,
+        det.keypointsXY[FaceLandmarkType.rightEye.index * 2] * imgW,
+        det.keypointsXY[FaceLandmarkType.rightEye.index * 2 + 1] * imgH,
       );
 
       final centers = await _computeIrisCentersOnMainThread(
@@ -263,10 +263,10 @@ class FaceDetector {
       );
 
       final kp = List<double>.from(det.keypointsXY);
-      kp[FaceIndex.leftEye.index * 2]     = centers[0].dx / imgW;
-      kp[FaceIndex.leftEye.index * 2 + 1] = centers[0].dy / imgH;
-      kp[FaceIndex.rightEye.index * 2]    = centers[1].dx / imgW;
-      kp[FaceIndex.rightEye.index * 2 + 1]= centers[1].dy / imgH;
+      kp[FaceLandmarkType.leftEye.index * 2]     = centers[0].dx / imgW;
+      kp[FaceLandmarkType.leftEye.index * 2 + 1] = centers[0].dy / imgH;
+      kp[FaceLandmarkType.rightEye.index * 2]    = centers[1].dx / imgW;
+      kp[FaceLandmarkType.rightEye.index * 2 + 1]= centers[1].dy / imgH;
 
       updated.add(_Detection(
         bbox: det.bbox,
@@ -282,12 +282,12 @@ class FaceDetector {
     final imgW = decoded.width.toDouble();
     final imgH = decoded.height.toDouble();
 
-    final lx = det.keypointsXY[FaceIndex.leftEye.index * 2] * imgW;
-    final ly = det.keypointsXY[FaceIndex.leftEye.index * 2 + 1] * imgH;
-    final rx = det.keypointsXY[FaceIndex.rightEye.index * 2] * imgW;
-    final ry = det.keypointsXY[FaceIndex.rightEye.index * 2 + 1] * imgH;
-    final mx = det.keypointsXY[FaceIndex.mouth.index * 2] * imgW;
-    final my = det.keypointsXY[FaceIndex.mouth.index * 2 + 1] * imgH;
+    final lx = det.keypointsXY[FaceLandmarkType.leftEye.index * 2] * imgW;
+    final ly = det.keypointsXY[FaceLandmarkType.leftEye.index * 2 + 1] * imgH;
+    final rx = det.keypointsXY[FaceLandmarkType.rightEye.index * 2] * imgW;
+    final ry = det.keypointsXY[FaceLandmarkType.rightEye.index * 2 + 1] * imgH;
+    final mx = det.keypointsXY[FaceLandmarkType.mouth.index * 2] * imgW;
+    final my = det.keypointsXY[FaceLandmarkType.mouth.index * 2 + 1] * imgH;
 
     final eyeCx = (lx + rx) * 0.5;
     final eyeCy = (ly + ry) * 0.5;
@@ -491,12 +491,12 @@ class FaceDetector {
   /// - [FaceDetectionMode.standard]: Adds 468-point face mesh
   /// - [FaceDetectionMode.full]: Adds iris tracking (10 points)
   ///
-  /// Returns a result containing a list of [FaceResult] objects, one per detected face.
-  /// Each [FaceResult] includes bounding box corners, facial landmarks, and optionally
-  /// mesh and iris data depending on the mode.
+  /// Returns a [List] of [Face] objects, one per detected face. Each [Face] includes
+  /// bounding box corners, facial landmarks, and optionally mesh and iris data
+  /// depending on the mode.
   ///
   /// Throws [StateError] if [initialize] has not been called successfully.
-  Future<FaceDetectionResults> detectFaces(
+  Future<List<Face>> detectFaces(
     Uint8List imageBytes, {
     FaceDetectionMode mode = FaceDetectionMode.full,
   }) async {
@@ -507,7 +507,7 @@ class FaceDetector {
     final computeMesh = mode == FaceDetectionMode.standard || mode == FaceDetectionMode.full;
 
     final dets = await _detectDetections(imageBytes, refineEyesWithIris: computeIris);
-    final faces = <FaceResult>[];
+    final faces = <Face>[];
 
     final imgW = decoded.width.toDouble();
     final imgH = decoded.height.toDouble();
@@ -529,21 +529,17 @@ class FaceDetector {
             ? await _getIrisForFace(decoded, meshPx)
             : <math.Point<double>>[];
 
-        faces.add(FaceResult(
+        faces.add(Face(
           detection: det,
           mesh: meshPx,
           irises: irisPx,
           originalSize: imgSize,
         ));
       } catch (e) {
-        // print('Warning: Failed to process face at bbox ${dets[i].bbox}: $e');
       }
     }
 
-    return FaceDetectionResults(
-      faces: faces,
-      originalSize: imgSize,
-    );
+    return faces;
   }
 
   /// Releases all resources held by the detector.

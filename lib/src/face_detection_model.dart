@@ -31,24 +31,26 @@ class FaceDetection {
     InterpreterOptions? options,
     bool useIsolate = true
   }) async {
-    final opts = _optsFor(model);
-    final inW = opts['input_size_width'] as int;
-    final inH = opts['input_size_height'] as int;
-    final anchors = _ssdGenerateAnchors(opts);
-    final itp = await Interpreter.fromAsset(
-      'packages/face_detection_tflite/assets/models/${_nameFor(model)}',
-      options: options ?? InterpreterOptions(),
-    );
-    final assumeMirrored = switch (model) {
+    final Map<String, Object> opts = _optsFor(model);
+    final int inW = opts['input_size_width'] as int;
+    final int inH = opts['input_size_height'] as int;
+    final bool assumeMirrored = switch (model) {
       FaceDetectionModel.backCamera => false,
       _ => true,
     };
-    final obj = FaceDetection._(itp, inW, inH, anchors, assumeMirrored);
+
+    final Interpreter itp = await Interpreter.fromAsset(
+      'packages/face_detection_tflite/assets/models/${_nameFor(model)}',
+      options: options ?? InterpreterOptions(),
+    );
+
+    final Float32List anchors = _ssdGenerateAnchors(opts);
+    final FaceDetection obj = FaceDetection._(itp, inW, inH, anchors, assumeMirrored);
 
     int foundIdx = -1;
-    for (var i = 0; i < 10; i++) {
+    for (int i = 0; i < 10; i++) {
       try {
-        final s = itp.getInputTensor(i).shape;
+        final List<int> s = itp.getInputTensor(i).shape;
         if (s.length == 4 && s.last == 3) {
           foundIdx = i;
           break;
@@ -100,9 +102,9 @@ class FaceDetection {
       growable: false
     );
 
-    var k = 0;
-    for (var y = 0; y < h; y++) {
-      for (var x = 0; x < w; x++) {
+    int k = 0;
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
         final px = out[0][y][x];
         px[0] = flat[k++];
         px[1] = flat[k++];
@@ -125,8 +127,8 @@ class FaceDetection {
 
   void _flatten2D(List<List<num>> src, Float32List dst) {
     var k = 0;
-    for (final a in src) {
-      for (final b in a) {
+    for (final List<num> a in src) {
+      for (final num b in a) {
         dst[k++] = b.toDouble();
       }
     }
@@ -148,8 +150,11 @@ class FaceDetection {
     if (_iso != null) {
       final input4d = _asNHWC4D(pack.tensorNHWC, _inH, _inW);
 
-      final inputCount = _itp.getInputTensors().length;
-      final inputs = List<Object?>.filled(inputCount, null, growable: false);
+      final int inputCount = _itp.getInputTensors().length;
+      final List<Object?> inputs = List<Object?>.filled(
+        inputCount, null,
+        growable: false
+      );
       inputs[_inputIdx] = input4d;
 
       final b0 = _boxesShape[0], b1 = _boxesShape[1], b2 = _boxesShape[2];

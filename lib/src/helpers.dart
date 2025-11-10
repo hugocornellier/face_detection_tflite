@@ -109,9 +109,10 @@ List<_Detection> _detectionLetterboxRemoval(
   List<_Detection> dets,
   List<double> padding
 ) {
-  final pt = padding[0], pb = padding[1], pl = padding[2], pr = padding[3];
-  final sx = 1.0 - (pl + pr);
-  final sy = 1.0 - (pt + pb);
+  final double pt = padding[0], pb = padding[1], pl = padding[2], pr = padding[3];
+  final double sx = 1.0 - (pl + pr);
+  final double sy = 1.0 - (pt + pb);
+
   _RectF unpad(_RectF r) => _RectF(
     (r.xmin - pl) / sx,
     (r.ymin - pt) / sy,
@@ -119,13 +120,14 @@ List<_Detection> _detectionLetterboxRemoval(
     (r.ymax - pt) / sy
   );
   List<double> unpadKp(List<double> kps) {
-    final out = List<double>.from(kps);
-    for (var i = 0; i < out.length; i += 2) {
+    final List<double> out = List<double>.from(kps);
+    for (int i = 0; i < out.length; i += 2) {
       out[i] = (out[i] - pl) / sx;
       out[i + 1] = (out[i + 1] - pt) / sy;
     }
     return out;
   }
+
   return dets
       .map((d) => _Detection(
         bbox: unpad(d.bbox),
@@ -144,15 +146,16 @@ List<List<double>> _unpackLandmarks(
   List<double> padding, {
   bool clamp = true
 }) {
-  final pt = padding[0], pb = padding[1], pl = padding[2], pr = padding[3];
-  final sx = 1.0 - (pl + pr);
-  final sy = 1.0 - (pt + pb);
-  final n = (flat.length / 3).floor();
-  final out = <List<double>>[];
+  final double pt = padding[0], pb = padding[1], pl = padding[2], pr = padding[3];
+  final double sx = 1.0 - (pl + pr);
+  final double sy = 1.0 - (pt + pb);
+
+  final int n = (flat.length / 3).floor();
+  final List<List<double>> out = <List<double>>[];
   for (var i = 0; i < n; i++) {
-    var x = flat[i * 3 + 0] / inW;
-    var y = flat[i * 3 + 1] / inH;
-    final z = flat[i * 3 + 2];
+    double x = flat[i * 3 + 0] / inW;
+    double y = flat[i * 3 + 1] / inH;
+    final double z = flat[i * 3 + 2];
     x = (x - pl) / sx;
     y = (y - pt) / sy;
     if (clamp) {
@@ -165,40 +168,55 @@ List<List<double>> _unpackLandmarks(
 }
 
 _Detection _mapDetectionToRoi(_Detection d, _RectF roi) {
-  final dx = roi.xmin, dy = roi.ymin, sx = roi.w, sy = roi.h;
-  _RectF mapRect(_RectF r) => _RectF(dx + r.xmin * sx, dy + r.ymin * sy, dx + r.xmax * sx, dy + r.ymax * sy);
+  final double dx = roi.xmin, dy = roi.ymin, sx = roi.w, sy = roi.h;
+  _RectF mapRect(_RectF r) => _RectF(
+    dx + r.xmin * sx,
+    dy + r.ymin * sy,
+    dx + r.xmax * sx,
+    dy + r.ymax * sy
+  );
   List<double> mapKp(List<double> k) {
-    final o = List<double>.from(k);
+    final List<double> o = List<double>.from(k);
     for (int i = 0; i < o.length; i += 2) {
       o[i] = _clamp01(dx + o[i] * sx);
       o[i + 1] = _clamp01(dy + o[i + 1] * sy);
     }
     return o;
   }
-  return _Detection(bbox: mapRect(d.bbox), score: d.score, keypointsXY: mapKp(d.keypointsXY), imageSize: d.imageSize);
+  return _Detection(
+    bbox: mapRect(d.bbox),
+    score: d.score,
+    keypointsXY: mapKp(d.keypointsXY),
+    imageSize: d.imageSize
+  );
 }
 
 double _iou(_RectF a, _RectF b) {
-  final x1 = math.max(a.xmin, b.xmin);
-  final y1 = math.max(a.ymin, b.ymin);
-  final x2 = math.min(a.xmax, b.xmax);
-  final y2 = math.min(a.ymax, b.ymax);
-  final iw = math.max(0.0, x2 - x1);
-  final ih = math.max(0.0, y2 - y1);
-  final inter = iw * ih;
-  final areaA = math.max(0.0, a.w) * math.max(0.0, a.h);
-  final areaB = math.max(0.0, b.w) * math.max(0.0, b.h);
-  final uni = areaA + areaB - inter;
+  final double x1 = math.max(a.xmin, b.xmin);
+  final double y1 = math.max(a.ymin, b.ymin);
+  final double x2 = math.min(a.xmax, b.xmax);
+  final double y2 = math.min(a.ymax, b.ymax);
+  final double iw = math.max(0.0, x2 - x1);
+  final double ih = math.max(0.0, y2 - y1);
+  final double inter = iw * ih;
+  final double areaA = math.max(0.0, a.w) * math.max(0.0, a.h);
+  final double areaB = math.max(0.0, b.w) * math.max(0.0, b.h);
+  final double uni = areaA + areaB - inter;
   return uni <= 0 ? 0.0 : inter / uni;
 }
 
-List<_Detection> _nms(List<_Detection> dets, double iouThresh, double scoreThresh, {bool weighted = true}) {
-  final kept = <_Detection>[];
-  final cand = dets.where((d) => d.score >= scoreThresh).toList()
+List<_Detection> _nms(
+  List<_Detection> dets,
+  double iouThresh,
+  double scoreThresh, {
+  bool weighted = true
+}) {
+  final List<_Detection> kept = <_Detection>[];
+  final List<_Detection> cand = dets.where((d) => d.score >= scoreThresh).toList()
     ..sort((a, b) => b.score.compareTo(a.score));
   while (cand.isNotEmpty) {
-    final base = cand.removeAt(0);
-    final merged = <_Detection>[base];
+    final _Detection base = cand.removeAt(0);
+    final List<_Detection> merged = <_Detection>[base];
     cand.removeWhere((d) {
       if (_iou(base.bbox, d.bbox) >= iouThresh) {
         merged.add(d);
@@ -210,7 +228,7 @@ List<_Detection> _nms(List<_Detection> dets, double iouThresh, double scoreThres
       kept.add(base);
     } else {
       double sw = 0, xmin = 0, ymin = 0, xmax = 0, ymax = 0;
-      for (final m in merged) {
+      for (final _Detection m in merged) {
         sw += m.score;
         xmin += m.bbox.xmin * m.score;
         ymin += m.bbox.ymin * m.score;
@@ -228,30 +246,31 @@ List<_Detection> _nms(List<_Detection> dets, double iouThresh, double scoreThres
 }
 
 Float32List _ssdGenerateAnchors(Map<String, Object> opts) {
-  final numLayers = opts['num_layers'] as int;
-  final strides = (opts['strides'] as List).cast<int>();
-  final inputH = opts['input_size_height'] as int;
-  final inputW = opts['input_size_width'] as int;
-  final ax = (opts['anchor_offset_x'] as num).toDouble();
-  final ay = (opts['anchor_offset_y'] as num).toDouble();
-  final interp = (opts['interpolated_scale_aspect_ratio'] as num).toDouble();
-  final anchors = <double>[];
-  var layerId = 0;
+  final List<int> strides = (opts['strides'] as List).cast<int>();
+  final int numLayers = opts['num_layers'] as int;
+  final int inputH = opts['input_size_height'] as int;
+  final int inputW = opts['input_size_width'] as int;
+
+  final double ax = (opts['anchor_offset_x'] as num).toDouble();
+  final double ay = (opts['anchor_offset_y'] as num).toDouble();
+  final double interp = (opts['interpolated_scale_aspect_ratio'] as num).toDouble();
+  final List<double> anchors = <double>[];
+  int layerId = 0;
   while (layerId < numLayers) {
-    var lastSameStride = layerId;
-    var repeats = 0;
+    int lastSameStride = layerId;
+    int repeats = 0;
     while (lastSameStride < numLayers && strides[lastSameStride] == strides[layerId]) {
       lastSameStride++;
       repeats += (interp == 1.0) ? 2 : 1;
     }
-    final stride = strides[layerId];
-    final fmH = inputH ~/ stride;
-    final fmW = inputW ~/ stride;
+    final int stride = strides[layerId];
+    final int fmH = inputH ~/ stride;
+    final int fmW = inputW ~/ stride;
     for (var y = 0; y < fmH; y++) {
-      final yCenter = (y + ay) / fmH;
-      for (var x = 0; x < fmW; x++) {
-        final xCenter = (x + ax) / fmW;
-        for (var r = 0; r < repeats; r++) {
+      final double yCenter = (y + ay) / fmH;
+      for (int x = 0; x < fmW; x++) {
+        final double xCenter = (x + ax) / fmW;
+        for (int r = 0; r < repeats; r++) {
           anchors.add(xCenter);
           anchors.add(yCenter);
         }
@@ -307,9 +326,9 @@ Future<img.Image> cropFromRoi(img.Image src, _RectF roi) async {
   if (roi.xmin >= roi.xmax || roi.ymin >= roi.ymax) {
     throw ArgumentError('Invalid ROI: min coordinates must be less than max');
   }
-  final rgb = src.getBytes(order: img.ChannelOrder.rgb);
-  final rp = ReceivePort();
-  final params = {
+  final Uint8List rgb = src.getBytes(order: img.ChannelOrder.rgb);
+  final ReceivePort rp = ReceivePort();
+  await Isolate.spawn(_imageTransformIsolate, {
     'sendPort': rp.sendPort,
     'op': 'crop',
     'w': src.width,
@@ -321,8 +340,7 @@ Future<img.Image> cropFromRoi(img.Image src, _RectF roi) async {
       'xmax': roi.xmax,
       'ymax': roi.ymax,
     },
-  };
-  await Isolate.spawn(_imageTransformIsolate, params);
+  });
   final Map msg = await rp.first as Map;
   rp.close();
   if (msg['ok'] != true) {
@@ -340,8 +358,8 @@ Future<img.Image> extractAlignedSquare(img.Image src, double cx, double cy, doub
   if (size <= 0) {
     throw ArgumentError('Size must be positive, got: $size');
   }
-  final rgb = src.getBytes(order: img.ChannelOrder.rgb);
-  final rp = ReceivePort();
+  final Uint8List rgb = src.getBytes(order: img.ChannelOrder.rgb);
+  final ReceivePort rp = ReceivePort();
   final params = {
     'sendPort': rp.sendPort,
     'op': 'extract',
@@ -368,34 +386,34 @@ Future<img.Image> extractAlignedSquare(img.Image src, double cx, double cy, doub
 }
 
 img.ColorRgb8 _bilinearSampleRgb8(img.Image src, double fx, double fy) {
-  final x0 = fx.floor();
-  final y0 = fy.floor();
-  final x1 = x0 + 1;
-  final y1 = y0 + 1;
-  final ax = fx - x0;
-  final ay = fy - y0;
+  final int x0 = fx.floor();
+  final int y0 = fy.floor();
+  final int x1 = x0 + 1;
+  final int y1 = y0 + 1;
+  final double ax = fx - x0;
+  final double ay = fy - y0;
 
   int cx0 = x0.clamp(0, src.width - 1);
   int cx1 = x1.clamp(0, src.width - 1);
   int cy0 = y0.clamp(0, src.height - 1);
   int cy1 = y1.clamp(0, src.height - 1);
 
-  final p00 = src.getPixel(cx0, cy0);
-  final p10 = src.getPixel(cx1, cy0);
-  final p01 = src.getPixel(cx0, cy1);
-  final p11 = src.getPixel(cx1, cy1);
+  final img.Pixel p00 = src.getPixel(cx0, cy0);
+  final img.Pixel p10 = src.getPixel(cx1, cy0);
+  final img.Pixel p01 = src.getPixel(cx0, cy1);
+  final img.Pixel p11 = src.getPixel(cx1, cy1);
 
-  final r0 = p00.r * (1 - ax) + p10.r * ax;
-  final g0 = p00.g * (1 - ax) + p10.g * ax;
-  final b0 = p00.b * (1 - ax) + p10.b * ax;
+  final double r0 = p00.r * (1 - ax) + p10.r * ax;
+  final double g0 = p00.g * (1 - ax) + p10.g * ax;
+  final double b0 = p00.b * (1 - ax) + p10.b * ax;
 
-  final r1 = p01.r * (1 - ax) + p11.r * ax;
-  final g1 = p01.g * (1 - ax) + p11.g * ax;
-  final b1 = p01.b * (1 - ax) + p11.b * ax;
+  final double r1 = p01.r * (1 - ax) + p11.r * ax;
+  final double g1 = p01.g * (1 - ax) + p11.g * ax;
+  final double b1 = p01.b * (1 - ax) + p11.b * ax;
 
-  final r = (r0 * (1 - ay) + r1 * ay).round().clamp(0, 255);
-  final g = (g0 * (1 - ay) + g1 * ay).round().clamp(0, 255);
-  final b = (b0 * (1 - ay) + b1 * ay).round().clamp(0, 255);
+  final int r = (r0 * (1 - ay) + r1 * ay).round().clamp(0, 255);
+  final int g = (g0 * (1 - ay) + g1 * ay).round().clamp(0, 255);
+  final int b = (b0 * (1 - ay) + b1 * ay).round().clamp(0, 255);
 
   return img.ColorRgb8(r, g, b);
 }
@@ -487,7 +505,7 @@ Future<void> _imageTransformIsolate(Map<String, dynamic> params) async {
       final xmax = (m['xmax'] as num).toDouble();
       final ymax = (m['ymax'] as num).toDouble();
 
-      final W = src.width.toDouble(), H = src.height.toDouble();
+      final double W = src.width.toDouble(), H = src.height.toDouble();
       final x0 = (xmin * W).clamp(0.0, W - 1).toInt();
       final y0 = (ymin * H).clamp(0.0, H - 1).toInt();
       final x1 = (xmax * W).clamp(0.0, W).toInt();

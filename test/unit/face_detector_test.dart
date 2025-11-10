@@ -42,26 +42,26 @@ void main() {
         final lm = det.landmarks;
 
         // Assert: Verify correct conversion (normalized * size = pixels)
-        expect(lm[FaceIndex.leftEye], const math.Point<double>(50.0, 50.0),
+        expect(lm[FaceLandmarkType.leftEye], const math.Point<double>(50.0, 50.0),
             reason: '0.25 * 200 = 50, 0.50 * 100 = 50');
 
-        expect(lm[FaceIndex.rightEye], const math.Point<double>(150.0, 40.0),
+        expect(lm[FaceLandmarkType.rightEye], const math.Point<double>(150.0, 40.0),
             reason: '0.75 * 200 = 150, 0.40 * 100 = 40');
 
-        expect(lm[FaceIndex.noseTip], const math.Point<double>(100.0, 30.0),
+        expect(lm[FaceLandmarkType.noseTip], const math.Point<double>(100.0, 30.0),
             reason: '0.5 * 200 = 100, 0.3 * 100 = 30');
 
-        expect(lm[FaceIndex.mouth], const math.Point<double>(100.0, 80.0),
+        expect(lm[FaceLandmarkType.mouth], const math.Point<double>(100.0, 80.0),
             reason: '0.5 * 200 = 100, 0.8 * 100 = 80');
 
-        expect(lm[FaceIndex.leftEyeTragion], const math.Point<double>(40.0, 50.0),
+        expect(lm[FaceLandmarkType.leftEyeTragion], const math.Point<double>(40.0, 50.0),
             reason: '0.2 * 200 = 40, 0.5 * 100 = 50');
 
-        expect(lm[FaceIndex.rightEyeTragion], const math.Point<double>(160.0, 50.0),
+        expect(lm[FaceLandmarkType.rightEyeTragion], const math.Point<double>(160.0, 50.0),
             reason: '0.8 * 200 = 160, 0.5 * 100 = 50');
       });
 
-      test('returns all FaceIndex enum values in landmarks map', () {
+      test('returns all FaceLandmarkType enum values in landmarks map', () {
         // Arrange: Create detection with valid data
         const imgSize = Size(100, 100);
         final keypointsXY = TestUtils.generateValidKeypoints();
@@ -76,11 +76,11 @@ void main() {
         // Act: Get landmarks
         final lm = det.landmarks;
 
-        // Assert: All FaceIndex values should be present
-        expect(lm.keys.length, FaceIndex.values.length,
-            reason: 'Should contain all FaceIndex enum values');
+        // Assert: All FaceLandmarkType values should be present
+        expect(lm.keys.length, FaceLandmarkType.values.length,
+            reason: 'Should contain all FaceLandmarkType enum values');
 
-        for (final index in FaceIndex.values) {
+        for (final index in FaceLandmarkType.values) {
           expect(lm.containsKey(index), isTrue,
               reason: 'Should contain key for $index');
           expect(lm[index], isNotNull,
@@ -111,12 +111,12 @@ void main() {
         final lm = det.landmarks;
 
         // Assert: Boundary coordinates should map correctly
-        expect(lm[FaceIndex.leftEye], const math.Point<double>(0.0, 0.0));
-        expect(lm[FaceIndex.rightEye], const math.Point<double>(100.0, 0.0));
-        expect(lm[FaceIndex.noseTip], const math.Point<double>(50.0, 100.0));
-        expect(lm[FaceIndex.mouth], const math.Point<double>(50.0, 200.0));
-        expect(lm[FaceIndex.leftEyeTragion], const math.Point<double>(0.0, 100.0));
-        expect(lm[FaceIndex.rightEyeTragion], const math.Point<double>(100.0, 200.0));
+        expect(lm[FaceLandmarkType.leftEye], const math.Point<double>(0.0, 0.0));
+        expect(lm[FaceLandmarkType.rightEye], const math.Point<double>(100.0, 0.0));
+        expect(lm[FaceLandmarkType.noseTip], const math.Point<double>(50.0, 100.0));
+        expect(lm[FaceLandmarkType.mouth], const math.Point<double>(50.0, 200.0));
+        expect(lm[FaceLandmarkType.leftEyeTragion], const math.Point<double>(0.0, 100.0));
+        expect(lm[FaceLandmarkType.rightEyeTragion], const math.Point<double>(100.0, 200.0));
       });
 
       test('handles fractional pixel coordinates correctly', () {
@@ -142,11 +142,11 @@ void main() {
         final lm = det.landmarks;
 
         // Assert: Verify fractional calculations
-        expect(lm[FaceIndex.leftEye]!.x, closeTo(99.9, 0.01),
+        expect(lm[FaceLandmarkType.leftEye]!.x, closeTo(99.9, 0.01),
             reason: '0.333 * 300 = 99.9');
-        expect(lm[FaceIndex.rightEye]!.x, closeTo(199.8, 0.01),
+        expect(lm[FaceLandmarkType.rightEye]!.x, closeTo(199.8, 0.01),
             reason: '0.666 * 300 = 199.8');
-        expect(lm[FaceIndex.mouth]!.y, closeTo(233.1, 0.01),
+        expect(lm[FaceLandmarkType.mouth]!.y, closeTo(233.1, 0.01),
             reason: '0.777 * 300 = 233.1');
       });
 
@@ -173,8 +173,8 @@ void main() {
         final lm = det.landmarks;
 
         // Assert: Center should be at (960, 540)
-        expect(lm[FaceIndex.leftEye], const math.Point<double>(960.0, 540.0));
-        expect(lm[FaceIndex.noseTip], const math.Point<double>(960.0, 540.0));
+        expect(lm[FaceLandmarkType.leftEye], const math.Point<double>(960.0, 540.0));
+        expect(lm[FaceLandmarkType.noseTip], const math.Point<double>(960.0, 540.0));
       });
 
       test('throws StateError if imageSize is null', () {
@@ -240,10 +240,10 @@ void main() {
         final lm = det.landmarks;
 
         // Assert: Large coordinates should be calculated correctly
-        expect(lm[FaceIndex.leftEye], const math.Point<double>(960.0, 540.0));
-        expect(lm[FaceIndex.rightEye], const math.Point<double>(2880.0, 540.0));
-        expect(lm[FaceIndex.noseTip], const math.Point<double>(1920.0, 1080.0));
-        expect(lm[FaceIndex.mouth], const math.Point<double>(1920.0, 1620.0));
+        expect(lm[FaceLandmarkType.leftEye], const math.Point<double>(960.0, 540.0));
+        expect(lm[FaceLandmarkType.rightEye], const math.Point<double>(2880.0, 540.0));
+        expect(lm[FaceLandmarkType.noseTip], const math.Point<double>(1920.0, 1080.0));
+        expect(lm[FaceLandmarkType.mouth], const math.Point<double>(1920.0, 1620.0));
       });
 
       test('handles very small image dimensions', () {
@@ -269,8 +269,8 @@ void main() {
         final lm = det.landmarks;
 
         // Assert: Small coordinates should work
-        expect(lm[FaceIndex.leftEye], const math.Point<double>(5.0, 5.0));
-        expect(lm[FaceIndex.noseTip], const math.Point<double>(5.0, 5.0));
+        expect(lm[FaceLandmarkType.leftEye], const math.Point<double>(5.0, 5.0));
+        expect(lm[FaceLandmarkType.noseTip], const math.Point<double>(5.0, 5.0));
       });
     });
 

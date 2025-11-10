@@ -3,7 +3,7 @@ part of face_detection_tflite;
 /// Identifies specific facial landmarks returned by face detection.
 ///
 /// Each enum value corresponds to a key facial feature point.
-enum FaceIndex { leftEye, rightEye, noseTip, mouth, leftEyeTragion, rightEyeTragion }
+enum FaceLandmarkType { leftEye, rightEye, noseTip, mouth, leftEyeTragion, rightEyeTragion }
 
 /// Specifies which face detection model variant to use.
 ///
@@ -87,13 +87,13 @@ class _AlignedFace {
 /// [landmarks] are coarse detection keypoints (e.g. eyes, nose, mouth corners).
 /// [mesh] contains 468 facial landmarks as pixel coordinates.
 /// [irises] contains 10 points (5 per eye) used to estimate iris position/size.
-class FaceResult {
+class Face {
   final _Detection _detection;
   final List<math.Point<double>> mesh;
   final List<math.Point<double>> irises;
   final Size originalSize;
 
-  FaceResult({
+  Face({
     required _Detection detection,
     required this.mesh,
     required this.irises,
@@ -104,9 +104,9 @@ class FaceResult {
   ///
   /// Returns points in order: top-left, top-right, bottom-right, bottom-left.
   List<math.Point<double>> get bboxCorners {
-    final r = _detection.bbox;
-    final w = originalSize.width.toDouble();
-    final h = originalSize.height.toDouble();
+    final _RectF r = _detection.bbox;
+    final double w = originalSize.width.toDouble();
+    final double h = originalSize.height.toDouble();
     return [
       math.Point<double>(r.xmin * w, r.ymin * h),
       math.Point<double>(r.xmax * w, r.ymin * h),
@@ -117,24 +117,9 @@ class FaceResult {
 
   /// Facial landmark positions in pixel coordinates.
   ///
-  /// Returns a map where keys are [FaceIndex] values identifying specific
+  /// Returns a map where keys are [FaceLandmarkType] values identifying specific
   /// facial features (eyes, nose, mouth, etc.) and values are their pixel positions.
-  Map<FaceIndex, math.Point<double>> get landmarks => _detection.landmarks;
-}
-
-/// Aggregated results from a single face-detection pass.
-///
-/// Holds a List containing instances of [FaceResult].
-///
-/// - [faces]: Ordered list of detected faces (may be empty).
-/// - [originalSize]: The width/height of the original input image in pixels.
-///   Pixel coordinates in [FaceResult] are relative to this size.
-class FaceDetectionResults {
-  final List<FaceResult> faces;
-  final Size originalSize;
-  FaceDetectionResults({required this.faces, required this.originalSize});
-
-  List<FaceResult> get perFace => faces;
+  Map<FaceLandmarkType, math.Point<double>> get landmarks => _detection.landmarks;
 }
 
 class _RectF {
@@ -167,14 +152,14 @@ class _Detection {
 
   double operator [](int i) => keypointsXY[i];
 
-  Map<FaceIndex, math.Point<double>> get landmarks {
-    final sz = imageSize;
+  Map<FaceLandmarkType, math.Point<double>> get landmarks {
+    final Size? sz = imageSize;
     if (sz == null) {
       throw StateError('_Detection.imageSize is null; cannot produce pixel landmarks.');
     }
-    final w = sz.width.toDouble(), h = sz.height.toDouble();
-    final map = <FaceIndex, math.Point<double>>{};
-    for (final idx in FaceIndex.values) {
+    final double w = sz.width.toDouble(), h = sz.height.toDouble();
+    final Map<FaceLandmarkType, math.Point<double>> map = <FaceLandmarkType, math.Point<double>>{};
+    for (final idx in FaceLandmarkType.values) {
       final xn = keypointsXY[idx.index * 2];
       final yn = keypointsXY[idx.index * 2 + 1];
       map[idx] = math.Point<double>(xn * w, yn * h);

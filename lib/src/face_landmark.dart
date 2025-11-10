@@ -34,7 +34,7 @@ class FaceLandmark {
 
     int numElements(List<int> s) => s.fold(1, (a, b) => a * b);
 
-    final shapes = <int, List<int>>{};
+    final Map<int, List<int>> shapes = <int, List<int>>{};
     for (var i = 0;; i++) {
       try {
         final s = itp.getOutputTensor(i).shape;
@@ -60,7 +60,7 @@ class FaceLandmark {
     obj._inputBuf = obj._inputTensor.data.buffer.asFloat32List();
     obj._bestOutBuf = obj._bestTensor.data.buffer.asFloat32List();
 
-    final maxIndex = shapes.keys.isEmpty ? -1 : shapes.keys.reduce((a, b) => a > b ? a : b);
+    final int maxIndex = shapes.keys.isEmpty ? -1 : shapes.keys.reduce((a, b) => a > b ? a : b);
     obj._outShapes = List<List<int>>.generate(maxIndex + 1, (i) => shapes[i] ?? const <int>[]);
 
     if (useIsolate) {
@@ -100,7 +100,7 @@ class FaceLandmark {
   }
 
   Future<List<List<double>>> call(img.Image faceCrop) async {
-    final pack = await _imageToTensor(faceCrop, outW: _inW, outH: _inH);
+    final _ImageTensor pack = await _imageToTensor(faceCrop, outW: _inW, outH: _inH);
 
     if (_iso == null) {
       _inputBuf.setAll(0, pack.tensorNHWC);
@@ -111,7 +111,7 @@ class FaceLandmark {
       final inputs = [input4d];
       final outputs = <int, Object>{};
       for (var i = 0; i < _outShapes.length; i++) {
-        final s = _outShapes[i];
+        final List<int> s = _outShapes[i];
         if (s.isNotEmpty) {
           outputs[i] = _allocForShape(s);
         }
@@ -120,7 +120,7 @@ class FaceLandmark {
 
       final dynamic best = outputs[_bestIdx];
 
-      final flat = <double>[];
+      final List<double> flat = <double>[];
       void walk(dynamic x) {
         if (x is num) {
           flat.add(x.toDouble());
