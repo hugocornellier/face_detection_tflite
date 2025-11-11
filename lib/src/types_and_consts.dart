@@ -30,10 +30,10 @@ const _modelNameFullSparse = 'face_detection_full_range_sparse.tflite';
 const _faceLandmarkModel = 'face_landmark.tflite';
 const _irisLandmarkModel = 'iris_landmark.tflite';
 
-const _rawScoreLimit = 80.0;
 const int kMeshPoints = 468;
-const _minScore = 0.5;
-const _minSuppressionThreshold = 0.3;
+const double _rawScoreLimit = 80.0;
+const double _minScore = 0.5;
+const double _minSuppressionThreshold = 0.3;
 
 const _ssdFront = {
   'num_layers': 4,
@@ -129,10 +129,10 @@ class _RectF {
   double get h => ymax - ymin;
   _RectF scale(double sx, double sy) => _RectF(xmin * sx, ymin * sy, xmax * sx, ymax * sy);
   _RectF expand(double frac) {
-    final cx = (xmin + xmax) * 0.5;
-    final cy = (ymin + ymax) * 0.5;
-    final hw = (w * (1.0 + frac)) * 0.5;
-    final hh = (h * (1.0 + frac)) * 0.5;
+    final double cx = (xmin + xmax) * 0.5;
+    final double cy = (ymin + ymax) * 0.5;
+    final double hw = (w * (1.0 + frac)) * 0.5;
+    final double hh = (h * (1.0 + frac)) * 0.5;
     return _RectF(cx - hw, cy - hh, cx + hw, cy + hh);
   }
 }
@@ -159,9 +159,9 @@ class _Detection {
     }
     final double w = sz.width.toDouble(), h = sz.height.toDouble();
     final Map<FaceLandmarkType, math.Point<double>> map = <FaceLandmarkType, math.Point<double>>{};
-    for (final idx in FaceLandmarkType.values) {
-      final xn = keypointsXY[idx.index * 2];
-      final yn = keypointsXY[idx.index * 2 + 1];
+    for (final FaceLandmarkType idx in FaceLandmarkType.values) {
+      final double xn = keypointsXY[idx.index * 2];
+      final double yn = keypointsXY[idx.index * 2 + 1];
       map[idx] = math.Point<double>(xn * w, yn * h);
     }
     return map;

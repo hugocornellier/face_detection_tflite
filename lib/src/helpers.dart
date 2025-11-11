@@ -3,7 +3,7 @@ part of face_detection_tflite;
 double _clip(double v, double lo, double hi) => v < lo ? lo : (v > hi ? hi : v);
 
 double _sigmoidClipped(double x, {double limit = _rawScoreLimit}) {
-  final v = _clip(x, -limit, limit);
+  final double v = _clip(x, -limit, limit);
   return 1.0 / (1.0 + math.exp(-v));
 }
 
@@ -12,8 +12,8 @@ Future<_ImageTensor> _imageToTensor(
   required int outW,
   required int outH
 }) async {
-  final rp = ReceivePort();
-  final rgb = src.getBytes(order: img.ChannelOrder.rgb);
+  final ReceivePort rp = ReceivePort();
+  final Uint8List rgb = src.getBytes(order: img.ChannelOrder.rgb);
   final params = {
     'sendPort': rp.sendPort,
     'inW': src.width,
@@ -354,7 +354,13 @@ Future<img.Image> cropFromRoi(img.Image src, _RectF roi) async {
   return img.Image.fromBytes(width: ow, height: oh, bytes: outRgb.buffer, order: img.ChannelOrder.rgb);
 }
 
-Future<img.Image> extractAlignedSquare(img.Image src, double cx, double cy, double size, double theta) async {
+Future<img.Image> extractAlignedSquare(
+  img.Image src,
+  double cx,
+  double cy,
+  double size,
+  double theta
+) async {
   if (size <= 0) {
     throw ArgumentError('Size must be positive, got: $size');
   }
@@ -429,12 +435,11 @@ Future<_DecodedRgb> _decodeImageOffUi(Uint8List bytes) async {
   if (bytes.isEmpty) {
     throw ArgumentError('Image bytes cannot be empty');
   }
-  final rp = ReceivePort();
-  final params = {
+  final ReceivePort rp = ReceivePort();
+  await Isolate.spawn(_decodeImageIsolate, {
     'sendPort': rp.sendPort,
     'bytes': TransferableTypedData.fromList([bytes]),
-  };
-  await Isolate.spawn(_decodeImageIsolate, params);
+  });
   final Map msg = await rp.first as Map;
   rp.close();
 
@@ -494,42 +499,47 @@ Future<void> _imageTransformIsolate(Map<String, dynamic> params) async {
     final ByteBuffer inBB = (params['rgb'] as TransferableTypedData).materialize();
     final Uint8List inRgb = inBB.asUint8List();
 
-    final src = img.Image.fromBytes(width: w, height: h, bytes: inRgb.buffer, order: img.ChannelOrder.rgb);
+    final img.Image src = img.Image.fromBytes(
+      width: w,
+      height: h,
+      bytes: inRgb.buffer,
+      order: img.ChannelOrder.rgb
+    );
 
     img.Image out;
 
     if (op == 'crop') {
-      final m = params['roi'] as Map;
-      final xmin = (m['xmin'] as num).toDouble();
-      final ymin = (m['ymin'] as num).toDouble();
-      final xmax = (m['xmax'] as num).toDouble();
-      final ymax = (m['ymax'] as num).toDouble();
+      final Map<dynamic, dynamic> m = params['roi'] as Map;
+      final double xmin = (m['xmin'] as num).toDouble();
+      final double ymin = (m['ymin'] as num).toDouble();
+      final double xmax = (m['xmax'] as num).toDouble();
+      final double ymax = (m['ymax'] as num).toDouble();
 
       final double W = src.width.toDouble(), H = src.height.toDouble();
-      final x0 = (xmin * W).clamp(0.0, W - 1).toInt();
-      final y0 = (ymin * H).clamp(0.0, H - 1).toInt();
-      final x1 = (xmax * W).clamp(0.0, W).toInt();
-      final y1 = (ymax * H).clamp(0.0, H).toInt();
-      final cw = math.max(1, x1 - x0);
-      final ch = math.max(1, y1 - y0);
+      final int x0 = (xmin * W).clamp(0.0, W - 1).toInt();
+      final int y0 = (ymin * H).clamp(0.0, H - 1).toInt();
+      final int x1 = (xmax * W).clamp(0.0, W).toInt();
+      final int y1 = (ymax * H).clamp(0.0, H).toInt();
+      final int cw = math.max(1, x1 - x0);
+      final int ch = math.max(1, y1 - y0);
       out = img.copyCrop(src, x: x0, y: y0, width: cw, height: ch);
     } else if (op == 'extract') {
-      final cx = (params['cx'] as num).toDouble();
-      final cy = (params['cy'] as num).toDouble();
-      final size = (params['size'] as num).toDouble();
-      final theta = (params['theta'] as num).toDouble();
+      final double cx = (params['cx'] as num).toDouble();
+      final double cy = (params['cy'] as num).toDouble();
+      final double size = (params['size'] as num).toDouble();
+      final double theta = (params['theta'] as num).toDouble();
 
-      final side = math.max(1, size.round());
-      final ct = math.cos(theta);
-      final st = math.sin(theta);
+      final int side = math.max(1, size.round());
+      final double ct = math.cos(theta);
+      final double st = math.sin(theta);
       out = img.Image(width: side, height: side);
       for (int y = 0; y < side; y++) {
-        final vy = ((y + 0.5) / side - 0.5) * size;
+        final double vy = ((y + 0.5) / side - 0.5) * size;
         for (int x = 0; x < side; x++) {
-          final vx = ((x + 0.5) / side - 0.5) * size;
-          final sx = cx + vx * ct - vy * st;
-          final sy = cy + vx * st + vy * ct;
-          final px = _bilinearSampleRgb8(src, sx, sy);
+          final double vx = ((x + 0.5) / side - 0.5) * size;
+          final double sx = cx + vx * ct - vy * st;
+          final double sy = cy + vx * st + vy * ct;
+          final img.ColorRgb8 px = _bilinearSampleRgb8(src, sx, sy);
           out.setPixel(x, y, px);
         }
       }
@@ -545,7 +555,7 @@ Future<void> _imageTransformIsolate(Map<String, dynamic> params) async {
       return;
     }
 
-    final outRgb = out.getBytes(order: img.ChannelOrder.rgb);
+    final Uint8List outRgb = out.getBytes(order: img.ChannelOrder.rgb);
     sp.send({
       'ok': true,
       'w': out.width,

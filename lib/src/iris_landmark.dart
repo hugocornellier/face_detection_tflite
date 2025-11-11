@@ -1,14 +1,13 @@
 part of face_detection_tflite;
 
+/// Estimates dense iris keypoints within cropped eye regions and lets callers
+/// derive a robust iris center (with fallback if inference fails).
 class IrisLandmark {
+  IsolateInterpreter? _iso;
   final Interpreter _itp;
   final int _inW, _inH;
-
-  IsolateInterpreter? _iso;
-
   late final Tensor _inputTensor;
   late final Float32List _inputBuf;
-
   late final Map<int, List<int>> _outShapes;
   late final Map<int, Float32List> _outBuffers;
 
@@ -18,26 +17,26 @@ class IrisLandmark {
     InterpreterOptions? options,
     bool useIsolate = true
   }) async {
-    final itp = await Interpreter.fromAsset(
+    final Interpreter itp = await Interpreter.fromAsset(
       'packages/face_detection_tflite/assets/models/$_irisLandmarkModel',
       options: options ?? InterpreterOptions(),
     );
-    final ishape = itp.getInputTensor(0).shape;
-    final inH = ishape[1];
-    final inW = ishape[2];
+    final List<int> ishape = itp.getInputTensor(0).shape;
+    final int inH = ishape[1];
+    final int inW = ishape[2];
     itp.resizeInputTensor(0, [1, inH, inW, 3]);
     itp.allocateTensors();
 
-    final obj = IrisLandmark._(itp, inW, inH);
+    final IrisLandmark obj = IrisLandmark._(itp, inW, inH);
 
     obj._inputTensor = itp.getInputTensor(0);
     obj._inputBuf = obj._inputTensor.data.buffer.asFloat32List();
 
-    final shapes = <int, List<int>>{};
-    final buffers = <int, Float32List>{};
-    for (var i = 0;; i++) {
+    final Map<int, List<int>> shapes = <int, List<int>>{};
+    final Map<int, Float32List> buffers = <int, Float32List>{};
+    for (int i = 0;; i++) {
       try {
-        final t = itp.getOutputTensor(i);
+        final Tensor t = itp.getOutputTensor(i);
         shapes[i] = t.shape;
         buffers[i] = t.data.buffer.asFloat32List();
       } catch (_) {
@@ -59,26 +58,26 @@ class IrisLandmark {
     InterpreterOptions? options,
     bool useIsolate = true
   }) async {
-    final itp = await Interpreter.fromFile(
+    final Interpreter itp = await Interpreter.fromFile(
       File(modelPath),
       options: options ?? InterpreterOptions(),
     );
-    final ishape = itp.getInputTensor(0).shape;
-    final inH = ishape[1];
-    final inW = ishape[2];
+    final List<int> ishape = itp.getInputTensor(0).shape;
+    final int inH = ishape[1];
+    final int inW = ishape[2];
     itp.resizeInputTensor(0, [1, inH, inW, 3]);
     itp.allocateTensors();
 
-    final obj = IrisLandmark._(itp, inW, inH);
+    final IrisLandmark obj = IrisLandmark._(itp, inW, inH);
 
     obj._inputTensor = itp.getInputTensor(0);
     obj._inputBuf = obj._inputTensor.data.buffer.asFloat32List();
 
-    final shapes = <int, List<int>>{};
-    final buffers = <int, Float32List>{};
-    for (var i = 0;; i++) {
+    final Map<int, List<int>> shapes = <int, List<int>>{};
+    final Map<int, Float32List> buffers = <int, Float32List>{};
+    for (int i = 0;; i++) {
       try {
-        final t = itp.getOutputTensor(i);
+        final Tensor t = itp.getOutputTensor(i);
         shapes[i] = t.shape;
         buffers[i] = t.data.buffer.asFloat32List();
       } catch (_) {
@@ -108,10 +107,10 @@ class IrisLandmark {
       ),
       growable: false,
     );
-    var k = 0;
-    for (var y = 0; y < h; y++) {
-      for (var x = 0; x < w; x++) {
-        final px = out[0][y][x];
+    int k = 0;
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        final List<double> px = out[0][y][x];
         px[0] = flat[k++];
         px[1] = flat[k++];
         px[2] = flat[k++];
@@ -133,7 +132,7 @@ class IrisLandmark {
   }
 
   Float32List _flattenDynamicToFloat(dynamic x) {
-    final out = <double>[];
+    final List<double> out = <double>[];
     void walk(dynamic v) {
       if (v is num) {
         out.add(v.toDouble());
@@ -151,68 +150,75 @@ class IrisLandmark {
   }
 
   Future<List<List<double>>> call(img.Image eyeCrop) async {
-    final pack = await _imageToTensor(eyeCrop, outW: _inW, outH: _inH);
+    final _ImageTensor pack = await _imageToTensor(
+      eyeCrop,
+      outW: _inW,
+      outH: _inH
+    );
 
     if (_iso == null) {
       _inputBuf.setAll(0, pack.tensorNHWC);
       _itp.invoke();
 
-      final lm = <List<double>>[];
-      for (final flat in _outBuffers.values) {
+      final List<List<double>> lm = <List<double>>[];
+      for (final Float32List flat in _outBuffers.values) {
         lm.addAll(
-            _unpackLandmarks(flat, _inW, _inH, pack.padding, clamp: false));
+            _unpackLandmarks(flat, _inW, _inH, pack.padding, clamp: false)
+        );
       }
       return lm;
     } else {
-      final input4d = _asNHWC4D(pack.tensorNHWC, _inH, _inW);
-      final inputs = [input4d];
-      final outputs = <int, Object>{};
+      final List<List<List<List<double>>>> input4d = _asNHWC4D(pack.tensorNHWC, _inH, _inW);
+      final List<List<List<List<List<double>>>>> inputs = [input4d];
+      final Map<int, Object> outputs = <int, Object>{};
       _outShapes.forEach((i, shape) {
         outputs[i] = _allocForShape(shape);
       });
 
       await _iso!.runForMultipleInputs(inputs, outputs);
 
-      final lm = <List<double>>[];
+      final List<List<double>> lm = <List<double>>[];
       _outShapes.forEach((i, _) {
-        final flat = _flattenDynamicToFloat(outputs[i]);
+        final Float32List flat = _flattenDynamicToFloat(outputs[i]);
         lm.addAll(
-            _unpackLandmarks(flat, _inW, _inH, pack.padding, clamp: false));
+          _unpackLandmarks(flat, _inW, _inH, pack.padding, clamp: false)
+        );
       });
       return lm;
     }
   }
 
   Future<List<List<double>>> runOnImage(img.Image src, _RectF eyeRoi) async {
-    final eyeCrop = await cropFromRoi(src, eyeRoi);
-    final lmNorm = await call(eyeCrop);
-    final imgW = src.width.toDouble();
-    final imgH = src.height.toDouble();
-    final dx = eyeRoi.xmin * imgW;
-    final dy = eyeRoi.ymin * imgH;
-    final sx = eyeRoi.w * imgW;
-    final sy = eyeRoi.h * imgH;
-    final mapped = <List<double>>[];
-    for (final p in lmNorm) {
-      final x = dx + p[0] * sx;
-      final y = dy + p[1] * sy;
+    final img.Image eyeCrop = await cropFromRoi(src, eyeRoi);
+    final List<List<double>> lmNorm = await call(eyeCrop);
+    final double imgW = src.width.toDouble();
+    final double imgH = src.height.toDouble();
+    final double dx = eyeRoi.xmin * imgW;
+    final double dy = eyeRoi.ymin * imgH;
+    final double sx = eyeRoi.w * imgW;
+    final double sy = eyeRoi.h * imgH;
+
+    final List<List<double>> mapped = <List<double>>[];
+    for (final List<double> p in lmNorm) {
+      final double x = dx + p[0] * sx;
+      final double y = dy + p[1] * sy;
       mapped.add([x, y, p[2]]);
     }
     return mapped;
   }
 
   static Future<List<List<double>>> callWithIsolate(
-      Uint8List eyeCropBytes, String modelPath,
-      {bool irisOnly = false}) async {
-    final rp = ReceivePort();
-    final params = {
+    Uint8List eyeCropBytes, String modelPath, {
+    bool irisOnly = false
+  }) async {
+    final ReceivePort rp = ReceivePort();
+    final iso = await Isolate.spawn(IrisLandmark._isolateEntry, {
       'sendPort': rp.sendPort,
       'modelPath': modelPath,
       'eyeCropBytes': eyeCropBytes,
       'mode': irisOnly ? 'irisOnly' : 'full',
-    };
-    final iso = await Isolate.spawn(IrisLandmark._isolateEntry, params);
-    final msg = await rp.first as Map;
+    });
+    final Map<dynamic, dynamic> msg = await rp.first as Map;
     rp.close();
     iso.kill(priority: Isolate.immediate);
     if (msg['ok'] == true) {
@@ -252,7 +258,7 @@ class IrisLandmark {
   }
 
   Future<List<List<double>>> callIrisOnly(img.Image eyeCrop) async {
-    final pack = await _imageToTensor(eyeCrop, outW: _inW, outH: _inH);
+    final _ImageTensor pack = await _imageToTensor(eyeCrop, outW: _inW, outH: _inH);
 
     if (_iso == null) {
       _inputBuf.setAll(0, pack.tensorNHWC);
@@ -272,15 +278,15 @@ class IrisLandmark {
           pb = pack.padding[1],
           pl = pack.padding[2],
           pr = pack.padding[3];
-      final sx = 1.0 - (pl + pr);
-      final sy = 1.0 - (pt + pb);
+      final double sx = 1.0 - (pl + pr);
+      final double sy = 1.0 - (pt + pb);
 
-      final flat = irisFlat!;
-      final lm = <List<double>>[];
-      for (var i = 0; i < 5; i++) {
-        var x = flat[i * 3 + 0] / _inW;
-        var y = flat[i * 3 + 1] / _inH;
-        final z = flat[i * 3 + 2];
+      final Float32List flat = irisFlat!;
+      final List<List<double>> lm = <List<double>>[];
+      for (int i = 0; i < 5; i++) {
+        double x = flat[i * 3 + 0] / _inW;
+        double y = flat[i * 3 + 1] / _inH;
+        final double z = flat[i * 3 + 2];
         x = (x - pl) / sx;
         y = (y - pt) / sy;
         lm.add([x, y, z]);
@@ -296,12 +302,12 @@ class IrisLandmark {
 
       await _iso!.runForMultipleInputs(inputs, outputs);
 
-      final pt = pack.padding[0],
+      final double pt = pack.padding[0],
           pb = pack.padding[1],
           pl = pack.padding[2],
           pr = pack.padding[3];
-      final sx = 1.0 - (pl + pr);
-      final sy = 1.0 - (pt + pb);
+      final double sx = 1.0 - (pl + pr);
+      final double sy = 1.0 - (pt + pb);
 
       Float32List? irisFlat;
       _outShapes.forEach((i, shape) {
@@ -314,12 +320,12 @@ class IrisLandmark {
         return const <List<double>>[];
       }
 
-      final flat = irisFlat!;
-      final lm = <List<double>>[];
-      for (var i = 0; i < 5; i++) {
-        var x = flat[i * 3 + 0] / _inW;
-        var y = flat[i * 3 + 1] / _inH;
-        final z = flat[i * 3 + 2];
+      final Float32List flat = irisFlat!;
+      final List<List<double>> lm = <List<double>>[];
+      for (int i = 0; i < 5; i++) {
+        double x = flat[i * 3 + 0] / _inW;
+        double y = flat[i * 3 + 1] / _inH;
+        final double z = flat[i * 3 + 2];
         x = (x - pl) / sx;
         y = (y - pt) / sy;
         lm.add([x, y, z]);
@@ -332,26 +338,27 @@ class IrisLandmark {
     img.Image src, _AlignedRoi roi, {
     bool isRight = false
   }) async {
-    final crop = await extractAlignedSquare(
+    final img.Image crop = await extractAlignedSquare(
       src,
       roi.cx,
       roi.cy,
       roi.size,
       roi.theta
     );
-    final eye = isRight ? await _flipHorizontal(crop) : crop;
-    final lmNorm = await callIrisOnly(eye);
-    final ct = math.cos(roi.theta);
-    final st = math.sin(roi.theta);
-    final s = roi.size;
-    final out = <List<double>>[];
-    for (final p in lmNorm) {
-      final px = isRight ? (1.0 - p[0]) : p[0];
-      final py = p[1];
+    final img.Image eye = isRight ? await _flipHorizontal(crop) : crop;
+    final double ct = math.cos(roi.theta);
+    final double st = math.sin(roi.theta);
+    final double s = roi.size;
+
+    final List<List<double>> out = <List<double>>[];
+    final List<List<double>> lmNorm = await callIrisOnly(eye);
+    for (final List<double> p in lmNorm) {
+      final double px = isRight ? (1.0 - p[0]) : p[0];
+      final double py = p[1];
       final lx2 = (px - 0.5) * s;
-      final ly2 = (py - 0.5) * s;
-      final x = roi.cx + lx2 * ct - ly2 * st;
-      final y = roi.cy + lx2 * st + ly2 * ct;
+      final double ly2 = (py - 0.5) * s;
+      final double x = roi.cx + lx2 * ct - ly2 * st;
+      final double y = roi.cy + lx2 * st + ly2 * ct;
       out.add([x, y, p[2]]);
     }
     return out;
