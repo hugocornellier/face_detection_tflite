@@ -99,7 +99,7 @@ class FaceDetection {
     int k = 0;
     for (int y = 0; y < h; y++) {
       for (int x = 0; x < w; x++) {
-        final px = out[0][y][x];
+        final List<double> px = out[0][y][x];
         px[0] = flat[k++];
         px[1] = flat[k++];
         px[2] = flat[k++];
@@ -109,7 +109,7 @@ class FaceDetection {
   }
 
   void _flatten3D(List<List<List<num>>> src, Float32List dst) {
-    var k = 0;
+    int k = 0;
     for (final List<List<num>> a in src) {
       for (final List<num> b in a) {
         for (final num c in b) {
@@ -135,7 +135,7 @@ class FaceDetection {
     final _DecodedRgb _d = await _decodeImageOffUi(imageBytes);
     final img.Image decoded = _imageFromDecodedRgb(_d);
     final img.Image srcRoi = (roi == null) ? decoded : await cropFromRoi(decoded, roi);
-    final pack = await _imageToTensor(srcRoi, outW: _inW, outH: _inH);
+    final _ImageTensor pack = await _imageToTensor(srcRoi, outW: _inW, outH: _inH);
 
     Float32List boxesBuf;
     Float32List scoresBuf;
@@ -160,7 +160,7 @@ class FaceDetection {
 
       Object scoresOut;
       if (_scoresShape.length == 3) {
-        final s0 = _scoresShape[0], s1 = _scoresShape[1], s2 = _scoresShape[2];
+        final int s0 = _scoresShape[0], s1 = _scoresShape[1], s2 = _scoresShape[2];
         scoresOut = List.generate(
           s0, (_) => List.generate(
             s1, (_) => List<double>.filled(s2, 0.0, growable: false),
@@ -169,7 +169,7 @@ class FaceDetection {
           growable: false
         );
       } else {
-        final s0 = _scoresShape[0], s1 = _scoresShape[1];
+        final int s0 = _scoresShape[0], s1 = _scoresShape[1];
         scoresOut = List.generate(
           s0, (_) => List<double>.filled(s1, 0.0, growable: false),
           growable: false
