@@ -19,25 +19,13 @@ This package provides on-device face and landmark detection with minimal depende
 
 ![Example Screenshot](assets/screenshots/iris-detection-ex1.png)
 
-## Table of Contents
-
-- [Features](#features)
-- [Quick Start](#quick-start)
-- [Models](#models)
-- [Types](#types)
-- [Example](#example)
-- [Inspiration](#inspiration)
-
 ## Features
 
-- On-device face detection (multiple SSD variants)
-- 468-point face mesh, face landmarks, iris landmarks and bounding boxes
-- All coordinates are in **absolute pixel coordinates** (`Point<double>`)
-  - `x` ranges from `0` to `image.width`
-  - `y` ranges from `0` to `image.height`
-  - Ready to use co-ordinates without any scaling
+- On-device face detection, runs fully offline
+- 468 point mesh, face landmarks, iris landmarks and bounding boxes
+- All coordinates are in absolute pixel coordinates
 - Truly cross-platform: compatible with Android, iOS, macOS, Windows, and Linux
-- The `example/` app illustrates how to detect and render results on images: bounding boxes, a 468-point face mesh, and iris landmarks.
+- The `example` app illustrates how to detect and render results on images: bounding boxes, a 468-point face mesh, and iris landmarks.
 
 ## Quick Start
 
@@ -47,24 +35,24 @@ import 'package:face_detection_tflite/face_detection_tflite.dart';
 
 Future main() async {
   // 1. initialize
-  final detector = FaceDetector();
+  FaceDetector detector = FaceDetector();
   await detector.initialize(model: FaceDetectionModel.backCamera);
 
   // 2. detect
   final imageBytes = await File('path/to/image.jpg').readAsBytes();
-  final result = await detector.detectFaces(imageBytes);
+  List<Face> faces = await detector.detectFaces(imageBytes);
 
   // 3. access results
-  for (final face in result.faces) {
+  for (Face face in faces) {
     final landmarks = face.landmarks;
-    final bbox = face.bboxCorners;  
-    final mesh = face.mesh;     
+    final bbox = face.bboxCorners;
+    final mesh = face.mesh;
     final irises = face.irises;
-    
-    final leftEye = landmarks[FaceIndex.leftEye];
-    final rightEye = landmarks[FaceIndex.rightEye];
 
-    print('Left eye: (${leftEye.x}, ${leftEye.y})');
+    final leftEye = landmarks[FaceLandmarkType.leftEye];
+    final rightEye = landmarks[FaceLandmarkType.rightEye];
+
+    print('Left eye: (${leftEye?.x}, ${leftEye?.y})');
   }
 
   // 4. clean-up
@@ -97,7 +85,7 @@ await _faceDetector.detectFaces(bytes);
 await _faceDetector.detectFaces(bytes, mode: FaceDetectionMode.standard);
 
 // fast mode: bounding boxes + 6 basic landmarks only. fastest inference 
-// time of the three modes.
+// time of the three modes.k
 await _faceDetector.detectFaces(bytes, mode: FaceDetectionMode.fast);
 ```
 
@@ -117,13 +105,13 @@ You can choose from several detection models depending on your use case:
 ## Types
 
 - `FaceResult` contains `bboxCorners`, `mesh`, `irises` and `landmarks`.
-- `face.landmarks` is a `Map<FaceIndex, Point<double>>`, where `FaceIndex` is one of:
-    - `FaceIndex.leftEye`
-    - `FaceIndex.rightEye`
-    - `FaceIndex.noseTip`
-    - `FaceIndex.mouth`
-    - `FaceIndex.leftEyeTragion`
-    - `FaceIndex.rightEyeTragion`
+- `face.landmarks` is a `Map<FaceLandmarkType, Point<double>>`, where `FaceLandmarkType` is one of:
+    - `FaceLandmarkType.leftEye`
+    - `FaceLandmarkType.rightEye`
+    - `FaceLandmarkType.noseTip`
+    - `FaceLandmarkType.mouth`
+    - `FaceLandmarkType.leftEyeTragion`
+    - `FaceLandmarkType.rightEyeTragion`
 - All coordinates are **absolute pixel positions**, ready to use for drawing or measurement.
 
 ## Example

@@ -1,7 +1,8 @@
-import 'package:flutter/material.dart';
 import 'dart:math';
 import 'dart:typed_data';
-import 'dart:ui';
+import 'dart:ui' as ui;
+
+import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:face_detection_tflite/face_detection_tflite.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
@@ -22,7 +23,7 @@ class Example extends StatefulWidget {
 class _ExampleState extends State<Example> {
   final FaceDetector _faceDetector = FaceDetector();
   Uint8List? _imageBytes;
-  List<FaceResult> _faces = [];
+  List<Face> _faces = [];
   Size? _originalSize;
 
   bool _isLoading = false;
@@ -94,9 +95,16 @@ class _ExampleState extends State<Example> {
 
     final mode = _determineMode();
 
-    final detectionStart = DateTime.now();
-    final result = await _faceDetector.detectFaces(bytes, mode: mode);
-    final detectionEnd = DateTime.now();
+    final ui.Codec codec = await ui.instantiateImageCodec(bytes);
+    final ui.FrameInfo frame = await codec.getNextFrame();
+    final double imgW = frame.image.width.toDouble();
+    final double imgH = frame.image.height.toDouble();
+    frame.image.dispose();
+    codec.dispose();
+
+    final DateTime detectionStart = DateTime.now();
+    final List<Face> faces = await _faceDetector.detectFaces(bytes, mode: mode);
+    final DateTime detectionEnd = DateTime.now();
 
     if (!mounted) return;
 
@@ -120,8 +128,8 @@ class _ExampleState extends State<Example> {
 
     setState(() {
       _imageBytes = bytes;
-      _originalSize = result.originalSize;
-      _faces = result.faces;
+      _originalSize = Size(imgW, imgH);
+      _faces = faces;
       _hasProcessedMesh = mode == FaceDetectionMode.standard || mode == FaceDetectionMode.full;
       _hasProcessedIris = mode == FaceDetectionMode.full;
       _isLoading = false;
@@ -262,9 +270,9 @@ class _ExampleState extends State<Example> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withAlpha(26),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withAlpha(77)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -498,7 +506,6 @@ class _ExampleState extends State<Example> {
 
                       final left = (constraints.maxWidth - displayWidth) / 2;
                       final top = (constraints.maxHeight - displayHeight) / 2;
-                      final imageRect = Rect.fromLTWH(left, top, displayWidth, displayHeight);
 
                       return Stack(
                         children: [
@@ -566,7 +573,7 @@ class _ExampleState extends State<Example> {
               child: FloatingActionButton(
                 mini: true,
                 onPressed: () => setState(() => _showSettings = true),
-                backgroundColor: Colors.black.withOpacity(0.7),
+                backgroundColor: Colors.black.withAlpha(179),
                 child: const Icon(Icons.settings, color: Colors.white),
               ),
             ),
@@ -665,7 +672,7 @@ class _ExampleState extends State<Example> {
 }
 
 class _DetectionsPainter extends CustomPainter {
-  final List<FaceResult> faces;
+  final List<Face> faces;
   final Rect imageRectOnCanvas;
   final Size originalImageSize;
   final bool showBoundingBoxes;
@@ -716,13 +723,13 @@ class _DetectionsPainter extends CustomPainter {
 
     final irisFill = Paint()
       ..style = PaintingStyle.fill
-      ..color = irisColor.withOpacity(0.6)
+      ..color = irisColor.withAlpha(153)
       ..blendMode = BlendMode.srcOver;
 
     final irisStroke = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5
-      ..color = irisColor.withOpacity(0.9);
+      ..color = irisColor.withAlpha(230);
 
     final ox = imageRectOnCanvas.left;
     final oy = imageRectOnCanvas.top;
@@ -731,7 +738,6 @@ class _DetectionsPainter extends CustomPainter {
     final scaleY = imageRectOnCanvas.height / originalImageSize.height;
 
     for (final face in faces) {
-      // draw bounding boxes:
       if (showBoundingBoxes) {
         final c = face.bboxCorners;
         final rect = Rect.fromLTRB(
@@ -743,7 +749,6 @@ class _DetectionsPainter extends CustomPainter {
         canvas.drawRect(rect, boxPaint);
       }
 
-      // draw landmarks:
       if (showLandmarks) {
         for (final p in face.landmarks.values) {
           canvas.drawCircle(
@@ -754,7 +759,6 @@ class _DetectionsPainter extends CustomPainter {
         }
       }
 
-      // draw mesh:
       if (showMesh) {
         final mesh = face.mesh;
         if (mesh.isNotEmpty) {
@@ -771,7 +775,6 @@ class _DetectionsPainter extends CustomPainter {
         }
       }
 
-      // draw irises:
       if (showIrises) {
         final iris = face.irises;
         for (int i = 0; i + 4 < iris.length; i += 5) {
