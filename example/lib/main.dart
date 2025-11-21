@@ -1,15 +1,20 @@
+import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:face_detection_tflite/face_detection_tflite.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:camera/camera.dart';
+import 'package:camera_macos/camera_macos.dart';
 import 'package:image/image.dart' as img;
+import 'package:face_detection_tflite/face_detection_tflite.dart';
 
-void main() {
+Future<void> main() async {
+  // Ensure platform plugins (camera_macos, etc.) are registered before use.
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const MaterialApp(
     debugShowCheckedModeBanner: false,
     home: HomeScreen(),
@@ -914,7 +919,11 @@ class LiveCameraScreen extends StatefulWidget {
 }
 
 class _LiveCameraScreenState extends State<LiveCameraScreen> {
+  bool get _isMacOS => !kIsWeb && Platform.isMacOS;
+
   CameraController? _cameraController;
+  CameraMacOSController? _macCameraController;
+  Size? _macPreviewSize;
   final FaceDetector _faceDetector = FaceDetector();
   List<Face> _faces = [];
   Size? _imageSize;
@@ -937,6 +946,15 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     try {
       // Initialize face detector
       await _faceDetector.initialize(model: FaceDetectionModel.backCamera);
+
+      if (_isMacOS) {
+        if (mounted) {
+          setState(() {
+            _isInitialized = true;
+          });
+        }
+        return;
+      }
 
       // Get available cameras
       final cameras = await availableCameras();
@@ -1077,15 +1095,51 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     }
   }
 
+  Uint8List? _convertMacImageToBytes(CameraImageData image) {
+    try {
+      final imgLib = img.Image(width: image.width, height: image.height);
+      final bytes = image.bytes;
+      final stride = image.bytesPerRow;
+
+      for (int y = 0; y < image.height; y++) {
+        final rowStart = y * stride;
+        for (int x = 0; x < image.width; x++) {
+          final pixelStart = rowStart + x * 4;
+          if (pixelStart + 3 >= bytes.length) break;
+
+          final a = bytes[pixelStart];
+          final r = bytes[pixelStart + 1];
+          final g = bytes[pixelStart + 2];
+          final b = bytes[pixelStart + 3];
+
+          imgLib.setPixelRgba(x, y, r, g, b, a);
+        }
+      }
+
+      return Uint8List.fromList(img.encodeJpg(imgLib));
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   void dispose() {
-    _cameraController?.stopImageStream();
-    _cameraController?.dispose();
+    if (_isMacOS) {
+      _macCameraController?.stopImageStream();
+      _macCameraController?.destroy();
+    } else {
+      _cameraController?.stopImageStream();
+      _cameraController?.dispose();
+    }
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isMacOS) {
+      return _buildMacOSCamera(context);
+    }
+
     if (!_isInitialized || _cameraController == null) {
       return Scaffold(
         appBar: AppBar(
@@ -1198,6 +1252,184 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildMacOSCamera(BuildContext context) {
+    if (!_isInitialized) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Live Camera Detection'),
+          backgroundColor: Colors.green,
+          foregroundColor: Colors.white,
+        ),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final size = MediaQuery.of(context).size;
+    final double cameraAspectRatio = _macPreviewSize != null
+        ? _macPreviewSize!.width / _macPreviewSize!.height
+        : size.width / size.height;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Live Camera Detection'),
+        backgroundColor: Colors.green,
+        foregroundColor: Colors.white,
+        actions: [
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: Text(
+                'FPS: $_fps | Detection: ${_detectionTimeMs}ms',
+                style: const TextStyle(fontSize: 14),
+              ),
+            ),
+          ),
+        ],
+      ),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          CameraMacOSView(
+            cameraMode: CameraMacOSMode.photo,
+            fit: BoxFit.cover,
+            onCameraInizialized: _onMacCameraInitialized,
+            onCameraLoading: (_) => const Center(child: CircularProgressIndicator()),
+          ),
+          if (_imageSize != null)
+            CustomPaint(
+              painter: _CameraDetectionPainter(
+                faces: _faces,
+                imageSize: _imageSize!,
+                screenSize: size,
+                cameraAspectRatio: cameraAspectRatio,
+              ),
+            ),
+          Positioned(
+            bottom: 20,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.black.withAlpha(179),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Faces Detected: ${_faces.length}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'Frame Skip: ',
+                          style: TextStyle(color: Colors.white70, fontSize: 14),
+                        ),
+                        DropdownButton<int>(
+                          value: _processEveryNFrames,
+                          dropdownColor: Colors.black87,
+                          style: const TextStyle(color: Colors.white),
+                          items: [1, 2, 3, 4, 5]
+                              .map((n) => DropdownMenuItem(
+                                    value: n,
+                                    child: Text('1/$n'),
+                                  ))
+                              .toList(),
+                          onChanged: (value) {
+                            if (value != null) {
+                              setState(() {
+                                _processEveryNFrames = value;
+                              });
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _onMacCameraInitialized(CameraMacOSController controller) {
+    _macCameraController = controller;
+    _macPreviewSize = controller.args.size;
+    setState(() {
+      _isInitialized = true;
+    });
+    _startMacImageStream();
+  }
+
+  void _startMacImageStream() {
+    if (_macCameraController == null) return;
+
+    _macCameraController!.startImageStream((image) async {
+      if (image == null) return;
+
+      _frameCounter++;
+      _framesSinceLastUpdate++;
+      final now = DateTime.now();
+      if (_lastFpsUpdate != null) {
+        final diff = now.difference(_lastFpsUpdate!).inMilliseconds;
+        if (diff >= 1000) {
+          setState(() {
+            _fps = (_framesSinceLastUpdate * 1000 / diff).round();
+            _framesSinceLastUpdate = 0;
+            _lastFpsUpdate = now;
+          });
+        }
+      } else {
+        _lastFpsUpdate = now;
+      }
+
+      if (_frameCounter % _processEveryNFrames != 0) return;
+      if (_isProcessing) return;
+
+      _isProcessing = true;
+
+      try {
+        final startTime = DateTime.now();
+        final bytes = _convertMacImageToBytes(image);
+        if (bytes == null) {
+          _isProcessing = false;
+          return;
+        }
+
+        final faces = await _faceDetector.detectFaces(
+          bytes,
+          mode: FaceDetectionMode.fast,
+        );
+        final detectionTime = DateTime.now().difference(startTime).inMilliseconds;
+
+        if (mounted) {
+          setState(() {
+            _faces = faces;
+            _imageSize = Size(image.width.toDouble(), image.height.toDouble());
+            _macPreviewSize ??= Size(image.width.toDouble(), image.height.toDouble());
+            _detectionTimeMs = detectionTime;
+          });
+        }
+      } catch (_) {
+        // Ignore frame errors to keep streaming
+      } finally {
+        _isProcessing = false;
+      }
+    });
   }
 }
 
