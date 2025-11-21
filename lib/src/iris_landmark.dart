@@ -212,7 +212,7 @@ class IrisLandmark {
     bool irisOnly = false
   }) async {
     final ReceivePort rp = ReceivePort();
-    final iso = await Isolate.spawn(IrisLandmark._isolateEntry, {
+    final Isolate iso = await Isolate.spawn(IrisLandmark._isolateEntry, {
       'sendPort': rp.sendPort,
       'modelPath': modelPath,
       'eyeCropBytes': eyeCropBytes,
@@ -240,8 +240,10 @@ class IrisLandmark {
     final String mode = params['mode'] as String;
 
     try {
-      final iris =
-      await IrisLandmark.createFromFile(modelPath, useIsolate: false);
+      final IrisLandmark iris = await IrisLandmark.createFromFile(
+        modelPath,
+        useIsolate: false
+      );
       final img.Image? eye = img.decodeImage(eyeCropBytes);
       if (eye == null) {
         sendPort.send({'ok': false, 'err': 'decode_failed'});
@@ -293,9 +295,9 @@ class IrisLandmark {
       }
       return lm;
     } else {
-      final input4d = _asNHWC4D(pack.tensorNHWC, _inH, _inW);
-      final inputs = [input4d];
-      final outputs = <int, Object>{};
+      final List<List<List<List<double>>>> input4d = _asNHWC4D(pack.tensorNHWC, _inH, _inW);
+      final List<List<List<List<List<double>>>>> inputs = [input4d];
+      final Map<int, Object> outputs = <int, Object>{};
       _outShapes.forEach((i, shape) {
         outputs[i] = _allocForShape(shape);
       });
@@ -311,7 +313,7 @@ class IrisLandmark {
 
       Float32List? irisFlat;
       _outShapes.forEach((i, shape) {
-        final flat = _flattenDynamicToFloat(outputs[i]);
+        final Float32List flat = _flattenDynamicToFloat(outputs[i]);
         if (flat.length == 15) {
           irisFlat = flat;
         }
@@ -355,7 +357,7 @@ class IrisLandmark {
     for (final List<double> p in lmNorm) {
       final double px = isRight ? (1.0 - p[0]) : p[0];
       final double py = p[1];
-      final lx2 = (px - 0.5) * s;
+      final double lx2 = (px - 0.5) * s;
       final double ly2 = (py - 0.5) * s;
       final double x = roi.cx + lx2 * ct - ly2 * st;
       final double y = roi.cy + lx2 * st + ly2 * ct;

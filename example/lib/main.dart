@@ -6,12 +6,76 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:face_detection_tflite/face_detection_tflite.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+import 'package:camera/camera.dart';
+import 'package:image/image.dart' as img;
 
 void main() {
   runApp(const MaterialApp(
     debugShowCheckedModeBanner: false,
-    home: Example(),
+    home: HomeScreen(),
   ));
+}
+
+class HomeScreen extends StatelessWidget {
+  const HomeScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Face Detection Demo'),
+        backgroundColor: Colors.blue,
+        foregroundColor: Colors.white,
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.face, size: 100, color: Colors.blue[300]),
+            const SizedBox(height: 40),
+            const Text(
+              'Choose Detection Mode',
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 40),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const Example()),
+                );
+              },
+              icon: const Icon(Icons.image, size: 32),
+              label: const Text('Still Image Detection', style: TextStyle(fontSize: 18)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+                minimumSize: const Size(300, 70),
+              ),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const LiveCameraScreen()),
+                );
+              },
+              icon: const Icon(Icons.videocam, size: 32),
+              label: const Text('Live Camera Detection', style: TextStyle(fontSize: 18)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+                minimumSize: const Size(300, 70),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class Example extends StatefulWidget {
@@ -839,5 +903,359 @@ class _DetectionsPainter extends CustomPainter {
         old.boundingBoxThickness != boundingBoxThickness ||
         old.landmarkSize != landmarkSize ||
         old.meshSize != meshSize;
+  }
+}
+
+class LiveCameraScreen extends StatefulWidget {
+  const LiveCameraScreen({super.key});
+
+  @override
+  State<LiveCameraScreen> createState() => _LiveCameraScreenState();
+}
+
+class _LiveCameraScreenState extends State<LiveCameraScreen> {
+  CameraController? _cameraController;
+  final FaceDetector _faceDetector = FaceDetector();
+  List<Face> _faces = [];
+  Size? _imageSize;
+  bool _isProcessing = false;
+  bool _isInitialized = false;
+  int _frameCounter = 0;
+  int _processEveryNFrames = 3; // Process every 3rd frame for better performance
+  int _detectionTimeMs = 0;
+  int _fps = 0;
+  DateTime? _lastFpsUpdate;
+  int _framesSinceLastUpdate = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _initCamera();
+  }
+
+  Future<void> _initCamera() async {
+    try {
+      // Initialize face detector
+      await _faceDetector.initialize(model: FaceDetectionModel.backCamera);
+
+      // Get available cameras
+      final cameras = await availableCameras();
+      if (cameras.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No cameras available')),
+          );
+        }
+        return;
+      }
+
+      // Use the first available camera (usually front camera)
+      final camera = cameras.first;
+
+      _cameraController = CameraController(
+        camera,
+        ResolutionPreset.medium, // Use medium for balance between quality and speed
+        enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.yuv420, // Efficient format
+      );
+
+      await _cameraController!.initialize();
+
+      if (!mounted) return;
+
+      setState(() {
+        _isInitialized = true;
+      });
+
+      // Start image stream
+      _cameraController!.startImageStream(_processCameraImage);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error initializing camera: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _processCameraImage(CameraImage image) async {
+    _frameCounter++;
+
+    // Calculate FPS
+    _framesSinceLastUpdate++;
+    final now = DateTime.now();
+    if (_lastFpsUpdate != null) {
+      final diff = now.difference(_lastFpsUpdate!).inMilliseconds;
+      if (diff >= 1000) {
+        setState(() {
+          _fps = (_framesSinceLastUpdate * 1000 / diff).round();
+          _framesSinceLastUpdate = 0;
+          _lastFpsUpdate = now;
+        });
+      }
+    } else {
+      _lastFpsUpdate = now;
+    }
+
+    // Skip frames for better performance
+    if (_frameCounter % _processEveryNFrames != 0) return;
+
+    // Skip if already processing
+    if (_isProcessing) return;
+
+    _isProcessing = true;
+
+    try {
+      final startTime = DateTime.now();
+
+      // Convert CameraImage to bytes
+      final bytes = await _convertCameraImageToBytes(image);
+
+      if (bytes == null) {
+        _isProcessing = false;
+        return;
+      }
+
+      // Run face detection (fast mode for bounding boxes only)
+      final faces = await _faceDetector.detectFaces(
+        bytes,
+        mode: FaceDetectionMode.fast, // Fast mode for real-time performance
+      );
+
+      final endTime = DateTime.now();
+      final detectionTime = endTime.difference(startTime).inMilliseconds;
+
+      if (mounted) {
+        setState(() {
+          _faces = faces;
+          _imageSize = Size(image.width.toDouble(), image.height.toDouble());
+          _detectionTimeMs = detectionTime;
+        });
+      }
+    } catch (e) {
+      // Silently handle errors during processing
+    } finally {
+      _isProcessing = false;
+    }
+  }
+
+  Future<Uint8List?> _convertCameraImageToBytes(CameraImage image) async {
+    try {
+      // Convert YUV420 to RGB
+      final int width = image.width;
+      final int height = image.height;
+
+      // Create an image using the img package
+      final imgLib = img.Image(width: width, height: height);
+
+      // YUV420 format has Y plane and UV planes
+      final int uvRowStride = image.planes[1].bytesPerRow;
+      final int uvPixelStride = image.planes[1].bytesPerPixel ?? 1;
+
+      for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+          final int uvIndex = uvPixelStride * (x / 2).floor() + uvRowStride * (y / 2).floor();
+          final int index = y * width + x;
+
+          final yp = image.planes[0].bytes[index];
+          final up = image.planes[1].bytes[uvIndex];
+          final vp = image.planes[2].bytes[uvIndex];
+
+          // Convert YUV to RGB
+          int r = (yp + vp * 1436 / 1024 - 179).round().clamp(0, 255);
+          int g = (yp - up * 46549 / 131072 + 44 - vp * 93604 / 131072 + 91).round().clamp(0, 255);
+          int b = (yp + up * 1814 / 1024 - 227).round().clamp(0, 255);
+
+          imgLib.setPixelRgb(x, y, r, g, b);
+        }
+      }
+
+      // Encode to JPEG
+      return Uint8List.fromList(img.encodeJpg(imgLib));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _cameraController?.stopImageStream();
+    _cameraController?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_isInitialized || _cameraController == null) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Live Camera Detection'),
+          backgroundColor: Colors.green,
+          foregroundColor: Colors.white,
+        ),
+        body: const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    final size = MediaQuery.of(context).size;
+    final cameraAspectRatio = _cameraController!.value.aspectRatio;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Live Camera Detection'),
+        backgroundColor: Colors.green,
+        foregroundColor: Colors.white,
+        actions: [
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: Text(
+                'FPS: $_fps | Detection: ${_detectionTimeMs}ms',
+                style: const TextStyle(fontSize: 14),
+              ),
+            ),
+          ),
+        ],
+      ),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Camera preview
+          Center(
+            child: AspectRatio(
+              aspectRatio: cameraAspectRatio,
+              child: CameraPreview(_cameraController!),
+            ),
+          ),
+          // Face detection overlay
+          if (_imageSize != null)
+            CustomPaint(
+              painter: _CameraDetectionPainter(
+                faces: _faces,
+                imageSize: _imageSize!,
+                screenSize: size,
+                cameraAspectRatio: cameraAspectRatio,
+              ),
+            ),
+          // Info panel
+          Positioned(
+            bottom: 20,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.black.withAlpha(179),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Faces Detected: ${_faces.length}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'Frame Skip: ',
+                          style: TextStyle(color: Colors.white70, fontSize: 14),
+                        ),
+                        DropdownButton<int>(
+                          value: _processEveryNFrames,
+                          dropdownColor: Colors.black87,
+                          style: const TextStyle(color: Colors.white),
+                          items: [1, 2, 3, 4, 5]
+                              .map((n) => DropdownMenuItem(
+                                    value: n,
+                                    child: Text('1/$n'),
+                                  ))
+                              .toList(),
+                          onChanged: (value) {
+                            if (value != null) {
+                              setState(() {
+                                _processEveryNFrames = value;
+                              });
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CameraDetectionPainter extends CustomPainter {
+  final List<Face> faces;
+  final Size imageSize;
+  final Size screenSize;
+  final double cameraAspectRatio;
+
+  _CameraDetectionPainter({
+    required this.faces,
+    required this.imageSize,
+    required this.screenSize,
+    required this.cameraAspectRatio,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (faces.isEmpty) return;
+
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3.0
+      ..color = const Color(0xFF00FFCC);
+
+    // Calculate the display area for the camera preview
+    final screenAspectRatio = screenSize.width / screenSize.height;
+    double displayWidth, displayHeight;
+    double offsetX = 0, offsetY = 0;
+
+    if (cameraAspectRatio > screenAspectRatio) {
+      displayWidth = screenSize.width;
+      displayHeight = screenSize.width / cameraAspectRatio;
+      offsetY = (screenSize.height - displayHeight) / 2;
+    } else {
+      displayHeight = screenSize.height;
+      displayWidth = screenSize.height * cameraAspectRatio;
+      offsetX = (screenSize.width - displayWidth) / 2;
+    }
+
+    final scaleX = displayWidth / imageSize.width;
+    final scaleY = displayHeight / imageSize.height;
+
+    // Draw bounding boxes
+    for (final face in faces) {
+      final corners = face.bboxCorners;
+      final rect = Rect.fromLTRB(
+        offsetX + corners[0].x * scaleX,
+        offsetY + corners[0].y * scaleY,
+        offsetX + corners[2].x * scaleX,
+        offsetY + corners[2].y * scaleY,
+      );
+      canvas.drawRect(rect, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _CameraDetectionPainter old) {
+    return old.faces != faces || old.imageSize != imageSize;
   }
 }

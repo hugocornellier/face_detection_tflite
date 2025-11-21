@@ -509,10 +509,10 @@ class FaceDetector {
   ) {
     if (meshPts.isEmpty) return const <List<math.Point<double>>>[];
     if (meshPts.length % kMeshPoints != 0) return [meshPts];
-    final faces = meshPts.length ~/ kMeshPoints;
-    final out = <List<math.Point<double>>>[];
+    final int faces = meshPts.length ~/ kMeshPoints;
+    final List<List<math.Point<double>>> out = <List<math.Point<double>>>[];
     for (int i = 0; i < faces; i++) {
-      final start = i * kMeshPoints;
+      final int start = i * kMeshPoints;
       out.add(meshPts.sublist(start, start + kMeshPoints));
     }
     return out;

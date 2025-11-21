@@ -22,6 +22,47 @@ enum FaceDetectionModel { frontCamera, backCamera, shortRange, full, fullSparse 
 /// - [full]: All features including bounding boxes, landmarks, mesh, and iris tracking
 enum FaceDetectionMode { fast, standard, full }
 
+/// Outputs for a single detected face.
+///
+/// [bboxCorners] are the 4 corner points of the face box in pixel coordinates.
+/// [landmarks] are coarse detection keypoints (e.g. eyes, nose, mouth corners).
+/// [mesh] contains 468 facial landmarks as pixel coordinates.
+/// [irises] contains 10 points (5 per eye) used to estimate iris position/size.
+class Face {
+  final _Detection _detection;
+  final List<math.Point<double>> mesh;
+  final List<math.Point<double>> irises;
+  final Size originalSize;
+
+  Face({
+    required _Detection detection,
+    required this.mesh,
+    required this.irises,
+    required this.originalSize,
+  }) : _detection = detection;
+
+  /// The four corner points of the face bounding box in pixel coordinates.
+  ///
+  /// Returns points in order: top-left, top-right, bottom-right, bottom-left.
+  List<math.Point<double>> get bboxCorners {
+    final _RectF r = _detection.bbox;
+    final double w = originalSize.width.toDouble();
+    final double h = originalSize.height.toDouble();
+    return [
+      math.Point<double>(r.xmin * w, r.ymin * h),
+      math.Point<double>(r.xmax * w, r.ymin * h),
+      math.Point<double>(r.xmax * w, r.ymax * h),
+      math.Point<double>(r.xmin * w, r.ymax * h),
+    ];
+  }
+
+  /// Facial landmark positions in pixel coordinates.
+  ///
+  /// Returns a map where keys are [FaceLandmarkType] values identifying specific
+  /// facial features (eyes, nose, mouth, etc.) and values are their pixel positions.
+  Map<FaceLandmarkType, math.Point<double>> get landmarks => _detection.landmarks;
+}
+
 const _modelNameBack = 'face_detection_back.tflite';
 const _modelNameFront = 'face_detection_front.tflite';
 const _modelNameShort = 'face_detection_short_range.tflite';
@@ -78,48 +119,13 @@ class _AlignedFace {
   final double size;
   final double theta;
   final img.Image faceCrop;
-  _AlignedFace({required this.cx, required this.cy, required this.size, required this.theta, required this.faceCrop});
-}
-
-/// Outputs for a single detected face.
-///
-/// [bboxCorners] are the 4 corner points of the face box in pixel coordinates.
-/// [landmarks] are coarse detection keypoints (e.g. eyes, nose, mouth corners).
-/// [mesh] contains 468 facial landmarks as pixel coordinates.
-/// [irises] contains 10 points (5 per eye) used to estimate iris position/size.
-class Face {
-  final _Detection _detection;
-  final List<math.Point<double>> mesh;
-  final List<math.Point<double>> irises;
-  final Size originalSize;
-
-  Face({
-    required _Detection detection,
-    required this.mesh,
-    required this.irises,
-    required this.originalSize,
-  }) : _detection = detection;
-
-  /// The four corner points of the face bounding box in pixel coordinates.
-  ///
-  /// Returns points in order: top-left, top-right, bottom-right, bottom-left.
-  List<math.Point<double>> get bboxCorners {
-    final _RectF r = _detection.bbox;
-    final double w = originalSize.width.toDouble();
-    final double h = originalSize.height.toDouble();
-    return [
-      math.Point<double>(r.xmin * w, r.ymin * h),
-      math.Point<double>(r.xmax * w, r.ymin * h),
-      math.Point<double>(r.xmax * w, r.ymax * h),
-      math.Point<double>(r.xmin * w, r.ymax * h),
-    ];
-  }
-
-  /// Facial landmark positions in pixel coordinates.
-  ///
-  /// Returns a map where keys are [FaceLandmarkType] values identifying specific
-  /// facial features (eyes, nose, mouth, etc.) and values are their pixel positions.
-  Map<FaceLandmarkType, math.Point<double>> get landmarks => _detection.landmarks;
+  _AlignedFace({
+    required this.cx,
+    required this.cy,
+    required this.size,
+    required this.theta,
+    required this.faceCrop
+  });
 }
 
 class _RectF {
@@ -127,7 +133,12 @@ class _RectF {
   const _RectF(this.xmin, this.ymin, this.xmax, this.ymax);
   double get w => xmax - xmin;
   double get h => ymax - ymin;
-  _RectF scale(double sx, double sy) => _RectF(xmin * sx, ymin * sy, xmax * sx, ymax * sy);
+  _RectF scale(double sx, double sy) => _RectF(
+      xmin * sx,
+      ymin * sy,
+      xmax * sx,
+      ymax * sy
+  );
   _RectF expand(double frac) {
     final double cx = (xmin + xmax) * 0.5;
     final double cy = (ymin + ymax) * 0.5;
@@ -155,10 +166,15 @@ class _Detection {
   Map<FaceLandmarkType, math.Point<double>> get landmarks {
     final Size? sz = imageSize;
     if (sz == null) {
-      throw StateError('_Detection.imageSize is null; cannot produce pixel landmarks.');
+      throw StateError(
+        '_Detection.imageSize is null; cannot produce pixel landmarks.'
+      );
     }
     final double w = sz.width.toDouble(), h = sz.height.toDouble();
-    final Map<FaceLandmarkType, math.Point<double>> map = <FaceLandmarkType, math.Point<double>>{};
+    final Map<FaceLandmarkType, math.Point<double>> map = <
+      FaceLandmarkType,
+      math.Point<double>
+    >{};
     for (final FaceLandmarkType idx in FaceLandmarkType.values) {
       final double xn = keypointsXY[idx.index * 2];
       final double yn = keypointsXY[idx.index * 2 + 1];

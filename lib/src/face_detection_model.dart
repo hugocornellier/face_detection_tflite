@@ -21,7 +21,13 @@ class FaceDetection {
   late final Float32List _boxesBuf;
   late final Float32List _scoresBuf;
 
-  FaceDetection._(this._itp, this._inW, this._inH, this._anchors, this._assumeMirrored);
+  FaceDetection._(
+    this._itp,
+    this._inW,
+    this._inH,
+    this._anchors,
+    this._assumeMirrored
+  );
 
   static Future<FaceDetection> create(
     FaceDetectionModel model, {
@@ -89,7 +95,8 @@ class FaceDetection {
       List.generate(
         h, (_) => List.generate(
           w,
-          (_) => List<double>.filled(3, 0.0, growable: false), growable: false
+          (_) => List<double>.filled(3, 0.0, growable: false),
+          growable: false
         ),
         growable: false
       ),
@@ -134,15 +141,24 @@ class FaceDetection {
     }
     final _DecodedRgb _d = await _decodeImageOffUi(imageBytes);
     final img.Image decoded = _imageFromDecodedRgb(_d);
-    final img.Image srcRoi = (roi == null) ? decoded : await cropFromRoi(decoded, roi);
-    final _ImageTensor pack = await _imageToTensor(srcRoi, outW: _inW, outH: _inH);
+    final img.Image srcRoi = (roi == null)
+        ? decoded
+        : await cropFromRoi(decoded, roi);
+    final _ImageTensor pack = await _imageToTensor(
+      srcRoi,
+      outW: _inW,
+      outH: _inH
+    );
 
     Float32List boxesBuf;
     Float32List scoresBuf;
 
     if (_iso != null) {
-      final List<List<List<List<double>>>> input4d = _asNHWC4D(pack.tensorNHWC, _inH, _inW);
-
+      final List<List<List<List<double>>>> input4d = _asNHWC4D(
+        pack.tensorNHWC,
+        _inH,
+        _inW
+      );
       final int inputCount = _itp.getInputTensors().length;
       final List<Object?> inputs = List<Object?>.filled(
         inputCount, null,
@@ -258,10 +274,10 @@ class FaceDetection {
         tmp[j + 1] += ay;
       }
       final double xc = tmp[0], yc = tmp[1], w = tmp[2], h = tmp[3];
-      final xmin = xc - w * 0.5,
-            ymin = yc - h * 0.5,
-            xmax = xc + w * 0.5,
-            ymax = yc + h * 0.5;
+      final double xmin = xc - w * 0.5,
+                   ymin = yc - h * 0.5,
+                   xmax = xc + w * 0.5,
+                   ymax = yc + h * 0.5;
       final List<double> kp = <double>[];
       for (int j = 4; j < k; j += 2) {
         kp.add(tmp[j + 0]);
@@ -287,7 +303,11 @@ class FaceDetection {
     for (int i = 0; i < n; i++) {
       final _RectF b = boxes[i].bbox;
       if (b.xmax <= b.xmin || b.ymax <= b.ymin) continue;
-      res.add(_Detection(bbox: b, score: scores[i], keypointsXY: boxes[i].keypointsXY));
+      res.add(_Detection(
+          bbox: b,
+          score: scores[i],
+          keypointsXY: boxes[i].keypointsXY
+      ));
     }
     return res;
   }

@@ -14,21 +14,19 @@ Future<_ImageTensor> _imageToTensor(
 }) async {
   final ReceivePort rp = ReceivePort();
   final Uint8List rgb = src.getBytes(order: img.ChannelOrder.rgb);
-  final params = {
+  await Isolate.spawn(_imageToTensorIsolate, {
     'sendPort': rp.sendPort,
     'inW': src.width,
     'inH': src.height,
     'outW': outW,
     'outH': outH,
     'rgb': TransferableTypedData.fromList([rgb]),
-  };
-  await Isolate.spawn(_imageToTensorIsolate, params);
+  });
   final Map msg = await rp.first as Map;
   rp.close();
 
   final ByteBuffer tBB = (msg['tensor'] as TransferableTypedData).materialize();
   final Float32List tensor = tBB.asUint8List().buffer.asFloat32List();
-
   final List paddingRaw = msg['padding'] as List;
   final List<double> padding =
   paddingRaw.map((e) => (e as num).toDouble()).toList();
@@ -48,7 +46,7 @@ Future<void> _imageToTensorIsolate(Map<String, dynamic> params) async {
   final ByteBuffer rgbBB = (params['rgb'] as TransferableTypedData).materialize();
   final Uint8List rgb = rgbBB.asUint8List();
 
-  final src = img.Image.fromBytes(
+  final img.Image src = img.Image.fromBytes(
     width: inW,
     height: inH,
     bytes: rgb.buffer,
@@ -60,7 +58,6 @@ Future<void> _imageToTensorIsolate(Map<String, dynamic> params) async {
   final double scale = s1 < s2 ? s1 : s2;
   final int newW = (inW * scale).round();
   final int newH = (inH * scale).round();
-
   final resized = img.copyResize(
     src,
     width: newW,
@@ -71,17 +68,17 @@ Future<void> _imageToTensorIsolate(Map<String, dynamic> params) async {
   final int dx = (outW - newW) ~/ 2;
   final int dy = (outH - newH) ~/ 2;
 
-  final canvas = img.Image(width: outW, height: outH);
+  final img.Image canvas = img.Image(width: outW, height: outH);
   img.fill(canvas, color: img.ColorRgb8(0, 0, 0));
 
   for (int y = 0; y < resized.height; y++) {
     for (int x = 0; x < resized.width; x++) {
-      final px = resized.getPixel(x, y);
+      final img.Pixel px = resized.getPixel(x, y);
       canvas.setPixel(x + dx, y + dy, px);
     }
   }
 
-  final t = Float32List(outW * outH * 3);
+  final Float32List t = Float32List(outW * outH * 3);
   int k = 0;
   for (int y = 0; y < outH; y++) {
     for (int x = 0; x < outW; x++) {

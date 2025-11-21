@@ -17,6 +17,8 @@ dependencies:
   face_detection_tflite:
     path: ../
   flutter_colorpicker: ^1.1.0
+  camera: ^0.11.0+2
+  camera_macos: ^0.0.9
 
 flutter:
   uses-material-design: true
