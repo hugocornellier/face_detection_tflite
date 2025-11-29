@@ -1,5 +1,6 @@
 library face_detection_tflite;
 
+import 'dart:async';
 import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -15,6 +16,7 @@ export 'src/dart_registration.dart';
 
 part 'src/types_and_consts.dart';
 part 'src/helpers.dart';
+part 'src/image_processing_worker.dart';
 part 'src/face_detector.dart';
 part 'src/face_detection_model.dart';
 part 'src/face_landmark.dart';

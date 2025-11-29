@@ -57,6 +57,7 @@ class FaceDetector {
   /// ```
   FaceDetector();
 
+  ImageProcessingWorker? _worker;
   FaceDetection? _detector;
   FaceLandmark? _faceLm;
   IrisLandmark? _iris;
@@ -104,13 +105,19 @@ class FaceDetector {
   ) async {
     await _ensureTFLiteLoaded();
     try {
+      // Create the image processing worker for optimized performance
+      _worker = ImageProcessingWorker();
+      await _worker!.initialize();
+
       _detector = await FaceDetection.create(model, options: options, useIsolate: true);
       _faceLm = await FaceLandmark.create(options: options, useIsolate: true);
       _iris = await IrisLandmark.create(options: options, useIsolate: true);
     } catch (e) {
+      _worker?.dispose();
       _detector?.dispose();
       _faceLm?.dispose();
       _iris?.dispose();
+      _worker = null;
       _detector = null;
       _faceLm = null;
       _iris = null;
@@ -216,9 +223,9 @@ class FaceDetector {
       throw StateError('Iris model not initialized. Call initialize() before getDetectionsWithIrisCenters().');
     }
 
-    final _DecodedRgb _d = await _decodeImageOffUi(imageBytes);
+    final _DecodedRgb _d = await decodeImageWithWorker(imageBytes, _worker);
     final img.Image decoded = _imageFromDecodedRgb(_d);
-    final List<_Detection> dets = await _detectDetections(imageBytes);
+    final List<_Detection> dets = await _detectDetectionsWithDecoded(decoded);
     if (dets.isEmpty) return dets;
 
     final _Detection det = dets.first;
@@ -237,8 +244,8 @@ class FaceDetector {
       det.keypointsXY[FaceLandmarkType.rightEye.index * 2 + 1] * imgH,
     );
 
-    final List<Offset> centers = await _computeIrisCentersOnMainThread(
-      imageBytes, rois,
+    final List<Offset> centers = await _computeIrisCentersWithDecoded(
+      decoded, rois,
       leftFallback: lf,
       rightFallback: rf,
     );
@@ -265,9 +272,18 @@ class FaceDetector {
     Offset? leftFallback,
     Offset? rightFallback,
   }) async {
-    final Stopwatch sw = Stopwatch()..start();
-    final _DecodedRgb _d = await _decodeImageOffUi(imageBytes);
+    final _DecodedRgb _d = await decodeImageWithWorker(imageBytes, _worker);
     final img.Image decoded = _imageFromDecodedRgb(_d);
+    return _computeIrisCentersWithDecoded(decoded, rois, leftFallback: leftFallback, rightFallback: rightFallback);
+  }
+
+  Future<List<Offset>> _computeIrisCentersWithDecoded(
+    img.Image decoded,
+    List<_AlignedRoi> rois, {
+    Offset? leftFallback,
+    Offset? rightFallback,
+  }) async {
+    final Stopwatch sw = Stopwatch()..start();
     final IrisLandmark iris = _iris!;
     final List<Offset> centers = <Offset>[];
 
@@ -320,6 +336,17 @@ class FaceDetector {
     _RectF? roi,
     bool refineEyesWithIris = true
   }) async {
+    // Decode once and delegate to optimized path
+    final _DecodedRgb _d = await decodeImageWithWorker(imageBytes, _worker);
+    final img.Image decoded = _imageFromDecodedRgb(_d);
+    return _detectDetectionsWithDecoded(decoded, roi: roi, refineEyesWithIris: refineEyesWithIris);
+  }
+
+  Future<List<_Detection>> _detectDetectionsWithDecoded(
+    img.Image decoded, {
+    _RectF? roi,
+    bool refineEyesWithIris = true
+  }) async {
     final FaceDetection? d = _detector;
     if (d == null) {
       throw StateError('FaceDetector not initialized. Call initialize() before detectDetections().');
@@ -328,9 +355,7 @@ class FaceDetector {
       throw StateError('Iris model not initialized. initialize() must succeed before detectDetections().');
     }
 
-    final _DecodedRgb _d = await _decodeImageOffUi(imageBytes);
-    final img.Image decoded = _imageFromDecodedRgb(_d);
-    final List<_Detection> dets = await d.call(imageBytes, roi: roi);
+    final List<_Detection> dets = await d.callWithDecoded(decoded, roi: roi, worker: _worker);
     if (dets.isEmpty) return dets;
 
     if (!refineEyesWithIris) {
@@ -361,8 +386,8 @@ class FaceDetector {
         det.keypointsXY[FaceLandmarkType.rightEye.index * 2 + 1] * imgH,
       );
 
-      final List<Offset> centers = await _computeIrisCentersOnMainThread(
-        imageBytes, rois,
+      final List<Offset> centers = await _computeIrisCentersWithDecoded(
+        decoded, rois,
         leftFallback: lf,
         rightFallback: rf,
       );
@@ -438,7 +463,7 @@ class FaceDetector {
     final cx = eyeCx + vMx * 0.1;
     final cy = eyeCy + vMy * 0.1;
 
-    final faceCrop = await extractAlignedSquare(decoded, cx, cy, size, -theta);
+    final faceCrop = await extractAlignedSquareWithWorker(decoded, cx, cy, size, -theta, _worker);
 
     return _AlignedFace(cx: cx, cy: cy, size: size, theta: theta, faceCrop: faceCrop);
   }
@@ -603,9 +628,9 @@ class FaceDetector {
   /// The input [imageBytes] is an encoded image (e.g., JPEG/PNG).
   /// Returns an empty list when no face is found.
   Future<List<math.Point<double>>> getFaceMesh(Uint8List imageBytes) async {
-    final _DecodedRgb _d = await _decodeImageOffUi(imageBytes);
+    final _DecodedRgb _d = await decodeImageWithWorker(imageBytes, _worker);
     final img.Image decoded = _imageFromDecodedRgb(_d);
-    final List<_Detection> dets = await _detectDetections(imageBytes);
+    final List<_Detection> dets = await _detectDetectionsWithDecoded(decoded);
     if (dets.isEmpty) return const <math.Point<double>>[];
 
     final _AlignedFace aligned = await estimateAlignedFace(decoded, dets.first);
@@ -619,10 +644,10 @@ class FaceDetector {
   /// Returns up to 10 points (5 per eye: center + 4 contour points) in absolute pixels.
   /// If no face or iris is found, returns an empty list.
   Future<List<math.Point<double>>> getIris(Uint8List imageBytes) async {
-    final _DecodedRgb _d = await _decodeImageOffUi(imageBytes);
+    final _DecodedRgb _d = await decodeImageWithWorker(imageBytes, _worker);
     final img.Image decoded = _imageFromDecodedRgb(_d);
 
-    final List<_Detection> dets = await _detectDetections(imageBytes);
+    final List<_Detection> dets = await _detectDetectionsWithDecoded(decoded);
     if (dets.isEmpty) return const <math.Point<double>>[];
     final _AlignedFace aligned = await estimateAlignedFace(decoded, dets.first);
     final List<Offset> meshAbs = await meshFromAlignedFace(aligned.faceCrop, aligned);
@@ -645,7 +670,7 @@ class FaceDetector {
   /// print('Image is ${size.width}x${size.height} pixels');
   /// ```
   Future<Size> getOriginalSize(Uint8List imageBytes) async {
-    final _DecodedRgb _d = await _decodeImageOffUi(imageBytes);
+    final _DecodedRgb _d = await decodeImageWithWorker(imageBytes, _worker);
     final img.Image decoded = _imageFromDecodedRgb(_d);
 
     return Size(decoded.width.toDouble(), decoded.height.toDouble());
@@ -687,7 +712,7 @@ class FaceDetector {
     List<_Detection> dets
   ) async {
     if (dets.isEmpty) return const <List<math.Point<double>>>[];
-    final _DecodedRgb _d = await _decodeImageOffUi(imageBytes);
+    final _DecodedRgb _d = await decodeImageWithWorker(imageBytes, _worker);
     final img.Image decoded = _imageFromDecodedRgb(_d);
     final List<List<math.Point<double>>> out = <List<math.Point<double>>>[];
     for (final _Detection det in dets) {
@@ -740,7 +765,7 @@ class FaceDetector {
     List<List<math.Point<double>>> meshesPerFace
   ) async {
     if (meshesPerFace.isEmpty) return const <List<math.Point<double>>>[];
-    final _DecodedRgb _d = await _decodeImageOffUi(imageBytes);
+    final _DecodedRgb _d = await decodeImageWithWorker(imageBytes, _worker);
     final img.Image decoded = _imageFromDecodedRgb(_d);
     final out = <List<math.Point<double>>>[];
     for (final meshPts in meshesPerFace) {
@@ -831,7 +856,8 @@ class FaceDetector {
     Uint8List imageBytes, {
     FaceDetectionMode mode = FaceDetectionMode.full,
   }) async {
-    final _DecodedRgb _d = await _decodeImageOffUi(imageBytes);
+    // Decode once using worker
+    final _DecodedRgb _d = await decodeImageWithWorker(imageBytes, _worker);
     final img.Image decoded = _imageFromDecodedRgb(_d);
     final Size imgSize = Size(
       decoded.width.toDouble(),
@@ -839,8 +865,9 @@ class FaceDetector {
     );
 
     final bool computeIris = mode == FaceDetectionMode.full;
-    final List<_Detection> dets = await _detectDetections(
-        imageBytes,
+    // Use decoded image to avoid redundant decoding
+    final List<_Detection> dets = await _detectDetectionsWithDecoded(
+        decoded,
         refineEyesWithIris: computeIris
     );
 
@@ -881,6 +908,7 @@ class FaceDetector {
   /// After calling dispose, you must call [initialize] again before
   /// running any detections.
   void dispose() {
+    _worker?.dispose();
     _detector?.dispose();
     _faceLm?.dispose();
     _iris?.dispose();

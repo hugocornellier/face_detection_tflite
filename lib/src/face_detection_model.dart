@@ -192,13 +192,44 @@ class FaceDetection {
     }
     final _DecodedRgb _d = await _decodeImageOffUi(imageBytes);
     final img.Image decoded = _imageFromDecodedRgb(_d);
+    return callWithDecoded(decoded, roi: roi);
+  }
+
+  /// Runs face detection inference on a pre-decoded image.
+  ///
+  /// This is an optimized variant of [call] that accepts a pre-decoded image
+  /// to avoid redundant decoding. When a [worker] is provided, it uses the
+  /// long-lived worker isolate for image operations instead of spawning fresh
+  /// isolates for each operation.
+  ///
+  /// The [decoded] parameter should be a fully decoded image (not encoded bytes).
+  ///
+  /// Optionally, you can specify a [roi] (region of interest) to detect faces only
+  /// within a specific area of the image.
+  ///
+  /// The [worker] parameter allows providing an ImageProcessingWorker for
+  /// optimized image operations. When null, falls back to spawning fresh isolates.
+  ///
+  /// Returns a list of detected faces as [_Detection] objects, each containing:
+  /// - A bounding box with normalized coordinates (0.0 to 1.0)
+  /// - A confidence score
+  /// - Coarse facial keypoints (eyes, nose, mouth, tragions)
+  ///
+  /// **Note:** This method is primarily for internal optimization. Most users
+  /// should use [call] or [FaceDetector.detectFaces].
+  Future<List<_Detection>> callWithDecoded(
+    img.Image decoded, {
+    _RectF? roi,
+    ImageProcessingWorker? worker,
+  }) async {
     final img.Image srcRoi = (roi == null)
         ? decoded
-        : await cropFromRoi(decoded, roi);
-    final _ImageTensor pack = await _imageToTensor(
+        : await cropFromRoiWithWorker(decoded, roi, worker);
+    final _ImageTensor pack = await imageToTensorWithWorker(
       srcRoi,
       outW: _inW,
-      outH: _inH
+      outH: _inH,
+      worker: worker,
     );
 
     Float32List boxesBuf;

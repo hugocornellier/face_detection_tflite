@@ -647,3 +647,97 @@ Future<void> _imageTransformIsolate(Map<String, dynamic> params) async {
     sp.send({'ok': false, 'error': e.toString()});
   }
 }
+
+// =============================================================================
+// WORKER-AWARE HELPER FUNCTIONS (Phase 2 Optimization)
+// =============================================================================
+//
+// These functions provide optimized paths when an ImageProcessingWorker is
+// available. They fall back to the original isolate-spawning implementations
+// when no worker is provided, ensuring full backwards compatibility.
+//
+// Usage: Internal to FaceDetector and related classes.
+// =============================================================================
+
+/// Decodes an image using a worker if provided, otherwise spawns a new isolate.
+///
+/// This is an optimized variant of [_decodeImageOffUi] that uses a long-lived
+/// worker isolate when available, avoiding the overhead of spawning fresh
+/// isolates for each decode operation.
+///
+/// When [worker] is null, falls back to [_decodeImageOffUi] for backwards
+/// compatibility.
+Future<_DecodedRgb> decodeImageWithWorker(
+  Uint8List bytes,
+  ImageProcessingWorker? worker,
+) async {
+  if (worker != null) {
+    return await worker.decodeImage(bytes);
+  } else {
+    return await _decodeImageOffUi(bytes);
+  }
+}
+
+/// Converts an image to a tensor using a worker if provided.
+///
+/// This is an optimized variant of [_imageToTensor] that uses a long-lived
+/// worker isolate when available, avoiding the overhead of spawning fresh
+/// isolates for each conversion.
+///
+/// When [worker] is null, falls back to [_imageToTensor] for backwards
+/// compatibility.
+Future<_ImageTensor> imageToTensorWithWorker(
+  img.Image src, {
+  required int outW,
+  required int outH,
+  ImageProcessingWorker? worker,
+}) async {
+  if (worker != null) {
+    return await worker.imageToTensor(src, outW: outW, outH: outH);
+  } else {
+    return await _imageToTensor(src, outW: outW, outH: outH);
+  }
+}
+
+/// Crops a region from an image using a worker if provided.
+///
+/// This is an optimized variant of [cropFromRoi] that uses a long-lived
+/// worker isolate when available, avoiding the overhead of spawning fresh
+/// isolates for each crop operation.
+///
+/// When [worker] is null, falls back to [cropFromRoi] for backwards
+/// compatibility.
+Future<img.Image> cropFromRoiWithWorker(
+  img.Image src,
+  _RectF roi,
+  ImageProcessingWorker? worker,
+) async {
+  if (worker != null) {
+    return await worker.cropFromRoi(src, roi);
+  } else {
+    return await cropFromRoi(src, roi);
+  }
+}
+
+/// Extracts an aligned square from an image using a worker if provided.
+///
+/// This is an optimized variant of [extractAlignedSquare] that uses a long-lived
+/// worker isolate when available, avoiding the overhead of spawning fresh
+/// isolates for each extraction.
+///
+/// When [worker] is null, falls back to [extractAlignedSquare] for backwards
+/// compatibility.
+Future<img.Image> extractAlignedSquareWithWorker(
+  img.Image src,
+  double cx,
+  double cy,
+  double size,
+  double theta,
+  ImageProcessingWorker? worker,
+) async {
+  if (worker != null) {
+    return await worker.extractAlignedSquare(src, cx, cy, size, theta);
+  } else {
+    return await extractAlignedSquare(src, cx, cy, size, theta);
+  }
+}
