@@ -13,6 +13,33 @@ class IrisLandmark {
 
   IrisLandmark._(this._itp, this._inW, this._inH);
 
+  /// Creates and initializes an iris landmark model instance.
+  ///
+  /// This factory method loads the iris landmark TensorFlow Lite model from
+  /// package assets and prepares it for inference. The model predicts 5 keypoints
+  /// per iris plus eye contour points.
+  ///
+  /// The [options] parameter allows you to customize the TFLite interpreter
+  /// configuration (e.g., number of threads, use of GPU delegate).
+  ///
+  /// When [useIsolate] is true (default), inference runs in a separate isolate
+  /// to avoid blocking the UI thread.
+  ///
+  /// Returns a fully initialized [IrisLandmark] instance ready to detect irises.
+  ///
+  /// **Note:** This model expects a cropped eye region as input. For full pipeline
+  /// processing, use the high-level [FaceDetector] class with [FaceDetectionMode.full].
+  ///
+  /// Example:
+  /// ```dart
+  /// final irisModel = await IrisLandmark.create(useIsolate: true);
+  /// final irisPoints = await irisModel(eyeCropImage);
+  /// ```
+  ///
+  /// See also:
+  /// - [createFromFile] for loading a model from a custom file path
+  ///
+  /// Throws [StateError] if the model cannot be loaded or initialized.
   static Future<IrisLandmark> create({
     InterpreterOptions? options,
     bool useIsolate = true
@@ -53,6 +80,35 @@ class IrisLandmark {
     return obj;
   }
 
+  /// Creates and initializes an iris landmark model from a custom file path.
+  ///
+  /// This factory method loads a TensorFlow Lite model from the specified
+  /// [modelPath] on the filesystem instead of from package assets. This is
+  /// useful for advanced users who want to use custom-trained or alternative
+  /// iris tracking models.
+  ///
+  /// The [options] parameter allows you to customize the TFLite interpreter
+  /// configuration (e.g., number of threads, use of GPU delegate).
+  ///
+  /// When [useIsolate] is true (default), inference runs in a separate isolate
+  /// to avoid blocking the UI thread.
+  ///
+  /// Returns a fully initialized [IrisLandmark] instance ready to detect irises.
+  ///
+  /// Example:
+  /// ```dart
+  /// final customModel = await IrisLandmark.createFromFile(
+  ///   '/path/to/custom_iris_model.tflite',
+  ///   useIsolate: true,
+  /// );
+  /// final irisPoints = await customModel(eyeCropImage);
+  /// customModel.dispose(); // Clean up when done
+  /// ```
+  ///
+  /// See also:
+  /// - [create] for loading the default bundled model from assets
+  ///
+  /// Throws [StateError] if the model cannot be loaded or initialized.
   static Future<IrisLandmark> createFromFile(
     String modelPath, {
     InterpreterOptions? options,
@@ -149,6 +205,37 @@ class IrisLandmark {
     return Float32List.fromList(out);
   }
 
+  /// Predicts iris and eye contour landmarks for a cropped eye region.
+  ///
+  /// The [eyeCrop] parameter should contain a tight crop around a single eye,
+  /// including the iris, pupil, and surrounding eye contours.
+  ///
+  /// Returns a list of 3D landmark points in normalized coordinates, where each
+  /// point is represented as `[x, y, z]`:
+  /// - `x` and `y` are normalized coordinates (0.0 to 1.0) relative to the eye crop
+  /// - `z` represents relative depth
+  ///
+  /// The returned points typically include:
+  /// - 5 iris keypoints (center and 4 contour points)
+  /// - Additional eye contour landmarks
+  ///
+  /// **Input requirements:**
+  /// - Eye should be roughly centered in the crop
+  /// - Crop should be tight around the eye region
+  /// - Image will be resized to model input size automatically
+  ///
+  /// **Note:** For iris tracking in the full face detection pipeline, use
+  /// [FaceDetector.detectFaces] with [FaceDetectionMode.full] instead.
+  ///
+  /// Example:
+  /// ```dart
+  /// final irisPoints = await irisLandmark(leftEyeCrop);
+  /// final irisCenter = irisPoints[0]; // First point is typically iris center
+  /// ```
+  ///
+  /// See also:
+  /// - [callIrisOnly] to extract only the 5 iris keypoints
+  /// - [runOnImage] to run on a full image with an eye ROI
   Future<List<List<double>>> call(img.Image eyeCrop) async {
     final _ImageTensor pack = await _imageToTensor(
       eyeCrop,
@@ -188,6 +275,36 @@ class IrisLandmark {
     }
   }
 
+  /// Runs iris detection on a full image using a specified eye region of interest.
+  ///
+  /// This method crops the eye region from the full image using the provided ROI,
+  /// runs iris landmark detection on the crop, and maps the normalized landmark
+  /// coordinates back to absolute pixel coordinates in the original image.
+  ///
+  /// The [src] parameter is the full decoded image containing the face.
+  ///
+  /// The [eyeRoi] parameter defines the eye region as a normalized rectangle
+  /// with coordinates relative to image dimensions.
+  ///
+  /// Returns a list of 3D landmark points in absolute image coordinates, where
+  /// each point is `[x, y, z]`:
+  /// - `x` and `y` are pixel coordinates in the original image
+  /// - `z` represents relative depth
+  ///
+  /// The returned points typically include:
+  /// - 5 iris keypoints (center and 4 contour points)
+  /// - Additional eye contour landmarks
+  ///
+  /// Example:
+  /// ```dart
+  /// final eyeRoi = _RectF(xmin: 0.3, ymin: 0.4, w: 0.2, h: 0.15);
+  /// final irisPoints = await irisModel.runOnImage(fullImage, eyeRoi);
+  /// // irisPoints are in full image pixel coordinates
+  /// ```
+  ///
+  /// See also:
+  /// - [call] to run on a pre-cropped eye image
+  /// - [runOnImageAlignedIris] for aligned eye ROI processing
   Future<List<List<double>>> runOnImage(img.Image src, _RectF eyeRoi) async {
     final img.Image eyeCrop = await cropFromRoi(src, eyeRoi);
     final List<List<double>> lmNorm = await call(eyeCrop);
@@ -207,6 +324,44 @@ class IrisLandmark {
     return mapped;
   }
 
+  /// Runs iris detection in a separate isolate for non-blocking inference.
+  ///
+  /// This static method spawns a dedicated isolate to perform iris landmark
+  /// detection on encoded eye crop image bytes. This is useful for running
+  /// iris detection without blocking the main UI thread, especially for
+  /// one-off detections or background processing.
+  ///
+  /// The [eyeCropBytes] parameter should contain encoded image data (JPEG, PNG)
+  /// of a cropped eye region.
+  ///
+  /// The [modelPath] parameter specifies the filesystem path to the iris model
+  /// (.tflite file).
+  ///
+  /// The [irisOnly] parameter determines the output:
+  /// - `true`: Returns only the 5 iris keypoints (center + 4 contour)
+  /// - `false`: Returns all landmarks including eye contour points (default)
+  ///
+  /// Returns a list of 3D landmark points in normalized coordinates (0.0 to 1.0)
+  /// relative to the eye crop, where each point is `[x, y, z]`.
+  ///
+  /// **Performance:** Creates a new isolate for each call. For repeated detections,
+  /// prefer creating an [IrisLandmark] instance with `useIsolate: true`.
+  ///
+  /// Example:
+  /// ```dart
+  /// final irisPoints = await IrisLandmark.callWithIsolate(
+  ///   eyeCropBytes,
+  ///   '/path/to/iris_landmark.tflite',
+  ///   irisOnly: true,
+  /// );
+  /// // Returns 5 iris keypoints in normalized coordinates
+  /// ```
+  ///
+  /// Throws [StateError] if the model cannot be loaded or inference fails.
+  ///
+  /// See also:
+  /// - [create] with `useIsolate: true` for persistent isolate inference
+  /// - [callIrisOnly] for the instance method alternative
   static Future<List<List<double>>> callWithIsolate(
     Uint8List eyeCropBytes, String modelPath, {
     bool irisOnly = false
@@ -259,6 +414,32 @@ class IrisLandmark {
     }
   }
 
+  /// Predicts only the 5 iris keypoints for a cropped eye region.
+  ///
+  /// This is an optimized alternative to [call] that extracts only the core
+  /// iris landmarks (1 center + 4 contour points) instead of returning all
+  /// eye contour points.
+  ///
+  /// The [eyeCrop] parameter should contain a tight crop around a single eye,
+  /// including the iris, pupil, and surrounding eye contours.
+  ///
+  /// Returns exactly 5 points in normalized coordinates (0.0 to 1.0) relative
+  /// to the eye crop, where each point is `[x, y, z]`:
+  /// - Point 0: Iris center (typically most stable)
+  /// - Points 1-4: Iris contour points
+  ///
+  /// **Performance:** Faster than [call] since it skips extracting additional
+  /// eye contour landmarks.
+  ///
+  /// Example:
+  /// ```dart
+  /// final irisPoints = await irisLandmark.callIrisOnly(leftEyeCrop);
+  /// final irisCenter = irisPoints[0]; // [x, y, z] normalized coordinates
+  /// ```
+  ///
+  /// See also:
+  /// - [call] to get all iris and eye contour landmarks
+  /// - [runOnImageAlignedIris] for aligned eye ROI processing
   Future<List<List<double>>> callIrisOnly(img.Image eyeCrop) async {
     final _ImageTensor pack = await _imageToTensor(eyeCrop, outW: _inW, outH: _inH);
 
@@ -336,6 +517,27 @@ class IrisLandmark {
     }
   }
 
+  /// Runs iris detection on an aligned eye region of interest.
+  ///
+  /// This method extracts an aligned square crop centered on the eye using the
+  /// provided ROI parameters, runs iris landmark detection, and maps the results
+  /// back to absolute pixel coordinates in the original image.
+  ///
+  /// The [src] parameter is the full decoded image containing the face.
+  ///
+  /// The [roi] parameter defines the eye region with center position, size,
+  /// and rotation angle.
+  ///
+  /// When [isRight] is true, the extracted eye crop is horizontally flipped
+  /// before processing to normalize right eyes to left eye orientation.
+  ///
+  /// Returns a list of 5 iris keypoints in absolute pixel coordinates, where
+  /// each point is `[x, y, z]`:
+  /// - Point 0: Iris center
+  /// - Points 1-4: Iris contour points
+  ///
+  /// **Note:** This is an internal method used by [FaceDetector]. Most users
+  /// should use [FaceDetector.detectFaces] with [FaceDetectionMode.full] instead.
   Future<List<List<double>>> runOnImageAlignedIris(
     img.Image src, _AlignedRoi roi, {
     bool isRight = false
@@ -366,6 +568,13 @@ class IrisLandmark {
     return out;
   }
 
+  /// Releases all TensorFlow Lite resources held by this model.
+  ///
+  /// Call this when you're done using the iris landmark model to free up memory.
+  /// After calling dispose, this instance cannot be used for inference.
+  ///
+  /// **Note:** Most users should call [FaceDetector.dispose] instead, which
+  /// automatically disposes all internal models (detection, mesh, and iris).
   void dispose() {
     _iso?.close();
     _itp.close();

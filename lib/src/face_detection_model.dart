@@ -29,6 +29,33 @@ class FaceDetection {
     this._assumeMirrored
   );
 
+  /// Creates and initializes a face detection model instance.
+  ///
+  /// This factory method loads the specified TensorFlow Lite [model] from package
+  /// assets and prepares it for inference. Different model variants are optimized
+  /// for different use cases (see [FaceDetectionModel] for details).
+  ///
+  /// The [options] parameter allows you to customize the TFLite interpreter
+  /// configuration (e.g., number of threads, use of GPU delegate).
+  ///
+  /// When [useIsolate] is true (default), inference runs in a separate isolate
+  /// to avoid blocking the UI thread. Set to false if you plan to manage isolates
+  /// yourself or need synchronous execution.
+  ///
+  /// Returns a fully initialized [FaceDetection] instance ready to detect faces.
+  ///
+  /// **Note:** Most users should use the high-level [FaceDetector] class instead
+  /// of working with this low-level API directly.
+  ///
+  /// Example:
+  /// ```dart
+  /// final detector = await FaceDetection.create(
+  ///   FaceDetectionModel.frontCamera,
+  ///   useIsolate: true,
+  /// );
+  /// ```
+  ///
+  /// Throws [StateError] if the model cannot be loaded or initialized.
   static Future<FaceDetection> create(
     FaceDetectionModel model, {
     InterpreterOptions? options,
@@ -135,6 +162,30 @@ class FaceDetection {
     }
   }
 
+  /// Runs face detection inference on the provided image.
+  ///
+  /// The [imageBytes] parameter should contain encoded image data (JPEG, PNG, etc.).
+  /// The image is decoded, preprocessed, and passed through the face detection model.
+  ///
+  /// Optionally, you can specify a [roi] (region of interest) to detect faces only
+  /// within a specific area of the image. This can improve performance and accuracy
+  /// when you know the approximate face location.
+  ///
+  /// Returns a list of detected faces as [_Detection] objects, each containing:
+  /// - A bounding box with normalized coordinates (0.0 to 1.0)
+  /// - A confidence score
+  /// - Coarse facial keypoints (eyes, nose, mouth, tragions)
+  ///
+  /// The detections are filtered using non-maximum suppression (NMS) to remove
+  /// duplicate/overlapping detections.
+  ///
+  /// **Coordinate system:** All returned coordinates are normalized (0.0 to 1.0)
+  /// relative to the image dimensions, where (0, 0) is top-left and (1, 1) is bottom-right.
+  ///
+  /// **Note:** This is a low-level method. Most users should use [FaceDetector.detectFaces()]
+  /// which provides a higher-level API with automatic coordinate mapping.
+  ///
+  /// Throws [ArgumentError] if [imageBytes] is empty.
   Future<List<_Detection>> call(Uint8List imageBytes, {_RectF? roi}) async {
     if (imageBytes.isEmpty) {
       throw ArgumentError('Image bytes cannot be empty');
@@ -312,6 +363,13 @@ class FaceDetection {
     return res;
   }
 
+  /// Releases all TensorFlow Lite resources held by this model.
+  ///
+  /// Call this when you're done using the face detection model to free up memory.
+  /// After calling dispose, this instance cannot be used for inference.
+  ///
+  /// **Note:** Most users should call [FaceDetector.dispose] instead, which
+  /// automatically disposes all internal models (detection, mesh, and iris).
   void dispose() {
     _iso?.close();
     _itp.close();

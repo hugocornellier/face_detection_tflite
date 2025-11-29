@@ -132,8 +132,11 @@ class _ExampleState extends State<Example> {
   }
 
   Future<void> _pickAndRun() async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 100);
+    final ImagePicker picker = ImagePicker();
+    final XFile? picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 100
+    );
     if (picked == null) return;
 
     setState(() {
@@ -147,7 +150,7 @@ class _ExampleState extends State<Example> {
       _totalTimeMs = null;
     });
 
-    final bytes = await picked.readAsBytes();
+    final Uint8List bytes = await picked.readAsBytes();
 
     if (!_faceDetector.isReady) {
       setState(() => _isLoading = false);
@@ -160,10 +163,8 @@ class _ExampleState extends State<Example> {
   Future<void> _processImage(Uint8List bytes) async {
     setState(() => _isLoading = true);
 
-    final totalStart = DateTime.now();
-
-    final mode = _determineMode();
-
+    final DateTime totalStart = DateTime.now();
+    final FaceDetectionMode mode = _determineMode();
     final ui.Codec codec = await ui.instantiateImageCodec(bytes);
     final ui.FrameInfo frame = await codec.getNextFrame();
     final double imgW = frame.image.width.toDouble();
@@ -177,14 +178,14 @@ class _ExampleState extends State<Example> {
 
     if (!mounted) return;
 
-    final totalEnd = DateTime.now();
-    final totalTime = totalEnd.difference(totalStart).inMilliseconds;
-    final detectionTime = detectionEnd.difference(detectionStart).inMilliseconds;
+    final DateTime totalEnd = DateTime.now();
+    final int totalTime = totalEnd.difference(totalStart).inMilliseconds;
+    final int detectionTime = detectionEnd.difference(detectionStart).inMilliseconds;
 
     int? meshTime;
     int? irisTime;
     if (_showMesh || _showIrises) {
-      final extraTime = totalTime - detectionTime;
+      final int extraTime = totalTime - detectionTime;
       if (_showMesh && _showIrises) {
         meshTime = (extraTime * 0.6).round();
         irisTime = (extraTime * 0.4).round();
@@ -220,7 +221,7 @@ class _ExampleState extends State<Example> {
   }
 
   Future<void> _onFeatureToggle(String feature, bool newValue) async {
-    final oldMode = _determineMode();
+    final FaceDetectionMode oldMode = _determineMode();
 
     if (feature == 'mesh') {
       setState(() => _showMesh = newValue);
@@ -228,7 +229,7 @@ class _ExampleState extends State<Example> {
       setState(() => _showIrises = newValue);
     }
 
-    final newMode = _determineMode();
+    final FaceDetectionMode newMode = _determineMode();
 
     if (_imageBytes != null && oldMode != newMode) {
       await _processImage(_imageBytes!);
@@ -429,7 +430,7 @@ class _ExampleState extends State<Example> {
 
   @override
   Widget build(BuildContext context) {
-    final hasImage = _imageBytes != null && _originalSize != null;
+    final bool hasImage = _imageBytes != null && _originalSize != null;
     return Scaffold(
       body: Stack(
         children: [
@@ -777,39 +778,38 @@ class _DetectionsPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (faces.isEmpty) return;
 
-    final boxPaint = Paint()
+    final ui.Paint boxPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = boundingBoxThickness
       ..color = boundingBoxColor;
 
-    final detKpPaint = Paint()
+    final ui.Paint detKpPaint = Paint()
       ..style = PaintingStyle.fill
       ..color = landmarkColor;
 
-    final meshPaint = Paint()
+    final ui.Paint meshPaint = Paint()
       ..style = PaintingStyle.fill
       ..color = meshColor;
 
-    final irisFill = Paint()
+    final ui.Paint irisFill = Paint()
       ..style = PaintingStyle.fill
       ..color = irisColor.withAlpha(153)
       ..blendMode = BlendMode.srcOver;
 
-    final irisStroke = Paint()
+    final ui.Paint irisStroke = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5
       ..color = irisColor.withAlpha(230);
 
-    final ox = imageRectOnCanvas.left;
-    final oy = imageRectOnCanvas.top;
+    final double ox = imageRectOnCanvas.left;
+    final double oy = imageRectOnCanvas.top;
+    final double scaleX = imageRectOnCanvas.width / originalImageSize.width;
+    final double scaleY = imageRectOnCanvas.height / originalImageSize.height;
 
-    final scaleX = imageRectOnCanvas.width / originalImageSize.width;
-    final scaleY = imageRectOnCanvas.height / originalImageSize.height;
-
-    for (final face in faces) {
+    for (final Face face in faces) {
       if (showBoundingBoxes) {
-        final c = face.bboxCorners;
-        final rect = Rect.fromLTRB(
+        final List<Point<double>> c = face.bboxCorners;
+        final ui.Rect rect = Rect.fromLTRB(
           ox + c[0].x * scaleX,
           oy + c[0].y * scaleY,
           ox + c[2].x * scaleX,
@@ -819,7 +819,7 @@ class _DetectionsPainter extends CustomPainter {
       }
 
       if (showLandmarks) {
-        for (final p in face.landmarks.values) {
+        for (final Point<double> p in face.landmarks.values) {
           canvas.drawCircle(
             Offset(ox + p.x * scaleX, oy + p.y * scaleY),
             landmarkSize,
@@ -829,12 +829,12 @@ class _DetectionsPainter extends CustomPainter {
       }
 
       if (showMesh) {
-        final mesh = face.mesh;
+        final List<Point<double>> mesh = face.mesh;
         if (mesh.isNotEmpty) {
-          final imgArea = imageRectOnCanvas.width * imageRectOnCanvas.height;
-          final radius = meshSize + sqrt(imgArea) / 1000.0;
+          final double imgArea = imageRectOnCanvas.width * imageRectOnCanvas.height;
+          final double radius = meshSize + sqrt(imgArea) / 1000.0;
 
-          for (final p in mesh) {
+          for (final Point<double> p in mesh) {
             canvas.drawCircle(
               Offset(ox + p.x * scaleX, oy + p.y * scaleY),
               radius,
@@ -845,7 +845,7 @@ class _DetectionsPainter extends CustomPainter {
       }
 
       if (showIrises) {
-        final iris = face.irises;
+        final List<Point<double>> iris = face.irises;
         for (int i = 0; i + 4 < iris.length; i += 5) {
           final five = iris.sublist(i, i + 5);
 
@@ -855,7 +855,7 @@ class _DetectionsPainter extends CustomPainter {
             double s = 0;
             for (int j = 0; j < 5; j++) {
               if (j == k) continue;
-              final dx = (five[j].x - five[k].x);
+              final double dx = (five[j].x - five[k].x);
               final dy = (five[j].y - five[k].y);
               s += dx * dx + dy * dy;
             }

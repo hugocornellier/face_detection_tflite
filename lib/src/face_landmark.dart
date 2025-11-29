@@ -15,14 +15,41 @@ class FaceLandmark {
 
   FaceLandmark._(this._itp, this._inW, this._inH);
 
-  static Future<FaceLandmark> create({InterpreterOptions? options, bool useIsolate = true}) async {
+  /// Creates and initializes a face landmark (mesh) model instance.
+  ///
+  /// This factory method loads the 468-point face mesh TensorFlow Lite model
+  /// from package assets and prepares it for inference. The face mesh provides
+  /// detailed 3D geometry of facial features.
+  ///
+  /// The [options] parameter allows you to customize the TFLite interpreter
+  /// configuration (e.g., number of threads, use of GPU delegate).
+  ///
+  /// When [useIsolate] is true (default), inference runs in a separate isolate
+  /// to avoid blocking the UI thread.
+  ///
+  /// Returns a fully initialized [FaceLandmark] instance ready to predict face meshes.
+  ///
+  /// **Note:** This model expects an aligned face crop as input. For full pipeline
+  /// processing, use the high-level [FaceDetector] class instead.
+  ///
+  /// Example:
+  /// ```dart
+  /// final landmarkModel = await FaceLandmark.create(useIsolate: true);
+  /// final meshPoints = await landmarkModel(alignedFaceCrop);
+  /// ```
+  ///
+  /// Throws [StateError] if the model cannot be loaded or initialized.
+  static Future<FaceLandmark> create({
+    InterpreterOptions? options,
+    bool useIsolate = true
+  }) async {
     final Interpreter itp = await Interpreter.fromAsset(
       'packages/face_detection_tflite/assets/models/$_faceLandmarkModel',
       options: options ?? InterpreterOptions(),
     );
     final List<int> ishape = itp.getInputTensor(0).shape;
-    final inH = ishape[1];
-    final inW = ishape[2];
+    final int inH = ishape[1];
+    final int inW = ishape[2];
     itp.resizeInputTensor(0, [1, inH, inW, 3]);
     itp.allocateTensors();
 
@@ -57,7 +84,10 @@ class FaceLandmark {
     final int maxIndex = shapes.keys.isEmpty
         ? -1
         : shapes.keys.reduce((a, b) => a > b ? a : b);
-    obj._outShapes = List<List<int>>.generate(maxIndex + 1, (i) => shapes[i] ?? const <int>[]);
+    obj._outShapes = List<List<int>>.generate(
+      maxIndex + 1,
+      (i) => shapes[i] ?? const <int>[]
+    );
 
     if (useIsolate) {
       obj._iso = await IsolateInterpreter.create(address: itp.address);
@@ -102,6 +132,31 @@ class FaceLandmark {
     return build(shape, 0);
   }
 
+  /// Predicts the 468-point face mesh for an aligned face crop.
+  ///
+  /// The [faceCrop] parameter should contain an aligned, cropped face image.
+  /// For best results, the face should be centered, upright, and roughly fill
+  /// the image bounds.
+  ///
+  /// Returns a list of 468 3D landmark points, where each point is represented
+  /// as `[x, y, z]`:
+  /// - `x` and `y` are normalized coordinates (0.0 to 1.0) relative to the crop
+  /// - `z` represents relative depth (units are consistent but not metric)
+  ///
+  /// The 468 points follow MediaPipe's canonical face mesh topology, providing
+  /// detailed geometry for facial features including eyes, eyebrows, nose, mouth,
+  /// and face contours.
+  ///
+  /// **Input requirements:**
+  /// - Face should be aligned (rotated upright)
+  /// - Face should occupy most of the image
+  /// - Image will be resized to model input size automatically
+  ///
+  /// Example:
+  /// ```dart
+  /// final meshPoints = await faceLandmark(alignedFaceCrop);
+  /// print('Predicted ${meshPoints.length} mesh points'); // 468
+  /// ```
   Future<List<List<double>>> call(img.Image faceCrop) async {
     final _ImageTensor pack = await _imageToTensor(faceCrop, outW: _inW, outH: _inH);
 
@@ -142,6 +197,13 @@ class FaceLandmark {
     }
   }
 
+  /// Releases all TensorFlow Lite resources held by this model.
+  ///
+  /// Call this when you're done using the face landmark model to free up memory.
+  /// After calling dispose, this instance cannot be used for inference.
+  ///
+  /// **Note:** Most users should call [FaceDetector.dispose] instead, which
+  /// automatically disposes all internal models (detection, mesh, and iris).
   void dispose() {
     final IsolateInterpreter? iso = _iso;
     if (iso != null) {

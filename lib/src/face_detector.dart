@@ -60,9 +60,29 @@ class FaceDetector {
   FaceDetection? _detector;
   FaceLandmark? _faceLm;
   IrisLandmark? _iris;
+
+  /// Counts successful iris landmark detections since initialization.
+  ///
+  /// Incremented each time iris center computation completes successfully
+  /// with valid landmark points. Useful for monitoring detection reliability.
   int irisOkCount = 0;
+
+  /// Counts failed iris landmark detections since initialization.
+  ///
+  /// Incremented when iris center computation fails to produce valid
+  /// landmark points. Useful for monitoring detection reliability.
   int irisFailCount = 0;
+
+  /// Counts how many times fallback eye positions were used.
+  ///
+  /// Intended to track cases where iris detection falls back to original
+  /// eye keypoint positions. Note: currently not incremented in the codebase.
   int irisUsedFallbackCount = 0;
+
+  /// Duration of the most recent iris landmark detection operation.
+  ///
+  /// Updated after each iris center computation in [_computeIrisCentersOnMainThread].
+  /// Useful for profiling iris detection performance. Initialized to [Duration.zero].
   Duration lastIrisTime = Duration.zero;
 
   /// Returns true if all models are loaded and ready for inference.
@@ -70,10 +90,10 @@ class FaceDetector {
   /// You must call [initialize] before this returns true.
   bool get isReady => _detector != null && _faceLm != null && _iris != null;
 
-  /// Loads the face detection model and prepares the interpreter for inference.
+  /// Loads the face detection, face mesh, and iris landmark models and prepares the interpreters for inference.
   ///
   /// This must be called before running any detections.
-  /// The [model] argument specifies which model variant to load
+  /// The [model] argument specifies which detection model variant to load
   /// (for example, `FaceDetectionModel.backCamera`).
   ///
   /// Optionally, you can pass [options] to configure interpreter settings
@@ -158,6 +178,39 @@ class FaceDetector {
     );
   }
 
+  /// Returns face detections with eye keypoints refined by iris center detection.
+  ///
+  /// This method performs face detection, generates the face mesh for the first
+  /// detected face, and uses iris landmark detection to compute precise iris centers.
+  /// These iris centers replace the original eye keypoints for improved accuracy.
+  ///
+  /// The iris center refinement process:
+  /// 1. Detects faces and extracts the first detection
+  /// 2. Generates 468-point face mesh to locate eye regions
+  /// 3. Runs iris detection on both eyes
+  /// 4. Replaces eye keypoints with computed iris centers
+  /// 5. Falls back to original eye positions if iris detection fails
+  ///
+  /// The [imageBytes] parameter should contain encoded image data (JPEG, PNG, etc.).
+  ///
+  /// Returns detections where all faces have iris-refined eye keypoints, with the first face refined again for extra precision.
+  ///
+  /// This method performs face detection, refines eye keypoints for every face using iris centers,
+  /// then reprocesses the first face to ensure its eye positions use the latest iris refinement.
+  ///
+  /// The [imageBytes] parameter should contain encoded image data (JPEG, PNG, etc.).
+  ///
+  /// Returns a list of detections with iris-refined keypoints; returns an empty list if
+  /// no faces are detected.
+  ///
+  /// **Performance:** This method is computationally intensive as it runs the full
+  /// pipeline (detection + mesh + iris) for the first face only.
+  ///
+  /// Throws [StateError] if the iris model has not been initialized.
+  ///
+  /// See also:
+  /// - [detectFaces] with [FaceDetectionMode.full] for multi-face iris tracking
+  /// - [getDetections] for basic detection without iris refinement
   Future<List<_Detection>> getDetectionsWithIrisCenters(Uint8List imageBytes) async {
     if (_iris == null) {
       throw StateError('Iris model not initialized. Call initialize() before getDetectionsWithIrisCenters().');
@@ -330,6 +383,35 @@ class FaceDetector {
     return updated;
   }
 
+  /// Computes face alignment parameters and extracts an aligned face crop.
+  ///
+  /// This method analyzes the eye and mouth positions from a face detection
+  /// to calculate the face's rotation angle and appropriate crop region. It then
+  /// extracts a rotated square crop centered on the face, aligned to a canonical
+  /// pose suitable for mesh landmark detection.
+  ///
+  /// The alignment process:
+  /// 1. Computes the angle between the eyes to determine face rotation
+  /// 2. Calculates the distance between eyes and between eye-center and mouth
+  /// 3. Determines an appropriate crop size based on these distances
+  /// 4. Extracts a rotated square crop using [extractAlignedSquare]
+  ///
+  /// The [decoded] parameter is the source image containing the face.
+  ///
+  /// The [det] parameter is the face detection containing keypoint positions
+  /// for both eyes and mouth.
+  ///
+  /// Returns an [_AlignedFace] object containing:
+  /// - Center coordinates ([cx], [cy]) in absolute pixels
+  /// - Crop size in pixels
+  /// - Rotation angle [theta] in radians
+  /// - The extracted aligned face crop image
+  ///
+  /// The crop size is calculated as the maximum of:
+  /// - Eye distance × 4.0
+  /// - Mouth distance × 3.6
+  ///
+  /// This ensures the full face fits within the crop with appropriate padding.
   Future<_AlignedFace> estimateAlignedFace(img.Image decoded, _Detection det) async {
     final imgW = decoded.width.toDouble();
     final imgH = decoded.height.toDouble();
@@ -361,6 +443,30 @@ class FaceDetector {
     return _AlignedFace(cx: cx, cy: cy, size: size, theta: theta, faceCrop: faceCrop);
   }
 
+  /// Generates 468-point face mesh landmarks from an aligned face crop.
+  ///
+  /// This method runs the face landmark model on an aligned face crop and
+  /// transforms the resulting normalized landmark coordinates back to absolute
+  /// pixel coordinates in the original image space using the alignment parameters.
+  ///
+  /// The transformation process:
+  /// 1. Runs the face landmark model on [faceCrop] to get normalized landmarks (0.0 to 1.0)
+  /// 2. Converts normalized coordinates to the crop's pixel space
+  /// 3. Applies inverse rotation using the angle from [aligned]
+  /// 4. Translates points back to original image coordinates
+  ///
+  /// The [faceCrop] parameter is the aligned face image extracted by [estimateAlignedFace].
+  ///
+  /// The [aligned] parameter contains the alignment transformation parameters
+  /// (center, size, rotation angle) needed to map landmarks back to the original
+  /// image coordinates.
+  ///
+  /// Returns a list of 468 [Offset] points in absolute pixel coordinates
+  /// relative to the original decoded image. Returns an empty list if the
+  /// face landmark model is not initialized.
+  ///
+  /// Each point represents a specific facial feature as defined by MediaPipe's
+  /// canonical face mesh topology (eyes, eyebrows, nose, mouth, face contours).
   Future<List<Offset>> meshFromAlignedFace(img.Image faceCrop, _AlignedFace aligned) async {
     final fl = _faceLm;
     if (fl == null) return const <Offset>[];
@@ -381,6 +487,27 @@ class FaceDetector {
     return out;
   }
 
+  /// Extracts aligned eye regions of interest from face mesh landmarks.
+  ///
+  /// This method uses specific mesh landmark points corresponding to the eye
+  /// corners to compute aligned regions of interest (ROIs) for iris detection.
+  /// The ROIs are sized and oriented based on the distance between eye corners.
+  ///
+  /// The eye corner indices used are:
+  /// - Left eye: points 33 (inner corner) and 133 (outer corner)
+  /// - Right eye: points 362 (inner corner) and 263 (outer corner)
+  ///
+  /// For each eye, the ROI is:
+  /// - Centered at the midpoint between the corners
+  /// - Sized at 2.3× the distance between corners
+  /// - Rotated to align with the eye's natural orientation
+  ///
+  /// The [meshAbs] parameter is a list of 468 face mesh points in absolute
+  /// pixel coordinates, typically from [meshFromAlignedFace].
+  ///
+  /// Returns a list of two [_AlignedRoi] objects: [left eye, right eye].
+  /// Each ROI contains center coordinates, size, and rotation angle suitable
+  /// for extracting aligned eye crops for iris landmark detection.
   List<_AlignedRoi> eyeRoisFromMesh(List<Offset> meshAbs) {
     _AlignedRoi fromCorners(int a, int b) {
       final Offset p0 = meshAbs[a];
@@ -398,6 +525,31 @@ class FaceDetector {
     return [left, right];
   }
 
+  /// Detects iris landmarks for both eyes using aligned eye regions.
+  ///
+  /// This method runs iris landmark detection on aligned eye region crops
+  /// and returns all iris keypoints in absolute pixel coordinates. Each eye
+  /// produces 5 iris keypoints (center + 4 contour points).
+  ///
+  /// The detection process:
+  /// 1. For each eye ROI in [rois], extracts an aligned eye crop from [decoded]
+  /// 2. Runs iris landmark detection (right eyes are horizontally flipped first)
+  /// 3. Transforms the normalized iris coordinates back to absolute pixels
+  /// 4. Concatenates results from both eyes
+  ///
+  /// The [decoded] parameter is the source image containing the face.
+  ///
+  /// The [rois] parameter is a list of aligned eye regions, typically from
+  /// [eyeRoisFromMesh]. The first ROI should be the left eye, the second
+  /// should be the right eye.
+  ///
+  /// Returns a list of [Offset] points in absolute pixel coordinates containing
+  /// iris landmarks for all eyes (typically 10 points total: 5 per eye).
+  /// Returns an empty list if the iris model is not initialized.
+  ///
+  /// The returned points from each eye include:
+  /// - Iris center (typically the most stable point)
+  /// - 4 iris contour points
   Future<List<Offset>> irisFromEyeRois(
     img.Image decoded,
     List<_AlignedRoi> rois
@@ -420,6 +572,28 @@ class FaceDetector {
     return pts;
   }
 
+  /// Returns raw face detections with iris-refined eye keypoint positions.
+  ///
+  /// This method performs face detection and optionally refines the eye keypoints
+  /// (left and right eye positions) using iris center estimation for improved
+  /// accuracy. This is a lower-level alternative to [detectFaces] that returns
+  /// internal detection objects instead of the public [Face] API.
+  ///
+  /// The [imageBytes] parameter should contain encoded image data (JPEG, PNG, etc.).
+  ///
+  /// Returns a list of internal [_Detection] objects containing:
+  /// - Bounding box coordinates
+  /// - Confidence score
+  /// - 6 facial keypoints (eyes, nose, mouth) with iris-refined eye positions
+  ///
+  /// **Note:** Most users should prefer [detectFaces] for the high-level API.
+  /// This method is primarily for internal use and advanced integration scenarios.
+  ///
+  /// Throws [StateError] if the detector has not been initialized via [initialize].
+  ///
+  /// See also:
+  /// - [detectFaces] for the main public API with mesh and iris support
+  /// - [getDetectionsWithIrisCenters] for explicit iris center refinement
   Future<List<_Detection>> getDetections(Uint8List imageBytes) async {
     return await _detectDetections(imageBytes);
   }
@@ -439,11 +613,11 @@ class FaceDetector {
     return meshAbs.map((p) => math.Point<double>(p.dx, p.dy)).toList(growable: false);
   }
 
-  /// Detects iris centers within a cropped eye region.
+  /// Detects iris landmarks for the first detected face in a full image.
   ///
-  /// The [image] should correspond to the eye crop from a previous face mesh.
-  /// Returns a list of two points representing the left and right iris centers.
-  /// If detection fails, it falls back to estimated centers from mesh landmarks.
+  /// The [imageBytes] should contain encoded image data (e.g., JPEG/PNG).
+  /// Returns up to 10 points (5 per eye: center + 4 contour points) in absolute pixels.
+  /// If no face or iris is found, returns an empty list.
   Future<List<math.Point<double>>> getIris(Uint8List imageBytes) async {
     final _DecodedRgb _d = await _decodeImageOffUi(imageBytes);
     final img.Image decoded = _imageFromDecodedRgb(_d);
@@ -457,6 +631,19 @@ class FaceDetector {
     return irisAbs.map((p) => math.Point<double>(p.dx, p.dy)).toList(growable: false);
   }
 
+  /// Returns the dimensions of the decoded image.
+  ///
+  /// This utility method decodes the provided [imageBytes] and returns the
+  /// original width and height as a [Size] object.
+  ///
+  /// Useful for determining image dimensions before running detection, or for
+  /// coordinate calculations when working with raw detection data.
+  ///
+  /// Example:
+  /// ```dart
+  /// final size = await detector.getOriginalSize(imageBytes);
+  /// print('Image is ${size.width}x${size.height} pixels');
+  /// ```
   Future<Size> getOriginalSize(Uint8List imageBytes) async {
     final _DecodedRgb _d = await _decodeImageOffUi(imageBytes);
     final img.Image decoded = _imageFromDecodedRgb(_d);
@@ -464,6 +651,37 @@ class FaceDetector {
     return Size(decoded.width.toDouble(), decoded.height.toDouble());
   }
 
+  /// Generates 468-point face meshes from existing face detections.
+  ///
+  /// This method takes a list of face detections (typically from [getDetections])
+  /// and computes the detailed 468-point facial mesh for each detected face. This
+  /// is useful when you want to process detections in stages or cache detection
+  /// results before computing the mesh.
+  ///
+  /// The mesh generation process:
+  /// 1. For each detection, aligns the face to a canonical pose
+  /// 2. Runs the face mesh model on the aligned face crop
+  /// 3. Transforms mesh points back to original image coordinates
+  ///
+  /// The [imageBytes] parameter should contain the same encoded image data used
+  /// for the detections.
+  ///
+  /// The [dets] parameter should be a list of detections from [getDetections].
+  ///
+  /// Returns a list of face meshes, where each mesh is a list of 468 points in
+  /// absolute image coordinates. Returns an empty list if [dets] is empty.
+  ///
+  /// Example:
+  /// ```dart
+  /// final detections = await detector.getDetections(imageBytes);
+  /// final meshes = await detector.getFaceMeshFromDetections(imageBytes, detections);
+  /// // meshes[0] contains 468 points for the first face
+  /// ```
+  ///
+  /// See also:
+  /// - [getFaceMesh] for single-face mesh detection
+  /// - [getIrisFromMesh] to generate iris landmarks from these meshes
+  /// - [detectFaces] for the complete pipeline in one call
   Future<List<List<math.Point<double>>>> getFaceMeshFromDetections(
     Uint8List imageBytes,
     List<_Detection> dets
@@ -483,6 +701,40 @@ class FaceDetector {
     return out;
   }
 
+  /// Generates iris landmarks from face mesh data.
+  ///
+  /// This method takes pre-computed 468-point face meshes and extracts iris
+  /// landmarks for each face. The face mesh is used to locate eye regions,
+  /// which are then processed by the iris landmark model to detect 5 keypoints
+  /// per iris (10 points total per face).
+  ///
+  /// The iris detection process:
+  /// 1. Extracts eye corner landmarks from the mesh (indices 33, 133, 362, 263)
+  /// 2. Computes aligned eye region crops
+  /// 3. Runs iris landmark detection on each eye
+  /// 4. Transforms iris points back to original image coordinates
+  ///
+  /// The [imageBytes] parameter should contain the same encoded image data used
+  /// for the mesh generation.
+  ///
+  /// The [meshesPerFace] parameter should be a list of face meshes, typically
+  /// from [getFaceMeshFromDetections].
+  ///
+  /// Returns a list of iris landmark sets, where each set contains points for
+  /// both eyes (left and right). Returns an empty list if [meshesPerFace] is empty.
+  /// If a face mesh is empty, returns an empty landmark set for that face.
+  ///
+  /// Example:
+  /// ```dart
+  /// final meshes = await detector.getFaceMeshFromDetections(imageBytes, detections);
+  /// final irises = await detector.getIrisFromMesh(imageBytes, meshes);
+  /// // irises[0] contains 10 iris points (5 per eye) for the first face
+  /// ```
+  ///
+  /// See also:
+  /// - [getIris] for single-face iris detection
+  /// - [getFaceMeshFromDetections] to generate the required mesh input
+  /// - [detectFaces] for the complete pipeline in one call
   Future<List<List<math.Point<double>>>> getIrisFromMesh(
     Uint8List imageBytes,
     List<List<math.Point<double>>> meshesPerFace
@@ -504,6 +756,33 @@ class FaceDetector {
     return out;
   }
 
+  /// Splits a concatenated list of mesh points into individual face meshes.
+  ///
+  /// This utility method detects if a list of mesh points represents multiple
+  /// faces concatenated together and splits them into separate lists. Each face
+  /// mesh should contain exactly [kMeshPoints] (468) points.
+  ///
+  /// The splitting logic:
+  /// - If the list is empty, returns an empty list
+  /// - If the length is not a multiple of 468, returns the list unchanged (wrapped in a list)
+  /// - Otherwise, splits into sublists of 468 points each
+  ///
+  /// The [meshPts] parameter is a potentially concatenated list of mesh points.
+  ///
+  /// Returns a list of mesh point lists, where each inner list represents one
+  /// face with 468 points. If [meshPts] contains exactly 468 points, returns
+  /// a list with one element. If it contains 936 points (468 × 2), returns two
+  /// meshes, and so on.
+  ///
+  /// Example:
+  /// ```dart
+  /// // Input: 936 points from 2 faces
+  /// final meshes = detector.splitMeshesIfConcatenated(allPoints);
+  /// // Output: [[face1 468 points], [face2 468 points]]
+  /// ```
+  ///
+  /// This is useful when processing batch results or when mesh data from
+  /// multiple faces has been concatenated for efficiency.
   List<List<math.Point<double>>> splitMeshesIfConcatenated(
     List<math.Point<double>> meshPts
   ) {

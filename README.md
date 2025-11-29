@@ -84,8 +84,8 @@ await _faceDetector.detectFaces(bytes);
 // is faster than full mode, but slower than fast mode.
 await _faceDetector.detectFaces(bytes, mode: FaceDetectionMode.standard);
 
-// fast mode: bounding boxes + 6 basic landmarks only. fastest inference 
-// time of the three modes.k
+// fast mode: bounding boxes + 6 basic landmarks only. fastest inference
+// time of the three modes.
 await _faceDetector.detectFaces(bytes, mode: FaceDetectionMode.fast);
 ```
 
@@ -98,13 +98,13 @@ You can choose from several detection models depending on your use case:
 
 - **FaceDetectionModel.backCamera**: larger model for group shots or images with smaller faces (default).
 - **FaceDetectionModel.frontCamera**: optimized for selfies and close-up portraits.
-- **FaceDetectionModel.short**: best for short-range images (faces within ~2m).
+- **FaceDetectionModel.shortRange**: best for short-range images (faces within ~2m).
 - **FaceDetectionModel.full**: best for mid-range images (faces within ~5m).
 - **FaceDetectionModel.fullSparse**: same detection quality as `full` but runs up to 30% faster on CPU (slightly higher precision, slightly lower recall).
 
 ## Types
 
-- `FaceResult` contains `bboxCorners`, `mesh`, `irises` and `landmarks`.
+- `Face` contains `bboxCorners`, `mesh`, `irises` and `landmarks`.
 - `face.landmarks` is a `Map<FaceLandmarkType, Point<double>>`, where `FaceLandmarkType` is one of:
     - `FaceLandmarkType.leftEye`
     - `FaceLandmarkType.rightEye`

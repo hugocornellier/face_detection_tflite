@@ -30,10 +30,68 @@ enum FaceDetectionMode { fast, standard, full }
 /// [irises] contains 10 points (5 per eye) used to estimate iris position/size.
 class Face {
   final _Detection _detection;
+
+  /// The 468-point face mesh in pixel coordinates.
+  ///
+  /// Each point is a 3D coordinate `(x, y, z)` where:
+  /// - `x` and `y` are absolute pixel positions in the original image
+  /// - `z` represents relative depth (units are consistent but not metric)
+  ///
+  /// The 468 points follow MediaPipe's canonical face mesh topology, providing
+  /// detailed geometry for facial features including eyes, eyebrows, nose, mouth,
+  /// and face contours.
+  ///
+  /// This list is empty when [FaceDetector.detectFaces] is called with
+  /// [FaceDetectionMode.fast]. Use [FaceDetectionMode.standard] or
+  /// [FaceDetectionMode.full] to populate mesh data.
+  ///
+  /// See also:
+  /// - [kMeshPoints] for the expected mesh point count (468)
+  /// - [irises] for iris-specific landmarks
   final List<math.Point<double>> mesh;
+
+  /// Iris landmark points in pixel coordinates.
+  ///
+  /// Contains 10 points total: 5 keypoints per iris (left and right eyes).
+  /// Each iris is represented by a center point and 4 contour points.
+  ///
+  /// Each point is a 3D coordinate `(x, y, z)` where:
+  /// - `x` and `y` are absolute pixel positions in the original image
+  /// - `z` represents relative depth
+  ///
+  /// This list is empty when [FaceDetector.detectFaces] is called with
+  /// [FaceDetectionMode.fast] or [FaceDetectionMode.standard]. Use
+  /// [FaceDetectionMode.full] to enable iris tracking.
+  ///
+  /// Example:
+  /// ```dart
+  /// final faces = await detector.detectFaces(imageBytes, mode: FaceDetectionMode.full);
+  /// if (faces.isNotEmpty && faces.first.irises.isNotEmpty) {
+  ///   final leftIrisPoints = faces.first.irises.sublist(0, 5);
+  ///   final rightIrisPoints = faces.first.irises.sublist(5, 10);
+  /// }
+  /// ```
   final List<math.Point<double>> irises;
+
+  /// The dimensions of the original source image.
+  ///
+  /// This size is used internally to convert normalized coordinates to pixel
+  /// coordinates for [bboxCorners], [landmarks], [mesh], and [irises].
+  ///
+  /// All coordinate data in [Face] is already scaled to these dimensions,
+  /// so users typically don't need to use this field directly unless performing
+  /// custom coordinate transformations.
   final Size originalSize;
 
+  /// Creates a face detection result with bounding box, landmarks, and optional mesh/iris data.
+  ///
+  /// This constructor is typically called internally by [FaceDetector.detectFaces].
+  /// Most users should not need to construct [Face] instances directly.
+  ///
+  /// The [detection] contains the bounding box and coarse facial keypoints.
+  /// The [mesh] contains 468 facial landmark points (empty if not computed).
+  /// The [irises] contains iris keypoints (empty if not computed).
+  /// The [originalSize] specifies the dimensions of the source image for coordinate mapping.
   Face({
     required _Detection detection,
     required this.mesh,
@@ -63,6 +121,18 @@ class Face {
   Map<FaceLandmarkType, math.Point<double>> get landmarks => _detection.landmarks;
 }
 
+/// The expected number of 3D landmark points in a complete face mesh.
+///
+/// MediaPipe's face mesh model produces exactly 468 points covering facial
+/// features including eyes, eyebrows, nose, mouth, and face contours.
+///
+/// Use this constant to validate mesh output or split concatenated mesh data:
+/// ```dart
+/// assert(meshPoints.length == kMeshPoints); // Validate single face
+/// final faces = meshPoints.length ~/ kMeshPoints; // Count faces in batch
+/// ```
+const int kMeshPoints = 468;
+
 const _modelNameBack = 'face_detection_back.tflite';
 const _modelNameFront = 'face_detection_front.tflite';
 const _modelNameShort = 'face_detection_short_range.tflite';
@@ -70,8 +140,6 @@ const _modelNameFull = 'face_detection_full_range.tflite';
 const _modelNameFullSparse = 'face_detection_full_range_sparse.tflite';
 const _faceLandmarkModel = 'face_landmark.tflite';
 const _irisLandmarkModel = 'iris_landmark.tflite';
-
-const int kMeshPoints = 468;
 const double _rawScoreLimit = 80.0;
 const double _minScore = 0.5;
 const double _minSuppressionThreshold = 0.3;

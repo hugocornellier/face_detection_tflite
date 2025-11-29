@@ -308,6 +308,24 @@ String _nameFor(FaceDetectionModel m) {
   }
 }
 
+/// Converts a face detection bounding box to a square region of interest (ROI).
+///
+/// This function takes a face bounding box and generates a square ROI suitable
+/// for face mesh alignment. The process involves:
+/// 1. Expanding the bounding box by [expandFraction] (default 0.6 = 60% larger)
+/// 2. Finding the center of the expanded box
+/// 3. Creating a square ROI centered on that point
+///
+/// The [bbox] parameter is the face bounding box in normalized coordinates (0.0 to 1.0).
+///
+/// The [expandFraction] controls how much to expand the bounding box before
+/// computing the square ROI. Default is 0.6 (60% expansion).
+///
+/// Returns a square [_RectF] in normalized coordinates centered on the face,
+/// with dimensions based on the larger of the expanded width or height.
+///
+/// This is typically used to prepare face regions for mesh landmark detection,
+/// which requires a square input with some padding around the face.
 _RectF faceDetectionToRoi(_RectF bbox, {double expandFraction = 0.6}) {
   final e = bbox.expand(expandFraction);
   final cx = (e.xmin + e.xmax) * 0.5;
@@ -316,6 +334,31 @@ _RectF faceDetectionToRoi(_RectF bbox, {double expandFraction = 0.6}) {
   return _RectF(cx - s, cy - s, cx + s, cy + s);
 }
 
+/// Crops a region of interest from an image using normalized coordinates.
+///
+/// This function extracts a rectangular region from [src] based on the normalized
+/// [roi] coordinates. The cropping operation runs in a separate isolate to avoid
+/// blocking the main thread.
+///
+/// The [src] parameter is the source image to crop from.
+///
+/// The [roi] parameter defines the crop region with normalized coordinates where
+/// (0, 0) is the top-left corner and (1, 1) is the bottom-right corner of the
+/// source image. All coordinates must be in the range [0.0, 1.0].
+///
+/// Returns a cropped [img.Image] containing the specified region.
+///
+/// Throws [ArgumentError] if:
+/// - Any ROI coordinate is outside the [0.0, 1.0] range
+/// - The ROI has invalid dimensions (min >= max)
+///
+/// Throws [StateError] if the cropping operation fails in the isolate.
+///
+/// Example:
+/// ```dart
+/// final roi = _RectF(0.2, 0.3, 0.8, 0.7); // Crop center region
+/// final cropped = await cropFromRoi(sourceImage, roi);
+/// ```
 Future<img.Image> cropFromRoi(img.Image src, _RectF roi) async {
   if (roi.xmin < 0 || roi.ymin < 0 || roi.xmax > 1 || roi.ymax > 1) {
     throw ArgumentError('ROI coordinates must be normalized [0,1], got: (${roi.xmin}, ${roi.ymin}, ${roi.xmax}, ${roi.ymax})');
@@ -351,6 +394,47 @@ Future<img.Image> cropFromRoi(img.Image src, _RectF roi) async {
   return img.Image.fromBytes(width: ow, height: oh, bytes: outRgb.buffer, order: img.ChannelOrder.rgb);
 }
 
+/// Extracts a rotated square region from an image with bilinear sampling.
+///
+/// This function extracts a square image patch centered at ([cx], [cy]) with
+/// the specified [size] and rotation angle [theta]. The extraction uses bilinear
+/// interpolation for smooth results and runs in a separate isolate to avoid
+/// blocking the main thread.
+///
+/// This is commonly used to align faces to a canonical orientation before
+/// running face mesh detection, where the rotation angle is computed from
+/// eye positions.
+///
+/// The [src] parameter is the source image to extract from.
+///
+/// The [cx] and [cy] parameters specify the center point in absolute pixel
+/// coordinates within the source image.
+///
+/// The [size] parameter is the side length of the output square in pixels.
+/// Must be positive.
+///
+/// The [theta] parameter is the rotation angle in radians. Positive values
+/// rotate counter-clockwise. The extracted region is rotated by this angle
+/// around the center point before sampling.
+///
+/// Returns a square [img.Image] of dimensions [size] × [size] pixels containing
+/// the rotated region with bilinear interpolation for smooth edges.
+///
+/// Throws [ArgumentError] if [size] is not positive.
+///
+/// Throws [StateError] if the extraction operation fails in the isolate.
+///
+/// Example:
+/// ```dart
+/// // Extract 192x192 face aligned to horizontal
+/// final aligned = await extractAlignedSquare(
+///   image,
+///   faceCenterX,
+///   faceCenterY,
+///   192.0,
+///   -rotationAngle, // Negative to upright the face
+/// );
+/// ```
 Future<img.Image> extractAlignedSquare(
   img.Image src,
   double cx,

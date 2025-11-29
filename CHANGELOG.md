@@ -1,6 +1,10 @@
-## 1.1.0
-- Remove deprecated `withOpacity` calls
-- Improved DartDocs + API documentation
+## 2.0.0
+**This version contains breaking changes.**
+- detectFaces now returns List<Face>, PipelineResult/FaceResult removed.
+- Public types renamed/privatized (FaceIndex is now FaceLandmarkType, RectF/Detection/
+  AlignedFace/AlignedRoi now internal).
+- Landmark maps now keyed by FaceLandmarkType
+- Full dartdoc coverage
 
 ## 1.0.3
 -  Update tflite_flutter_custom to 1.0.1, equivalent to tflite_flutter 0.12.0.
