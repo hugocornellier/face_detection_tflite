@@ -1,4 +1,4 @@
-part of face_detection_tflite;
+part of '../face_detection_tflite.dart';
 
 /// Runs face box detection and predicts a small set of facial keypoints
 /// (eyes, nose, mouth, tragions) on the detected face(s).
@@ -171,7 +171,7 @@ class FaceDetection {
   /// within a specific area of the image. This can improve performance and accuracy
   /// when you know the approximate face location.
   ///
-  /// Returns a list of detected faces as [_Detection] objects, each containing:
+  /// Returns a list of detected faces as [Detection] objects, each containing:
   /// - A bounding box with normalized coordinates (0.0 to 1.0)
   /// - A confidence score
   /// - Coarse facial keypoints (eyes, nose, mouth, tragions)
@@ -186,12 +186,12 @@ class FaceDetection {
   /// which provides a higher-level API with automatic coordinate mapping.
   ///
   /// Throws [ArgumentError] if [imageBytes] is empty.
-  Future<List<_Detection>> call(Uint8List imageBytes, {_RectF? roi}) async {
+  Future<List<Detection>> call(Uint8List imageBytes, {RectF? roi}) async {
     if (imageBytes.isEmpty) {
       throw ArgumentError('Image bytes cannot be empty');
     }
-    final _DecodedRgb _d = await _decodeImageOffUi(imageBytes);
-    final img.Image decoded = _imageFromDecodedRgb(_d);
+    final DecodedRgb d = await _decodeImageOffUi(imageBytes);
+    final img.Image decoded = _imageFromDecodedRgb(d);
     return callWithDecoded(decoded, roi: roi);
   }
 
@@ -210,22 +210,22 @@ class FaceDetection {
   /// The [worker] parameter allows providing an ImageProcessingWorker for
   /// optimized image operations. When null, falls back to spawning fresh isolates.
   ///
-  /// Returns a list of detected faces as [_Detection] objects, each containing:
+  /// Returns a list of detected faces as [Detection] objects, each containing:
   /// - A bounding box with normalized coordinates (0.0 to 1.0)
   /// - A confidence score
   /// - Coarse facial keypoints (eyes, nose, mouth, tragions)
   ///
   /// **Note:** This method is primarily for internal optimization. Most users
   /// should use [call] or [FaceDetector.detectFaces].
-  Future<List<_Detection>> callWithDecoded(
+  Future<List<Detection>> callWithDecoded(
     img.Image decoded, {
-    _RectF? roi,
+    RectF? roi,
     ImageProcessingWorker? worker,
   }) async {
     final img.Image srcRoi = (roi == null)
         ? decoded
         : await cropFromRoiWithWorker(decoded, roi, worker);
-    final _ImageTensor pack = await imageToTensorWithWorker(
+    final ImageTensor pack = await imageToTensorWithWorker(
       srcRoi,
       outW: _inW,
       outH: _inH,
@@ -301,17 +301,17 @@ class FaceDetection {
     }
 
     final Float32List scores = _decodeScores(scoresBuf, _scoresShape);
-    final List<_DecodedBox> boxes = _decodeBoxes(boxesBuf, _boxesShape);
-    final List<_Detection> dets = _toDetections(boxes, scores);
-    final List<_Detection> pruned = _nms(
+    final List<DecodedBox> boxes = _decodeBoxes(boxesBuf, _boxesShape);
+    final List<Detection> dets = _toDetections(boxes, scores);
+    final List<Detection> pruned = _nms(
       dets,
       _minSuppressionThreshold,
       _minScore,
       weighted: true
     );
-    final List<_Detection> fixed = _detectionLetterboxRemoval(pruned, pack.padding);
+    final List<Detection> fixed = _detectionLetterboxRemoval(pruned, pack.padding);
 
-    List<_Detection> mapped = roi != null
+    List<Detection> mapped = roi != null
         ? fixed.map((d) => _mapDetectionToRoi(d, roi)).toList()
         : fixed;
 
@@ -325,8 +325,8 @@ class FaceDetection {
         for (int i = 0; i < kp.length; i += 2) {
           kp[i] = 1.0 - kp[i];
         }
-        return _Detection(
-          bbox: _RectF(xmin, ymin, xmax, ymax),
+        return Detection(
+          bbox: RectF(xmin, ymin, xmax, ymax),
           score: d.score,
           keypointsXY: kp
         );
@@ -336,10 +336,10 @@ class FaceDetection {
     return mapped;
   }
 
-  List<_DecodedBox> _decodeBoxes(Float32List raw, List<int> shape) {
+  List<DecodedBox> _decodeBoxes(Float32List raw, List<int> shape) {
     final int n = shape[1], k = shape[2];
     final double scale = _inH.toDouble();
-    final List<_DecodedBox> out = <_DecodedBox>[];
+    final List<DecodedBox> out = <DecodedBox>[];
     final Float32List tmp = Float32List(k);
 
     for (int i = 0; i < n; i++) {
@@ -365,7 +365,7 @@ class FaceDetection {
         kp.add(tmp[j + 0]);
         kp.add(tmp[j + 1]);
       }
-      out.add(_DecodedBox(_RectF(xmin, ymin, xmax, ymax), kp));
+      out.add(DecodedBox(RectF(xmin, ymin, xmax, ymax), kp));
     }
     return out;
   }
@@ -379,13 +379,13 @@ class FaceDetection {
     return scores;
   }
 
-  List<_Detection> _toDetections(List<_DecodedBox> boxes, Float32List scores) {
-    final List<_Detection> res = <_Detection>[];
+  List<Detection> _toDetections(List<DecodedBox> boxes, Float32List scores) {
+    final List<Detection> res = <Detection>[];
     final int n = math.min(boxes.length, scores.length);
     for (int i = 0; i < n; i++) {
-      final _RectF b = boxes[i].bbox;
+      final RectF b = boxes[i].bbox;
       if (b.xmax <= b.xmin || b.ymax <= b.ymin) continue;
-      res.add(_Detection(
+      res.add(Detection(
           bbox: b,
           score: scores[i],
           keypointsXY: boxes[i].keypointsXY

@@ -1,4 +1,4 @@
-part of face_detection_tflite;
+part of '../face_detection_tflite.dart';
 
 /// Estimates dense iris keypoints within cropped eye regions and lets callers
 /// derive a robust iris center (with fallback if inference fails).
@@ -114,7 +114,7 @@ class IrisLandmark {
     InterpreterOptions? options,
     bool useIsolate = true
   }) async {
-    final Interpreter itp = await Interpreter.fromFile(
+    final Interpreter itp = Interpreter.fromFile(
       File(modelPath),
       options: options ?? InterpreterOptions(),
     );
@@ -237,7 +237,7 @@ class IrisLandmark {
   /// - [callIrisOnly] to extract only the 5 iris keypoints
   /// - [runOnImage] to run on a full image with an eye ROI
   Future<List<List<double>>> call(img.Image eyeCrop) async {
-    final _ImageTensor pack = await _imageToTensor(
+    final ImageTensor pack = await _imageToTensor(
       eyeCrop,
       outW: _inW,
       outH: _inH
@@ -297,7 +297,7 @@ class IrisLandmark {
   ///
   /// Example:
   /// ```dart
-  /// final eyeRoi = _RectF(xmin: 0.3, ymin: 0.4, w: 0.2, h: 0.15);
+  /// final eyeRoi = RectF(xmin: 0.3, ymin: 0.4, w: 0.2, h: 0.15);
   /// final irisPoints = await irisModel.runOnImage(fullImage, eyeRoi);
   /// // irisPoints are in full image pixel coordinates
   /// ```
@@ -305,7 +305,7 @@ class IrisLandmark {
   /// See also:
   /// - [call] to run on a pre-cropped eye image
   /// - [runOnImageAlignedIris] for aligned eye ROI processing
-  Future<List<List<double>>> runOnImage(img.Image src, _RectF eyeRoi) async {
+  Future<List<List<double>>> runOnImage(img.Image src, RectF eyeRoi) async {
     final img.Image eyeCrop = await cropFromRoi(src, eyeRoi);
     final List<List<double>> lmNorm = await call(eyeCrop);
     final double imgW = src.width.toDouble();
@@ -441,7 +441,7 @@ class IrisLandmark {
   /// - [call] to get all iris and eye contour landmarks
   /// - [runOnImageAlignedIris] for aligned eye ROI processing
   Future<List<List<double>>> callIrisOnly(img.Image eyeCrop) async {
-    final _ImageTensor pack = await _imageToTensor(eyeCrop, outW: _inW, outH: _inH);
+    final ImageTensor pack = await _imageToTensor(eyeCrop, outW: _inW, outH: _inH);
 
     if (_iso == null) {
       _inputBuf.setAll(0, pack.tensorNHWC);
@@ -539,7 +539,7 @@ class IrisLandmark {
   /// **Note:** This is an internal method used by [FaceDetector]. Most users
   /// should use [FaceDetector.detectFaces] with [FaceDetectionMode.full] instead.
   Future<List<List<double>>> runOnImageAlignedIris(
-    img.Image src, _AlignedRoi roi, {
+    img.Image src, AlignedRoi roi, {
     bool isRight = false
   }) async {
     final img.Image crop = await extractAlignedSquare(

@@ -1,4 +1,4 @@
-part of face_detection_tflite;
+part of '../face_detection_tflite.dart';
 
 /// A long-lived background isolate for image processing operations.
 ///
@@ -153,11 +153,11 @@ class ImageProcessingWorker {
   /// The [bytes] parameter should contain encoded image data. The image is
   /// decoded in the worker isolate to avoid blocking the main thread.
   ///
-  /// Returns a [_DecodedRgb] containing the image dimensions and RGB pixel data.
+  /// Returns a [DecodedRgb] containing the image dimensions and RGB pixel data.
   ///
   /// Throws [FormatException] if the image format is unsupported or corrupt.
   /// Throws [StateError] if the worker is not initialized.
-  Future<_DecodedRgb> decodeImage(Uint8List bytes) async {
+  Future<DecodedRgb> decodeImage(Uint8List bytes) async {
     final Map result = await _sendRequest<Map>('decode', {
       'bytes': TransferableTypedData.fromList([bytes]),
     });
@@ -167,7 +167,7 @@ class ImageProcessingWorker {
     final int w = result['w'] as int;
     final int h = result['h'] as int;
 
-    return _DecodedRgb(w, h, rgb);
+    return DecodedRgb(w, h, rgb);
   }
 
   /// Converts an image to a normalized tensor for TensorFlow Lite inference.
@@ -176,11 +176,11 @@ class ImageProcessingWorker {
   /// preserving resize with black padding). Pixel values are normalized to
   /// the range [-1.0, 1.0] as expected by MediaPipe models.
   ///
-  /// Returns an [_ImageTensor] containing the normalized tensor data and
+  /// Returns an [ImageTensor] containing the normalized tensor data and
   /// padding information needed to reverse the letterbox transformation.
   ///
   /// Throws [StateError] if the worker is not initialized.
-  Future<_ImageTensor> imageToTensor(
+  Future<ImageTensor> imageToTensor(
     img.Image src, {
     required int outW,
     required int outH,
@@ -202,7 +202,7 @@ class ImageProcessingWorker {
     final int ow = result['outW'] as int;
     final int oh = result['outH'] as int;
 
-    return _ImageTensor(tensor, padding, ow, oh);
+    return ImageTensor(tensor, padding, ow, oh);
   }
 
   /// Crops a region of interest from an image using normalized coordinates.
@@ -214,7 +214,7 @@ class ImageProcessingWorker {
   ///
   /// Throws [ArgumentError] if ROI coordinates are invalid.
   /// Throws [StateError] if the worker is not initialized or crop fails.
-  Future<img.Image> cropFromRoi(img.Image src, _RectF roi) async {
+  Future<img.Image> cropFromRoi(img.Image src, RectF roi) async {
     if (roi.xmin < 0 || roi.ymin < 0 || roi.xmax > 1 || roi.ymax > 1) {
       throw ArgumentError(
         'ROI coordinates must be normalized [0,1], got: '

@@ -1,5 +1,3 @@
-library face_detection_tflite;
-
 import 'dart:async';
 import 'dart:isolate';
 import 'dart:math' as math;

@@ -1,4 +1,4 @@
-part of face_detection_tflite;
+part of '../face_detection_tflite.dart';
 
 double _clip(double v, double lo, double hi) => v < lo ? lo : (v > hi ? hi : v);
 
@@ -7,7 +7,7 @@ double _sigmoidClipped(double x, {double limit = _rawScoreLimit}) {
   return 1.0 / (1.0 + math.exp(-v));
 }
 
-Future<_ImageTensor> _imageToTensor(
+Future<ImageTensor> _imageToTensor(
   img.Image src, {
   required int outW,
   required int outH
@@ -33,7 +33,7 @@ Future<_ImageTensor> _imageToTensor(
   final int ow = msg['outW'] as int;
   final int oh = msg['outH'] as int;
 
-  return _ImageTensor(tensor, padding, ow, oh);
+  return ImageTensor(tensor, padding, ow, oh);
 }
 
 @pragma('vm:entry-point')
@@ -102,15 +102,15 @@ Future<void> _imageToTensorIsolate(Map<String, dynamic> params) async {
   });
 }
 
-List<_Detection> _detectionLetterboxRemoval(
-  List<_Detection> dets,
+List<Detection> _detectionLetterboxRemoval(
+  List<Detection> dets,
   List<double> padding
 ) {
   final double pt = padding[0], pb = padding[1], pl = padding[2], pr = padding[3];
   final double sx = 1.0 - (pl + pr);
   final double sy = 1.0 - (pt + pb);
 
-  _RectF unpad(_RectF r) => _RectF(
+  RectF unpad(RectF r) => RectF(
     (r.xmin - pl) / sx,
     (r.ymin - pt) / sy,
     (r.xmax - pl) / sx,
@@ -126,7 +126,7 @@ List<_Detection> _detectionLetterboxRemoval(
   }
 
   return dets
-      .map((d) => _Detection(
+      .map((d) => Detection(
         bbox: unpad(d.bbox),
         score: d.score,
         keypointsXY: unpadKp(d.keypointsXY)
@@ -164,9 +164,9 @@ List<List<double>> _unpackLandmarks(
   return out;
 }
 
-_Detection _mapDetectionToRoi(_Detection d, _RectF roi) {
+Detection _mapDetectionToRoi(Detection d, RectF roi) {
   final double dx = roi.xmin, dy = roi.ymin, sx = roi.w, sy = roi.h;
-  _RectF mapRect(_RectF r) => _RectF(
+  RectF mapRect(RectF r) => RectF(
     dx + r.xmin * sx,
     dy + r.ymin * sy,
     dx + r.xmax * sx,
@@ -180,7 +180,7 @@ _Detection _mapDetectionToRoi(_Detection d, _RectF roi) {
     }
     return o;
   }
-  return _Detection(
+  return Detection(
     bbox: mapRect(d.bbox),
     score: d.score,
     keypointsXY: mapKp(d.keypointsXY),
@@ -188,7 +188,7 @@ _Detection _mapDetectionToRoi(_Detection d, _RectF roi) {
   );
 }
 
-double _iou(_RectF a, _RectF b) {
+double _iou(RectF a, RectF b) {
   final double x1 = math.max(a.xmin, b.xmin);
   final double y1 = math.max(a.ymin, b.ymin);
   final double x2 = math.min(a.xmax, b.xmax);
@@ -202,18 +202,18 @@ double _iou(_RectF a, _RectF b) {
   return uni <= 0 ? 0.0 : inter / uni;
 }
 
-List<_Detection> _nms(
-  List<_Detection> dets,
+List<Detection> _nms(
+  List<Detection> dets,
   double iouThresh,
   double scoreThresh, {
   bool weighted = true
 }) {
-  final List<_Detection> kept = <_Detection>[];
-  final List<_Detection> cand = dets.where((d) => d.score >= scoreThresh).toList()
+  final List<Detection> kept = <Detection>[];
+  final List<Detection> cand = dets.where((d) => d.score >= scoreThresh).toList()
     ..sort((a, b) => b.score.compareTo(a.score));
   while (cand.isNotEmpty) {
-    final _Detection base = cand.removeAt(0);
-    final List<_Detection> merged = <_Detection>[base];
+    final Detection base = cand.removeAt(0);
+    final List<Detection> merged = <Detection>[base];
     cand.removeWhere((d) {
       if (_iou(base.bbox, d.bbox) >= iouThresh) {
         merged.add(d);
@@ -225,15 +225,15 @@ List<_Detection> _nms(
       kept.add(base);
     } else {
       double sw = 0, xmin = 0, ymin = 0, xmax = 0, ymax = 0;
-      for (final _Detection m in merged) {
+      for (final Detection m in merged) {
         sw += m.score;
         xmin += m.bbox.xmin * m.score;
         ymin += m.bbox.ymin * m.score;
         xmax += m.bbox.xmax * m.score;
         ymax += m.bbox.ymax * m.score;
       }
-      kept.add(_Detection(
-        bbox: _RectF(xmin / sw, ymin / sw, xmax / sw, ymax / sw),
+      kept.add(Detection(
+        bbox: RectF(xmin / sw, ymin / sw, xmax / sw, ymax / sw),
         score: base.score,
         keypointsXY: base.keypointsXY,
       ));
@@ -321,17 +321,17 @@ String _nameFor(FaceDetectionModel m) {
 /// The [expandFraction] controls how much to expand the bounding box before
 /// computing the square ROI. Default is 0.6 (60% expansion).
 ///
-/// Returns a square [_RectF] in normalized coordinates centered on the face,
+/// Returns a square [RectF] in normalized coordinates centered on the face,
 /// with dimensions based on the larger of the expanded width or height.
 ///
 /// This is typically used to prepare face regions for mesh landmark detection,
 /// which requires a square input with some padding around the face.
-_RectF faceDetectionToRoi(_RectF bbox, {double expandFraction = 0.6}) {
+RectF faceDetectionToRoi(RectF bbox, {double expandFraction = 0.6}) {
   final e = bbox.expand(expandFraction);
   final cx = (e.xmin + e.xmax) * 0.5;
   final cy = (e.ymin + e.ymax) * 0.5;
   final s = math.max(e.w, e.h) * 0.5;
-  return _RectF(cx - s, cy - s, cx + s, cy + s);
+  return RectF(cx - s, cy - s, cx + s, cy + s);
 }
 
 /// Crops a region of interest from an image using normalized coordinates.
@@ -356,10 +356,10 @@ _RectF faceDetectionToRoi(_RectF bbox, {double expandFraction = 0.6}) {
 ///
 /// Example:
 /// ```dart
-/// final roi = _RectF(0.2, 0.3, 0.8, 0.7); // Crop center region
+/// final roi = RectF(0.2, 0.3, 0.8, 0.7); // Crop center region
 /// final cropped = await cropFromRoi(sourceImage, roi);
 /// ```
-Future<img.Image> cropFromRoi(img.Image src, _RectF roi) async {
+Future<img.Image> cropFromRoi(img.Image src, RectF roi) async {
   if (roi.xmin < 0 || roi.ymin < 0 || roi.xmax > 1 || roi.ymax > 1) {
     throw ArgumentError('ROI coordinates must be normalized [0,1], got: (${roi.xmin}, ${roi.ymin}, ${roi.xmax}, ${roi.ymax})');
   }
@@ -505,14 +505,14 @@ img.ColorRgb8 _bilinearSampleRgb8(img.Image src, double fx, double fy) {
   return img.ColorRgb8(r, g, b);
 }
 
-class _DecodedRgb {
+class DecodedRgb {
   final int width;
   final int height;
   final Uint8List rgb;
-  const _DecodedRgb(this.width, this.height, this.rgb);
+  const DecodedRgb(this.width, this.height, this.rgb);
 }
 
-Future<_DecodedRgb> _decodeImageOffUi(Uint8List bytes) async {
+Future<DecodedRgb> _decodeImageOffUi(Uint8List bytes) async {
   if (bytes.isEmpty) {
     throw ArgumentError('Image bytes cannot be empty');
   }
@@ -533,10 +533,10 @@ Future<_DecodedRgb> _decodeImageOffUi(Uint8List bytes) async {
   final Uint8List rgb = rgbBB.asUint8List();
   final int w = msg['w'] as int;
   final int h = msg['h'] as int;
-  return _DecodedRgb(w, h, rgb);
+  return DecodedRgb(w, h, rgb);
 }
 
-img.Image _imageFromDecodedRgb(_DecodedRgb d) {
+img.Image _imageFromDecodedRgb(DecodedRgb d) {
   return img.Image.fromBytes(
     width: d.width,
     height: d.height,
@@ -667,7 +667,7 @@ Future<void> _imageTransformIsolate(Map<String, dynamic> params) async {
 ///
 /// When [worker] is null, falls back to [_decodeImageOffUi] for backwards
 /// compatibility.
-Future<_DecodedRgb> decodeImageWithWorker(
+Future<DecodedRgb> decodeImageWithWorker(
   Uint8List bytes,
   ImageProcessingWorker? worker,
 ) async {
@@ -686,7 +686,7 @@ Future<_DecodedRgb> decodeImageWithWorker(
 ///
 /// When [worker] is null, falls back to [_imageToTensor] for backwards
 /// compatibility.
-Future<_ImageTensor> imageToTensorWithWorker(
+Future<ImageTensor> imageToTensorWithWorker(
   img.Image src, {
   required int outW,
   required int outH,
@@ -709,7 +709,7 @@ Future<_ImageTensor> imageToTensorWithWorker(
 /// compatibility.
 Future<img.Image> cropFromRoiWithWorker(
   img.Image src,
-  _RectF roi,
+  RectF roi,
   ImageProcessingWorker? worker,
 ) async {
   if (worker != null) {

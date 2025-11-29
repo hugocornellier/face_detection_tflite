@@ -1,4 +1,4 @@
-part of face_detection_tflite;
+part of '../face_detection_tflite.dart';
 
 /// Identifies specific facial landmarks returned by face detection.
 ///
@@ -29,7 +29,7 @@ enum FaceDetectionMode { fast, standard, full }
 /// [mesh] contains 468 facial landmarks as pixel coordinates.
 /// [irises] contains 10 points (5 per eye) used to estimate iris position/size.
 class Face {
-  final _Detection _detection;
+  final Detection _detection;
 
   /// The 468-point face mesh in pixel coordinates.
   ///
@@ -93,7 +93,7 @@ class Face {
   /// The [irises] contains iris keypoints (empty if not computed).
   /// The [originalSize] specifies the dimensions of the source image for coordinate mapping.
   Face({
-    required _Detection detection,
+    required Detection detection,
     required this.mesh,
     required this.irises,
     required this.originalSize,
@@ -103,7 +103,7 @@ class Face {
   ///
   /// Returns points in order: top-left, top-right, bottom-right, bottom-left.
   List<math.Point<double>> get bboxCorners {
-    final _RectF r = _detection.bbox;
+    final RectF r = _detection.bbox;
     final double w = originalSize.width.toDouble();
     final double h = originalSize.height.toDouble();
     return [
@@ -181,13 +181,13 @@ const _ssdFull = {
   'interpolated_scale_aspect_ratio': 0.0,
 };
 
-class _AlignedFace {
+class AlignedFace {
   final double cx;
   final double cy;
   final double size;
   final double theta;
   final img.Image faceCrop;
-  _AlignedFace({
+  AlignedFace({
     required this.cx,
     required this.cy,
     required this.size,
@@ -196,33 +196,33 @@ class _AlignedFace {
   });
 }
 
-class _RectF {
+class RectF {
   final double xmin, ymin, xmax, ymax;
-  const _RectF(this.xmin, this.ymin, this.xmax, this.ymax);
+  const RectF(this.xmin, this.ymin, this.xmax, this.ymax);
   double get w => xmax - xmin;
   double get h => ymax - ymin;
-  _RectF scale(double sx, double sy) => _RectF(
+  RectF scale(double sx, double sy) => RectF(
       xmin * sx,
       ymin * sy,
       xmax * sx,
       ymax * sy
   );
-  _RectF expand(double frac) {
+  RectF expand(double frac) {
     final double cx = (xmin + xmax) * 0.5;
     final double cy = (ymin + ymax) * 0.5;
     final double hw = (w * (1.0 + frac)) * 0.5;
     final double hh = (h * (1.0 + frac)) * 0.5;
-    return _RectF(cx - hw, cy - hh, cx + hw, cy + hh);
+    return RectF(cx - hw, cy - hh, cx + hw, cy + hh);
   }
 }
 
-class _Detection {
-  final _RectF bbox;
+class Detection {
+  final RectF bbox;
   final double score;
   final List<double> keypointsXY;
   final Size? imageSize;
 
-  _Detection({
+  Detection({
     required this.bbox,
     required this.score,
     required this.keypointsXY,
@@ -235,7 +235,7 @@ class _Detection {
     final Size? sz = imageSize;
     if (sz == null) {
       throw StateError(
-        '_Detection.imageSize is null; cannot produce pixel landmarks.'
+        'Detection.imageSize is null; cannot produce pixel landmarks.'
       );
     }
     final double w = sz.width.toDouble(), h = sz.height.toDouble();
@@ -252,23 +252,23 @@ class _Detection {
   }
 }
 
-class _ImageTensor {
+class ImageTensor {
   final Float32List tensorNHWC;
   final List<double> padding;
   final int width, height;
-  _ImageTensor(this.tensorNHWC, this.padding, this.width, this.height);
+  ImageTensor(this.tensorNHWC, this.padding, this.width, this.height);
 }
 
-class _AlignedRoi {
+class AlignedRoi {
   final double cx;
   final double cy;
   final double size;
   final double theta;
-  const _AlignedRoi(this.cx, this.cy, this.size, this.theta);
+  const AlignedRoi(this.cx, this.cy, this.size, this.theta);
 }
 
-class _DecodedBox {
-  final _RectF bbox;
+class DecodedBox {
+  final RectF bbox;
   final List<double> keypointsXY;
-  _DecodedBox(this.bbox, this.keypointsXY);
+  DecodedBox(this.bbox, this.keypointsXY);
 }

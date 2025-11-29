@@ -1,4 +1,4 @@
-part of face_detection_tflite;
+part of '../face_detection_tflite.dart';
 
 /// Predicts the full 468-point face mesh (x, y, z per point) for an aligned face crop.
 /// Coordinates are normalized before later mapping back to image space.
@@ -158,7 +158,7 @@ class FaceLandmark {
   /// print('Predicted ${meshPoints.length} mesh points'); // 468
   /// ```
   Future<List<List<double>>> call(img.Image faceCrop) async {
-    final _ImageTensor pack = await _imageToTensor(faceCrop, outW: _inW, outH: _inH);
+    final ImageTensor pack = await _imageToTensor(faceCrop, outW: _inW, outH: _inH);
 
     if (_iso == null) {
       _inputBuf.setAll(0, pack.tensorNHWC);
