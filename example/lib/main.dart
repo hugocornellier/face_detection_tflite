@@ -1,16 +1,86 @@
-import 'package:flutter/material.dart';
+import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
-import 'dart:ui';
-import 'package:image_picker/image_picker.dart';
-import 'package:face_detection_tflite/face_detection_tflite.dart';
-import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+import 'dart:ui' as ui;
 
-void main() {
+import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+import 'package:camera/camera.dart';
+import 'package:camera_macos/camera_macos.dart';
+import 'package:image/image.dart' as img;
+import 'package:face_detection_tflite/face_detection_tflite.dart';
+
+Future<void> main() async {
+  // Ensure platform plugins (camera_macos, etc.) are registered before use.
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const MaterialApp(
     debugShowCheckedModeBanner: false,
-    home: Example(),
+    home: HomeScreen(),
   ));
+}
+
+class HomeScreen extends StatelessWidget {
+  const HomeScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Face Detection Demo'),
+        backgroundColor: Colors.blue,
+        foregroundColor: Colors.white,
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.face, size: 100, color: Colors.blue[300]),
+            const SizedBox(height: 40),
+            const Text(
+              'Choose Detection Mode',
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 40),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const Example()),
+                );
+              },
+              icon: const Icon(Icons.image, size: 32),
+              label: const Text('Still Image Detection', style: TextStyle(fontSize: 18)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+                minimumSize: const Size(300, 70),
+              ),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const LiveCameraScreen()),
+                );
+              },
+              icon: const Icon(Icons.videocam, size: 32),
+              label: const Text('Live Camera Detection', style: TextStyle(fontSize: 18)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+                minimumSize: const Size(300, 70),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class Example extends StatefulWidget {
@@ -22,7 +92,7 @@ class Example extends StatefulWidget {
 class _ExampleState extends State<Example> {
   final FaceDetector _faceDetector = FaceDetector();
   Uint8List? _imageBytes;
-  List<FaceResult> _faces = [];
+  List<Face> _faces = [];
   Size? _originalSize;
 
   bool _isLoading = false;
@@ -94,9 +164,16 @@ class _ExampleState extends State<Example> {
 
     final mode = _determineMode();
 
-    final detectionStart = DateTime.now();
-    final result = await _faceDetector.detectFaces(bytes, mode: mode);
-    final detectionEnd = DateTime.now();
+    final ui.Codec codec = await ui.instantiateImageCodec(bytes);
+    final ui.FrameInfo frame = await codec.getNextFrame();
+    final double imgW = frame.image.width.toDouble();
+    final double imgH = frame.image.height.toDouble();
+    frame.image.dispose();
+    codec.dispose();
+
+    final DateTime detectionStart = DateTime.now();
+    final List<Face> faces = await _faceDetector.detectFaces(bytes, mode: mode);
+    final DateTime detectionEnd = DateTime.now();
 
     if (!mounted) return;
 
@@ -120,8 +197,8 @@ class _ExampleState extends State<Example> {
 
     setState(() {
       _imageBytes = bytes;
-      _originalSize = result.originalSize;
-      _faces = result.faces;
+      _originalSize = Size(imgW, imgH);
+      _faces = faces;
       _hasProcessedMesh = mode == FaceDetectionMode.standard || mode == FaceDetectionMode.full;
       _hasProcessedIris = mode == FaceDetectionMode.full;
       _isLoading = false;
@@ -262,9 +339,9 @@ class _ExampleState extends State<Example> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withAlpha(26),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withAlpha(77)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -498,7 +575,6 @@ class _ExampleState extends State<Example> {
 
                       final left = (constraints.maxWidth - displayWidth) / 2;
                       final top = (constraints.maxHeight - displayHeight) / 2;
-                      final imageRect = Rect.fromLTWH(left, top, displayWidth, displayHeight);
 
                       return Stack(
                         children: [
@@ -566,7 +642,7 @@ class _ExampleState extends State<Example> {
               child: FloatingActionButton(
                 mini: true,
                 onPressed: () => setState(() => _showSettings = true),
-                backgroundColor: Colors.black.withOpacity(0.7),
+                backgroundColor: Colors.black.withAlpha(179),
                 child: const Icon(Icons.settings, color: Colors.white),
               ),
             ),
@@ -665,7 +741,7 @@ class _ExampleState extends State<Example> {
 }
 
 class _DetectionsPainter extends CustomPainter {
-  final List<FaceResult> faces;
+  final List<Face> faces;
   final Rect imageRectOnCanvas;
   final Size originalImageSize;
   final bool showBoundingBoxes;
@@ -716,13 +792,13 @@ class _DetectionsPainter extends CustomPainter {
 
     final irisFill = Paint()
       ..style = PaintingStyle.fill
-      ..color = irisColor.withOpacity(0.6)
+      ..color = irisColor.withAlpha(153)
       ..blendMode = BlendMode.srcOver;
 
     final irisStroke = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5
-      ..color = irisColor.withOpacity(0.9);
+      ..color = irisColor.withAlpha(230);
 
     final ox = imageRectOnCanvas.left;
     final oy = imageRectOnCanvas.top;
@@ -731,7 +807,6 @@ class _DetectionsPainter extends CustomPainter {
     final scaleY = imageRectOnCanvas.height / originalImageSize.height;
 
     for (final face in faces) {
-      // draw bounding boxes:
       if (showBoundingBoxes) {
         final c = face.bboxCorners;
         final rect = Rect.fromLTRB(
@@ -743,7 +818,6 @@ class _DetectionsPainter extends CustomPainter {
         canvas.drawRect(rect, boxPaint);
       }
 
-      // draw landmarks:
       if (showLandmarks) {
         for (final p in face.landmarks.values) {
           canvas.drawCircle(
@@ -754,7 +828,6 @@ class _DetectionsPainter extends CustomPainter {
         }
       }
 
-      // draw mesh:
       if (showMesh) {
         final mesh = face.mesh;
         if (mesh.isNotEmpty) {
@@ -771,7 +844,6 @@ class _DetectionsPainter extends CustomPainter {
         }
       }
 
-      // draw irises:
       if (showIrises) {
         final iris = face.irises;
         for (int i = 0; i + 4 < iris.length; i += 5) {
@@ -836,5 +908,586 @@ class _DetectionsPainter extends CustomPainter {
         old.boundingBoxThickness != boundingBoxThickness ||
         old.landmarkSize != landmarkSize ||
         old.meshSize != meshSize;
+  }
+}
+
+class LiveCameraScreen extends StatefulWidget {
+  const LiveCameraScreen({super.key});
+
+  @override
+  State<LiveCameraScreen> createState() => _LiveCameraScreenState();
+}
+
+class _LiveCameraScreenState extends State<LiveCameraScreen> {
+  bool get _isMacOS => !kIsWeb && Platform.isMacOS;
+
+  CameraController? _cameraController;
+  CameraMacOSController? _macCameraController;
+  Size? _macPreviewSize;
+  final FaceDetector _faceDetector = FaceDetector();
+  List<Face> _faces = [];
+  Size? _imageSize;
+  bool _isProcessing = false;
+  bool _isInitialized = false;
+  int _frameCounter = 0;
+  int _processEveryNFrames = 3; // Process every 3rd frame for better performance
+  int _detectionTimeMs = 0;
+  int _fps = 0;
+  DateTime? _lastFpsUpdate;
+  int _framesSinceLastUpdate = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _initCamera();
+  }
+
+  Future<void> _initCamera() async {
+    try {
+      // Initialize face detector
+      await _faceDetector.initialize(model: FaceDetectionModel.backCamera);
+
+      if (_isMacOS) {
+        if (mounted) {
+          setState(() {
+            _isInitialized = true;
+          });
+        }
+        return;
+      }
+
+      // Get available cameras
+      final cameras = await availableCameras();
+      if (cameras.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No cameras available')),
+          );
+        }
+        return;
+      }
+
+      // Use the first available camera (usually front camera)
+      final camera = cameras.first;
+
+      _cameraController = CameraController(
+        camera,
+        ResolutionPreset.medium, // Use medium for balance between quality and speed
+        enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.yuv420, // Efficient format
+      );
+
+      await _cameraController!.initialize();
+
+      if (!mounted) return;
+
+      setState(() {
+        _isInitialized = true;
+      });
+
+      // Start image stream
+      _cameraController!.startImageStream(_processCameraImage);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error initializing camera: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _processCameraImage(CameraImage image) async {
+    _frameCounter++;
+
+    // Calculate FPS
+    _framesSinceLastUpdate++;
+    final now = DateTime.now();
+    if (_lastFpsUpdate != null) {
+      final diff = now.difference(_lastFpsUpdate!).inMilliseconds;
+      if (diff >= 1000) {
+        setState(() {
+          _fps = (_framesSinceLastUpdate * 1000 / diff).round();
+          _framesSinceLastUpdate = 0;
+          _lastFpsUpdate = now;
+        });
+      }
+    } else {
+      _lastFpsUpdate = now;
+    }
+
+    // Skip frames for better performance
+    if (_frameCounter % _processEveryNFrames != 0) return;
+
+    // Skip if already processing
+    if (_isProcessing) return;
+
+    _isProcessing = true;
+
+    try {
+      final startTime = DateTime.now();
+
+      // Convert CameraImage to bytes
+      final bytes = await _convertCameraImageToBytes(image);
+
+      if (bytes == null) {
+        _isProcessing = false;
+        return;
+      }
+
+      // Run face detection (fast mode for bounding boxes only)
+      final faces = await _faceDetector.detectFaces(
+        bytes,
+        mode: FaceDetectionMode.fast, // Fast mode for real-time performance
+      );
+
+      final endTime = DateTime.now();
+      final detectionTime = endTime.difference(startTime).inMilliseconds;
+
+      if (mounted) {
+        setState(() {
+          _faces = faces;
+          _imageSize = Size(image.width.toDouble(), image.height.toDouble());
+          _detectionTimeMs = detectionTime;
+        });
+      }
+    } catch (e) {
+      // Silently handle errors during processing
+    } finally {
+      _isProcessing = false;
+    }
+  }
+
+  Future<Uint8List?> _convertCameraImageToBytes(CameraImage image) async {
+    try {
+      // Convert YUV420 to RGB
+      final int width = image.width;
+      final int height = image.height;
+
+      // Create an image using the img package
+      final imgLib = img.Image(width: width, height: height);
+
+      // YUV420 format has Y plane and UV planes
+      final int uvRowStride = image.planes[1].bytesPerRow;
+      final int uvPixelStride = image.planes[1].bytesPerPixel ?? 1;
+
+      for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+          final int uvIndex = uvPixelStride * (x / 2).floor() + uvRowStride * (y / 2).floor();
+          final int index = y * width + x;
+
+          final yp = image.planes[0].bytes[index];
+          final up = image.planes[1].bytes[uvIndex];
+          final vp = image.planes[2].bytes[uvIndex];
+
+          // Convert YUV to RGB
+          int r = (yp + vp * 1436 / 1024 - 179).round().clamp(0, 255);
+          int g = (yp - up * 46549 / 131072 + 44 - vp * 93604 / 131072 + 91).round().clamp(0, 255);
+          int b = (yp + up * 1814 / 1024 - 227).round().clamp(0, 255);
+
+          imgLib.setPixelRgb(x, y, r, g, b);
+        }
+      }
+
+      // Encode to JPEG
+      return Uint8List.fromList(img.encodeJpg(imgLib));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  Uint8List? _convertMacImageToBytes(CameraImageData image) {
+    try {
+      final imgLib = img.Image(width: image.width, height: image.height);
+      final bytes = image.bytes;
+      final stride = image.bytesPerRow;
+
+      for (int y = 0; y < image.height; y++) {
+        final rowStart = y * stride;
+        for (int x = 0; x < image.width; x++) {
+          final pixelStart = rowStart + x * 4;
+          if (pixelStart + 3 >= bytes.length) break;
+
+          final a = bytes[pixelStart];
+          final r = bytes[pixelStart + 1];
+          final g = bytes[pixelStart + 2];
+          final b = bytes[pixelStart + 3];
+
+          imgLib.setPixelRgba(x, y, r, g, b, a);
+        }
+      }
+
+      return Uint8List.fromList(img.encodeJpg(imgLib));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  void dispose() {
+    if (_isMacOS) {
+      _macCameraController?.stopImageStream();
+      _macCameraController?.destroy();
+    } else {
+      _cameraController?.stopImageStream();
+      _cameraController?.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isMacOS) {
+      return _buildMacOSCamera(context);
+    }
+
+    if (!_isInitialized || _cameraController == null) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Live Camera Detection'),
+          backgroundColor: Colors.green,
+          foregroundColor: Colors.white,
+        ),
+        body: const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    final size = MediaQuery.of(context).size;
+    final cameraAspectRatio = _cameraController!.value.aspectRatio;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Live Camera Detection'),
+        backgroundColor: Colors.green,
+        foregroundColor: Colors.white,
+        actions: [
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: Text(
+                'FPS: $_fps | Detection: ${_detectionTimeMs}ms',
+                style: const TextStyle(fontSize: 14),
+              ),
+            ),
+          ),
+        ],
+      ),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Camera preview
+          Center(
+            child: AspectRatio(
+              aspectRatio: cameraAspectRatio,
+              child: CameraPreview(_cameraController!),
+            ),
+          ),
+          // Face detection overlay
+          if (_imageSize != null)
+            CustomPaint(
+              painter: _CameraDetectionPainter(
+                faces: _faces,
+                imageSize: _imageSize!,
+                screenSize: size,
+                cameraAspectRatio: cameraAspectRatio,
+              ),
+            ),
+          // Info panel
+          Positioned(
+            bottom: 20,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.black.withAlpha(179),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Faces Detected: ${_faces.length}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'Frame Skip: ',
+                          style: TextStyle(color: Colors.white70, fontSize: 14),
+                        ),
+                        DropdownButton<int>(
+                          value: _processEveryNFrames,
+                          dropdownColor: Colors.black87,
+                          style: const TextStyle(color: Colors.white),
+                          items: [1, 2, 3, 4, 5]
+                              .map((n) => DropdownMenuItem(
+                                    value: n,
+                                    child: Text('1/$n'),
+                                  ))
+                              .toList(),
+                          onChanged: (value) {
+                            if (value != null) {
+                              setState(() {
+                                _processEveryNFrames = value;
+                              });
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMacOSCamera(BuildContext context) {
+    if (!_isInitialized) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Live Camera Detection'),
+          backgroundColor: Colors.green,
+          foregroundColor: Colors.white,
+        ),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final size = MediaQuery.of(context).size;
+    final double cameraAspectRatio = _macPreviewSize != null
+        ? _macPreviewSize!.width / _macPreviewSize!.height
+        : size.width / size.height;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Live Camera Detection'),
+        backgroundColor: Colors.green,
+        foregroundColor: Colors.white,
+        actions: [
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: Text(
+                'FPS: $_fps | Detection: ${_detectionTimeMs}ms',
+                style: const TextStyle(fontSize: 14),
+              ),
+            ),
+          ),
+        ],
+      ),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          CameraMacOSView(
+            cameraMode: CameraMacOSMode.photo,
+            fit: BoxFit.cover,
+            onCameraInizialized: _onMacCameraInitialized,
+            onCameraLoading: (_) => const Center(child: CircularProgressIndicator()),
+          ),
+          if (_imageSize != null)
+            CustomPaint(
+              painter: _CameraDetectionPainter(
+                faces: _faces,
+                imageSize: _imageSize!,
+                screenSize: size,
+                cameraAspectRatio: cameraAspectRatio,
+              ),
+            ),
+          Positioned(
+            bottom: 20,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.black.withAlpha(179),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Faces Detected: ${_faces.length}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'Frame Skip: ',
+                          style: TextStyle(color: Colors.white70, fontSize: 14),
+                        ),
+                        DropdownButton<int>(
+                          value: _processEveryNFrames,
+                          dropdownColor: Colors.black87,
+                          style: const TextStyle(color: Colors.white),
+                          items: [1, 2, 3, 4, 5]
+                              .map((n) => DropdownMenuItem(
+                                    value: n,
+                                    child: Text('1/$n'),
+                                  ))
+                              .toList(),
+                          onChanged: (value) {
+                            if (value != null) {
+                              setState(() {
+                                _processEveryNFrames = value;
+                              });
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _onMacCameraInitialized(CameraMacOSController controller) {
+    _macCameraController = controller;
+    _macPreviewSize = controller.args.size;
+    setState(() {
+      _isInitialized = true;
+    });
+    _startMacImageStream();
+  }
+
+  void _startMacImageStream() {
+    if (_macCameraController == null) return;
+
+    _macCameraController!.startImageStream((image) async {
+      if (image == null) return;
+
+      _frameCounter++;
+      _framesSinceLastUpdate++;
+      final now = DateTime.now();
+      if (_lastFpsUpdate != null) {
+        final diff = now.difference(_lastFpsUpdate!).inMilliseconds;
+        if (diff >= 1000) {
+          setState(() {
+            _fps = (_framesSinceLastUpdate * 1000 / diff).round();
+            _framesSinceLastUpdate = 0;
+            _lastFpsUpdate = now;
+          });
+        }
+      } else {
+        _lastFpsUpdate = now;
+      }
+
+      if (_frameCounter % _processEveryNFrames != 0) return;
+      if (_isProcessing) return;
+
+      _isProcessing = true;
+
+      try {
+        final startTime = DateTime.now();
+        final bytes = _convertMacImageToBytes(image);
+        if (bytes == null) {
+          _isProcessing = false;
+          return;
+        }
+
+        final faces = await _faceDetector.detectFaces(
+          bytes,
+          mode: FaceDetectionMode.fast,
+        );
+        final detectionTime = DateTime.now().difference(startTime).inMilliseconds;
+
+        if (mounted) {
+          setState(() {
+            _faces = faces;
+            _imageSize = Size(image.width.toDouble(), image.height.toDouble());
+            _macPreviewSize ??= Size(image.width.toDouble(), image.height.toDouble());
+            _detectionTimeMs = detectionTime;
+          });
+        }
+      } catch (_) {
+        // Ignore frame errors to keep streaming
+      } finally {
+        _isProcessing = false;
+      }
+    });
+  }
+}
+
+class _CameraDetectionPainter extends CustomPainter {
+  final List<Face> faces;
+  final Size imageSize;
+  final Size screenSize;
+  final double cameraAspectRatio;
+
+  _CameraDetectionPainter({
+    required this.faces,
+    required this.imageSize,
+    required this.screenSize,
+    required this.cameraAspectRatio,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (faces.isEmpty) return;
+
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3.0
+      ..color = const Color(0xFF00FFCC);
+
+    // Calculate the display area for the camera preview
+    final screenAspectRatio = screenSize.width / screenSize.height;
+    double displayWidth, displayHeight;
+    double offsetX = 0, offsetY = 0;
+
+    if (cameraAspectRatio > screenAspectRatio) {
+      displayWidth = screenSize.width;
+      displayHeight = screenSize.width / cameraAspectRatio;
+      offsetY = (screenSize.height - displayHeight) / 2;
+    } else {
+      displayHeight = screenSize.height;
+      displayWidth = screenSize.height * cameraAspectRatio;
+      offsetX = (screenSize.width - displayWidth) / 2;
+    }
+
+    final scaleX = displayWidth / imageSize.width;
+    final scaleY = displayHeight / imageSize.height;
+
+    // Draw bounding boxes
+    for (final face in faces) {
+      final corners = face.bboxCorners;
+      final rect = Rect.fromLTRB(
+        offsetX + corners[0].x * scaleX,
+        offsetY + corners[0].y * scaleY,
+        offsetX + corners[2].x * scaleX,
+        offsetY + corners[2].y * scaleY,
+      );
+      canvas.drawRect(rect, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _CameraDetectionPainter old) {
+    return old.faces != faces || old.imageSize != imageSize;
   }
 }

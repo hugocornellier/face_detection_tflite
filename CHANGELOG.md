@@ -1,3 +1,7 @@
+## 1.1.0
+- Remove deprecated `withOpacity` calls
+- Improved DartDocs + API documentation
+
 ## 1.0.3
 -  Update tflite_flutter_custom to 1.0.1, equivalent to tflite_flutter 0.12.0.
 -  Unit tests
