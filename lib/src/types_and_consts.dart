@@ -216,6 +216,9 @@ class AlignedFace {
 
   /// The aligned face crop image provided to landmark models.
   final img.Image faceCrop;
+
+  /// Creates an aligned face crop with normalized center, size, rotation,
+  /// and the cropped [faceCrop] image ready for landmark inference.
   AlignedFace(
       {required this.cx,
       required this.cy,
@@ -322,6 +325,9 @@ class AlignedRoi {
 
   /// Rotation applied to align the ROI, in radians.
   final double theta;
+
+  /// Creates a normalized, rotation-aware region of interest used to crop
+  /// around the eyes for iris landmark detection.
   const AlignedRoi(this.cx, this.cy, this.size, this.theta);
 }
 
@@ -332,5 +338,8 @@ class DecodedBox {
 
   /// Flattened list of normalized keypoints `[x0, y0, ...]`.
   final List<double> keypointsXY;
+
+  /// Constructs a decoded detection with its normalized bounding box and
+  /// flattened landmark coordinates output by the face detector.
   DecodedBox(this.bbox, this.keypointsXY);
 }

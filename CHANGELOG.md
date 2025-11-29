@@ -1,3 +1,6 @@
+## 2.0.3
+- Dartdocs for AlignedFace, AlignedRoi, DecodedBox, DecodedRgb
+
 ## 2.0.2
 - Swift Package Manager support
 

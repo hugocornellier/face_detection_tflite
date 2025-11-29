@@ -1,3 +1,5 @@
+/// Face detection and landmark inference utilities backed by MediaPipe-style
+/// TFLite models for Flutter apps.
 import 'dart:async';
 import 'dart:isolate';
 import 'dart:math' as math;

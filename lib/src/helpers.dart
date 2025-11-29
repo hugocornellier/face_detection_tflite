@@ -502,6 +502,9 @@ class DecodedRgb {
 
   /// Raw RGB bytes in row-major order.
   final Uint8List rgb;
+
+  /// Creates a decoded RGB payload with explicit [width], [height], and
+  /// row-major [rgb] bytes that can be converted back to an [img.Image].
   const DecodedRgb(this.width, this.height, this.rgb);
 }
 
