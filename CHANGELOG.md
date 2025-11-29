@@ -1,3 +1,10 @@
+## 2.0.2
+- Swift Package Manager support
+
+## 2.0.1
+- Update tflite_flutter_custom to 1.0.3, equivalent to tflite_flutter 0.12.1.
+- Improved dartdocs
+
 ## 2.0.0
 **This version contains breaking changes.**
 - detectFaces now returns List<Face>, PipelineResult/FaceResult removed.

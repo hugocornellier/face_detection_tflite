@@ -29,12 +29,18 @@ class TestUtils {
     math.Point<double>? rightEyeTragion,
   }) {
     return [
-      leftEye?.x ?? 0.3, leftEye?.y ?? 0.4,
-      rightEye?.x ?? 0.7, rightEye?.y ?? 0.4,
-      noseTip?.x ?? 0.5, noseTip?.y ?? 0.6,
-      mouth?.x ?? 0.5, mouth?.y ?? 0.75,
-      leftEyeTragion?.x ?? 0.1, leftEyeTragion?.y ?? 0.4,
-      rightEyeTragion?.x ?? 0.9, rightEyeTragion?.y ?? 0.4,
+      leftEye?.x ?? 0.3,
+      leftEye?.y ?? 0.4,
+      rightEye?.x ?? 0.7,
+      rightEye?.y ?? 0.4,
+      noseTip?.x ?? 0.5,
+      noseTip?.y ?? 0.6,
+      mouth?.x ?? 0.5,
+      mouth?.y ?? 0.75,
+      leftEyeTragion?.x ?? 0.1,
+      leftEyeTragion?.y ?? 0.4,
+      rightEyeTragion?.x ?? 0.9,
+      rightEyeTragion?.y ?? 0.4,
     ];
   }
 
@@ -66,16 +72,15 @@ class TestUtils {
   }
 
   /// Checks if two doubles are approximately equal within tolerance
-  static bool approximatelyEqual(double a, double b, {double epsilon = 0.0001}) {
+  static bool approximatelyEqual(double a, double b,
+      {double epsilon = 0.0001}) {
     return (a - b).abs() < epsilon;
   }
 
   /// Checks if two Points are approximately equal
   static bool pointsApproximatelyEqual(
-      math.Point<double> a,
-      math.Point<double> b,
-      {double epsilon = 0.0001}
-      ) {
+      math.Point<double> a, math.Point<double> b,
+      {double epsilon = 0.0001}) {
     return approximatelyEqual(a.x, b.x, epsilon: epsilon) &&
         approximatelyEqual(a.y, b.y, epsilon: epsilon);
   }
@@ -84,10 +89,8 @@ class TestUtils {
 /// Custom matchers for face detection tests
 class FaceDetectionMatchers {
   /// Matcher for checking if a Point is approximately equal to expected
-  static Matcher approximatelyEqualsPoint(
-      math.Point<double> expected,
-      {double epsilon = 0.0001}
-      ) {
+  static Matcher approximatelyEqualsPoint(math.Point<double> expected,
+      {double epsilon = 0.0001}) {
     return _ApproximatePointMatcher(expected, epsilon);
   }
 
@@ -131,16 +134,17 @@ class _ApproximatePointMatcher extends Matcher {
 
   @override
   Description describe(Description description) {
-    return description.add('approximately equals Point(${expected.x}, ${expected.y}) within $epsilon');
+    return description.add(
+        'approximately equals Point(${expected.x}, ${expected.y}) within $epsilon');
   }
 
   @override
   Description describeMismatch(
-      Object? item,
-      Description mismatchDescription,
-      Map matchState,
-      bool verbose,
-      ) {
+    Object? item,
+    Description mismatchDescription,
+    Map matchState,
+    bool verbose,
+  ) {
     if (matchState.containsKey('error')) {
       return mismatchDescription.add(matchState['error'] as String);
     }
@@ -191,11 +195,11 @@ class _InRangeMatcher extends Matcher {
 
   @override
   Description describeMismatch(
-      Object? item,
-      Description mismatchDescription,
-      Map matchState,
-      bool verbose,
-      ) {
+    Object? item,
+    Description mismatchDescription,
+    Map matchState,
+    bool verbose,
+  ) {
     if (matchState.containsKey('error')) {
       return mismatchDescription.add(matchState['error'] as String);
     }
@@ -231,16 +235,17 @@ class _WithinImageBoundsMatcher extends Matcher {
 
   @override
   Description describe(Description description) {
-    return description.add('within image bounds (width: ${imageSize.width}, height: ${imageSize.height})');
+    return description.add(
+        'within image bounds (width: ${imageSize.width}, height: ${imageSize.height})');
   }
 
   @override
   Description describeMismatch(
-      Object? item,
-      Description mismatchDescription,
-      Map matchState,
-      bool verbose,
-      ) {
+    Object? item,
+    Description mismatchDescription,
+    Map matchState,
+    bool verbose,
+  ) {
     if (matchState.containsKey('error')) {
       return mismatchDescription.add(matchState['error'] as String);
     }

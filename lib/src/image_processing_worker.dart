@@ -74,8 +74,7 @@ class ImageProcessingWorker {
             initCompleter.complete(message);
           } else {
             initCompleter.completeError(
-              StateError('Expected SendPort, got ${message.runtimeType}')
-            );
+                StateError('Expected SendPort, got ${message.runtimeType}'));
           }
           return;
         }
@@ -125,9 +124,11 @@ class ImageProcessingWorker {
     }
   }
 
-  Future<T> _sendRequest<T>(String operation, Map<String, dynamic> params) async {
+  Future<T> _sendRequest<T>(
+      String operation, Map<String, dynamic> params) async {
     if (!_initialized || _sendPort == null) {
-      throw StateError('ImageProcessingWorker not initialized. Call initialize() first.');
+      throw StateError(
+          'ImageProcessingWorker not initialized. Call initialize() first.');
     }
 
     final int id = _nextId++;
@@ -162,7 +163,8 @@ class ImageProcessingWorker {
       'bytes': TransferableTypedData.fromList([bytes]),
     });
 
-    final ByteBuffer rgbBB = (result['rgb'] as TransferableTypedData).materialize();
+    final ByteBuffer rgbBB =
+        (result['rgb'] as TransferableTypedData).materialize();
     final Uint8List rgb = rgbBB.asUint8List();
     final int w = result['w'] as int;
     final int h = result['h'] as int;
@@ -195,10 +197,12 @@ class ImageProcessingWorker {
       'rgb': TransferableTypedData.fromList([rgb]),
     });
 
-    final ByteBuffer tensorBB = (result['tensor'] as TransferableTypedData).materialize();
+    final ByteBuffer tensorBB =
+        (result['tensor'] as TransferableTypedData).materialize();
     final Float32List tensor = tensorBB.asUint8List().buffer.asFloat32List();
     final List paddingRaw = result['padding'] as List;
-    final List<double> padding = paddingRaw.map((e) => (e as num).toDouble()).toList();
+    final List<double> padding =
+        paddingRaw.map((e) => (e as num).toDouble()).toList();
     final int ow = result['outW'] as int;
     final int oh = result['outH'] as int;
 
@@ -216,10 +220,8 @@ class ImageProcessingWorker {
   /// Throws [StateError] if the worker is not initialized or crop fails.
   Future<img.Image> cropFromRoi(img.Image src, RectF roi) async {
     if (roi.xmin < 0 || roi.ymin < 0 || roi.xmax > 1 || roi.ymax > 1) {
-      throw ArgumentError(
-        'ROI coordinates must be normalized [0,1], got: '
-        '(${roi.xmin}, ${roi.ymin}, ${roi.xmax}, ${roi.ymax})'
-      );
+      throw ArgumentError('ROI coordinates must be normalized [0,1], got: '
+          '(${roi.xmin}, ${roi.ymin}, ${roi.xmax}, ${roi.ymax})');
     }
     if (roi.xmin >= roi.xmax || roi.ymin >= roi.ymax) {
       throw ArgumentError('Invalid ROI: min coordinates must be less than max');
@@ -244,7 +246,8 @@ class ImageProcessingWorker {
       throw StateError('Image crop failed: ${error ?? "unknown error"}');
     }
 
-    final ByteBuffer outBB = (result['rgb'] as TransferableTypedData).materialize();
+    final ByteBuffer outBB =
+        (result['rgb'] as TransferableTypedData).materialize();
     final Uint8List outRgb = outBB.asUint8List();
     final int ow = result['w'] as int;
     final int oh = result['h'] as int;
@@ -302,7 +305,8 @@ class ImageProcessingWorker {
       throw StateError('Image extraction failed: ${error ?? "unknown error"}');
     }
 
-    final ByteBuffer outBB = (result['rgb'] as TransferableTypedData).materialize();
+    final ByteBuffer outBB =
+        (result['rgb'] as TransferableTypedData).materialize();
     final Uint8List outRgb = outBB.asUint8List();
     final int ow = result['w'] as int;
     final int oh = result['h'] as int;
@@ -394,7 +398,8 @@ class ImageProcessingWorker {
   // --------------------------------------------------------------------------
 
   static Map<String, dynamic> _opDecode(Map<dynamic, dynamic> params) {
-    final ByteBuffer bb = (params['bytes'] as TransferableTypedData).materialize();
+    final ByteBuffer bb =
+        (params['bytes'] as TransferableTypedData).materialize();
     final Uint8List inBytes = bb.asUint8List();
 
     final img.Image? decoded = img.decodeImage(inBytes);
@@ -419,7 +424,8 @@ class ImageProcessingWorker {
     final int inH = params['inH'] as int;
     final int outW = params['outW'] as int;
     final int outH = params['outH'] as int;
-    final ByteBuffer rgbBB = (params['rgb'] as TransferableTypedData).materialize();
+    final ByteBuffer rgbBB =
+        (params['rgb'] as TransferableTypedData).materialize();
     final Uint8List rgb = rgbBB.asUint8List();
 
     final img.Image src = img.Image.fromBytes(
@@ -491,7 +497,8 @@ class ImageProcessingWorker {
     try {
       final int w = params['w'] as int;
       final int h = params['h'] as int;
-      final ByteBuffer inBB = (params['rgb'] as TransferableTypedData).materialize();
+      final ByteBuffer inBB =
+          (params['rgb'] as TransferableTypedData).materialize();
       final Uint8List inRgb = inBB.asUint8List();
       final Map roiMap = params['roi'] as Map;
 
@@ -516,7 +523,8 @@ class ImageProcessingWorker {
       final int cw = math.max(1, x1 - x0);
       final int ch = math.max(1, y1 - y0);
 
-      final img.Image out = img.copyCrop(src, x: x0, y: y0, width: cw, height: ch);
+      final img.Image out =
+          img.copyCrop(src, x: x0, y: y0, width: cw, height: ch);
       final Uint8List outRgb = out.getBytes(order: img.ChannelOrder.rgb);
 
       return {
@@ -538,7 +546,8 @@ class ImageProcessingWorker {
     try {
       final int w = params['w'] as int;
       final int h = params['h'] as int;
-      final ByteBuffer inBB = (params['rgb'] as TransferableTypedData).materialize();
+      final ByteBuffer inBB =
+          (params['rgb'] as TransferableTypedData).materialize();
       final Uint8List inRgb = inBB.asUint8List();
       final double cx = (params['cx'] as num).toDouble();
       final double cy = (params['cy'] as num).toDouble();
@@ -582,7 +591,8 @@ class ImageProcessingWorker {
     }
   }
 
-  static img.ColorRgb8 _bilinearSampleRgb8(img.Image src, double fx, double fy) {
+  static img.ColorRgb8 _bilinearSampleRgb8(
+      img.Image src, double fx, double fy) {
     final int x0 = fx.floor();
     final int y0 = fy.floor();
     final int x1 = x0 + 1;

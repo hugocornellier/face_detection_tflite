@@ -20,5 +20,10 @@ dependencies:
   camera: ^0.11.0+2
   camera_macos: ^0.0.9
 
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
 flutter:
   uses-material-design: true

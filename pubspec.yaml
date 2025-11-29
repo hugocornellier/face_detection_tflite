@@ -1,6 +1,6 @@
 name: face_detection_tflite
 description: "Face & landmark detection using on-device TFLite models."
-version: 2.0.0
+version: 2.0.2
 
 repository: https://github.com/hugocornellier/face_detection_tflite
 homepage: https://github.com/hugocornellier/face_detection_tflite
@@ -19,8 +19,8 @@ dependencies:
   flutter:
     sdk: flutter
   image: ^4.5.4
-  tflite_flutter_custom: ^1.0.2
-  path: ^1.9.0
+  tflite_flutter_custom: ^1.0.3
+  path: ^1.9.1
 
 dev_dependencies:
   flutter_test:

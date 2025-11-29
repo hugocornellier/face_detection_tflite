@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'dart:math';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -51,11 +50,13 @@ class HomeScreen extends StatelessWidget {
                 );
               },
               icon: const Icon(Icons.image, size: 32),
-              label: const Text('Still Image Detection', style: TextStyle(fontSize: 18)),
+              label: const Text('Still Image Detection',
+                  style: TextStyle(fontSize: 18)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.blue,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
                 minimumSize: const Size(300, 70),
               ),
             ),
@@ -64,15 +65,18 @@ class HomeScreen extends StatelessWidget {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const LiveCameraScreen()),
+                  MaterialPageRoute(
+                      builder: (context) => const LiveCameraScreen()),
                 );
               },
               icon: const Icon(Icons.videocam, size: 32),
-              label: const Text('Live Camera Detection', style: TextStyle(fontSize: 18)),
+              label: const Text('Live Camera Detection',
+                  style: TextStyle(fontSize: 18)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
                 minimumSize: const Size(300, 70),
               ),
             ),
@@ -133,10 +137,8 @@ class _ExampleState extends State<Example> {
 
   Future<void> _pickAndRun() async {
     final ImagePicker picker = ImagePicker();
-    final XFile? picked = await picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 100
-    );
+    final XFile? picked =
+        await picker.pickImage(source: ImageSource.gallery, imageQuality: 100);
     if (picked == null) return;
 
     setState(() {
@@ -180,7 +182,8 @@ class _ExampleState extends State<Example> {
 
     final DateTime totalEnd = DateTime.now();
     final int totalTime = totalEnd.difference(totalStart).inMilliseconds;
-    final int detectionTime = detectionEnd.difference(detectionStart).inMilliseconds;
+    final int detectionTime =
+        detectionEnd.difference(detectionStart).inMilliseconds;
 
     int? meshTime;
     int? irisTime;
@@ -200,7 +203,8 @@ class _ExampleState extends State<Example> {
       _imageBytes = bytes;
       _originalSize = Size(imgW, imgH);
       _faces = faces;
-      _hasProcessedMesh = mode == FaceDetectionMode.standard || mode == FaceDetectionMode.full;
+      _hasProcessedMesh =
+          mode == FaceDetectionMode.standard || mode == FaceDetectionMode.full;
       _hasProcessedIris = mode == FaceDetectionMode.full;
       _isLoading = false;
       _detectionTimeMs = detectionTime;
@@ -236,7 +240,8 @@ class _ExampleState extends State<Example> {
     }
   }
 
-  void _pickColor(String label, Color currentColor, ValueChanged<Color> onColorChanged) {
+  void _pickColor(
+      String label, Color currentColor, ValueChanged<Color> onColorChanged) {
     showDialog(
       context: context,
       builder: (context) {
@@ -273,7 +278,8 @@ class _ExampleState extends State<Example> {
     );
   }
 
-  Widget _buildTimingRow(String label, int milliseconds, Color color, {bool isBold = false}) {
+  Widget _buildTimingRow(String label, int milliseconds, Color color,
+      {bool isBold = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -385,13 +391,27 @@ class _ExampleState extends State<Example> {
             ),
             const SizedBox(height: 8),
             _buildStatusRow('Detection', true, Colors.green),
-            _buildStatusRow('Mesh', _hasProcessedMesh, _showMesh ? Colors.green : Colors.grey),
-            _buildStatusRow('Iris', _hasProcessedIris, _showIrises ? Colors.green : Colors.grey),
-            if (_totalTimeMs != null) ...[
+            _buildStatusRow('Mesh', _hasProcessedMesh,
+                _showMesh ? Colors.green : Colors.grey),
+            _buildStatusRow('Iris', _hasProcessedIris,
+                _showIrises ? Colors.green : Colors.grey),
+            if (_detectionTimeMs != null ||
+                _meshTimeMs != null ||
+                _irisTimeMs != null ||
+                _totalTimeMs != null) ...[
               const Divider(height: 16),
-              _buildTimingRow('Inference Time', _totalTimeMs!, Colors.blue, isBold: true),
+              if (_detectionTimeMs != null)
+                _buildTimingRow('Detection', _detectionTimeMs!, Colors.green),
+              if (_meshTimeMs != null)
+                _buildTimingRow('Mesh Refinement', _meshTimeMs!, Colors.pink),
+              if (_irisTimeMs != null)
+                _buildTimingRow(
+                    'Iris Refinement', _irisTimeMs!, Colors.blueAccent),
+              if (_totalTimeMs != null)
+                _buildTimingRow('Inference Time', _totalTimeMs!, Colors.blue,
+                    isBold: true),
               const SizedBox(height: 8),
-              _buildPerformanceIndicator(),
+              if (_totalTimeMs != null) _buildPerformanceIndicator(),
             ],
           ],
         ),
@@ -461,7 +481,8 @@ class _ExampleState extends State<Example> {
                           Padding(
                             padding: const EdgeInsets.all(8.0),
                             child: ElevatedButton.icon(
-                              onPressed: () => setState(() => _showSettings = false),
+                              onPressed: () =>
+                                  setState(() => _showSettings = false),
                               icon: const Icon(Icons.visibility_off),
                               label: const Text('Hide Settings'),
                               style: ElevatedButton.styleFrom(
@@ -480,22 +501,24 @@ class _ExampleState extends State<Example> {
                           _buildCheckbox(
                             'Show Bounding Boxes',
                             _showBoundingBoxes,
-                                (value) => setState(() => _showBoundingBoxes = value ?? false),
+                            (value) => setState(
+                                () => _showBoundingBoxes = value ?? false),
                           ),
                           _buildCheckbox(
                             'Show Mesh',
                             _showMesh,
-                                (value) => _onFeatureToggle('mesh', value ?? false),
+                            (value) => _onFeatureToggle('mesh', value ?? false),
                           ),
                           _buildCheckbox(
                             'Show Landmarks',
                             _showLandmarks,
-                                (value) => setState(() => _showLandmarks = value ?? false),
+                            (value) =>
+                                setState(() => _showLandmarks = value ?? false),
                           ),
                           _buildCheckbox(
                             'Show Irises',
                             _showIrises,
-                                (value) => _onFeatureToggle('iris', value ?? false),
+                            (value) => _onFeatureToggle('iris', value ?? false),
                           ),
                         ],
                       ),
@@ -507,22 +530,23 @@ class _ExampleState extends State<Example> {
                           _buildColorButton(
                             'Bounding Box',
                             _boundingBoxColor,
-                                (color) => setState(() => _boundingBoxColor = color),
+                            (color) =>
+                                setState(() => _boundingBoxColor = color),
                           ),
                           _buildColorButton(
                             'Landmarks',
                             _landmarkColor,
-                                (color) => setState(() => _landmarkColor = color),
+                            (color) => setState(() => _landmarkColor = color),
                           ),
                           _buildColorButton(
                             'Mesh',
                             _meshColor,
-                                (color) => setState(() => _meshColor = color),
+                            (color) => setState(() => _meshColor = color),
                           ),
                           _buildColorButton(
                             'Irises',
                             _irisColor,
-                                (color) => setState(() => _irisColor = color),
+                            (color) => setState(() => _irisColor = color),
                           ),
                         ],
                       ),
@@ -535,21 +559,22 @@ class _ExampleState extends State<Example> {
                             _boundingBoxThickness,
                             0.5,
                             10.0,
-                                (value) => setState(() => _boundingBoxThickness = value),
+                            (value) =>
+                                setState(() => _boundingBoxThickness = value),
                           ),
                           _buildSlider(
                             'Landmark Size',
                             _landmarkSize,
                             0.5,
                             15.0,
-                                (value) => setState(() => _landmarkSize = value),
+                            (value) => setState(() => _landmarkSize = value),
                           ),
                           _buildSlider(
                             'Mesh Point Size',
                             _meshSize,
                             0.1,
                             10.0,
-                                (value) => setState(() => _meshSize = value),
+                            (value) => setState(() => _meshSize = value),
                           ),
                         ],
                       ),
@@ -561,77 +586,86 @@ class _ExampleState extends State<Example> {
                 child: Center(
                   child: hasImage
                       ? LayoutBuilder(
-                    builder: (context, constraints) {
-                      final imageAspect = _originalSize!.width / _originalSize!.height;
-                      final boxAspect = constraints.maxWidth / constraints.maxHeight;
-                      double displayWidth, displayHeight;
+                          builder: (context, constraints) {
+                            final imageAspect =
+                                _originalSize!.width / _originalSize!.height;
+                            final boxAspect =
+                                constraints.maxWidth / constraints.maxHeight;
+                            double displayWidth, displayHeight;
 
-                      if (imageAspect > boxAspect) {
-                        displayWidth = constraints.maxWidth;
-                        displayHeight = displayWidth / imageAspect;
-                      } else {
-                        displayHeight = constraints.maxHeight;
-                        displayWidth = displayHeight * imageAspect;
-                      }
+                            if (imageAspect > boxAspect) {
+                              displayWidth = constraints.maxWidth;
+                              displayHeight = displayWidth / imageAspect;
+                            } else {
+                              displayHeight = constraints.maxHeight;
+                              displayWidth = displayHeight * imageAspect;
+                            }
 
-                      final left = (constraints.maxWidth - displayWidth) / 2;
-                      final top = (constraints.maxHeight - displayHeight) / 2;
+                            final left =
+                                (constraints.maxWidth - displayWidth) / 2;
+                            final top =
+                                (constraints.maxHeight - displayHeight) / 2;
 
-                      return Stack(
-                        children: [
-                          Positioned.fill(
-                            child: Center(
-                              child: Image.memory(
-                                _imageBytes!,
-                                fit: BoxFit.contain,
-                              ),
-                            ),
-                          ),
-                          Positioned(
-                              left: left,
-                              top: top,
-                              width: displayWidth,
-                              height: displayHeight,
-                              child: CustomPaint(
-                                size: Size(displayWidth, displayHeight),
-                                painter: _DetectionsPainter(
-                                  faces: _faces,
-                                  imageRectOnCanvas: Rect.fromLTWH(0, 0, displayWidth, displayHeight),
-                                  originalImageSize: _originalSize!,
-                                  showBoundingBoxes: _showBoundingBoxes,
-                                  showMesh: _showMesh,
-                                  showLandmarks: _showLandmarks,
-                                  showIrises: _showIrises,
-                                  boundingBoxColor: _boundingBoxColor,
-                                  landmarkColor: _landmarkColor,
-                                  meshColor: _meshColor,
-                                  irisColor: _irisColor,
-                                  boundingBoxThickness: _boundingBoxThickness,
-                                  landmarkSize: _landmarkSize,
-                                  meshSize: _meshSize,
+                            return Stack(
+                              children: [
+                                Positioned.fill(
+                                  child: Center(
+                                    child: Image.memory(
+                                      _imageBytes!,
+                                      fit: BoxFit.contain,
+                                    ),
+                                  ),
                                 ),
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                  )
+                                Positioned(
+                                  left: left,
+                                  top: top,
+                                  width: displayWidth,
+                                  height: displayHeight,
+                                  child: CustomPaint(
+                                    size: Size(displayWidth, displayHeight),
+                                    painter: _DetectionsPainter(
+                                      faces: _faces,
+                                      imageRectOnCanvas: Rect.fromLTWH(
+                                          0, 0, displayWidth, displayHeight),
+                                      originalImageSize: _originalSize!,
+                                      showBoundingBoxes: _showBoundingBoxes,
+                                      showMesh: _showMesh,
+                                      showLandmarks: _showLandmarks,
+                                      showIrises: _showIrises,
+                                      boundingBoxColor: _boundingBoxColor,
+                                      landmarkColor: _landmarkColor,
+                                      meshColor: _meshColor,
+                                      irisColor: _irisColor,
+                                      boundingBoxThickness:
+                                          _boundingBoxThickness,
+                                      landmarkSize: _landmarkSize,
+                                      meshSize: _meshSize,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        )
                       : Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.image_outlined, size: 64, color: Colors.grey[400]),
-                      const SizedBox(height: 16),
-                      Text(
-                        'No image selected',
-                        style: TextStyle(fontSize: 18, color: Colors.grey[600]),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Pick an image to start detection',
-                        style: TextStyle(fontSize: 14, color: Colors.grey[500]),
-                      ),
-                    ],
-                  ),
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.image_outlined,
+                                size: 64, color: Colors.grey[400]),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No image selected',
+                              style: TextStyle(
+                                  fontSize: 18, color: Colors.grey[600]),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Pick an image to start detection',
+                              style: TextStyle(
+                                  fontSize: 14, color: Colors.grey[500]),
+                            ),
+                          ],
+                        ),
                 ),
               ),
             ],
@@ -659,7 +693,8 @@ class _ExampleState extends State<Example> {
     );
   }
 
-  Widget _buildCheckbox(String label, bool value, ValueChanged<bool?> onChanged) {
+  Widget _buildCheckbox(
+      String label, bool value, ValueChanged<bool?> onChanged) {
     return InkWell(
       onTap: () => onChanged(!value),
       child: Row(
@@ -676,7 +711,8 @@ class _ExampleState extends State<Example> {
     );
   }
 
-  Widget _buildColorButton(String label, Color color, ValueChanged<Color> onColorChanged) {
+  Widget _buildColorButton(
+      String label, Color color, ValueChanged<Color> onColorChanged) {
     return InkWell(
       onTap: () => _pickColor(label, color, onColorChanged),
       borderRadius: BorderRadius.circular(8),
@@ -708,7 +744,8 @@ class _ExampleState extends State<Example> {
     );
   }
 
-  Widget _buildSlider(String label, double value, double min, double max, ValueChanged<double> onChanged) {
+  Widget _buildSlider(String label, double value, double min, double max,
+      ValueChanged<double> onChanged) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
@@ -831,7 +868,8 @@ class _DetectionsPainter extends CustomPainter {
       if (showMesh) {
         final List<Point<double>> mesh = face.mesh;
         if (mesh.isNotEmpty) {
-          final double imgArea = imageRectOnCanvas.width * imageRectOnCanvas.height;
+          final double imgArea =
+              imageRectOnCanvas.width * imageRectOnCanvas.height;
           final double radius = meshSize + sqrt(imgArea) / 1000.0;
 
           for (final Point<double> p in mesh) {
@@ -884,7 +922,8 @@ class _DetectionsPainter extends CustomPainter {
           final rx = (maxX - minX) * 0.5 * scaleX;
           final ry = (maxY - minY) * 0.5 * scaleY;
 
-          final oval = Rect.fromCenter(center: Offset(cx, cy), width: rx * 2, height: ry * 2);
+          final oval = Rect.fromCenter(
+              center: Offset(cx, cy), width: rx * 2, height: ry * 2);
           canvas.drawOval(oval, irisFill);
           canvas.drawOval(oval, irisStroke);
         }
@@ -930,7 +969,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   bool _isProcessing = false;
   bool _isInitialized = false;
   int _frameCounter = 0;
-  int _processEveryNFrames = 3; // Process every 3rd frame for better performance
+  int _processEveryNFrames =
+      3; // Process every 3rd frame for better performance
   int _detectionTimeMs = 0;
   int _fps = 0;
   DateTime? _lastFpsUpdate;
@@ -972,7 +1012,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
 
       _cameraController = CameraController(
         camera,
-        ResolutionPreset.medium, // Use medium for balance between quality and speed
+        ResolutionPreset
+            .medium, // Use medium for balance between quality and speed
         enableAudio: false,
         imageFormatGroup: ImageFormatGroup.yuv420, // Efficient format
       );
@@ -1072,7 +1113,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
 
       for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
-          final int uvIndex = uvPixelStride * (x / 2).floor() + uvRowStride * (y / 2).floor();
+          final int uvIndex =
+              uvPixelStride * (x / 2).floor() + uvRowStride * (y / 2).floor();
           final int index = y * width + x;
 
           final yp = image.planes[0].bytes[index];
@@ -1081,7 +1123,9 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
 
           // Convert YUV to RGB
           int r = (yp + vp * 1436 / 1024 - 179).round().clamp(0, 255);
-          int g = (yp - up * 46549 / 131072 + 44 - vp * 93604 / 131072 + 91).round().clamp(0, 255);
+          int g = (yp - up * 46549 / 131072 + 44 - vp * 93604 / 131072 + 91)
+              .round()
+              .clamp(0, 255);
           int b = (yp + up * 1814 / 1024 - 227).round().clamp(0, 255);
 
           imgLib.setPixelRgb(x, y, r, g, b);
@@ -1176,23 +1220,25 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Camera preview
           Center(
             child: AspectRatio(
               aspectRatio: cameraAspectRatio,
-              child: CameraPreview(_cameraController!),
-            ),
-          ),
-          // Face detection overlay
-          if (_imageSize != null)
-            CustomPaint(
-              painter: _CameraDetectionPainter(
-                faces: _faces,
-                imageSize: _imageSize!,
-                screenSize: size,
-                cameraAspectRatio: cameraAspectRatio,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  CameraPreview(_cameraController!),
+                  if (_imageSize != null)
+                    CustomPaint(
+                      painter: _CameraDetectionPainter(
+                        faces: _faces,
+                        imageSize: _imageSize!,
+                        cameraAspectRatio: cameraAspectRatio,
+                      ),
+                    ),
+                ],
               ),
             ),
+          ),
           // Info panel
           Positioned(
             bottom: 20,
@@ -1200,7 +1246,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
             right: 0,
             child: Center(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 decoration: BoxDecoration(
                   color: Colors.black.withAlpha(179),
                   borderRadius: BorderRadius.circular(8),
@@ -1291,28 +1338,39 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          CameraMacOSView(
-            cameraMode: CameraMacOSMode.photo,
-            fit: BoxFit.cover,
-            onCameraInizialized: _onMacCameraInitialized,
-            onCameraLoading: (_) => const Center(child: CircularProgressIndicator()),
-          ),
-          if (_imageSize != null)
-            CustomPaint(
-              painter: _CameraDetectionPainter(
-                faces: _faces,
-                imageSize: _imageSize!,
-                screenSize: size,
-                cameraAspectRatio: cameraAspectRatio,
+          Center(
+            child: AspectRatio(
+              aspectRatio: cameraAspectRatio,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  CameraMacOSView(
+                    cameraMode: CameraMacOSMode.photo,
+                    fit: BoxFit.contain,
+                    onCameraInizialized: _onMacCameraInitialized,
+                    onCameraLoading: (_) =>
+                        const Center(child: CircularProgressIndicator()),
+                  ),
+                  if (_imageSize != null)
+                    CustomPaint(
+                      painter: _CameraDetectionPainter(
+                        faces: _faces,
+                        imageSize: _imageSize!,
+                        cameraAspectRatio: cameraAspectRatio,
+                      ),
+                    ),
+                ],
               ),
             ),
+          ),
           Positioned(
             bottom: 20,
             left: 0,
             right: 0,
             child: Center(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                 decoration: BoxDecoration(
                   color: Colors.black.withAlpha(179),
                   borderRadius: BorderRadius.circular(8),
@@ -1414,13 +1472,15 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
           bytes,
           mode: FaceDetectionMode.fast,
         );
-        final detectionTime = DateTime.now().difference(startTime).inMilliseconds;
+        final detectionTime =
+            DateTime.now().difference(startTime).inMilliseconds;
 
         if (mounted) {
           setState(() {
             _faces = faces;
             _imageSize = Size(image.width.toDouble(), image.height.toDouble());
-            _macPreviewSize ??= Size(image.width.toDouble(), image.height.toDouble());
+            _macPreviewSize ??=
+                Size(image.width.toDouble(), image.height.toDouble());
             _detectionTimeMs = detectionTime;
           });
         }
@@ -1436,13 +1496,11 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
 class _CameraDetectionPainter extends CustomPainter {
   final List<Face> faces;
   final Size imageSize;
-  final Size screenSize;
   final double cameraAspectRatio;
 
   _CameraDetectionPainter({
     required this.faces,
     required this.imageSize,
-    required this.screenSize,
     required this.cameraAspectRatio,
   });
 
@@ -1455,19 +1513,19 @@ class _CameraDetectionPainter extends CustomPainter {
       ..strokeWidth = 3.0
       ..color = const Color(0xFF00FFCC);
 
-    // Calculate the display area for the camera preview
-    final screenAspectRatio = screenSize.width / screenSize.height;
+    // Calculate the display area for the camera preview using the actual canvas size
+    final screenAspectRatio = size.width / size.height;
     double displayWidth, displayHeight;
     double offsetX = 0, offsetY = 0;
 
     if (cameraAspectRatio > screenAspectRatio) {
-      displayWidth = screenSize.width;
-      displayHeight = screenSize.width / cameraAspectRatio;
-      offsetY = (screenSize.height - displayHeight) / 2;
+      displayWidth = size.width;
+      displayHeight = size.width / cameraAspectRatio;
+      offsetY = (size.height - displayHeight) / 2;
     } else {
-      displayHeight = screenSize.height;
-      displayWidth = screenSize.height * cameraAspectRatio;
-      offsetX = (screenSize.width - displayWidth) / 2;
+      displayHeight = size.height;
+      displayWidth = size.height * cameraAspectRatio;
+      offsetX = (size.width - displayWidth) / 2;
     }
 
     final scaleX = displayWidth / imageSize.width;
@@ -1488,6 +1546,8 @@ class _CameraDetectionPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _CameraDetectionPainter old) {
-    return old.faces != faces || old.imageSize != imageSize;
+    return old.faces != faces ||
+        old.imageSize != imageSize ||
+        old.cameraAspectRatio != cameraAspectRatio;
   }
 }

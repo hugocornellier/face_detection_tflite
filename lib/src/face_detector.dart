@@ -99,17 +99,17 @@ class FaceDetector {
   ///
   /// Optionally, you can pass [options] to configure interpreter settings
   /// such as the number of threads or delegate type.
-  Future<void> initialize({
-    FaceDetectionModel model = FaceDetectionModel.backCamera,
-    InterpreterOptions? options}
-  ) async {
+  Future<void> initialize(
+      {FaceDetectionModel model = FaceDetectionModel.backCamera,
+      InterpreterOptions? options}) async {
     await _ensureTFLiteLoaded();
     try {
       // Create the image processing worker for optimized performance
       _worker = ImageProcessingWorker();
       await _worker!.initialize();
 
-      _detector = await FaceDetection.create(model, options: options, useIsolate: true);
+      _detector =
+          await FaceDetection.create(model, options: options, useIsolate: true);
       _faceLm = await FaceLandmark.create(options: options, useIsolate: true);
       _iris = await IrisLandmark.create(options: options, useIsolate: true);
     } catch (e) {
@@ -139,8 +139,7 @@ class FaceDetector {
         p.join(exeDir.path, 'libtensorflowlite_c-win.dll'),
         'libtensorflowlite_c-win.dll',
       ];
-      hint =
-      'Make sure your Windows plugin CMakeLists.txt sets:\n'
+      hint = 'Make sure your Windows plugin CMakeLists.txt sets:\n'
           '  set(PLUGIN_NAME_bundled_libraries ".../libtensorflowlite_c-win.dll" PARENT_SCOPE)\n'
           'so Flutter copies it next to the app EXE.';
     } else if (Platform.isLinux) {
@@ -148,8 +147,7 @@ class FaceDetector {
         p.join(exeDir.path, 'lib', 'libtensorflowlite_c-linux.so'),
         'libtensorflowlite_c-linux.so',
       ];
-      hint =
-      'Ensure linux/CMakeLists.txt sets:\n'
+      hint = 'Ensure linux/CMakeLists.txt sets:\n'
           '  set(PLUGIN_NAME_bundled_libraries "../assets/bin/libtensorflowlite_c-linux.so" PARENT_SCOPE)\n'
           'so Flutter copies it into bundle/lib/.';
     } else if (Platform.isMacOS) {
@@ -181,7 +179,7 @@ class FaceDetector {
 
     throw ArgumentError(
       'Failed to locate TensorFlow Lite C library.\n'
-          'Tried:\n - ${tried.join('\n - ')}\n\n$hint',
+      'Tried:\n - ${tried.join('\n - ')}\n\n$hint',
     );
   }
 
@@ -218,9 +216,11 @@ class FaceDetector {
   /// See also:
   /// - [detectFaces] with [FaceDetectionMode.full] for multi-face iris tracking
   /// - [getDetections] for basic detection without iris refinement
-  Future<List<Detection>> getDetectionsWithIrisCenters(Uint8List imageBytes) async {
+  Future<List<Detection>> getDetectionsWithIrisCenters(
+      Uint8List imageBytes) async {
     if (_iris == null) {
-      throw StateError('Iris model not initialized. Call initialize() before getDetectionsWithIrisCenters().');
+      throw StateError(
+          'Iris model not initialized. Call initialize() before getDetectionsWithIrisCenters().');
     }
 
     final DecodedRgb d = await decodeImageWithWorker(imageBytes, _worker);
@@ -230,7 +230,8 @@ class FaceDetector {
 
     final Detection det = dets.first;
     final AlignedFace aligned = await estimateAlignedFace(decoded, det);
-    final List<Offset> meshPts = await meshFromAlignedFace(aligned.faceCrop, aligned);
+    final List<Offset> meshPts =
+        await meshFromAlignedFace(aligned.faceCrop, aligned);
     final List<AlignedRoi> rois = eyeRoisFromMesh(meshPts);
 
     final double imgW = decoded.width.toDouble();
@@ -245,16 +246,17 @@ class FaceDetector {
     );
 
     final List<Offset> centers = await _computeIrisCentersWithDecoded(
-      decoded, rois,
+      decoded,
+      rois,
       leftFallback: lf,
       rightFallback: rf,
     );
 
     final List<double> kp = List<double>.from(det.keypointsXY);
-    kp[FaceLandmarkType.leftEye.index * 2]     = centers[0].dx / imgW;
+    kp[FaceLandmarkType.leftEye.index * 2] = centers[0].dx / imgW;
     kp[FaceLandmarkType.leftEye.index * 2 + 1] = centers[0].dy / imgH;
-    kp[FaceLandmarkType.rightEye.index * 2]    = centers[1].dx / imgW;
-    kp[FaceLandmarkType.rightEye.index * 2 + 1]= centers[1].dy / imgH;
+    kp[FaceLandmarkType.rightEye.index * 2] = centers[1].dx / imgW;
+    kp[FaceLandmarkType.rightEye.index * 2 + 1] = centers[1].dy / imgH;
 
     final Detection updatedFirst = Detection(
       bbox: det.bbox,
@@ -278,7 +280,8 @@ class FaceDetector {
 
     Offset pickCenter(List<List<double>> lm, Offset? fallback) {
       if (lm.isEmpty) return fallback ?? const Offset(0, 0);
-      final List<Offset> pts = lm.map((p) => Offset(p[0].toDouble(), p[1].toDouble())).toList();
+      final List<Offset> pts =
+          lm.map((p) => Offset(p[0].toDouble(), p[1].toDouble())).toList();
       int bestIdx = 0;
       double bestScore = double.infinity;
       for (int k = 0; k < pts.length; k++) {
@@ -299,11 +302,8 @@ class FaceDetector {
 
     for (int i = 0; i < rois.length; i++) {
       final bool isRight = i == 1;
-      final List<List<double>> lm = await iris.runOnImageAlignedIris(
-        decoded,
-        rois[i],
-        isRight: isRight
-      );
+      final List<List<double>> lm =
+          await iris.runOnImageAlignedIris(decoded, rois[i], isRight: isRight);
       final Offset? fb = i == 0 ? leftFallback : rightFallback;
       centers.add(pickCenter(lm, fb));
     }
@@ -320,48 +320,49 @@ class FaceDetector {
     return centers;
   }
 
-  Future<List<Detection>> _detectDetections(
-    Uint8List imageBytes, {
-    RectF? roi,
-    bool refineEyesWithIris = true
-  }) async {
+  Future<List<Detection>> _detectDetections(Uint8List imageBytes,
+      {RectF? roi, bool refineEyesWithIris = true}) async {
     // Decode once and delegate to optimized path
     final DecodedRgb d = await decodeImageWithWorker(imageBytes, _worker);
     final img.Image decoded = _imageFromDecodedRgb(d);
-    return _detectDetectionsWithDecoded(decoded, roi: roi, refineEyesWithIris: refineEyesWithIris);
+    return _detectDetectionsWithDecoded(decoded,
+        roi: roi, refineEyesWithIris: refineEyesWithIris);
   }
 
-  Future<List<Detection>> _detectDetectionsWithDecoded(
-    img.Image decoded, {
-    RectF? roi,
-    bool refineEyesWithIris = true
-  }) async {
+  Future<List<Detection>> _detectDetectionsWithDecoded(img.Image decoded,
+      {RectF? roi, bool refineEyesWithIris = true}) async {
     final FaceDetection? d = _detector;
     if (d == null) {
-      throw StateError('FaceDetector not initialized. Call initialize() before detectDetections().');
+      throw StateError(
+          'FaceDetector not initialized. Call initialize() before detectDetections().');
     }
     if (_iris == null) {
-      throw StateError('Iris model not initialized. initialize() must succeed before detectDetections().');
+      throw StateError(
+          'Iris model not initialized. initialize() must succeed before detectDetections().');
     }
 
-    final List<Detection> dets = await d.callWithDecoded(decoded, roi: roi, worker: _worker);
+    final List<Detection> dets =
+        await d.callWithDecoded(decoded, roi: roi, worker: _worker);
     if (dets.isEmpty) return dets;
 
     if (!refineEyesWithIris) {
       final double imgW = decoded.width.toDouble();
       final double imgH = decoded.height.toDouble();
-      return dets.map((det) => Detection(
-        bbox: det.bbox,
-        score: det.score,
-        keypointsXY: det.keypointsXY,
-        imageSize: Size(imgW, imgH),
-      )).toList();
+      return dets
+          .map((det) => Detection(
+                bbox: det.bbox,
+                score: det.score,
+                keypointsXY: det.keypointsXY,
+                imageSize: Size(imgW, imgH),
+              ))
+          .toList();
     }
 
     final List<Detection> updated = <Detection>[];
     for (final det in dets) {
       final AlignedFace aligned = await estimateAlignedFace(decoded, det);
-      final List<Offset> meshPts = await meshFromAlignedFace(aligned.faceCrop, aligned);
+      final List<Offset> meshPts =
+          await meshFromAlignedFace(aligned.faceCrop, aligned);
       final List<AlignedRoi> rois = eyeRoisFromMesh(meshPts);
 
       final double imgW = decoded.width.toDouble();
@@ -376,16 +377,17 @@ class FaceDetector {
       );
 
       final List<Offset> centers = await _computeIrisCentersWithDecoded(
-        decoded, rois,
+        decoded,
+        rois,
         leftFallback: lf,
         rightFallback: rf,
       );
 
       final List<double> kp = List<double>.from(det.keypointsXY);
-      kp[FaceLandmarkType.leftEye.index * 2]     = centers[0].dx / imgW;
+      kp[FaceLandmarkType.leftEye.index * 2] = centers[0].dx / imgW;
       kp[FaceLandmarkType.leftEye.index * 2 + 1] = centers[0].dy / imgH;
-      kp[FaceLandmarkType.rightEye.index * 2]    = centers[1].dx / imgW;
-      kp[FaceLandmarkType.rightEye.index * 2 + 1]= centers[1].dy / imgH;
+      kp[FaceLandmarkType.rightEye.index * 2] = centers[1].dx / imgW;
+      kp[FaceLandmarkType.rightEye.index * 2 + 1] = centers[1].dy / imgH;
 
       updated.add(Detection(
         bbox: det.bbox,
@@ -426,7 +428,8 @@ class FaceDetector {
   /// - Mouth distance × 3.6
   ///
   /// This ensures the full face fits within the crop with appropriate padding.
-  Future<AlignedFace> estimateAlignedFace(img.Image decoded, Detection det) async {
+  Future<AlignedFace> estimateAlignedFace(
+      img.Image decoded, Detection det) async {
     final imgW = decoded.width.toDouble();
     final imgH = decoded.height.toDouble();
 
@@ -452,9 +455,11 @@ class FaceDetector {
     final cx = eyeCx + vMx * 0.1;
     final cy = eyeCy + vMy * 0.1;
 
-    final faceCrop = await extractAlignedSquareWithWorker(decoded, cx, cy, size, -theta, _worker);
+    final faceCrop = await extractAlignedSquareWithWorker(
+        decoded, cx, cy, size, -theta, _worker);
 
-    return AlignedFace(cx: cx, cy: cy, size: size, theta: theta, faceCrop: faceCrop);
+    return AlignedFace(
+        cx: cx, cy: cy, size: size, theta: theta, faceCrop: faceCrop);
   }
 
   /// Generates 468-point face mesh landmarks from an aligned face crop.
@@ -481,7 +486,8 @@ class FaceDetector {
   ///
   /// Each point represents a specific facial feature as defined by MediaPipe's
   /// canonical face mesh topology (eyes, eyebrows, nose, mouth, face contours).
-  Future<List<Offset>> meshFromAlignedFace(img.Image faceCrop, AlignedFace aligned) async {
+  Future<List<Offset>> meshFromAlignedFace(
+      img.Image faceCrop, AlignedFace aligned) async {
     final fl = _faceLm;
     if (fl == null) return const <Offset>[];
     final lmNorm = await fl.call(faceCrop);
@@ -534,6 +540,7 @@ class FaceDetector {
       final double size = eyeDist * 2.3;
       return AlignedRoi(cx, cy, size, math.atan2(dy, dx));
     }
+
     final AlignedRoi left = fromCorners(33, 133);
     final AlignedRoi right = fromCorners(362, 263);
     return [left, right];
@@ -565,20 +572,15 @@ class FaceDetector {
   /// - Iris center (typically the most stable point)
   /// - 4 iris contour points
   Future<List<Offset>> irisFromEyeRois(
-    img.Image decoded,
-    List<AlignedRoi> rois
-  ) async {
+      img.Image decoded, List<AlignedRoi> rois) async {
     final IrisLandmark? ir = _iris;
     if (ir == null) return const <Offset>[];
 
     final List<Offset> pts = <Offset>[];
     for (int i = 0; i < rois.length; i++) {
       final bool isRight = (i == 1);
-      final List<List<double>> irisLm = await ir.runOnImageAlignedIris(
-        decoded,
-        rois[i],
-        isRight: isRight
-      );
+      final List<List<double>> irisLm =
+          await ir.runOnImageAlignedIris(decoded, rois[i], isRight: isRight);
       for (final List<double> p in irisLm) {
         pts.add(Offset(p[0].toDouble(), p[1].toDouble()));
       }
@@ -623,8 +625,11 @@ class FaceDetector {
     if (dets.isEmpty) return const <math.Point<double>>[];
 
     final AlignedFace aligned = await estimateAlignedFace(decoded, dets.first);
-    final List<Offset> meshAbs = await meshFromAlignedFace(aligned.faceCrop, aligned);
-    return meshAbs.map((p) => math.Point<double>(p.dx, p.dy)).toList(growable: false);
+    final List<Offset> meshAbs =
+        await meshFromAlignedFace(aligned.faceCrop, aligned);
+    return meshAbs
+        .map((p) => math.Point<double>(p.dx, p.dy))
+        .toList(growable: false);
   }
 
   /// Detects iris landmarks for the first detected face in a full image.
@@ -639,10 +644,13 @@ class FaceDetector {
     final List<Detection> dets = await _detectDetectionsWithDecoded(decoded);
     if (dets.isEmpty) return const <math.Point<double>>[];
     final AlignedFace aligned = await estimateAlignedFace(decoded, dets.first);
-    final List<Offset> meshAbs = await meshFromAlignedFace(aligned.faceCrop, aligned);
+    final List<Offset> meshAbs =
+        await meshFromAlignedFace(aligned.faceCrop, aligned);
     final List<AlignedRoi> rois = eyeRoisFromMesh(meshAbs);
     final List<Offset> irisAbs = await irisFromEyeRois(decoded, rois);
-    return irisAbs.map((p) => math.Point<double>(p.dx, p.dy)).toList(growable: false);
+    return irisAbs
+        .map((p) => math.Point<double>(p.dx, p.dy))
+        .toList(growable: false);
   }
 
   /// Returns the dimensions of the decoded image.
@@ -697,20 +705,18 @@ class FaceDetector {
   /// - [getIrisFromMesh] to generate iris landmarks from these meshes
   /// - [detectFaces] for the complete pipeline in one call
   Future<List<List<math.Point<double>>>> getFaceMeshFromDetections(
-    Uint8List imageBytes,
-    List<Detection> dets
-  ) async {
+      Uint8List imageBytes, List<Detection> dets) async {
     if (dets.isEmpty) return const <List<math.Point<double>>>[];
     final DecodedRgb d = await decodeImageWithWorker(imageBytes, _worker);
     final img.Image decoded = _imageFromDecodedRgb(d);
     final List<List<math.Point<double>>> out = <List<math.Point<double>>>[];
     for (final Detection det in dets) {
       final AlignedFace aligned = await estimateAlignedFace(decoded, det);
-      final List<Offset> meshAbs = await meshFromAlignedFace(
-        aligned.faceCrop,
-        aligned
-      );
-      out.add(meshAbs.map((p) => math.Point<double>(p.dx, p.dy)).toList(growable: false));
+      final List<Offset> meshAbs =
+          await meshFromAlignedFace(aligned.faceCrop, aligned);
+      out.add(meshAbs
+          .map((p) => math.Point<double>(p.dx, p.dy))
+          .toList(growable: false));
     }
     return out;
   }
@@ -749,10 +755,8 @@ class FaceDetector {
   /// - [getIris] for single-face iris detection
   /// - [getFaceMeshFromDetections] to generate the required mesh input
   /// - [detectFaces] for the complete pipeline in one call
-  Future<List<List<math.Point<double>>>> getIrisFromMesh(
-    Uint8List imageBytes,
-    List<List<math.Point<double>>> meshesPerFace
-  ) async {
+  Future<List<List<math.Point<double>>>> getIrisFromMesh(Uint8List imageBytes,
+      List<List<math.Point<double>>> meshesPerFace) async {
     if (meshesPerFace.isEmpty) return const <List<math.Point<double>>>[];
     final DecodedRgb d = await decodeImageWithWorker(imageBytes, _worker);
     final img.Image decoded = _imageFromDecodedRgb(d);
@@ -762,10 +766,13 @@ class FaceDetector {
         out.add(const <math.Point<double>>[]);
         continue;
       }
-      final List<Offset> meshAbs = meshPts.map((p) => Offset(p.x, p.y)).toList(growable: false);
+      final List<Offset> meshAbs =
+          meshPts.map((p) => Offset(p.x, p.y)).toList(growable: false);
       final List<AlignedRoi> rois = eyeRoisFromMesh(meshAbs);
       final List<Offset> irisAbs = await irisFromEyeRois(decoded, rois);
-      out.add(irisAbs.map((p) => math.Point<double>(p.dx, p.dy)).toList(growable: false));
+      out.add(irisAbs
+          .map((p) => math.Point<double>(p.dx, p.dy))
+          .toList(growable: false));
     }
     return out;
   }
@@ -798,8 +805,7 @@ class FaceDetector {
   /// This is useful when processing batch results or when mesh data from
   /// multiple faces has been concatenated for efficiency.
   List<List<math.Point<double>>> splitMeshesIfConcatenated(
-    List<math.Point<double>> meshPts
-  ) {
+      List<math.Point<double>> meshPts) {
     if (meshPts.isEmpty) return const <List<math.Point<double>>>[];
     if (meshPts.length % kMeshPoints != 0) return [meshPts];
     final int faces = meshPts.length ~/ kMeshPoints;
@@ -813,7 +819,9 @@ class FaceDetector {
 
   Future<List<math.Point<double>>> _getMeshForFace(AlignedFace aligned) async {
     final meshAbs = await meshFromAlignedFace(aligned.faceCrop, aligned);
-    return meshAbs.map((p) => math.Point<double>(p.dx, p.dy)).toList(growable: false);
+    return meshAbs
+        .map((p) => math.Point<double>(p.dx, p.dy))
+        .toList(growable: false);
   }
 
   Future<List<math.Point<double>>> _getIrisForFace(
@@ -822,10 +830,13 @@ class FaceDetector {
   ) async {
     if (meshPx.isEmpty) return <math.Point<double>>[];
 
-    final List<Offset> meshAbs = meshPx.map((p) => Offset(p.x, p.y)).toList(growable: false);
+    final List<Offset> meshAbs =
+        meshPx.map((p) => Offset(p.x, p.y)).toList(growable: false);
     final List<AlignedRoi> rois = eyeRoisFromMesh(meshAbs);
     final List<Offset> irisAbs = await irisFromEyeRois(decoded, rois);
-    return irisAbs.map((p) => math.Point<double>(p.dx, p.dy)).toList(growable: false);
+    return irisAbs
+        .map((p) => math.Point<double>(p.dx, p.dy))
+        .toList(growable: false);
   }
 
   /// Detects faces in the provided image and returns detailed results.
@@ -848,21 +859,19 @@ class FaceDetector {
     // Decode once using worker
     final DecodedRgb d = await decodeImageWithWorker(imageBytes, _worker);
     final img.Image decoded = _imageFromDecodedRgb(d);
-    final Size imgSize = Size(
-      decoded.width.toDouble(),
-      decoded.height.toDouble()
-    );
+    final Size imgSize =
+        Size(decoded.width.toDouble(), decoded.height.toDouble());
 
     final bool computeIris = mode == FaceDetectionMode.full;
     // Use decoded image to avoid redundant decoding
-    final List<Detection> dets = await _detectDetectionsWithDecoded(
-        decoded,
-        refineEyesWithIris: computeIris
-    );
+    final List<Detection> dets = await _detectDetectionsWithDecoded(decoded,
+        refineEyesWithIris: computeIris);
 
-    final bool computeMesh = mode == FaceDetectionMode.standard || mode == FaceDetectionMode.full;
+    final bool computeMesh =
+        mode == FaceDetectionMode.standard || mode == FaceDetectionMode.full;
     final List<AlignedFace> allAligned = computeMesh
-        ? await Future.wait(dets.map((det) => estimateAlignedFace(decoded, det)))
+        ? await Future.wait(
+            dets.map((det) => estimateAlignedFace(decoded, det)))
         : <AlignedFace>[];
 
     final List<Face> faces = <Face>[];
@@ -870,13 +879,15 @@ class FaceDetector {
       try {
         final Detection det = dets[i];
 
-        final List<math.Point<double>> meshPx = computeMesh && i < allAligned.length
-            ? await _getMeshForFace(allAligned[i])
-            : <math.Point<double>>[];
+        final List<math.Point<double>> meshPx =
+            computeMesh && i < allAligned.length
+                ? await _getMeshForFace(allAligned[i])
+                : <math.Point<double>>[];
 
-        final List<math.Point<double>> irisPx = computeIris && i < allAligned.length
-            ? await _getIrisForFace(decoded, meshPx)
-            : <math.Point<double>>[];
+        final List<math.Point<double>> irisPx =
+            computeIris && i < allAligned.length
+                ? await _getIrisForFace(decoded, meshPx)
+                : <math.Point<double>>[];
 
         faces.add(Face(
           detection: det,
@@ -931,11 +942,8 @@ class FaceDetector {
           (m['size'] as num).toDouble(),
           (m['theta'] as num).toDouble(),
         );
-        final List<List<double>> lm = await iris.runOnImageAlignedIris(
-          decoded,
-          roi,
-          isRight: i == 1
-        );
+        final List<List<double>> lm =
+            await iris.runOnImageAlignedIris(decoded, roi, isRight: i == 1);
         if (lm.isEmpty) {
           final double? fx = i == 0
               ? (params['leftFx'] as double?)

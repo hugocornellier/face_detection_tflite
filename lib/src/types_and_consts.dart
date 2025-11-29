@@ -3,7 +3,14 @@ part of '../face_detection_tflite.dart';
 /// Identifies specific facial landmarks returned by face detection.
 ///
 /// Each enum value corresponds to a key facial feature point.
-enum FaceLandmarkType { leftEye, rightEye, noseTip, mouth, leftEyeTragion, rightEyeTragion }
+enum FaceLandmarkType {
+  leftEye,
+  rightEye,
+  noseTip,
+  mouth,
+  leftEyeTragion,
+  rightEyeTragion
+}
 
 /// Specifies which face detection model variant to use.
 ///
@@ -13,7 +20,13 @@ enum FaceLandmarkType { leftEye, rightEye, noseTip, mouth, leftEyeTragion, right
 /// - [shortRange]: Optimized for close-up faces (128x128 input)
 /// - [full]: Full-range detection (192x192 input)
 /// - [fullSparse]: Full-range with sparse anchors (192x192 input)
-enum FaceDetectionModel { frontCamera, backCamera, shortRange, full, fullSparse }
+enum FaceDetectionModel {
+  frontCamera,
+  backCamera,
+  shortRange,
+  full,
+  fullSparse
+}
 
 /// Controls which detection features to compute.
 ///
@@ -118,7 +131,8 @@ class Face {
   ///
   /// Returns a map where keys are [FaceLandmarkType] values identifying specific
   /// facial features (eyes, nose, mouth, etc.) and values are their pixel positions.
-  Map<FaceLandmarkType, math.Point<double>> get landmarks => _detection.landmarks;
+  Map<FaceLandmarkType, math.Point<double>> get landmarks =>
+      _detection.landmarks;
 }
 
 /// The expected number of 3D landmark points in a complete face mesh.
@@ -181,32 +195,55 @@ const _ssdFull = {
   'interpolated_scale_aspect_ratio': 0.0,
 };
 
+/// Holds an aligned face crop and metadata used for downstream landmark models.
+///
+/// An [AlignedFace] represents a face that has been rotated, scaled, and
+/// translated so that the eyes are horizontal and the face roughly fills the
+/// crop. Downstream models such as [FaceLandmark] and [IrisLandmark] expect
+/// this normalized orientation.
 class AlignedFace {
+  /// X coordinate of the face center in normalized image space.
   final double cx;
+
+  /// Y coordinate of the face center in normalized image space.
   final double cy;
+
+  /// Length of the square crop edge relative to the original image.
   final double size;
+
+  /// Rotation applied to align the face, in radians.
   final double theta;
+
+  /// The aligned face crop image provided to landmark models.
   final img.Image faceCrop;
-  AlignedFace({
-    required this.cx,
-    required this.cy,
-    required this.size,
-    required this.theta,
-    required this.faceCrop
-  });
+  AlignedFace(
+      {required this.cx,
+      required this.cy,
+      required this.size,
+      required this.theta,
+      required this.faceCrop});
 }
 
+/// Axis-aligned rectangle with normalized coordinates.
+///
+/// Values are expressed as fractions of the original image dimensions
+/// (0.0 - 1.0). Utilities are provided to scale and expand the rectangle.
 class RectF {
+  /// Minimum X and Y plus maximum X and Y extents.
   final double xmin, ymin, xmax, ymax;
   const RectF(this.xmin, this.ymin, this.xmax, this.ymax);
+
+  /// Rectangle width.
   double get w => xmax - xmin;
+
+  /// Rectangle height.
   double get h => ymax - ymin;
-  RectF scale(double sx, double sy) => RectF(
-      xmin * sx,
-      ymin * sy,
-      xmax * sx,
-      ymax * sy
-  );
+
+  /// Returns a rectangle scaled independently in X and Y.
+  RectF scale(double sx, double sy) =>
+      RectF(xmin * sx, ymin * sy, xmax * sx, ymax * sy);
+
+  /// Expands the rectangle by [frac] in all directions, keeping the same center.
   RectF expand(double frac) {
     final double cx = (xmin + xmax) * 0.5;
     final double cy = (ymin + ymax) * 0.5;
@@ -216,10 +253,18 @@ class RectF {
   }
 }
 
+/// Raw detection output from the face detector containing bbox and keypoints.
 class Detection {
+  /// Normalized bounding box for the face.
   final RectF bbox;
+
+  /// Confidence score for the detection.
   final double score;
+
+  /// Flattened landmark coordinates `[x0, y0, x1, y1, ...]` normalized 0-1.
   final List<double> keypointsXY;
+
+  /// Original image dimensions used to denormalize landmarks.
   final Size? imageSize;
 
   Detection({
@@ -229,20 +274,19 @@ class Detection {
     this.imageSize,
   });
 
+  /// Convenience accessor for `[keypointsXY]` by index.
   double operator [](int i) => keypointsXY[i];
 
+  /// Returns facial landmarks in pixel coordinates keyed by landmark type.
   Map<FaceLandmarkType, math.Point<double>> get landmarks {
     final Size? sz = imageSize;
     if (sz == null) {
       throw StateError(
-        'Detection.imageSize is null; cannot produce pixel landmarks.'
-      );
+          'Detection.imageSize is null; cannot produce pixel landmarks.');
     }
     final double w = sz.width.toDouble(), h = sz.height.toDouble();
-    final Map<FaceLandmarkType, math.Point<double>> map = <
-      FaceLandmarkType,
-      math.Point<double>
-    >{};
+    final Map<FaceLandmarkType, math.Point<double>> map =
+        <FaceLandmarkType, math.Point<double>>{};
     for (final FaceLandmarkType idx in FaceLandmarkType.values) {
       final double xn = keypointsXY[idx.index * 2];
       final double yn = keypointsXY[idx.index * 2 + 1];
@@ -252,23 +296,41 @@ class Detection {
   }
 }
 
+/// Image tensor plus padding metadata used to undo letterboxing.
 class ImageTensor {
+  /// NHWC float tensor normalized to [-1, 1] expected by MediaPipe models.
   final Float32List tensorNHWC;
+
+  /// Padding fractions `[top, bottom, left, right]` applied during resize.
   final List<double> padding;
+
+  /// Target width and height passed to the model.
   final int width, height;
   ImageTensor(this.tensorNHWC, this.padding, this.width, this.height);
 }
 
+/// Rotation-aware region of interest for cropped eye landmarks.
 class AlignedRoi {
+  /// Normalized X coordinate of ROI center.
   final double cx;
+
+  /// Normalized Y coordinate of ROI center.
   final double cy;
+
+  /// Square ROI size relative to the image.
   final double size;
+
+  /// Rotation applied to align the ROI, in radians.
   final double theta;
   const AlignedRoi(this.cx, this.cy, this.size, this.theta);
 }
 
+/// Decoded detection box and keypoints straight from the TFLite model.
 class DecodedBox {
+  /// Normalized bounding box for a detected face.
   final RectF bbox;
+
+  /// Flattened list of normalized keypoints `[x0, y0, ...]`.
   final List<double> keypointsXY;
   DecodedBox(this.bbox, this.keypointsXY);
 }
