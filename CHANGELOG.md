@@ -1,5 +1,7 @@
 ## 2.0.3
-- Dartdocs for AlignedFace, AlignedRoi, DecodedBox, DecodedRgb
+- Add Dartdocs for AlignedFace, AlignedRoi, DecodedBox, DecodedRgb
+- Minor clarifications to existing getDetectionsWithIrisCenters and RectF Dartdocs
+- Improved examples in README
 
 ## 2.0.2
 - Swift Package Manager support

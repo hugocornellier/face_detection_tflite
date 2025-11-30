@@ -202,13 +202,13 @@ const _ssdFull = {
 /// crop. Downstream models such as [FaceLandmark] and [IrisLandmark] expect
 /// this normalized orientation.
 class AlignedFace {
-  /// X coordinate of the face center in normalized image space.
+  /// X coordinate of the face center in absolute pixel coordinates.
   final double cx;
 
-  /// Y coordinate of the face center in normalized image space.
+  /// Y coordinate of the face center in absolute pixel coordinates.
   final double cy;
 
-  /// Length of the square crop edge relative to the original image.
+  /// Length of the square crop edge in absolute pixels.
   final double size;
 
   /// Rotation applied to align the face, in radians.
@@ -217,7 +217,7 @@ class AlignedFace {
   /// The aligned face crop image provided to landmark models.
   final img.Image faceCrop;
 
-  /// Creates an aligned face crop with normalized center, size, rotation,
+  /// Creates an aligned face crop with pixel-based center, size, rotation,
   /// and the cropped [faceCrop] image ready for landmark inference.
   AlignedFace(
       {required this.cx,
@@ -314,20 +314,20 @@ class ImageTensor {
 
 /// Rotation-aware region of interest for cropped eye landmarks.
 class AlignedRoi {
-  /// Normalized X coordinate of ROI center.
+  /// X coordinate of ROI center in absolute pixel coordinates.
   final double cx;
 
-  /// Normalized Y coordinate of ROI center.
+  /// Y coordinate of ROI center in absolute pixel coordinates.
   final double cy;
 
-  /// Square ROI size relative to the image.
+  /// Square ROI size in absolute pixels.
   final double size;
 
   /// Rotation applied to align the ROI, in radians.
   final double theta;
 
-  /// Creates a normalized, rotation-aware region of interest used to crop
-  /// around the eyes for iris landmark detection.
+  /// Creates a rotation-aware region of interest in absolute pixel coordinates
+  /// used to crop around the eyes for iris landmark detection.
   const AlignedRoi(this.cx, this.cy, this.size, this.theta);
 }
 

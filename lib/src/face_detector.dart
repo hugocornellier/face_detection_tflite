@@ -198,15 +198,9 @@ class FaceDetector {
   ///
   /// The [imageBytes] parameter should contain encoded image data (JPEG, PNG, etc.).
   ///
-  /// Returns detections where all faces have iris-refined eye keypoints, with the first face refined again for extra precision.
-  ///
-  /// This method performs face detection, refines eye keypoints for every face using iris centers,
-  /// then reprocesses the first face to ensure its eye positions use the latest iris refinement.
-  ///
-  /// The [imageBytes] parameter should contain encoded image data (JPEG, PNG, etc.).
-  ///
-  /// Returns a list of detections with iris-refined keypoints; returns an empty list if
-  /// no faces are detected.
+  /// Returns a list of detections with iris-refined keypoints for the first face;
+  /// other detected faces are included but without iris refinement. Returns an
+  /// empty list if no faces are detected.
   ///
   /// **Performance:** This method is computationally intensive as it runs the full
   /// pipeline (detection + mesh + iris) for the first face only.

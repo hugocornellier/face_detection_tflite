@@ -286,7 +286,7 @@ class IrisLandmark {
   ///
   /// Example:
   /// ```dart
-  /// final eyeRoi = RectF(xmin: 0.3, ymin: 0.4, w: 0.2, h: 0.15);
+  /// final eyeRoi = RectF(0.3, 0.4, 0.5, 0.55);
   /// final irisPoints = await irisModel.runOnImage(fullImage, eyeRoi);
   /// // irisPoints are in full image pixel coordinates
   /// ```

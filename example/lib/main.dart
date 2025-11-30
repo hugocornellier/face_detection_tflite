@@ -1197,7 +1197,6 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       );
     }
 
-    final size = MediaQuery.of(context).size;
     final cameraAspectRatio = _cameraController!.value.aspectRatio;
 
     return Scaffold(
