@@ -1,5 +1,11 @@
+## 2.1.1
+- Added missing dartdoc for entry point lib/face_detection_tflite.dart
+  and RectF constructor in lib/src/types_and_consts.dart
+
 ## 2.1.0
 - New IrisPair class
+- Add structured iris types, rename raw iris points
+- Update example, README usage examples
 
 ## 2.0.3
 - Add Dartdocs for AlignedFace, AlignedRoi, DecodedBox, DecodedRgb

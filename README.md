@@ -70,13 +70,13 @@ bottom-right, bottom-left.
 ### Accessing Corners
 
 ```dart
-final bbox = face.bboxCorners;
+final List<Point<double>> bbox = face.bboxCorners;
 
 // Individual corners (each is a Point<double> with x and y)
-final topLeft = bbox[0];      // Top-left corner
-final topRight = bbox[1];     // Top-right corner  
-final bottomRight = bbox[2];  // Bottom-right corner
-final bottomLeft = bbox[3];   // Bottom-left corner
+final Point<double> topLeft = bbox[0];      // Top-left corner
+final Point<double> topRight = bbox[1];     // Top-right corner  
+final Point<double> bottomRight = bbox[2];  // Bottom-right corner
+final Point<double> bottomLeft = bbox[3];   // Bottom-left corner
 
 // Access coordinates
 print('Top-left: (${topLeft.x}, ${topLeft.y})');
@@ -91,15 +91,15 @@ to reference specific mesh indices.
 ### Accessing Landmarks
 
 ```dart
-final landmarks = face.landmarks;
+final Map<FaceLandmarkType, Point<double>> landmarks = face.landmarks;
 
 // Access individual landmarks (each is a Point<double> with x and y)
-final leftEye = landmarks[FaceLandmarkType.leftEye];
-final rightEye = landmarks[FaceLandmarkType.rightEye];
-final noseTip = landmarks[FaceLandmarkType.noseTip];
-final mouth = landmarks[FaceLandmarkType.mouth];
-final leftEyeTragion = landmarks[FaceLandmarkType.leftEyeTragion];
-final rightEyeTragion = landmarks[FaceLandmarkType.rightEyeTragion];
+final Point<double>? leftEye = landmarks[FaceLandmarkType.leftEye];
+final Point<double>? rightEye = landmarks[FaceLandmarkType.rightEye];
+final Point<double>? noseTip = landmarks[FaceLandmarkType.noseTip];
+final Point<double>? mouth = landmarks[FaceLandmarkType.mouth];
+final Point<double>? leftEyeTragion = landmarks[FaceLandmarkType.leftEyeTragion];
+final Point<double>? rightEyeTragion = landmarks[FaceLandmarkType.rightEyeTragion];
 
 // Access coordinates
 print('Left eye: (${leftEye?.x}, ${leftEye?.y})');
@@ -120,21 +120,21 @@ and can be used for precise face tracking and rendering.
 ### Accessing Points
 
   ```dart
-  final mesh = face.mesh;
+  final List<Point<double>> mesh = face.mesh;
 
   // Total number of points (always 468)
   print('Mesh points: ${mesh.length}');
 
   // Iterate through all points
   for (int i = 0; i < mesh.length; i++) {
-    final point = mesh[i];
+    final Point<double> point = mesh[i];
     print('Point $i: (${point.x}, ${point.y})');
   }
 
   // Access individual points (each is a Point<double> with x and y)
-  final noseTip = mesh[1];     // Nose tip point
-  final leftEye = mesh[33];    // Left eye point
-  final rightEye = mesh[263];  // Right eye point
+  final Point<double> noseTip = mesh[1];     // Nose tip point
+  final Point<double> leftEye = mesh[33];    // Left eye point
+  final Point<double> rightEye = mesh[263];  // Right eye point
   ```
 
 ## Irises
@@ -146,26 +146,26 @@ iris boundary. Only available in FaceDetectionMode.full.
 ### Accessing Iris Data
 
 ```dart
-final irises = face.irises;
+final IrisPair? irises = face.irises;
 
 // Access left and right iris (each is an Iris object)
-final leftIris = irises?.leftIris;
-final rightIris = irises?.rightIris;
+final Iris? leftIris = irises?.leftIris;
+final Iris? rightIris = irises?.rightIris;
 
 // Access iris center
-final leftCenter = leftIris?.center;
+final Point<double>? leftCenter = leftIris?.center;
 print('Left iris center: (${leftCenter?.x}, ${leftCenter?.y})');
 
 // Access iris contour points (4 points outlining the iris)
-final leftContour = leftIris?.contour;
+final List<Point<double>>? leftContour = leftIris?.contour;
 for (int i = 0; i < (leftContour?.length ?? 0); i++) {
-  final point = leftContour![i];
+  final Point<double> point = leftContour![i];
   print('Left iris contour $i: (${point.x}, ${point.y})');
 }
 
 // Right iris
-final rightCenter = rightIris?.center;
-final rightContour = rightIris?.contour;
+final Point<double>? rightCenter = rightIris?.center;
+final List<Point<double>>? rightContour = rightIris?.contour;
 print('Right iris center: (${rightCenter?.x}, ${rightCenter?.y})');
 ```
 

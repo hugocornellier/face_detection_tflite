@@ -367,6 +367,8 @@ class AlignedFace {
 class RectF {
   /// Minimum X and Y plus maximum X and Y extents.
   final double xmin, ymin, xmax, ymax;
+
+  /// Creates a normalized rectangle given its minimum and maximum extents.
   const RectF(this.xmin, this.ymin, this.xmax, this.ymax);
 
   /// Rectangle width.
