@@ -33,6 +33,9 @@ part of '../face_detection_tflite.dart';
 /// worker.dispose();
 /// ```
 class ImageProcessingWorker {
+  /// Creates an uninitialized worker; call [initialize] before sending work.
+  ImageProcessingWorker();
+
   Isolate? _isolate;
   SendPort? _sendPort;
   final ReceivePort _receivePort = ReceivePort();

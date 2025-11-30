@@ -35,6 +35,57 @@ enum FaceDetectionModel {
 /// - [full]: All features including bounding boxes, landmarks, mesh, and iris tracking
 enum FaceDetectionMode { fast, standard, full }
 
+/// A single iris with center point and contour boundary.
+///
+/// Each iris is represented by a center point and four contour points that
+/// outline the iris boundary. All coordinates are in absolute pixel positions
+/// relative to the original image.
+///
+/// See also:
+/// - [IrisPair] for accessing both eyes' iris data
+class Iris {
+  /// Center point of the iris in absolute pixel coordinates.
+  final math.Point<double> center;
+
+  /// Four points outlining the iris boundary in absolute pixel coordinates.
+  ///
+  /// These points form the contour of the iris and can be used to estimate
+  /// the iris size and shape.
+  final List<math.Point<double>> contour;
+
+  /// Creates an iris with a center point and four contour points.
+  const Iris({required this.center, required this.contour});
+}
+
+/// Iris tracking data for both eyes.
+///
+/// Contains structured iris data for the left and right eyes. Individual
+/// iris data may be null if not detected or if called with a detection mode
+/// that doesn't include iris tracking.
+///
+/// Only available when using [FaceDetectionMode.full]. Returns null for
+/// [FaceDetectionMode.fast] and [FaceDetectionMode.standard].
+///
+/// Example:
+/// ```dart
+/// final faces = await detector.detectFaces(imageBytes, mode: FaceDetectionMode.full);
+/// final irises = faces.first.irises;
+/// if (irises != null) {
+///   final leftCenter = irises.leftIris?.center;
+///   final rightContour = irises.rightIris?.contour;
+/// }
+/// ```
+class IrisPair {
+  /// The left iris, or null if not detected.
+  final Iris? leftIris;
+
+  /// The right iris, or null if not detected.
+  final Iris? rightIris;
+
+  /// Creates an iris pair with optional left and right iris data.
+  const IrisPair({this.leftIris, this.rightIris});
+}
+
 /// Outputs for a single detected face.
 ///
 /// [bboxCorners] are the 4 corner points of the face box in pixel coordinates.
@@ -63,7 +114,7 @@ class Face {
   /// - [irises] for iris-specific landmarks
   final List<math.Point<double>> mesh;
 
-  /// Iris landmark points in pixel coordinates.
+  /// Raw iris landmark points in pixel coordinates.
   ///
   /// Contains 10 points total: 5 keypoints per iris (left and right eyes).
   /// Each iris is represented by a center point and 4 contour points.
@@ -76,15 +127,18 @@ class Face {
   /// [FaceDetectionMode.fast] or [FaceDetectionMode.standard]. Use
   /// [FaceDetectionMode.full] to enable iris tracking.
   ///
+  /// For a more convenient structured API, use the [irises] getter instead,
+  /// which returns an [IrisPair] with separate left/right iris data.
+  ///
   /// Example:
   /// ```dart
   /// final faces = await detector.detectFaces(imageBytes, mode: FaceDetectionMode.full);
-  /// if (faces.isNotEmpty && faces.first.irises.isNotEmpty) {
-  ///   final leftIrisPoints = faces.first.irises.sublist(0, 5);
-  ///   final rightIrisPoints = faces.first.irises.sublist(5, 10);
+  /// if (faces.isNotEmpty && faces.first.irisPoints.isNotEmpty) {
+  ///   final leftIrisPoints = faces.first.irisPoints.sublist(0, 5);
+  ///   final rightIrisPoints = faces.first.irisPoints.sublist(5, 10);
   /// }
   /// ```
-  final List<math.Point<double>> irises;
+  final List<math.Point<double>> irisPoints;
 
   /// The dimensions of the original source image.
   ///
@@ -108,9 +162,88 @@ class Face {
   Face({
     required Detection detection,
     required this.mesh,
-    required this.irises,
+    required List<math.Point<double>> irises,
     required this.originalSize,
-  }) : _detection = detection;
+  })  : _detection = detection,
+        irisPoints = irises;
+
+  /// Parses 5 raw iris points into a structured Iris object.
+  ///
+  /// Identifies the center point as the one with minimum sum of squared
+  /// distances to all other points, and treats the remaining 4 points
+  /// as the iris contour.
+  ///
+  /// Returns null if the input doesn't contain exactly 5 points.
+  static Iris? _parseIris(List<math.Point<double>> points) {
+    if (points.length != 5) return null;
+
+    // Find center: point with minimum sum of squared distances to all others
+    int centerIdx = 0;
+    double minDistSum = double.infinity;
+
+    for (int i = 0; i < 5; i++) {
+      double distSum = 0;
+      for (int j = 0; j < 5; j++) {
+        if (i == j) continue;
+        final dx = points[j].x - points[i].x;
+        final dy = points[j].y - points[i].y;
+        distSum += dx * dx + dy * dy;
+      }
+      if (distSum < minDistSum) {
+        minDistSum = distSum;
+        centerIdx = i;
+      }
+    }
+
+    // Extract center and contour
+    final center = points[centerIdx];
+    final contour = <math.Point<double>>[];
+    for (int i = 0; i < 5; i++) {
+      if (i != centerIdx) contour.add(points[i]);
+    }
+
+    return Iris(center: center, contour: contour);
+  }
+
+  /// Structured iris tracking data for both eyes.
+  ///
+  /// Returns an [IrisPair] containing left and right iris data with center
+  /// points and contour boundaries. Individual irises may be null if not detected.
+  ///
+  /// Returns null when [FaceDetector.detectFaces] is called with
+  /// [FaceDetectionMode.fast] or [FaceDetectionMode.standard]. Use
+  /// [FaceDetectionMode.full] to enable iris tracking.
+  ///
+  /// For raw iris point data, use [irisPoints] instead.
+  ///
+  /// Example:
+  /// ```dart
+  /// final irises = face.irises;
+  /// final leftCenter = irises?.leftIris?.center;
+  /// final leftContour = irises?.leftIris?.contour;
+  /// final rightCenter = irises?.rightIris?.center;
+  /// ```
+  IrisPair? get irises {
+    if (irisPoints.isEmpty) return null;
+
+    Iris? leftIris;
+    Iris? rightIris;
+
+    // Try to parse left iris (first 5 points)
+    if (irisPoints.length >= 5) {
+      leftIris = _parseIris(irisPoints.sublist(0, 5));
+    }
+
+    // Try to parse right iris (next 5 points)
+    if (irisPoints.length >= 10) {
+      rightIris = _parseIris(irisPoints.sublist(5, 10));
+    }
+
+    // Return null only if both are null
+    if (leftIris == null && rightIris == null) return null;
+
+    return IrisPair(leftIris: leftIris, rightIris: rightIris);
+  }
 
   /// The four corner points of the face bounding box in pixel coordinates.
   ///
@@ -270,6 +403,7 @@ class Detection {
   /// Original image dimensions used to denormalize landmarks.
   final Size? imageSize;
 
+  /// Creates a detection with normalized geometry and optional source size.
   Detection({
     required this.bbox,
     required this.score,
@@ -309,6 +443,8 @@ class ImageTensor {
 
   /// Target width and height passed to the model.
   final int width, height;
+
+  /// Creates an image tensor paired with the padding used during resize.
   ImageTensor(this.tensorNHWC, this.padding, this.width, this.height);
 }
 

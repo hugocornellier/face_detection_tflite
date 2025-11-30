@@ -156,7 +156,7 @@ final rightIris = irises?.rightIris;
 final leftCenter = leftIris?.center;
 print('Left iris center: (${leftCenter?.x}, ${leftCenter?.y})');
 
-// Access iris contour points (5 points outlining the iris)
+// Access iris contour points (4 points outlining the iris)
 final leftContour = leftIris?.contour;
 for (int i = 0; i < (leftContour?.length ?? 0); i++) {
   final point = leftContour![i];
@@ -186,19 +186,19 @@ This app supports three detection modes that determine which facial features are
 The Face Detection Mode can be set using the `mode` parameter when detectFaces is called. Defaults to FaceDetectionMode.full.
 
 ```dart
-// full mode (default): bounding boxes, 6 basic landmarks + mesh + iris
+// Full mode (default): bounding boxes, 6 basic landmarks + mesh + iris
 // note: full mode provides superior accuracy for left and right eye landmarks
 // compared to fast/standard modes. use full mode when precise eye landmark
 // detection is required for your application. trade-off: longer inference
-await _faceDetector.detectFaces(bytes, mode: FaceDetectionMode.full);
+await faceDetector.detectFaces(bytes, mode: FaceDetectionMode.full);
 
-// standard mode: bounding boxes, 6 basic landmarks + mesh. inference time 
+// Standard mode: bounding boxes, 6 basic landmarks + mesh. inference time 
 // is faster than full mode, but slower than fast mode.
-await _faceDetector.detectFaces(bytes, mode: FaceDetectionMode.standard);
+await faceDetector.detectFaces(bytes, mode: FaceDetectionMode.standard);
 
-// fast mode: bounding boxes + 6 basic landmarks only. fastest inference
+// Fast mode: bounding boxes + 6 basic landmarks only. fastest inference
 // time of the three modes.
-await _faceDetector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+await faceDetector.detectFaces(bytes, mode: FaceDetectionMode.fast);
 ```
 
 Try the [sample code](https://pub.dev/packages/face_detection_tflite/example) from the pub.dev example tab to easily compare
@@ -221,34 +221,24 @@ This package supports multiple detection models optimized for different use case
 The model can be set using the `model` parameter when initialize is called. Defaults to FaceDetectionModel.backCamera.
 
 ```dart
+FaceDetector faceDetector = FaceDetector();
+
 // backCamera (default): larger model for group shots or images with smaller faces
-await _faceDetector.initialize(model: FaceDetectionModel.backCamera);
+await faceDetector.initialize(model: FaceDetectionModel.backCamera);
 
 // frontCamera: optimized for selfies and close-up portraits
-await _faceDetector.initialize(model: FaceDetectionModel.frontCamera);
+await faceDetector.initialize(model: FaceDetectionModel.frontCamera);
 
 // shortRange: best for short-range images (faces within ~2m)
-await _faceDetector.initialize(model: FaceDetectionModel.shortRange);
+await faceDetector.initialize(model: FaceDetectionModel.shortRange);
 
 // full: best for mid-range images (faces within ~5m)
-await _faceDetector.initialize(model: FaceDetectionModel.full);
+await faceDetector.initialize(model: FaceDetectionModel.full);
 
 // fullSparse: same detection quality as full but runs up to 30% faster on CPU
 // (slightly higher precision, slightly lower recall)
-await _faceDetector.initialize(model: FaceDetectionModel.fullSparse);
+await faceDetector.initialize(model: FaceDetectionModel.fullSparse);
 ```
-
-## Types
-
-- `Face` contains `bboxCorners`, `mesh`, `irises` and `landmarks`.
-- `face.landmarks` is a `Map<FaceLandmarkType, Point<double>>`, where `FaceLandmarkType` is one of:
-    - `FaceLandmarkType.leftEye`
-    - `FaceLandmarkType.rightEye`
-    - `FaceLandmarkType.noseTip`
-    - `FaceLandmarkType.mouth`
-    - `FaceLandmarkType.leftEyeTragion`
-    - `FaceLandmarkType.rightEyeTragion`
-- All coordinates are **absolute pixel positions**, ready to use for drawing or measurement.
 
 ## Example
 

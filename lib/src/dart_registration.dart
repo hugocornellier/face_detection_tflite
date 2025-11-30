@@ -7,6 +7,9 @@
 /// **Note:** End users do not need to interact with this class directly.
 /// Flutter handles plugin registration automatically.
 class FaceDetectionTfliteDart {
+  /// Creates an instance for Dart-only plugin registration.
+  const FaceDetectionTfliteDart();
+
   /// Registers the Dart implementation of this plugin.
   ///
   /// Called automatically by Flutter during plugin initialization.

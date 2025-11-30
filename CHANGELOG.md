@@ -1,3 +1,6 @@
+## 2.1.0
+- New IrisPair class
+
 ## 2.0.3
 - Add Dartdocs for AlignedFace, AlignedRoi, DecodedBox, DecodedRgb
 - Minor clarifications to existing getDetectionsWithIrisCenters and RectF Dartdocs

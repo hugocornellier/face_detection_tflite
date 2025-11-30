@@ -883,49 +883,32 @@ class _DetectionsPainter extends CustomPainter {
       }
 
       if (showIrises) {
-        final List<Point<double>> iris = face.irises;
-        for (int i = 0; i + 4 < iris.length; i += 5) {
-          final five = iris.sublist(i, i + 5);
+        final irisPair = face.irises;
+        if (irisPair != null) {
+          for (final iris in [irisPair.leftIris, irisPair.rightIris]) {
+            if (iris == null) continue;
 
-          int centerIdx = 0;
-          double best = double.infinity;
-          for (int k = 0; k < 5; k++) {
-            double s = 0;
-            for (int j = 0; j < 5; j++) {
-              if (j == k) continue;
-              final double dx = (five[j].x - five[k].x);
-              final dy = (five[j].y - five[k].y);
-              s += dx * dx + dy * dy;
+            // Access contour
+            final List<Point<double>> contour = iris.contour;
+            double minX = contour.first.x, maxX = contour.first.x;
+            double minY = contour.first.y, maxY = contour.first.y;
+            for (final p in contour) {
+              if (p.x < minX) minX = p.x;
+              if (p.x > maxX) maxX = p.x;
+              if (p.y < minY) minY = p.y;
+              if (p.y > maxY) maxY = p.y;
             }
-            if (s < best) {
-              best = s;
-              centerIdx = k;
-            }
+
+            final cx = ox + ((minX + maxX) * 0.5) * scaleX;
+            final cy = oy + ((minY + maxY) * 0.5) * scaleY;
+            final rx = (maxX - minX) * 0.5 * scaleX;
+            final ry = (maxY - minY) * 0.5 * scaleY;
+
+            final oval = Rect.fromCenter(
+                center: Offset(cx, cy), width: rx * 2, height: ry * 2);
+            canvas.drawOval(oval, irisFill);
+            canvas.drawOval(oval, irisStroke);
           }
-
-          final others = <Point<double>>[];
-          for (int j = 0; j < 5; j++) {
-            if (j != centerIdx) others.add(five[j]);
-          }
-
-          double minX = others.first.x, maxX = others.first.x;
-          double minY = others.first.y, maxY = others.first.y;
-          for (final p in others) {
-            if (p.x < minX) minX = p.x;
-            if (p.x > maxX) maxX = p.x;
-            if (p.y < minY) minY = p.y;
-            if (p.y > maxY) maxY = p.y;
-          }
-
-          final cx = ox + ((minX + maxX) * 0.5) * scaleX;
-          final cy = oy + ((minY + maxY) * 0.5) * scaleY;
-          final rx = (maxX - minX) * 0.5 * scaleX;
-          final ry = (maxY - minY) * 0.5 * scaleY;
-
-          final oval = Rect.fromCenter(
-              center: Offset(cx, cy), width: rx * 2, height: ry * 2);
-          canvas.drawOval(oval, irisFill);
-          canvas.drawOval(oval, irisStroke);
         }
       }
     }
