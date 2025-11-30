@@ -167,16 +167,13 @@ class _ExampleState extends State<Example> {
 
     final DateTime totalStart = DateTime.now();
     final FaceDetectionMode mode = _determineMode();
-    final ui.Codec codec = await ui.instantiateImageCodec(bytes);
-    final ui.FrameInfo frame = await codec.getNextFrame();
-    final double imgW = frame.image.width.toDouble();
-    final double imgH = frame.image.height.toDouble();
-    frame.image.dispose();
-    codec.dispose();
 
     final DateTime detectionStart = DateTime.now();
     final List<Face> faces = await _faceDetector.detectFaces(bytes, mode: mode);
     final DateTime detectionEnd = DateTime.now();
+    final Size decodedSize = faces.isNotEmpty
+        ? faces.first.originalSize
+        : await _faceDetector.getOriginalSize(bytes);
 
     if (!mounted) return;
 
@@ -201,7 +198,7 @@ class _ExampleState extends State<Example> {
 
     setState(() {
       _imageBytes = bytes;
-      _originalSize = Size(imgW, imgH);
+      _originalSize = decodedSize;
       _faces = faces;
       _hasProcessedMesh =
           mode == FaceDetectionMode.standard || mode == FaceDetectionMode.full;
@@ -587,46 +584,43 @@ class _ExampleState extends State<Example> {
                   child: hasImage
                       ? LayoutBuilder(
                           builder: (context, constraints) {
-                            final imageAspect =
-                                _originalSize!.width / _originalSize!.height;
-                            final boxAspect =
-                                constraints.maxWidth / constraints.maxHeight;
-                            double displayWidth, displayHeight;
-
-                            if (imageAspect > boxAspect) {
-                              displayWidth = constraints.maxWidth;
-                              displayHeight = displayWidth / imageAspect;
-                            } else {
-                              displayHeight = constraints.maxHeight;
-                              displayWidth = displayHeight * imageAspect;
-                            }
-
-                            final left =
-                                (constraints.maxWidth - displayWidth) / 2;
-                            final top =
-                                (constraints.maxHeight - displayHeight) / 2;
+                            final fitted = applyBoxFit(
+                              BoxFit.contain,
+                              _originalSize!,
+                              Size(constraints.maxWidth, constraints.maxHeight),
+                            );
+                            final Size renderSize = fitted.destination;
+                            final Rect imageRect = Alignment.center.inscribe(
+                              renderSize,
+                              Offset.zero &
+                                  Size(constraints.maxWidth,
+                                      constraints.maxHeight),
+                            );
 
                             return Stack(
                               children: [
-                                Positioned.fill(
-                                  child: Center(
+                                Positioned.fromRect(
+                                  rect: imageRect,
+                                  child: SizedBox.fromSize(
+                                    size: renderSize,
                                     child: Image.memory(
                                       _imageBytes!,
-                                      fit: BoxFit.contain,
+                                      fit: BoxFit.fill,
                                     ),
                                   ),
                                 ),
                                 Positioned(
-                                  left: left,
-                                  top: top,
-                                  width: displayWidth,
-                                  height: displayHeight,
+                                  left: imageRect.left,
+                                  top: imageRect.top,
+                                  width: imageRect.width,
+                                  height: imageRect.height,
                                   child: CustomPaint(
-                                    size: Size(displayWidth, displayHeight),
+                                    size:
+                                        Size(imageRect.width, imageRect.height),
                                     painter: _DetectionsPainter(
                                       faces: _faces,
-                                      imageRectOnCanvas: Rect.fromLTWH(
-                                          0, 0, displayWidth, displayHeight),
+                                      imageRectOnCanvas: Rect.fromLTWH(0, 0,
+                                          imageRect.width, imageRect.height),
                                       originalImageSize: _originalSize!,
                                       showBoundingBoxes: _showBoundingBoxes,
                                       showMesh: _showMesh,

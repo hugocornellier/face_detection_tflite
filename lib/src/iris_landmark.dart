@@ -40,8 +40,10 @@ class IrisLandmark {
   /// - [createFromFile] for loading a model from a custom file path
   ///
   /// Throws [StateError] if the model cannot be loaded or initialized.
-  static Future<IrisLandmark> create(
-      {InterpreterOptions? options, bool useIsolate = true}) async {
+  static Future<IrisLandmark> create({
+    InterpreterOptions? options,
+    bool useIsolate = true,
+  }) async {
     final Interpreter itp = await Interpreter.fromAsset(
       'packages/face_detection_tflite/assets/models/$_irisLandmarkModel',
       options: options ?? InterpreterOptions(),
@@ -107,8 +109,11 @@ class IrisLandmark {
   /// - [create] for loading the default bundled model from assets
   ///
   /// Throws [StateError] if the model cannot be loaded or initialized.
-  static Future<IrisLandmark> createFromFile(String modelPath,
-      {InterpreterOptions? options, bool useIsolate = true}) async {
+  static Future<IrisLandmark> createFromFile(
+    String modelPath, {
+    InterpreterOptions? options,
+    bool useIsolate = true,
+  }) async {
     final Interpreter itp = Interpreter.fromFile(
       File(modelPath),
       options: options ?? InterpreterOptions(),
@@ -149,11 +154,14 @@ class IrisLandmark {
     final out = List<List<List<List<double>>>>.filled(
       1,
       List.generate(
-          h,
-          (_) => List.generate(
-              w, (_) => List<double>.filled(3, 0.0, growable: false),
-              growable: false),
-          growable: false),
+        h,
+        (_) => List.generate(
+          w,
+          (_) => List<double>.filled(3, 0.0, growable: false),
+          growable: false,
+        ),
+        growable: false,
+      ),
       growable: false,
     );
     int k = 0;
@@ -230,8 +238,11 @@ class IrisLandmark {
   /// - [callIrisOnly] to extract only the 5 iris keypoints
   /// - [runOnImage] to run on a full image with an eye ROI
   Future<List<List<double>>> call(img.Image eyeCrop) async {
-    final ImageTensor pack =
-        await _imageToTensor(eyeCrop, outW: _inW, outH: _inH);
+    final ImageTensor pack = await _imageToTensor(
+      eyeCrop,
+      outW: _inW,
+      outH: _inH,
+    );
 
     if (_iso == null) {
       _inputBuf.setAll(0, pack.tensorNHWC);
@@ -240,12 +251,16 @@ class IrisLandmark {
       final List<List<double>> lm = <List<double>>[];
       for (final Float32List flat in _outBuffers.values) {
         lm.addAll(
-            _unpackLandmarks(flat, _inW, _inH, pack.padding, clamp: false));
+          _unpackLandmarks(flat, _inW, _inH, pack.padding, clamp: false),
+        );
       }
       return lm;
     } else {
-      final List<List<List<List<double>>>> input4d =
-          _asNHWC4D(pack.tensorNHWC, _inH, _inW);
+      final List<List<List<List<double>>>> input4d = _asNHWC4D(
+        pack.tensorNHWC,
+        _inH,
+        _inW,
+      );
       final List<List<List<List<List<double>>>>> inputs = [input4d];
       final Map<int, Object> outputs = <int, Object>{};
       _outShapes.forEach((i, shape) {
@@ -258,7 +273,8 @@ class IrisLandmark {
       _outShapes.forEach((i, _) {
         final Float32List flat = _flattenDynamicToFloat(outputs[i]);
         lm.addAll(
-            _unpackLandmarks(flat, _inW, _inH, pack.padding, clamp: false));
+          _unpackLandmarks(flat, _inW, _inH, pack.padding, clamp: false),
+        );
       });
       return lm;
     }
@@ -352,8 +368,10 @@ class IrisLandmark {
   /// - [create] with `useIsolate: true` for persistent isolate inference
   /// - [callIrisOnly] for the instance method alternative
   static Future<List<List<double>>> callWithIsolate(
-      Uint8List eyeCropBytes, String modelPath,
-      {bool irisOnly = false}) async {
+    Uint8List eyeCropBytes,
+    String modelPath, {
+    bool irisOnly = false,
+  }) async {
     final ReceivePort rp = ReceivePort();
     final Isolate iso = await Isolate.spawn(IrisLandmark._isolateEntry, {
       'sendPort': rp.sendPort,
@@ -368,7 +386,8 @@ class IrisLandmark {
       final List pts = msg['points'] as List;
       return pts
           .map<List<double>>(
-              (e) => (e as List).map((n) => (n as num).toDouble()).toList())
+            (e) => (e as List).map((n) => (n as num).toDouble()).toList(),
+          )
           .toList();
     } else {
       throw StateError(msg['err'] as String);
@@ -383,8 +402,10 @@ class IrisLandmark {
     final String mode = params['mode'] as String;
 
     try {
-      final IrisLandmark iris =
-          await IrisLandmark.createFromFile(modelPath, useIsolate: false);
+      final IrisLandmark iris = await IrisLandmark.createFromFile(
+        modelPath,
+        useIsolate: false,
+      );
       final img.Image? eye = img.decodeImage(eyeCropBytes);
       if (eye == null) {
         sendPort.send({'ok': false, 'err': 'decode_failed'});
@@ -427,8 +448,11 @@ class IrisLandmark {
   /// - [call] to get all iris and eye contour landmarks
   /// - [runOnImageAlignedIris] for aligned eye ROI processing
   Future<List<List<double>>> callIrisOnly(img.Image eyeCrop) async {
-    final ImageTensor pack =
-        await _imageToTensor(eyeCrop, outW: _inW, outH: _inH);
+    final ImageTensor pack = await _imageToTensor(
+      eyeCrop,
+      outW: _inW,
+      outH: _inH,
+    );
 
     if (_iso == null) {
       _inputBuf.setAll(0, pack.tensorNHWC);
@@ -463,8 +487,11 @@ class IrisLandmark {
       }
       return lm;
     } else {
-      final List<List<List<List<double>>>> input4d =
-          _asNHWC4D(pack.tensorNHWC, _inH, _inW);
+      final List<List<List<List<double>>>> input4d = _asNHWC4D(
+        pack.tensorNHWC,
+        _inH,
+        _inW,
+      );
       final List<List<List<List<List<double>>>>> inputs = [input4d];
       final Map<int, Object> outputs = <int, Object>{};
       _outShapes.forEach((i, shape) {
@@ -527,10 +554,17 @@ class IrisLandmark {
   /// **Note:** This is an internal method used by [FaceDetector]. Most users
   /// should use [FaceDetector.detectFaces] with [FaceDetectionMode.full] instead.
   Future<List<List<double>>> runOnImageAlignedIris(
-      img.Image src, AlignedRoi roi,
-      {bool isRight = false}) async {
-    final img.Image crop =
-        await extractAlignedSquare(src, roi.cx, roi.cy, roi.size, roi.theta);
+    img.Image src,
+    AlignedRoi roi, {
+    bool isRight = false,
+  }) async {
+    final img.Image crop = await extractAlignedSquare(
+      src,
+      roi.cx,
+      roi.cy,
+      roi.size,
+      roi.theta,
+    );
     final img.Image eye = isRight ? await _flipHorizontal(crop) : crop;
     final double ct = math.cos(roi.theta);
     final double st = math.sin(roi.theta);

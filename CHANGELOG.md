@@ -1,3 +1,9 @@
+## 2.1.3
+- Improved dartdocs 
+
+## 2.1.2
+- Fix bug in example related to overlay rect scaling
+
 ## 2.1.1
 - Added missing dartdoc for entry point lib/face_detection_tflite.dart
   and RectF constructor in lib/src/types_and_consts.dart

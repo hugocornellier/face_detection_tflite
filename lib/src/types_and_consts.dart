@@ -9,7 +9,7 @@ enum FaceLandmarkType {
   noseTip,
   mouth,
   leftEyeTragion,
-  rightEyeTragion
+  rightEyeTragion,
 }
 
 /// Specifies which face detection model variant to use.
@@ -25,7 +25,7 @@ enum FaceDetectionModel {
   backCamera,
   shortRange,
   full,
-  fullSparse
+  fullSparse,
 }
 
 /// Controls which detection features to compute.
@@ -352,12 +352,13 @@ class AlignedFace {
 
   /// Creates an aligned face crop with pixel-based center, size, rotation,
   /// and the cropped [faceCrop] image ready for landmark inference.
-  AlignedFace(
-      {required this.cx,
-      required this.cy,
-      required this.size,
-      required this.theta,
-      required this.faceCrop});
+  AlignedFace({
+    required this.cx,
+    required this.cy,
+    required this.size,
+    required this.theta,
+    required this.faceCrop,
+  });
 }
 
 /// Axis-aligned rectangle with normalized coordinates.
@@ -421,7 +422,8 @@ class Detection {
     final Size? sz = imageSize;
     if (sz == null) {
       throw StateError(
-          'Detection.imageSize is null; cannot produce pixel landmarks.');
+        'Detection.imageSize is null; cannot produce pixel landmarks.',
+      );
     }
     final double w = sz.width.toDouble(), h = sz.height.toDouble();
     final Map<FaceLandmarkType, math.Point<double>> map =

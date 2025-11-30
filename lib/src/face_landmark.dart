@@ -39,8 +39,10 @@ class FaceLandmark {
   /// ```
   ///
   /// Throws [StateError] if the model cannot be loaded or initialized.
-  static Future<FaceLandmark> create(
-      {InterpreterOptions? options, bool useIsolate = true}) async {
+  static Future<FaceLandmark> create({
+    InterpreterOptions? options,
+    bool useIsolate = true,
+  }) async {
     final Interpreter itp = await Interpreter.fromAsset(
       'packages/face_detection_tflite/assets/models/$_faceLandmarkModel',
       options: options ?? InterpreterOptions(),
@@ -82,7 +84,9 @@ class FaceLandmark {
     final int maxIndex =
         shapes.keys.isEmpty ? -1 : shapes.keys.reduce((a, b) => a > b ? a : b);
     obj._outShapes = List<List<int>>.generate(
-        maxIndex + 1, (i) => shapes[i] ?? const <int>[]);
+      maxIndex + 1,
+      (i) => shapes[i] ?? const <int>[],
+    );
 
     if (useIsolate) {
       obj._iso = await IsolateInterpreter.create(address: itp.address);
@@ -95,11 +99,14 @@ class FaceLandmark {
     final out = List<List<List<List<double>>>>.filled(
       1,
       List.generate(
-          h,
-          (_) => List.generate(
-              w, (_) => List<double>.filled(3, 0.0, growable: false),
-              growable: false),
-          growable: false),
+        h,
+        (_) => List.generate(
+          w,
+          (_) => List<double>.filled(3, 0.0, growable: false),
+          growable: false,
+        ),
+        growable: false,
+      ),
       growable: false,
     );
     int k = 0;
@@ -120,8 +127,11 @@ class FaceLandmark {
       if (depth == s.length - 1) {
         return List<double>.filled(s[depth], 0.0, growable: false);
       }
-      return List.generate(s[depth], (_) => build(s, depth + 1),
-          growable: false);
+      return List.generate(
+        s[depth],
+        (_) => build(s, depth + 1),
+        growable: false,
+      );
     }
 
     return build(shape, 0);
@@ -153,14 +163,22 @@ class FaceLandmark {
   /// print('Predicted ${meshPoints.length} mesh points'); // 468
   /// ```
   Future<List<List<double>>> call(img.Image faceCrop) async {
-    final ImageTensor pack =
-        await _imageToTensor(faceCrop, outW: _inW, outH: _inH);
+    final ImageTensor pack = await _imageToTensor(
+      faceCrop,
+      outW: _inW,
+      outH: _inH,
+    );
 
     if (_iso == null) {
       _inputBuf.setAll(0, pack.tensorNHWC);
       _itp.invoke();
-      return _unpackLandmarks(_bestOutBuf, _inW, _inH, pack.padding,
-          clamp: true);
+      return _unpackLandmarks(
+        _bestOutBuf,
+        _inW,
+        _inH,
+        pack.padding,
+        clamp: true,
+      );
     } else {
       final input4d = _asNHWC4D(pack.tensorNHWC, _inH, _inW);
       final List<List<List<List<List<double>>>>> inputs = [input4d];

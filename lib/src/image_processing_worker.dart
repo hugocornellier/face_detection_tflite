@@ -77,7 +77,8 @@ class ImageProcessingWorker {
             initCompleter.complete(message);
           } else {
             initCompleter.completeError(
-                StateError('Expected SendPort, got ${message.runtimeType}'));
+              StateError('Expected SendPort, got ${message.runtimeType}'),
+            );
           }
           return;
         }
@@ -128,10 +129,13 @@ class ImageProcessingWorker {
   }
 
   Future<T> _sendRequest<T>(
-      String operation, Map<String, dynamic> params) async {
+    String operation,
+    Map<String, dynamic> params,
+  ) async {
     if (!_initialized || _sendPort == null) {
       throw StateError(
-          'ImageProcessingWorker not initialized. Call initialize() first.');
+        'ImageProcessingWorker not initialized. Call initialize() first.',
+      );
     }
 
     final int id = _nextId++;
@@ -139,11 +143,7 @@ class ImageProcessingWorker {
     _pending[id] = completer;
 
     try {
-      _sendPort!.send({
-        'id': id,
-        'op': operation,
-        ...params,
-      });
+      _sendPort!.send({'id': id, 'op': operation, ...params});
 
       return await completer.future;
     } catch (e) {
@@ -223,8 +223,10 @@ class ImageProcessingWorker {
   /// Throws [StateError] if the worker is not initialized or crop fails.
   Future<img.Image> cropFromRoi(img.Image src, RectF roi) async {
     if (roi.xmin < 0 || roi.ymin < 0 || roi.xmax > 1 || roi.ymax > 1) {
-      throw ArgumentError('ROI coordinates must be normalized [0,1], got: '
-          '(${roi.xmin}, ${roi.ymin}, ${roi.xmax}, ${roi.ymax})');
+      throw ArgumentError(
+        'ROI coordinates must be normalized [0,1], got: '
+        '(${roi.xmin}, ${roi.ymin}, ${roi.xmax}, ${roi.ymax})',
+      );
     }
     if (roi.xmin >= roi.xmax || roi.ymin >= roi.ymax) {
       throw ArgumentError('Invalid ROI: min coordinates must be less than max');
@@ -370,10 +372,7 @@ class ImageProcessingWorker {
         final dynamic result = await _processOperation(op, message);
         mainSendPort.send({'id': id, 'result': result});
       } catch (e, stackTrace) {
-        mainSendPort.send({
-          'id': id,
-          'error': 'Worker error: $e\n$stackTrace',
-        });
+        mainSendPort.send({'id': id, 'error': 'Worker error: $e\n$stackTrace'});
       }
     });
   }
@@ -526,8 +525,13 @@ class ImageProcessingWorker {
       final int cw = math.max(1, x1 - x0);
       final int ch = math.max(1, y1 - y0);
 
-      final img.Image out =
-          img.copyCrop(src, x: x0, y: y0, width: cw, height: ch);
+      final img.Image out = img.copyCrop(
+        src,
+        x: x0,
+        y: y0,
+        width: cw,
+        height: ch,
+      );
       final Uint8List outRgb = out.getBytes(order: img.ChannelOrder.rgb);
 
       return {
@@ -595,7 +599,10 @@ class ImageProcessingWorker {
   }
 
   static img.ColorRgb8 _bilinearSampleRgb8(
-      img.Image src, double fx, double fy) {
+    img.Image src,
+    double fx,
+    double fy,
+  ) {
     final int x0 = fx.floor();
     final int y0 = fy.floor();
     final int x1 = x0 + 1;

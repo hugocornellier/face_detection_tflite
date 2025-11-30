@@ -7,8 +7,11 @@ double _sigmoidClipped(double x, {double limit = _rawScoreLimit}) {
   return 1.0 / (1.0 + math.exp(-v));
 }
 
-Future<ImageTensor> _imageToTensor(img.Image src,
-    {required int outW, required int outH}) async {
+Future<ImageTensor> _imageToTensor(
+  img.Image src, {
+  required int outW,
+  required int outH,
+}) async {
   final ReceivePort rp = ReceivePort();
   final Uint8List rgb = src.getBytes(order: img.ChannelOrder.rgb);
   await Isolate.spawn(_imageToTensorIsolate, {
@@ -101,7 +104,9 @@ Future<void> _imageToTensorIsolate(Map<String, dynamic> params) async {
 }
 
 List<Detection> _detectionLetterboxRemoval(
-    List<Detection> dets, List<double> padding) {
+  List<Detection> dets,
+  List<double> padding,
+) {
   final double pt = padding[0],
       pb = padding[1],
       pl = padding[2],
@@ -109,8 +114,12 @@ List<Detection> _detectionLetterboxRemoval(
   final double sx = 1.0 - (pl + pr);
   final double sy = 1.0 - (pt + pb);
 
-  RectF unpad(RectF r) => RectF((r.xmin - pl) / sx, (r.ymin - pt) / sy,
-      (r.xmax - pl) / sx, (r.ymax - pt) / sy);
+  RectF unpad(RectF r) => RectF(
+        (r.xmin - pl) / sx,
+        (r.ymin - pt) / sy,
+        (r.xmax - pl) / sx,
+        (r.ymax - pt) / sy,
+      );
   List<double> unpadKp(List<double> kps) {
     final List<double> out = List<double>.from(kps);
     for (int i = 0; i < out.length; i += 2) {
@@ -121,18 +130,25 @@ List<Detection> _detectionLetterboxRemoval(
   }
 
   return dets
-      .map((d) => Detection(
+      .map(
+        (d) => Detection(
           bbox: unpad(d.bbox),
           score: d.score,
-          keypointsXY: unpadKp(d.keypointsXY)))
+          keypointsXY: unpadKp(d.keypointsXY),
+        ),
+      )
       .toList();
 }
 
 double _clamp01(double v) => v < 0 ? 0 : (v > 1 ? 1 : v);
 
 List<List<double>> _unpackLandmarks(
-    Float32List flat, int inW, int inH, List<double> padding,
-    {bool clamp = true}) {
+  Float32List flat,
+  int inW,
+  int inH,
+  List<double> padding, {
+  bool clamp = true,
+}) {
   final double pt = padding[0],
       pb = padding[1],
       pl = padding[2],
@@ -160,7 +176,11 @@ List<List<double>> _unpackLandmarks(
 Detection _mapDetectionToRoi(Detection d, RectF roi) {
   final double dx = roi.xmin, dy = roi.ymin, sx = roi.w, sy = roi.h;
   RectF mapRect(RectF r) => RectF(
-      dx + r.xmin * sx, dy + r.ymin * sy, dx + r.xmax * sx, dy + r.ymax * sy);
+        dx + r.xmin * sx,
+        dy + r.ymin * sy,
+        dx + r.xmax * sx,
+        dy + r.ymax * sy,
+      );
   List<double> mapKp(List<double> k) {
     final List<double> o = List<double>.from(k);
     for (int i = 0; i < o.length; i += 2) {
@@ -171,10 +191,11 @@ Detection _mapDetectionToRoi(Detection d, RectF roi) {
   }
 
   return Detection(
-      bbox: mapRect(d.bbox),
-      score: d.score,
-      keypointsXY: mapKp(d.keypointsXY),
-      imageSize: d.imageSize);
+    bbox: mapRect(d.bbox),
+    score: d.score,
+    keypointsXY: mapKp(d.keypointsXY),
+    imageSize: d.imageSize,
+  );
 }
 
 double _iou(RectF a, RectF b) {
@@ -191,8 +212,12 @@ double _iou(RectF a, RectF b) {
   return uni <= 0 ? 0.0 : inter / uni;
 }
 
-List<Detection> _nms(List<Detection> dets, double iouThresh, double scoreThresh,
-    {bool weighted = true}) {
+List<Detection> _nms(
+  List<Detection> dets,
+  double iouThresh,
+  double scoreThresh, {
+  bool weighted = true,
+}) {
   final List<Detection> kept = <Detection>[];
   final List<Detection> cand = dets
       .where((d) => d.score >= scoreThresh)
@@ -219,11 +244,13 @@ List<Detection> _nms(List<Detection> dets, double iouThresh, double scoreThresh,
         xmax += m.bbox.xmax * m.score;
         ymax += m.bbox.ymax * m.score;
       }
-      kept.add(Detection(
-        bbox: RectF(xmin / sw, ymin / sw, xmax / sw, ymax / sw),
-        score: base.score,
-        keypointsXY: base.keypointsXY,
-      ));
+      kept.add(
+        Detection(
+          bbox: RectF(xmin / sw, ymin / sw, xmax / sw, ymax / sw),
+          score: base.score,
+          keypointsXY: base.keypointsXY,
+        ),
+      );
     }
   }
   return kept;
@@ -351,7 +378,8 @@ RectF faceDetectionToRoi(RectF bbox, {double expandFraction = 0.6}) {
 Future<img.Image> cropFromRoi(img.Image src, RectF roi) async {
   if (roi.xmin < 0 || roi.ymin < 0 || roi.xmax > 1 || roi.ymax > 1) {
     throw ArgumentError(
-        'ROI coordinates must be normalized [0,1], got: (${roi.xmin}, ${roi.ymin}, ${roi.xmax}, ${roi.ymax})');
+      'ROI coordinates must be normalized [0,1], got: (${roi.xmin}, ${roi.ymin}, ${roi.xmax}, ${roi.ymax})',
+    );
   }
   if (roi.xmin >= roi.xmax || roi.ymin >= roi.ymax) {
     throw ArgumentError('Invalid ROI: min coordinates must be less than max');
@@ -382,7 +410,11 @@ Future<img.Image> cropFromRoi(img.Image src, RectF roi) async {
   final int ow = msg['w'] as int;
   final int oh = msg['h'] as int;
   return img.Image.fromBytes(
-      width: ow, height: oh, bytes: outRgb.buffer, order: img.ChannelOrder.rgb);
+    width: ow,
+    height: oh,
+    bytes: outRgb.buffer,
+    order: img.ChannelOrder.rgb,
+  );
 }
 
 /// Extracts a rotated square region from an image with bilinear sampling.
@@ -427,7 +459,12 @@ Future<img.Image> cropFromRoi(img.Image src, RectF roi) async {
 /// );
 /// ```
 Future<img.Image> extractAlignedSquare(
-    img.Image src, double cx, double cy, double size, double theta) async {
+  img.Image src,
+  double cx,
+  double cy,
+  double size,
+  double theta,
+) async {
   if (size <= 0) {
     throw ArgumentError('Size must be positive, got: $size');
   }
@@ -456,7 +493,11 @@ Future<img.Image> extractAlignedSquare(
   final int ow = msg['w'] as int;
   final int oh = msg['h'] as int;
   return img.Image.fromBytes(
-      width: ow, height: oh, bytes: outRgb.buffer, order: img.ChannelOrder.rgb);
+    width: ow,
+    height: oh,
+    bytes: outRgb.buffer,
+    order: img.ChannelOrder.rgb,
+  );
 }
 
 img.ColorRgb8 _bilinearSampleRgb8(img.Image src, double fx, double fy) {
@@ -523,7 +564,8 @@ Future<DecodedRgb> _decodeImageOffUi(Uint8List bytes) async {
   if (msg['ok'] != true) {
     final error = msg['error'];
     throw FormatException(
-        'Could not decode image bytes: ${error ?? "unsupported or corrupt"}');
+      'Could not decode image bytes: ${error ?? "unsupported or corrupt"}',
+    );
   }
 
   final ByteBuffer rgbBB = (msg['rgb'] as TransferableTypedData).materialize();
@@ -580,7 +622,11 @@ Future<void> _imageTransformIsolate(Map<String, dynamic> params) async {
     final Uint8List inRgb = inBB.asUint8List();
 
     final img.Image src = img.Image.fromBytes(
-        width: w, height: h, bytes: inRgb.buffer, order: img.ChannelOrder.rgb);
+      width: w,
+      height: h,
+      bytes: inRgb.buffer,
+      order: img.ChannelOrder.rgb,
+    );
 
     img.Image out;
 

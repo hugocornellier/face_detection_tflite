@@ -22,7 +22,12 @@ class FaceDetection {
   late final Float32List _scoresBuf;
 
   FaceDetection._(
-      this._itp, this._inW, this._inH, this._anchors, this._assumeMirrored);
+    this._itp,
+    this._inW,
+    this._inH,
+    this._anchors,
+    this._assumeMirrored,
+  );
 
   /// Creates and initializes a face detection model instance.
   ///
@@ -51,8 +56,11 @@ class FaceDetection {
   /// ```
   ///
   /// Throws [StateError] if the model cannot be loaded or initialized.
-  static Future<FaceDetection> create(FaceDetectionModel model,
-      {InterpreterOptions? options, bool useIsolate = true}) async {
+  static Future<FaceDetection> create(
+    FaceDetectionModel model, {
+    InterpreterOptions? options,
+    bool useIsolate = true,
+  }) async {
     final Map<String, Object> opts = _optsFor(model);
     final int inW = opts['input_size_width'] as int;
     final int inH = opts['input_size_height'] as int;
@@ -67,8 +75,13 @@ class FaceDetection {
     );
 
     final Float32List anchors = _ssdGenerateAnchors(opts);
-    final FaceDetection obj =
-        FaceDetection._(itp, inW, inH, anchors, assumeMirrored);
+    final FaceDetection obj = FaceDetection._(
+      itp,
+      inW,
+      inH,
+      anchors,
+      assumeMirrored,
+    );
 
     int foundIdx = -1;
     for (int i = 0; i < 10; i++) {
@@ -85,7 +98,8 @@ class FaceDetection {
     if (foundIdx == -1) {
       itp.close();
       throw StateError(
-          'No valid input tensor found with shape [batch, height, width, 3]');
+        'No valid input tensor found with shape [batch, height, width, 3]',
+      );
     }
     obj._inputIdx = foundIdx;
 
@@ -112,14 +126,18 @@ class FaceDetection {
 
   List<List<List<List<double>>>> _asNHWC4D(Float32List flat, int h, int w) {
     final out = List<List<List<List<double>>>>.filled(
-        1,
-        List.generate(
-            h,
-            (_) => List.generate(
-                w, (_) => List<double>.filled(3, 0.0, growable: false),
-                growable: false),
-            growable: false),
-        growable: false);
+      1,
+      List.generate(
+        h,
+        (_) => List.generate(
+          w,
+          (_) => List<double>.filled(3, 0.0, growable: false),
+          growable: false,
+        ),
+        growable: false,
+      ),
+      growable: false,
+    );
 
     int k = 0;
     for (int y = 0; y < h; y++) {
@@ -227,20 +245,29 @@ class FaceDetection {
     Float32List scoresBuf;
 
     if (_iso != null) {
-      final List<List<List<List<double>>>> input4d =
-          _asNHWC4D(pack.tensorNHWC, _inH, _inW);
+      final List<List<List<List<double>>>> input4d = _asNHWC4D(
+        pack.tensorNHWC,
+        _inH,
+        _inW,
+      );
       final int inputCount = _itp.getInputTensors().length;
-      final List<Object?> inputs =
-          List<Object?>.filled(inputCount, null, growable: false);
+      final List<Object?> inputs = List<Object?>.filled(
+        inputCount,
+        null,
+        growable: false,
+      );
       inputs[_inputIdx] = input4d;
 
       final int b0 = _boxesShape[0], b1 = _boxesShape[1], b2 = _boxesShape[2];
       final List<List<List<double>>> boxesOut3d = List.generate(
-          b0,
-          (_) => List.generate(
-              b1, (_) => List<double>.filled(b2, 0.0, growable: false),
-              growable: false),
-          growable: false);
+        b0,
+        (_) => List.generate(
+          b1,
+          (_) => List<double>.filled(b2, 0.0, growable: false),
+          growable: false,
+        ),
+        growable: false,
+      );
 
       Object scoresOut;
       if (_scoresShape.length == 3) {
@@ -248,16 +275,21 @@ class FaceDetection {
             s1 = _scoresShape[1],
             s2 = _scoresShape[2];
         scoresOut = List.generate(
-            s0,
-            (_) => List.generate(
-                s1, (_) => List<double>.filled(s2, 0.0, growable: false),
-                growable: false),
-            growable: false);
+          s0,
+          (_) => List.generate(
+            s1,
+            (_) => List<double>.filled(s2, 0.0, growable: false),
+            growable: false,
+          ),
+          growable: false,
+        );
       } else {
         final int s0 = _scoresShape[0], s1 = _scoresShape[1];
         scoresOut = List.generate(
-            s0, (_) => List<double>.filled(s1, 0.0, growable: false),
-            growable: false);
+          s0,
+          (_) => List<double>.filled(s1, 0.0, growable: false),
+          growable: false,
+        );
       }
 
       final Map<int, Object> outputs = <int, Object>{
@@ -289,10 +321,16 @@ class FaceDetection {
     final Float32List scores = _decodeScores(scoresBuf, _scoresShape);
     final List<DecodedBox> boxes = _decodeBoxes(boxesBuf, _boxesShape);
     final List<Detection> dets = _toDetections(boxes, scores);
-    final List<Detection> pruned =
-        _nms(dets, _minSuppressionThreshold, _minScore, weighted: true);
-    final List<Detection> fixed =
-        _detectionLetterboxRemoval(pruned, pack.padding);
+    final List<Detection> pruned = _nms(
+      dets,
+      _minSuppressionThreshold,
+      _minScore,
+      weighted: true,
+    );
+    final List<Detection> fixed = _detectionLetterboxRemoval(
+      pruned,
+      pack.padding,
+    );
 
     List<Detection> mapped = roi != null
         ? fixed.map((d) => _mapDetectionToRoi(d, roi)).toList()
@@ -309,9 +347,10 @@ class FaceDetection {
           kp[i] = 1.0 - kp[i];
         }
         return Detection(
-            bbox: RectF(xmin, ymin, xmax, ymax),
-            score: d.score,
-            keypointsXY: kp);
+          bbox: RectF(xmin, ymin, xmax, ymax),
+          score: d.score,
+          keypointsXY: kp,
+        );
       }).toList();
     }
 
@@ -367,8 +406,9 @@ class FaceDetection {
     for (int i = 0; i < n; i++) {
       final RectF b = boxes[i].bbox;
       if (b.xmax <= b.xmin || b.ymax <= b.ymin) continue;
-      res.add(Detection(
-          bbox: b, score: scores[i], keypointsXY: boxes[i].keypointsXY));
+      res.add(
+        Detection(bbox: b, score: scores[i], keypointsXY: boxes[i].keypointsXY),
+      );
     }
     return res;
   }
