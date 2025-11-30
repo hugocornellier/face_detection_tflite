@@ -76,13 +76,13 @@ import 'dart:math'; // Required for Point<double>
 final BoundingBox bbox = face.bbox;
 
 // Access individual corners by name (each is a Point<double> with x and y)
-final Point<double> topLeft = bbox.topLeft;          // Top-left corner
-final Point<double> topRight = bbox.topRight;        // Top-right corner
-final Point<double> bottomRight = bbox.bottomRight;  // Bottom-right corner
-final Point<double> bottomLeft = bbox.bottomLeft;    // Bottom-left corner
+final Point<double> topLeft     = bbox.topLeft;       // Top-left corner
+final Point<double> topRight    = bbox.topRight;      // Top-right corner
+final Point<double> bottomRight = bbox.bottomRight;   // Bottom-right corner
+final Point<double> bottomLeft  = bbox.bottomLeft;    // Bottom-left corner
 
 // Access dimensions and center
-final double width = bbox.width;      // Width in pixels
+final double width  = bbox.width;     // Width in pixels
 final double height = bbox.height;    // Height in pixels
 final Point<double> center = bbox.center;  // Center point
 
@@ -97,33 +97,36 @@ print('Center: (${center.x}, ${center.y})');
 
 ## Landmarks
 
-The landmarks property returns a map of 6 key facial feature points in absolute pixel
-coordinates. These landmarks provide quick access to common facial features without needing
-to reference specific mesh indices.
+The landmarks property returns a FaceLandmarks object with 6 key facial feature points
+in absolute pixel coordinates. These landmarks provide quick access to common facial
+features with convenient named properties.
 
 ### Accessing Landmarks
 
 ```dart
 import 'dart:math'; // Required for Point<double>
 
-final Map<FaceLandmarkType, Point<double>> landmarks = face.landmarks;
+final FaceLandmarks landmarks = face.landmarks;
 
-// Access individual landmarks (each is a Point<double> with x and y)
-final Point<double>? leftEye = landmarks[FaceLandmarkType.leftEye];
-final Point<double>? rightEye = landmarks[FaceLandmarkType.rightEye];
-final Point<double>? noseTip = landmarks[FaceLandmarkType.noseTip];
-final Point<double>? mouth = landmarks[FaceLandmarkType.mouth];
-final Point<double>? leftEyeTragion = landmarks[FaceLandmarkType.leftEyeTragion];
-final Point<double>? rightEyeTragion = landmarks[FaceLandmarkType.rightEyeTragion];
+// Access individual landmarks using named properties
+final Point<double>? leftEye  = landmarks.leftEye;
+final Point<double>? rightEye = landmarks.rightEye;
+final Point<double>? noseTip  = landmarks.noseTip;
+final Point<double>? mouth    = landmarks.mouth;
+final Point<double>? leftEyeTragion  = landmarks.leftEyeTragion;
+final Point<double>? rightEyeTragion = landmarks.rightEyeTragion;
 
 // Access coordinates
 print('Left eye: (${leftEye?.x}, ${leftEye?.y})');
 print('Nose tip: (${noseTip?.x}, ${noseTip?.y})');
 
+// Backwards compatible: map-like access still works
+final Point<double>? leftEyeAlt = landmarks[FaceLandmarkType.leftEye];
+
 // Iterate through all landmarks
-landmarks.forEach((type, point) {
-  print('$type: (${point.x}, ${point.y})');
-});
+for (final point in landmarks.values) {
+  print('Landmark: (${point.x}, ${point.y})');
+}
 ```
 
 ## Face Mesh

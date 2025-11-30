@@ -86,6 +86,80 @@ class IrisPair {
   const IrisPair({this.leftIris, this.rightIris});
 }
 
+/// Facial landmark points with convenient named access.
+///
+/// Provides 6 key facial feature points in pixel coordinates with both
+/// named property access and map-like access for backwards compatibility.
+///
+/// All coordinates are in absolute pixel positions relative to the original image.
+///
+/// Example:
+/// ```dart
+/// final landmarks = face.landmarks;
+/// print('Left eye: (${landmarks.leftEye?.x}, ${landmarks.leftEye?.y})');
+/// print('Nose: (${landmarks.noseTip?.x}, ${landmarks.noseTip?.y})');
+///
+/// // Map-like access also works for backwards compatibility
+/// final leftEye = landmarks[FaceLandmarkType.leftEye];
+/// ```
+class FaceLandmarks {
+  final Map<FaceLandmarkType, math.Point<double>> _landmarks;
+
+  /// Creates facial landmarks from a map of landmark types to points.
+  const FaceLandmarks(this._landmarks);
+
+  /// Left eye center point in pixel coordinates.
+  math.Point<double>? get leftEye => _landmarks[FaceLandmarkType.leftEye];
+
+  /// Right eye center point in pixel coordinates.
+  math.Point<double>? get rightEye => _landmarks[FaceLandmarkType.rightEye];
+
+  /// Nose tip point in pixel coordinates.
+  math.Point<double>? get noseTip => _landmarks[FaceLandmarkType.noseTip];
+
+  /// Mouth center point in pixel coordinates.
+  math.Point<double>? get mouth => _landmarks[FaceLandmarkType.mouth];
+
+  /// Left eye tragion point in pixel coordinates.
+  ///
+  /// The tragion is the notch just above the ear canal opening.
+  math.Point<double>? get leftEyeTragion =>
+      _landmarks[FaceLandmarkType.leftEyeTragion];
+
+  /// Right eye tragion point in pixel coordinates.
+  ///
+  /// The tragion is the notch just above the ear canal opening.
+  math.Point<double>? get rightEyeTragion =>
+      _landmarks[FaceLandmarkType.rightEyeTragion];
+
+  /// Access landmark by type (backwards compatible with map access).
+  ///
+  /// Example:
+  /// ```dart
+  /// final leftEye = landmarks[FaceLandmarkType.leftEye];
+  /// ```
+  math.Point<double>? operator [](FaceLandmarkType type) => _landmarks[type];
+
+  /// All landmark points as an iterable (backwards compatible with map.values).
+  ///
+  /// Example:
+  /// ```dart
+  /// for (final point in landmarks.values) {
+  ///   print('(${point.x}, ${point.y})');
+  /// }
+  /// ```
+  Iterable<math.Point<double>> get values => _landmarks.values;
+
+  /// All available landmark types in this detection.
+  Iterable<FaceLandmarkType> get keys => _landmarks.keys;
+
+  /// Returns all landmarks as an unmodifiable map.
+  ///
+  /// Use this when you need explicit Map type for compatibility.
+  Map<FaceLandmarkType, math.Point<double>> toMap() =>
+      Map.unmodifiable(_landmarks);
+}
+
 /// Face bounding box with corner points in pixel coordinates.
 ///
 /// Represents a rectangular bounding box around a detected face with convenient
@@ -147,7 +221,8 @@ class BoundingBox {
 ///
 /// [bbox] is the face bounding box in pixel coordinates.
 /// [bboxCorners] (deprecated) are the 4 corner points of the face box in pixel coordinates.
-/// [landmarks] are coarse detection keypoints (e.g. eyes, nose, mouth corners).
+/// [landmarks] provides convenient access to 6 key facial landmarks (eyes, nose, mouth).
+/// [landmarksMap] (deprecated) is the old map-based access to landmarks.
 /// [mesh] contains 468 facial landmarks as pixel coordinates.
 /// [irises] contains 10 points (5 per eye) used to estimate iris position/size.
 class Face {
@@ -351,9 +426,37 @@ class Face {
 
   /// Facial landmark positions in pixel coordinates.
   ///
+  /// Returns a [FaceLandmarks] object with convenient named access to key
+  /// facial features. Use named properties like [FaceLandmarks.leftEye],
+  /// [FaceLandmarks.rightEye], [FaceLandmarks.noseTip], etc. for cleaner code.
+  ///
+  /// Example:
+  /// ```dart
+  /// final landmarks = face.landmarks;
+  /// final leftEye = landmarks.leftEye;
+  /// final noseTip = landmarks.noseTip;
+  /// print('Left eye: (${leftEye?.x}, ${leftEye?.y})');
+  /// ```
+  ///
+  /// For backwards compatibility, you can still use map-like access:
+  /// ```dart
+  /// final leftEye = landmarks[FaceLandmarkType.leftEye];
+  /// for (final point in landmarks.values) { ... }
+  /// ```
+  FaceLandmarks get landmarks => FaceLandmarks(_detection.landmarks);
+
+  /// Facial landmark positions as a map (deprecated).
+  ///
   /// Returns a map where keys are [FaceLandmarkType] values identifying specific
   /// facial features (eyes, nose, mouth, etc.) and values are their pixel positions.
-  Map<FaceLandmarkType, math.Point<double>> get landmarks =>
+  ///
+  /// **Deprecated**: Use [landmarks] instead, which now returns [FaceLandmarks]
+  /// with convenient named access. For map-like access, [FaceLandmarks] supports
+  /// the `[]` operator and `.values` property. If you need an explicit Map type,
+  /// use `landmarks.toMap()`.
+  @Deprecated(
+      'Use landmarks instead, which now returns FaceLandmarks with named properties')
+  Map<FaceLandmarkType, math.Point<double>> get landmarksMap =>
       _detection.landmarks;
 }
 

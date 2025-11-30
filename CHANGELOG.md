@@ -1,3 +1,7 @@
+## 2.2.1
+- FaceLandmarks class instead of Map
+- Simplified process of accessing individual landmarks 
+
 ## 2.2.0
 - BoundingBox class
 - Add clarification to README about dart:math requirement for Point

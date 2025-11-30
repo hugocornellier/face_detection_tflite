@@ -850,6 +850,9 @@ class _DetectionsPainter extends CustomPainter {
       }
 
       if (showLandmarks) {
+        // Iterate over all landmarks using .values
+        // You can also access specific landmarks using named properties:
+        // face.landmarks.leftEye, face.landmarks.rightEye, etc.
         for (final Point<double> p in face.landmarks.values) {
           canvas.drawCircle(
             Offset(ox + p.x * scaleX, oy + p.y * scaleY),
