@@ -220,9 +220,7 @@ class BoundingBox {
 /// Outputs for a single detected face.
 ///
 /// [bbox] is the face bounding box in pixel coordinates.
-/// [bboxCorners] (deprecated) are the 4 corner points of the face box in pixel coordinates.
 /// [landmarks] provides convenient access to 6 key facial landmarks (eyes, nose, mouth).
-/// [landmarksMap] (deprecated) is the old map-based access to landmarks.
 /// [mesh] contains 468 facial landmarks as pixel coordinates.
 /// [irises] contains 10 points (5 per eye) used to estimate iris position/size.
 class Face {
@@ -276,7 +274,7 @@ class Face {
   /// The dimensions of the original source image.
   ///
   /// This size is used internally to convert normalized coordinates to pixel
-  /// coordinates for [bboxCorners], [landmarks], [mesh], and [irises].
+  /// coordinates for [bbox], [landmarks], [mesh], and [irises].
   ///
   /// All coordinate data in [Face] is already scaled to these dimensions,
   /// so users typically don't need to use this field directly unless performing
@@ -404,26 +402,6 @@ class Face {
     );
   }
 
-  /// The four corner points of the face bounding box in pixel coordinates.
-  ///
-  /// Returns points in order: top-left, top-right, bottom-right, bottom-left.
-  ///
-  /// **Deprecated**: Use [bbox] instead, which provides a [BoundingBox] with
-  /// convenient access to corners, dimensions, and center point.
-  @Deprecated(
-      'Use bbox instead for better API with corner names and dimensions')
-  List<math.Point<double>> get bboxCorners {
-    final RectF r = _detection.bbox;
-    final double w = originalSize.width.toDouble();
-    final double h = originalSize.height.toDouble();
-    return [
-      math.Point<double>(r.xmin * w, r.ymin * h),
-      math.Point<double>(r.xmax * w, r.ymin * h),
-      math.Point<double>(r.xmax * w, r.ymax * h),
-      math.Point<double>(r.xmin * w, r.ymax * h),
-    ];
-  }
-
   /// Facial landmark positions in pixel coordinates.
   ///
   /// Returns a [FaceLandmarks] object with convenient named access to key
@@ -444,20 +422,6 @@ class Face {
   /// for (final point in landmarks.values) { ... }
   /// ```
   FaceLandmarks get landmarks => FaceLandmarks(_detection.landmarks);
-
-  /// Facial landmark positions as a map (deprecated).
-  ///
-  /// Returns a map where keys are [FaceLandmarkType] values identifying specific
-  /// facial features (eyes, nose, mouth, etc.) and values are their pixel positions.
-  ///
-  /// **Deprecated**: Use [landmarks] instead, which now returns [FaceLandmarks]
-  /// with convenient named access. For map-like access, [FaceLandmarks] supports
-  /// the `[]` operator and `.values` property. If you need an explicit Map type,
-  /// use `landmarks.toMap()`.
-  @Deprecated(
-      'Use landmarks instead, which now returns FaceLandmarks with named properties')
-  Map<FaceLandmarkType, math.Point<double>> get landmarksMap =>
-      _detection.landmarks;
 }
 
 /// The expected number of 3D landmark points in a complete face mesh.

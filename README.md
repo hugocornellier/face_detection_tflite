@@ -120,9 +120,6 @@ final Point<double>? rightEyeTragion = landmarks.rightEyeTragion;
 print('Left eye: (${leftEye?.x}, ${leftEye?.y})');
 print('Nose tip: (${noseTip?.x}, ${noseTip?.y})');
 
-// Backwards compatible: map-like access still works
-final Point<double>? leftEyeAlt = landmarks[FaceLandmarkType.leftEye];
-
 // Iterate through all landmarks
 for (final point in landmarks.values) {
   print('Landmark: (${point.x}, ${point.y})');
