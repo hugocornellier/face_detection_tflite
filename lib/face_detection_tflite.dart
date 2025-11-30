@@ -15,6 +15,7 @@ import 'package:image/image.dart' as img;
 import 'package:tflite_flutter_custom/tflite_flutter.dart';
 
 export 'src/dart_registration.dart';
+export 'dart:math' show Point;
 
 part 'src/types_and_consts.dart';
 part 'src/helpers.dart';

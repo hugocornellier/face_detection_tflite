@@ -1,4 +1,5 @@
 ## 2.1.3
+- Bundle Point from dart:math with library
 - Improved dartdocs 
 
 ## 2.1.2
