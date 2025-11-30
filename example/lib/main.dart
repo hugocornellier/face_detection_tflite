@@ -839,12 +839,12 @@ class _DetectionsPainter extends CustomPainter {
 
     for (final Face face in faces) {
       if (showBoundingBoxes) {
-        final List<Point<double>> c = face.bboxCorners;
+        final BoundingBox bbox = face.bbox;
         final ui.Rect rect = Rect.fromLTRB(
-          ox + c[0].x * scaleX,
-          oy + c[0].y * scaleY,
-          ox + c[2].x * scaleX,
-          oy + c[2].y * scaleY,
+          ox + bbox.topLeft.x * scaleX,
+          oy + bbox.topLeft.y * scaleY,
+          ox + bbox.bottomRight.x * scaleX,
+          oy + bbox.bottomRight.y * scaleY,
         );
         canvas.drawRect(rect, boxPaint);
       }
@@ -1509,12 +1509,12 @@ class _CameraDetectionPainter extends CustomPainter {
 
     // Draw bounding boxes
     for (final face in faces) {
-      final corners = face.bboxCorners;
+      final bbox = face.bbox;
       final rect = Rect.fromLTRB(
-        offsetX + corners[0].x * scaleX,
-        offsetY + corners[0].y * scaleY,
-        offsetX + corners[2].x * scaleX,
-        offsetY + corners[2].y * scaleY,
+        offsetX + bbox.topLeft.x * scaleX,
+        offsetY + bbox.topLeft.y * scaleY,
+        offsetX + bbox.bottomRight.x * scaleX,
+        offsetY + bbox.bottomRight.y * scaleY,
       );
       canvas.drawRect(rect, paint);
     }

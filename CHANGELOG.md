@@ -1,4 +1,5 @@
-## 2.1.4
+## 2.2.0
+- BoundingBox class
 - Add clarification to README about dart:math requirement for Point
 
 ## 2.1.3

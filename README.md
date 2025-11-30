@@ -47,11 +47,11 @@ Future main() async {
   // Access results
   for (Face face in faces) {
     final landmarks = face.landmarks;
-    final bbox = face.bboxCorners;
+    final bbox = face.bbox;
     final mesh = face.mesh;
     final irises = face.irises;
 
-    // FaceLandmarkType can be any of these: 
+    // FaceLandmarkType can be any of these:
     // leftEye, rightEye, noseTip, mouth, leftEyeTragion, or rightEyeTragion
     final leftEye = landmarks[FaceLandmarkType.leftEye];
     print('Left eye: (${leftEye?.x}, ${leftEye?.y})');
@@ -64,25 +64,35 @@ Future main() async {
 
 ## Bounding Boxes
 
-The bboxCorners property returns the four corner points of the face bounding box in
-absolute pixel coordinates. The corners are ordered as: top-left, top-right,
-bottom-right, bottom-left.
+The bbox property returns a BoundingBox object representing the face bounding box in
+absolute pixel coordinates. The BoundingBox provides convenient access to corner points,
+dimensions (width and height), and the center point.
 
 ### Accessing Corners
 
 ```dart
 import 'dart:math'; // Required for Point<double>
 
-final List<Point<double>> bbox = face.bboxCorners;
+final BoundingBox bbox = face.bbox;
 
-// Individual corners (each is a Point<double> with x and y)
-final Point<double> topLeft = bbox[0];      // Top-left corner
-final Point<double> topRight = bbox[1];     // Top-right corner  
-final Point<double> bottomRight = bbox[2];  // Bottom-right corner
-final Point<double> bottomLeft = bbox[3];   // Bottom-left corner
+// Access individual corners by name (each is a Point<double> with x and y)
+final Point<double> topLeft = bbox.topLeft;          // Top-left corner
+final Point<double> topRight = bbox.topRight;        // Top-right corner
+final Point<double> bottomRight = bbox.bottomRight;  // Bottom-right corner
+final Point<double> bottomLeft = bbox.bottomLeft;    // Bottom-left corner
+
+// Access dimensions and center
+final double width = bbox.width;      // Width in pixels
+final double height = bbox.height;    // Height in pixels
+final Point<double> center = bbox.center;  // Center point
+
+// Access all corners as a list (order: top-left, top-right, bottom-right, bottom-left)
+final List<Point<double>> allCorners = bbox.corners;
 
 // Access coordinates
 print('Top-left: (${topLeft.x}, ${topLeft.y})');
+print('Size: ${width} x ${height}');
+print('Center: (${center.x}, ${center.y})');
 ```
 
 ## Landmarks

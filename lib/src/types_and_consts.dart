@@ -86,9 +86,67 @@ class IrisPair {
   const IrisPair({this.leftIris, this.rightIris});
 }
 
+/// Face bounding box with corner points in pixel coordinates.
+///
+/// Represents a rectangular bounding box around a detected face with convenient
+/// access to corner points, dimensions, and center coordinates.
+///
+/// All coordinates are in absolute pixel positions relative to the original image.
+///
+/// Example:
+/// ```dart
+/// final bbox = face.bbox;
+/// print('Width: ${bbox.width}, Height: ${bbox.height}');
+/// print('Top-left corner: (${bbox.topLeft.x}, ${bbox.topLeft.y})');
+/// print('Center: (${bbox.center.x}, ${bbox.center.y})');
+/// ```
+class BoundingBox {
+  /// Top-left corner point in absolute pixel coordinates.
+  final math.Point<double> topLeft;
+
+  /// Top-right corner point in absolute pixel coordinates.
+  final math.Point<double> topRight;
+
+  /// Bottom-right corner point in absolute pixel coordinates.
+  final math.Point<double> bottomRight;
+
+  /// Bottom-left corner point in absolute pixel coordinates.
+  final math.Point<double> bottomLeft;
+
+  /// Creates a bounding box with four corner points.
+  ///
+  /// Points should be in order: top-left, top-right, bottom-right, bottom-left.
+  const BoundingBox({
+    required this.topLeft,
+    required this.topRight,
+    required this.bottomRight,
+    required this.bottomLeft,
+  });
+
+  /// The four corner points as a list in order: top-left, top-right,
+  /// bottom-right, bottom-left.
+  ///
+  /// Useful for iteration or when you need all corners at once.
+  List<math.Point<double>> get corners =>
+      [topLeft, topRight, bottomRight, bottomLeft];
+
+  /// Width of the bounding box in pixels.
+  double get width => topRight.x - topLeft.x;
+
+  /// Height of the bounding box in pixels.
+  double get height => bottomLeft.y - topLeft.y;
+
+  /// Center point of the bounding box in absolute pixel coordinates.
+  math.Point<double> get center => math.Point<double>(
+        (topLeft.x + topRight.x) / 2,
+        (topLeft.y + bottomLeft.y) / 2,
+      );
+}
+
 /// Outputs for a single detected face.
 ///
-/// [bboxCorners] are the 4 corner points of the face box in pixel coordinates.
+/// [bbox] is the face bounding box in pixel coordinates.
+/// [bboxCorners] (deprecated) are the 4 corner points of the face box in pixel coordinates.
 /// [landmarks] are coarse detection keypoints (e.g. eyes, nose, mouth corners).
 /// [mesh] contains 468 facial landmarks as pixel coordinates.
 /// [irises] contains 10 points (5 per eye) used to estimate iris position/size.
@@ -245,9 +303,40 @@ class Face {
     return IrisPair(leftIris: leftIris, rightIris: rightIris);
   }
 
+  /// The face bounding box in pixel coordinates.
+  ///
+  /// Provides convenient access to corner points, dimensions, and center
+  /// of the bounding box. Use [BoundingBox.topLeft], [BoundingBox.topRight],
+  /// [BoundingBox.bottomRight], [BoundingBox.bottomLeft] to access individual
+  /// corners, or [BoundingBox.width], [BoundingBox.height], and
+  /// [BoundingBox.center] for dimensions and center point.
+  ///
+  /// Example:
+  /// ```dart
+  /// final bbox = face.bbox;
+  /// print('Face at (${bbox.center.x}, ${bbox.center.y})');
+  /// print('Size: ${bbox.width} x ${bbox.height}');
+  /// ```
+  BoundingBox get bbox {
+    final RectF r = _detection.bbox;
+    final double w = originalSize.width.toDouble();
+    final double h = originalSize.height.toDouble();
+    return BoundingBox(
+      topLeft: math.Point<double>(r.xmin * w, r.ymin * h),
+      topRight: math.Point<double>(r.xmax * w, r.ymin * h),
+      bottomRight: math.Point<double>(r.xmax * w, r.ymax * h),
+      bottomLeft: math.Point<double>(r.xmin * w, r.ymax * h),
+    );
+  }
+
   /// The four corner points of the face bounding box in pixel coordinates.
   ///
   /// Returns points in order: top-left, top-right, bottom-right, bottom-left.
+  ///
+  /// **Deprecated**: Use [bbox] instead, which provides a [BoundingBox] with
+  /// convenient access to corners, dimensions, and center point.
+  @Deprecated(
+      'Use bbox instead for better API with corner names and dimensions')
   List<math.Point<double>> get bboxCorners {
     final RectF r = _detection.bbox;
     final double w = originalSize.width.toDouble();
