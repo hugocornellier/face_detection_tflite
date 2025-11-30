@@ -261,7 +261,7 @@ class FaceDetector {
     kp[FaceLandmarkType.rightEye.index * 2 + 1] = centers[1].dy / imgH;
 
     final Detection updatedFirst = Detection(
-      bbox: det.bbox,
+      boundingBox: det.boundingBox,
       score: det.score,
       keypointsXY: kp,
       imageSize: Size(imgW, imgH),
@@ -370,7 +370,7 @@ class FaceDetector {
       return dets
           .map(
             (det) => Detection(
-              bbox: det.bbox,
+              boundingBox: det.boundingBox,
               score: det.score,
               keypointsXY: det.keypointsXY,
               imageSize: Size(imgW, imgH),
@@ -414,7 +414,7 @@ class FaceDetector {
 
       updated.add(
         Detection(
-          bbox: det.bbox,
+          boundingBox: det.boundingBox,
           score: det.score,
           keypointsXY: kp,
           imageSize: Size(imgW, imgH),

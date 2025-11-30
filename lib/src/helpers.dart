@@ -132,7 +132,7 @@ List<Detection> _detectionLetterboxRemoval(
   return dets
       .map(
         (d) => Detection(
-          bbox: unpad(d.bbox),
+          boundingBox: unpad(d.boundingBox),
           score: d.score,
           keypointsXY: unpadKp(d.keypointsXY),
         ),
@@ -191,7 +191,7 @@ Detection _mapDetectionToRoi(Detection d, RectF roi) {
   }
 
   return Detection(
-    bbox: mapRect(d.bbox),
+    boundingBox: mapRect(d.boundingBox),
     score: d.score,
     keypointsXY: mapKp(d.keypointsXY),
     imageSize: d.imageSize,
@@ -227,7 +227,7 @@ List<Detection> _nms(
     final Detection base = cand.removeAt(0);
     final List<Detection> merged = <Detection>[base];
     cand.removeWhere((d) {
-      if (_iou(base.bbox, d.bbox) >= iouThresh) {
+      if (_iou(base.boundingBox, d.boundingBox) >= iouThresh) {
         merged.add(d);
         return true;
       }
@@ -239,14 +239,14 @@ List<Detection> _nms(
       double sw = 0, xmin = 0, ymin = 0, xmax = 0, ymax = 0;
       for (final Detection m in merged) {
         sw += m.score;
-        xmin += m.bbox.xmin * m.score;
-        ymin += m.bbox.ymin * m.score;
-        xmax += m.bbox.xmax * m.score;
-        ymax += m.bbox.ymax * m.score;
+        xmin += m.boundingBox.xmin * m.score;
+        ymin += m.boundingBox.ymin * m.score;
+        xmax += m.boundingBox.xmax * m.score;
+        ymax += m.boundingBox.ymax * m.score;
       }
       kept.add(
         Detection(
-          bbox: RectF(xmin / sw, ymin / sw, xmax / sw, ymax / sw),
+          boundingBox: RectF(xmin / sw, ymin / sw, xmax / sw, ymax / sw),
           score: base.score,
           keypointsXY: base.keypointsXY,
         ),
@@ -332,7 +332,7 @@ String _nameFor(FaceDetectionModel m) {
 /// 2. Finding the center of the expanded box
 /// 3. Creating a square ROI centered on that point
 ///
-/// The [bbox] parameter is the face bounding box in normalized coordinates (0.0 to 1.0).
+/// The [boundingBox] parameter is the face bounding box in normalized coordinates (0.0 to 1.0).
 ///
 /// The [expandFraction] controls how much to expand the bounding box before
 /// computing the square ROI. Default is 0.6 (60% expansion).
@@ -342,8 +342,8 @@ String _nameFor(FaceDetectionModel m) {
 ///
 /// This is typically used to prepare face regions for mesh landmark detection,
 /// which requires a square input with some padding around the face.
-RectF faceDetectionToRoi(RectF bbox, {double expandFraction = 0.6}) {
-  final e = bbox.expand(expandFraction);
+RectF faceDetectionToRoi(RectF boundingBox, {double expandFraction = 0.6}) {
+  final e = boundingBox.expand(expandFraction);
   final cx = (e.xmin + e.xmax) * 0.5;
   final cy = (e.ymin + e.ymax) * 0.5;
   final s = math.max(e.w, e.h) * 0.5;

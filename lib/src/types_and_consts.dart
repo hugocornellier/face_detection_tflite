@@ -169,10 +169,10 @@ class FaceLandmarks {
 ///
 /// Example:
 /// ```dart
-/// final bbox = face.bbox;
-/// print('Width: ${bbox.width}, Height: ${bbox.height}');
-/// print('Top-left corner: (${bbox.topLeft.x}, ${bbox.topLeft.y})');
-/// print('Center: (${bbox.center.x}, ${bbox.center.y})');
+/// final boundingBox = face.boundingBox;
+/// print('Width: ${boundingBox.width}, Height: ${boundingBox.height}');
+/// print('Top-left corner: (${boundingBox.topLeft.x}, ${boundingBox.topLeft.y})');
+/// print('Center: (${boundingBox.center.x}, ${boundingBox.center.y})');
 /// ```
 class BoundingBox {
   /// Top-left corner point in absolute pixel coordinates.
@@ -219,7 +219,7 @@ class BoundingBox {
 
 /// Outputs for a single detected face.
 ///
-/// [bbox] is the face bounding box in pixel coordinates.
+/// [boundingBox] is the face bounding box in pixel coordinates.
 /// [landmarks] provides convenient access to 6 key facial landmarks (eyes, nose, mouth).
 /// [mesh] contains 468 facial landmarks as pixel coordinates.
 /// [irises] contains 10 points (5 per eye) used to estimate iris position/size.
@@ -274,7 +274,7 @@ class Face {
   /// The dimensions of the original source image.
   ///
   /// This size is used internally to convert normalized coordinates to pixel
-  /// coordinates for [bbox], [landmarks], [mesh], and [irises].
+  /// coordinates for [boundingBox], [landmarks], [mesh], and [irises].
   ///
   /// All coordinate data in [Face] is already scaled to these dimensions,
   /// so users typically don't need to use this field directly unless performing
@@ -386,12 +386,12 @@ class Face {
   ///
   /// Example:
   /// ```dart
-  /// final bbox = face.bbox;
-  /// print('Face at (${bbox.center.x}, ${bbox.center.y})');
-  /// print('Size: ${bbox.width} x ${bbox.height}');
+  /// final boundingBox = face.boundingBox;
+  /// print('Face at (${boundingBox.center.x}, ${boundingBox.center.y})');
+  /// print('Size: ${boundingBox.width} x ${boundingBox.height}');
   /// ```
-  BoundingBox get bbox {
-    final RectF r = _detection.bbox;
+  BoundingBox get boundingBox {
+    final RectF r = _detection.boundingBox;
     final double w = originalSize.width.toDouble();
     final double h = originalSize.height.toDouble();
     return BoundingBox(
@@ -548,10 +548,10 @@ class RectF {
   }
 }
 
-/// Raw detection output from the face detector containing bbox and keypoints.
+/// Raw detection output from the face detector containing the bounding box and keypoints.
 class Detection {
   /// Normalized bounding box for the face.
-  final RectF bbox;
+  final RectF boundingBox;
 
   /// Confidence score for the detection.
   final double score;
@@ -564,7 +564,7 @@ class Detection {
 
   /// Creates a detection with normalized geometry and optional source size.
   Detection({
-    required this.bbox,
+    required this.boundingBox,
     required this.score,
     required this.keypointsXY,
     this.imageSize,
@@ -630,12 +630,12 @@ class AlignedRoi {
 /// Decoded detection box and keypoints straight from the TFLite model.
 class DecodedBox {
   /// Normalized bounding box for a detected face.
-  final RectF bbox;
+  final RectF boundingBox;
 
   /// Flattened list of normalized keypoints `[x0, y0, ...]`.
   final List<double> keypointsXY;
 
   /// Constructs a decoded detection with its normalized bounding box and
   /// flattened landmark coordinates output by the face detector.
-  DecodedBox(this.bbox, this.keypointsXY);
+  DecodedBox(this.boundingBox, this.keypointsXY);
 }

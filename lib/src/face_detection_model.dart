@@ -6,7 +6,7 @@ class FaceDetection {
   IsolateInterpreter? _iso;
   final Interpreter _itp;
   final int _inW, _inH;
-  final int _bboxIndex = 0, _scoreIndex = 1;
+  final int _boundingBoxIndex = 0, _scoreIndex = 1;
   final Float32List _anchors;
   final bool _assumeMirrored;
   late final int _inputIdx;
@@ -106,10 +106,10 @@ class FaceDetection {
     itp.resizeInputTensor(obj._inputIdx, [1, inH, inW, 3]);
     itp.allocateTensors();
 
-    obj._boxesShape = itp.getOutputTensor(obj._bboxIndex).shape;
+    obj._boxesShape = itp.getOutputTensor(obj._boundingBoxIndex).shape;
     obj._scoresShape = itp.getOutputTensor(obj._scoreIndex).shape;
     obj._inputTensor = itp.getInputTensor(obj._inputIdx);
-    obj._boxesTensor = itp.getOutputTensor(obj._bboxIndex);
+    obj._boxesTensor = itp.getOutputTensor(obj._boundingBoxIndex);
     obj._scoresTensor = itp.getOutputTensor(obj._scoreIndex);
     obj._boxesLen = obj._boxesShape.fold(1, (a, b) => a * b);
     obj._scoresLen = obj._scoresShape.fold(1, (a, b) => a * b);
@@ -293,7 +293,7 @@ class FaceDetection {
       }
 
       final Map<int, Object> outputs = <int, Object>{
-        _bboxIndex: boxesOut3d,
+        _boundingBoxIndex: boxesOut3d,
         _scoreIndex: scoresOut,
       };
 
@@ -338,16 +338,16 @@ class FaceDetection {
 
     if (_assumeMirrored) {
       mapped = mapped.map((d) {
-        final double xmin = 1.0 - d.bbox.xmax;
-        final double xmax = 1.0 - d.bbox.xmin;
-        final double ymin = d.bbox.ymin;
-        final double ymax = d.bbox.ymax;
+        final double xmin = 1.0 - d.boundingBox.xmax;
+        final double xmax = 1.0 - d.boundingBox.xmin;
+        final double ymin = d.boundingBox.ymin;
+        final double ymax = d.boundingBox.ymax;
         final List<double> kp = List<double>.from(d.keypointsXY);
         for (int i = 0; i < kp.length; i += 2) {
           kp[i] = 1.0 - kp[i];
         }
         return Detection(
-          bbox: RectF(xmin, ymin, xmax, ymax),
+          boundingBox: RectF(xmin, ymin, xmax, ymax),
           score: d.score,
           keypointsXY: kp,
         );
@@ -404,10 +404,14 @@ class FaceDetection {
     final List<Detection> res = <Detection>[];
     final int n = math.min(boxes.length, scores.length);
     for (int i = 0; i < n; i++) {
-      final RectF b = boxes[i].bbox;
+      final RectF b = boxes[i].boundingBox;
       if (b.xmax <= b.xmin || b.ymax <= b.ymin) continue;
       res.add(
-        Detection(bbox: b, score: scores[i], keypointsXY: boxes[i].keypointsXY),
+        Detection(
+          boundingBox: b,
+          score: scores[i],
+          keypointsXY: boxes[i].keypointsXY,
+        ),
       );
     }
     return res;

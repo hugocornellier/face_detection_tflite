@@ -47,7 +47,7 @@ Future main() async {
   // Access results
   for (Face face in faces) {
     final landmarks = face.landmarks;
-    final bbox = face.bbox;
+    final boundingBox = face.boundingBox;
     final mesh = face.mesh;
     final irises = face.irises;
 
@@ -64,7 +64,7 @@ Future main() async {
 
 ## Bounding Boxes
 
-The bbox property returns a BoundingBox object representing the face bounding box in
+The boundingBox property returns a BoundingBox object representing the face bounding box in
 absolute pixel coordinates. The BoundingBox provides convenient access to corner points,
 dimensions (width and height), and the center point.
 
@@ -73,21 +73,21 @@ dimensions (width and height), and the center point.
 ```dart
 import 'dart:math'; // Required for Point<double>
 
-final BoundingBox bbox = face.bbox;
+final BoundingBox boundingBox = face.boundingBox;
 
 // Access individual corners by name (each is a Point<double> with x and y)
-final Point<double> topLeft     = bbox.topLeft;       // Top-left corner
-final Point<double> topRight    = bbox.topRight;      // Top-right corner
-final Point<double> bottomRight = bbox.bottomRight;   // Bottom-right corner
-final Point<double> bottomLeft  = bbox.bottomLeft;    // Bottom-left corner
+final Point<double> topLeft     = boundingBox.topLeft;       // Top-left corner
+final Point<double> topRight    = boundingBox.topRight;      // Top-right corner
+final Point<double> bottomRight = boundingBox.bottomRight;   // Bottom-right corner
+final Point<double> bottomLeft  = boundingBox.bottomLeft;    // Bottom-left corner
 
 // Access dimensions and center
-final double width  = bbox.width;     // Width in pixels
-final double height = bbox.height;    // Height in pixels
-final Point<double> center = bbox.center;  // Center point
+final double width  = boundingBox.width;     // Width in pixels
+final double height = boundingBox.height;    // Height in pixels
+final Point<double> center = boundingBox.center;  // Center point
 
 // Access all corners as a list (order: top-left, top-right, bottom-right, bottom-left)
-final List<Point<double>> allCorners = bbox.corners;
+final List<Point<double>> allCorners = boundingBox.corners;
 
 // Access coordinates
 print('Top-left: (${topLeft.x}, ${topLeft.y})');

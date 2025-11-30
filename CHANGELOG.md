@@ -2,6 +2,7 @@
 **This version contains breaking changes.**
 - Remove deprecated bboxCorners and landmarksMap. The new BoundingBox and 
   FaceLandmarks class should be used instead.
+- Rename bbox to boundingBox.
 
 ## 2.2.1
 - FaceLandmarks class instead of Map
