@@ -32,6 +32,7 @@ This package provides on-device face and landmark detection with minimal depende
 
 ```dart
 import 'dart:io';
+import 'dart:math'; // Required to work with Point<double> coordinates
 import 'package:face_detection_tflite/face_detection_tflite.dart';
 
 Future main() async {
@@ -70,6 +71,8 @@ bottom-right, bottom-left.
 ### Accessing Corners
 
 ```dart
+import 'dart:math'; // Required for Point<double>
+
 final List<Point<double>> bbox = face.bboxCorners;
 
 // Individual corners (each is a Point<double> with x and y)
@@ -91,6 +94,8 @@ to reference specific mesh indices.
 ### Accessing Landmarks
 
 ```dart
+import 'dart:math'; // Required for Point<double>
+
 final Map<FaceLandmarkType, Point<double>> landmarks = face.landmarks;
 
 // Access individual landmarks (each is a Point<double> with x and y)
@@ -120,6 +125,8 @@ and can be used for precise face tracking and rendering.
 ### Accessing Points
 
   ```dart
+  import 'dart:math'; // Required for Point<double>
+
   final List<Point<double>> mesh = face.mesh;
 
   // Total number of points (always 468)
@@ -146,6 +153,8 @@ iris boundary. Only available in FaceDetectionMode.full.
 ### Accessing Iris Data
 
 ```dart
+import 'dart:math'; // Required for Point<double>
+
 final IrisPair? irises = face.irises;
 
 // Access left and right iris (each is an Iris object)

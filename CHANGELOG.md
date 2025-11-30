@@ -1,3 +1,6 @@
+## 2.1.4
+- Add clarification to README about dart:math requirement for Point
+
 ## 2.1.3
 - Bundle Point from dart:math with library
 - Improved dartdocs 
