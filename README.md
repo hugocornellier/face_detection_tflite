@@ -3,8 +3,8 @@
 [![pub points](https://img.shields.io/pub/points/face_detection_tflite?color=2E8B57&label=pub%20points)](https://pub.dev/packages/face_detection_tflite/score)
 [![pub package](https://img.shields.io/pub/v/face_detection_tflite.svg)](https://pub.dev/packages/face_detection_tflite)
 
-A pure Dart/Flutter implementation of Google's MediaPipe face detection and facial landmark models using TensorFlow Lite. 
-This package provides on-device face and landmark detection with minimal dependencies, just TensorFlow Lite and image.
+Flutter implementation of Google's MediaPipe face and facial landmark detection models using TensorFlow Lite.
+Completely local: no remote API, just pure on-device, offline detection.
 
 #### Bounding Box Example:
 
@@ -48,16 +48,11 @@ Future main() async {
   List<Face> faces = await detector.detectFaces(imageBytes);
 
   // Access results
-  for (Face face in faces) {
-    final landmarks = face.landmarks;
+  for (final face in faces) {
     final boundingBox = face.boundingBox;
+    final landmarks   = face.landmarks;
     final mesh = face.mesh;
     final irises = face.irises;
-
-    // FaceLandmarkType can be any of these:
-    // leftEye, rightEye, noseTip, mouth, leftEyeTragion, or rightEyeTragion
-    final leftEye = landmarks[FaceLandmarkType.leftEye];
-    print('Left eye: (${leftEye?.x}, ${leftEye?.y})');
   }
 
   // Don't forget to clean-up when you're done!
@@ -84,16 +79,26 @@ final Point<double> topRight    = boundingBox.topRight;      // Top-right corner
 final Point<double> bottomRight = boundingBox.bottomRight;   // Bottom-right corner
 final Point<double> bottomLeft  = boundingBox.bottomLeft;    // Bottom-left corner
 
-// Access dimensions and center
-final double width  = boundingBox.width;     // Width in pixels
-final double height = boundingBox.height;    // Height in pixels
-final Point<double> center = boundingBox.center;  // Center point
-
 // Access all corners as a list (order: top-left, top-right, bottom-right, bottom-left)
 final List<Point<double>> allCorners = boundingBox.corners;
 
 // Access coordinates
 print('Top-left: (${topLeft.x}, ${topLeft.y})');
+```
+
+### Additional Parameters
+
+```dart
+import 'dart:math'; // Required for Point<double>
+
+final BoundingBox boundingBox = face.boundingBox;
+
+// Access dimensions and center
+final double width  = boundingBox.width;     // Width in pixels
+final double height = boundingBox.height;    // Height in pixels
+final Point<double> center = boundingBox.center;  // Center point
+
+// Access coordinates
 print('Size: ${width} x ${height}');
 print('Center: (${center.x}, ${center.y})');
 ```
