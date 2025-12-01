@@ -1,3 +1,6 @@
+## 3.0.1
+- Add pub.dev score and version to README
+
 ## 3.0.0
 **This version contains breaking changes.**
 - Remove deprecated bboxCorners and landmarksMap. The new BoundingBox and 

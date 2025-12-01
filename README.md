@@ -1,5 +1,8 @@
 # face_detection_tflite
 
+[![pub points](https://img.shields.io/pub/points/face_detection_tflite?color=2E8B57&label=pub%20points)](https://pub.dev/packages/face_detection_tflite/score)
+[![pub package](https://img.shields.io/pub/v/face_detection_tflite.svg)](https://pub.dev/packages/face_detection_tflite)
+
 A pure Dart/Flutter implementation of Google's MediaPipe face detection and facial landmark models using TensorFlow Lite. 
 This package provides on-device face and landmark detection with minimal dependencies, just TensorFlow Lite and image.
 
