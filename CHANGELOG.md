@@ -1,4 +1,8 @@
+## 3.0.2
+- Cache input tensor buffers in FaceDetection, FaceLandmark, and IrisLandmark
+
 ## 3.0.1
+- Performance improvement: Optimize full mode by reusing mesh and iris landmarks
 - Add pub.dev score and version to README
 
 ## 3.0.0

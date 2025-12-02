@@ -20,6 +20,7 @@ class FaceDetection {
   late final Float32List _inputBuf;
   late final Float32List _boxesBuf;
   late final Float32List _scoresBuf;
+  late final List<List<List<List<double>>>> _input4dCache;
 
   FaceDetection._(
     this._itp,
@@ -117,6 +118,8 @@ class FaceDetection {
     obj._boxesBuf = obj._boxesTensor.data.buffer.asFloat32List();
     obj._scoresBuf = obj._scoresTensor.data.buffer.asFloat32List();
 
+    obj._input4dCache = _createNHWC4D(inH, inW);
+
     if (useIsolate) {
       obj._iso = await IsolateInterpreter.create(address: itp.address);
     }
@@ -124,10 +127,10 @@ class FaceDetection {
     return obj;
   }
 
-  List<List<List<List<double>>>> _asNHWC4D(Float32List flat, int h, int w) {
-    final out = List<List<List<List<double>>>>.filled(
+  static List<List<List<List<double>>>> _createNHWC4D(int h, int w) {
+    return List<List<List<List<double>>>>.generate(
       1,
-      List.generate(
+      (_) => List.generate(
         h,
         (_) => List.generate(
           w,
@@ -138,17 +141,18 @@ class FaceDetection {
       ),
       growable: false,
     );
+  }
 
+  void _fillNHWC4D(Float32List flat) {
     int k = 0;
-    for (int y = 0; y < h; y++) {
-      for (int x = 0; x < w; x++) {
-        final List<double> px = out[0][y][x];
+    for (int y = 0; y < _inH; y++) {
+      for (int x = 0; x < _inW; x++) {
+        final List<double> px = _input4dCache[0][y][x];
         px[0] = flat[k++];
         px[1] = flat[k++];
         px[2] = flat[k++];
       }
     }
-    return out;
   }
 
   void _flatten3D(List<List<List<num>>> src, Float32List dst) {
@@ -245,18 +249,14 @@ class FaceDetection {
     Float32List scoresBuf;
 
     if (_iso != null) {
-      final List<List<List<List<double>>>> input4d = _asNHWC4D(
-        pack.tensorNHWC,
-        _inH,
-        _inW,
-      );
+      _fillNHWC4D(pack.tensorNHWC);
       final int inputCount = _itp.getInputTensors().length;
       final List<Object?> inputs = List<Object?>.filled(
         inputCount,
         null,
         growable: false,
       );
-      inputs[_inputIdx] = input4d;
+      inputs[_inputIdx] = _input4dCache;
 
       final int b0 = _boxesShape[0], b1 = _boxesShape[1], b2 = _boxesShape[2];
       final List<List<List<double>>> boxesOut3d = List.generate(

@@ -1,5 +1,19 @@
 part of '../face_detection_tflite.dart';
 
+class _DetectionFeatures {
+  const _DetectionFeatures({
+    required this.detection,
+    required this.alignedFace,
+    required this.meshAbs,
+    required this.irisAbs,
+  });
+
+  final Detection detection;
+  final AlignedFace alignedFace;
+  final List<Offset> meshAbs;
+  final List<Offset> irisAbs;
+}
+
 /// A complete face detection and analysis system using TensorFlow Lite models.
 ///
 /// This class orchestrates three TensorFlow Lite models to provide comprehensive
@@ -275,10 +289,12 @@ class FaceDetector {
     List<AlignedRoi> rois, {
     Offset? leftFallback,
     Offset? rightFallback,
+    List<Offset>? allLandmarks,
   }) async {
     final Stopwatch sw = Stopwatch()..start();
     final IrisLandmark iris = _iris!;
     final List<Offset> centers = <Offset>[];
+    allLandmarks?.clear();
 
     Offset pickCenter(List<List<double>> lm, Offset? fallback) {
       if (lm.isEmpty) return fallback ?? const Offset(0, 0);
@@ -309,6 +325,11 @@ class FaceDetector {
         rois[i],
         isRight: isRight,
       );
+      if (allLandmarks != null) {
+        allLandmarks.addAll(
+          lm.map((p) => Offset(p[0].toDouble(), p[1].toDouble())),
+        );
+      }
       final Offset? fb = i == 0 ? leftFallback : rightFallback;
       centers.add(pickCenter(lm, fb));
     }
@@ -344,6 +365,7 @@ class FaceDetector {
     img.Image decoded, {
     RectF? roi,
     bool refineEyesWithIris = true,
+    List<_DetectionFeatures>? featuresOut,
   }) async {
     final FaceDetection? d = _detector;
     if (d == null) {
@@ -363,6 +385,7 @@ class FaceDetector {
       worker: _worker,
     );
     if (dets.isEmpty) return dets;
+    featuresOut?.clear();
 
     if (!refineEyesWithIris) {
       final double imgW = decoded.width.toDouble();
@@ -399,11 +422,13 @@ class FaceDetector {
         det.keypointsXY[FaceLandmarkType.rightEye.index * 2 + 1] * imgH,
       );
 
+      final List<Offset> irisLandmarks = <Offset>[];
       final List<Offset> centers = await _computeIrisCentersWithDecoded(
         decoded,
         rois,
         leftFallback: lf,
         rightFallback: rf,
+        allLandmarks: irisLandmarks,
       );
 
       final List<double> kp = List<double>.from(det.keypointsXY);
@@ -420,6 +445,16 @@ class FaceDetector {
           imageSize: Size(imgW, imgH),
         ),
       );
+      if (featuresOut != null) {
+        featuresOut.add(
+          _DetectionFeatures(
+            detection: updated.last,
+            alignedFace: aligned,
+            meshAbs: meshPts,
+            irisAbs: irisLandmarks,
+          ),
+        );
+      }
     }
     return updated;
   }
@@ -925,15 +960,18 @@ class FaceDetector {
     );
 
     final bool computeIris = mode == FaceDetectionMode.full;
+    final List<_DetectionFeatures> features =
+        computeIris ? <_DetectionFeatures>[] : const <_DetectionFeatures>[];
     // Use decoded image to avoid redundant decoding
     final List<Detection> dets = await _detectDetectionsWithDecoded(
       decoded,
       refineEyesWithIris: computeIris,
+      featuresOut: computeIris ? features : null,
     );
 
     final bool computeMesh =
         mode == FaceDetectionMode.standard || mode == FaceDetectionMode.full;
-    final List<AlignedFace> allAligned = computeMesh
+    final List<AlignedFace> allAligned = computeMesh && !computeIris
         ? await Future.wait(
             dets.map((det) => estimateAlignedFace(decoded, det)),
           )
@@ -942,17 +980,29 @@ class FaceDetector {
     final List<Face> faces = <Face>[];
     for (int i = 0; i < dets.length; i++) {
       try {
-        final Detection det = dets[i];
+        final _DetectionFeatures? feat =
+            computeIris && i < features.length ? features[i] : null;
+        final Detection det = feat?.detection ?? dets[i];
 
         final List<math.Point<double>> meshPx =
-            computeMesh && i < allAligned.length
-                ? await _getMeshForFace(allAligned[i])
-                : <math.Point<double>>[];
+            computeMesh && feat != null && feat.meshAbs.isNotEmpty
+                ? feat.meshAbs
+                    .map((p) => math.Point<double>(p.dx, p.dy))
+                    .toList(growable: false)
+                : computeMesh && i < allAligned.length
+                    ? await _getMeshForFace(allAligned[i])
+                    : <math.Point<double>>[];
 
         final List<math.Point<double>> irisPx =
-            computeIris && i < allAligned.length
-                ? await _getIrisForFace(decoded, meshPx)
-                : <math.Point<double>>[];
+            computeIris && feat != null && feat.irisAbs.isNotEmpty
+                ? feat.irisAbs
+                    .map((p) => math.Point<double>(p.dx, p.dy))
+                    .toList(growable: false)
+                : computeIris && i < allAligned.length
+                    ? await _getIrisForFace(decoded, meshPx)
+                    : computeIris
+                        ? await _getIrisForFace(decoded, meshPx)
+                        : <math.Point<double>>[];
 
         faces.add(
           Face(

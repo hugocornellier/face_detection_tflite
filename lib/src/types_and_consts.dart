@@ -228,9 +228,8 @@ class Face {
 
   /// The 468-point face mesh in pixel coordinates.
   ///
-  /// Each point is a 3D coordinate `(x, y, z)` where:
-  /// - `x` and `y` are absolute pixel positions in the original image
-  /// - `z` represents relative depth (units are consistent but not metric)
+  /// Each point contains `x` and `y` as absolute pixel positions in the
+  /// original image.
   ///
   /// The 468 points follow MediaPipe's canonical face mesh topology, providing
   /// detailed geometry for facial features including eyes, eyebrows, nose, mouth,
@@ -250,9 +249,8 @@ class Face {
   /// Contains 10 points total: 5 keypoints per iris (left and right eyes).
   /// Each iris is represented by a center point and 4 contour points.
   ///
-  /// Each point is a 3D coordinate `(x, y, z)` where:
-  /// - `x` and `y` are absolute pixel positions in the original image
-  /// - `z` represents relative depth
+  /// Each point contains `x` and `y` as absolute pixel positions in the
+  /// original image.
   ///
   /// This list is empty when [FaceDetector.detectFaces] is called with
   /// [FaceDetectionMode.fast] or [FaceDetectionMode.standard]. Use
@@ -424,7 +422,7 @@ class Face {
   FaceLandmarks get landmarks => FaceLandmarks(_detection.landmarks);
 }
 
-/// The expected number of 3D landmark points in a complete face mesh.
+/// The expected number of landmark points in a complete face mesh.
 ///
 /// MediaPipe's face mesh model produces exactly 468 points covering facial
 /// features including eyes, eyebrows, nose, mouth, and face contours.

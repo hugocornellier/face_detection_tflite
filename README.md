@@ -165,7 +165,7 @@ and can be used for precise face tracking and rendering.
 ## Irises
 
 The irises property returns detailed iris tracking data for both eyes in absolute pixel
-coordinates. Each iris includes the center point and 5 contour points that outline the
+coordinates. Each iris includes the center point and 4 contour points that outline the
 iris boundary. Only available in FaceDetectionMode.full.
 
 ### Accessing Iris Data

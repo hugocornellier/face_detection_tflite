@@ -10,6 +10,7 @@ class IrisLandmark {
   late final Float32List _inputBuf;
   late final Map<int, List<int>> _outShapes;
   late final Map<int, Float32List> _outBuffers;
+  late final List<List<List<List<double>>>> _input4dCache;
 
   IrisLandmark._(this._itp, this._inW, this._inH);
 
@@ -72,6 +73,7 @@ class IrisLandmark {
     }
     obj._outShapes = shapes;
     obj._outBuffers = buffers;
+    obj._input4dCache = _createNHWC4D(inH, inW);
 
     if (useIsolate) {
       obj._iso = await IsolateInterpreter.create(address: itp.address);
@@ -142,6 +144,7 @@ class IrisLandmark {
     }
     obj._outShapes = shapes;
     obj._outBuffers = buffers;
+    obj._input4dCache = _createNHWC4D(inH, inW);
 
     if (useIsolate) {
       obj._iso = await IsolateInterpreter.create(address: itp.address);
@@ -150,10 +153,10 @@ class IrisLandmark {
     return obj;
   }
 
-  List<List<List<List<double>>>> _asNHWC4D(Float32List flat, int h, int w) {
-    final out = List<List<List<List<double>>>>.filled(
+  static List<List<List<List<double>>>> _createNHWC4D(int h, int w) {
+    return List<List<List<List<double>>>>.generate(
       1,
-      List.generate(
+      (_) => List.generate(
         h,
         (_) => List.generate(
           w,
@@ -164,16 +167,18 @@ class IrisLandmark {
       ),
       growable: false,
     );
+  }
+
+  void _fillNHWC4D(Float32List flat) {
     int k = 0;
-    for (int y = 0; y < h; y++) {
-      for (int x = 0; x < w; x++) {
-        final List<double> px = out[0][y][x];
+    for (int y = 0; y < _inH; y++) {
+      for (int x = 0; x < _inW; x++) {
+        final List<double> px = _input4dCache[0][y][x];
         px[0] = flat[k++];
         px[1] = flat[k++];
         px[2] = flat[k++];
       }
     }
-    return out;
   }
 
   Object _allocForShape(List<int> shape) {
@@ -256,12 +261,8 @@ class IrisLandmark {
       }
       return lm;
     } else {
-      final List<List<List<List<double>>>> input4d = _asNHWC4D(
-        pack.tensorNHWC,
-        _inH,
-        _inW,
-      );
-      final List<List<List<List<List<double>>>>> inputs = [input4d];
+      _fillNHWC4D(pack.tensorNHWC);
+      final List<List<List<List<List<double>>>>> inputs = [_input4dCache];
       final Map<int, Object> outputs = <int, Object>{};
       _outShapes.forEach((i, shape) {
         outputs[i] = _allocForShape(shape);
@@ -487,12 +488,8 @@ class IrisLandmark {
       }
       return lm;
     } else {
-      final List<List<List<List<double>>>> input4d = _asNHWC4D(
-        pack.tensorNHWC,
-        _inH,
-        _inW,
-      );
-      final List<List<List<List<List<double>>>>> inputs = [input4d];
+      _fillNHWC4D(pack.tensorNHWC);
+      final List<List<List<List<List<double>>>>> inputs = [_input4dCache];
       final Map<int, Object> outputs = <int, Object>{};
       _outShapes.forEach((i, shape) {
         outputs[i] = _allocForShape(shape);
