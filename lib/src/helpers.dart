@@ -69,24 +69,20 @@ Future<void> _imageToTensorIsolate(Map<String, dynamic> params) async {
   final int dx = (outW - newW) ~/ 2;
   final int dy = (outH - newH) ~/ 2;
 
-  final img.Image canvas = img.Image(width: outW, height: outH);
-  img.fill(canvas, color: img.ColorRgb8(0, 0, 0));
-
-  for (int y = 0; y < resized.height; y++) {
-    for (int x = 0; x < resized.width; x++) {
-      final img.Pixel px = resized.getPixel(x, y);
-      canvas.setPixel(x + dx, y + dy, px);
-    }
-  }
-
   final Float32List t = Float32List(outW * outH * 3);
-  int k = 0;
-  for (int y = 0; y < outH; y++) {
-    for (int x = 0; x < outW; x++) {
-      final px = canvas.getPixel(x, y);
-      t[k++] = (px.r / 127.5) - 1.0;
-      t[k++] = (px.g / 127.5) - 1.0;
-      t[k++] = (px.b / 127.5) - 1.0;
+  t.fillRange(0, t.length, -1.0); // black padding -> -1.0
+
+  final Uint8List resizedRgb = resized.getBytes(order: img.ChannelOrder.rgb);
+  int srcIdx = 0;
+  for (int y = 0; y < resized.height; y++) {
+    int dstIdx = ((y + dy) * outW + dx) * 3;
+    for (int x = 0; x < resized.width; x++) {
+      final int r = resizedRgb[srcIdx++];
+      final int g = resizedRgb[srcIdx++];
+      final int b = resizedRgb[srcIdx++];
+      t[dstIdx++] = (r / 127.5) - 1.0;
+      t[dstIdx++] = (g / 127.5) - 1.0;
+      t[dstIdx++] = (b / 127.5) - 1.0;
     }
   }
 

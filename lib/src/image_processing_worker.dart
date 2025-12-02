@@ -455,25 +455,22 @@ class ImageProcessingWorker {
     final int dx = (outW - newW) ~/ 2;
     final int dy = (outH - newH) ~/ 2;
 
-    final img.Image canvas = img.Image(width: outW, height: outH);
-    img.fill(canvas, color: img.ColorRgb8(0, 0, 0));
-
-    for (int y = 0; y < resized.height; y++) {
-      for (int x = 0; x < resized.width; x++) {
-        final img.Pixel px = resized.getPixel(x, y);
-        canvas.setPixel(x + dx, y + dy, px);
-      }
-    }
-
-    // Convert to normalized tensor [-1.0, 1.0]
+    // Write normalized values straight into the tensor to avoid creating a
+    // padded intermediate image.
     final Float32List tensor = Float32List(outW * outH * 3);
-    int k = 0;
-    for (int y = 0; y < outH; y++) {
-      for (int x = 0; x < outW; x++) {
-        final px = canvas.getPixel(x, y);
-        tensor[k++] = (px.r / 127.5) - 1.0;
-        tensor[k++] = (px.g / 127.5) - 1.0;
-        tensor[k++] = (px.b / 127.5) - 1.0;
+    tensor.fillRange(0, tensor.length, -1.0); // black padding -> -1.0
+
+    final Uint8List resizedRgb = resized.getBytes(order: img.ChannelOrder.rgb);
+    int srcIdx = 0;
+    for (int y = 0; y < resized.height; y++) {
+      int dstIdx = ((y + dy) * outW + dx) * 3;
+      for (int x = 0; x < resized.width; x++) {
+        final int r = resizedRgb[srcIdx++];
+        final int g = resizedRgb[srcIdx++];
+        final int b = resizedRgb[srcIdx++];
+        tensor[dstIdx++] = (r / 127.5) - 1.0;
+        tensor[dstIdx++] = (g / 127.5) - 1.0;
+        tensor[dstIdx++] = (b / 127.5) - 1.0;
       }
     }
 
