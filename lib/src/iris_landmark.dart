@@ -242,11 +242,15 @@ class IrisLandmark {
   /// See also:
   /// - [callIrisOnly] to extract only the 5 iris keypoints
   /// - [runOnImage] to run on a full image with an eye ROI
-  Future<List<List<double>>> call(img.Image eyeCrop) async {
-    final ImageTensor pack = await _imageToTensor(
+  Future<List<List<double>>> call(
+    img.Image eyeCrop, {
+    ImageProcessingWorker? worker,
+  }) async {
+    final ImageTensor pack = await imageToTensorWithWorker(
       eyeCrop,
       outW: _inW,
       outH: _inH,
+      worker: worker,
     );
 
     if (_iso == null) {
@@ -311,9 +315,14 @@ class IrisLandmark {
   /// See also:
   /// - [call] to run on a pre-cropped eye image
   /// - [runOnImageAlignedIris] for aligned eye ROI processing
-  Future<List<List<double>>> runOnImage(img.Image src, RectF eyeRoi) async {
-    final img.Image eyeCrop = await cropFromRoi(src, eyeRoi);
-    final List<List<double>> lmNorm = await call(eyeCrop);
+  Future<List<List<double>>> runOnImage(
+    img.Image src,
+    RectF eyeRoi, {
+    ImageProcessingWorker? worker,
+  }) async {
+    final img.Image eyeCrop =
+        await cropFromRoiWithWorker(src, eyeRoi, worker);
+    final List<List<double>> lmNorm = await call(eyeCrop, worker: worker);
     final double imgW = src.width.toDouble();
     final double imgH = src.height.toDouble();
     final double dx = eyeRoi.xmin * imgW;
@@ -448,11 +457,15 @@ class IrisLandmark {
   /// See also:
   /// - [call] to get all iris and eye contour landmarks
   /// - [runOnImageAlignedIris] for aligned eye ROI processing
-  Future<List<List<double>>> callIrisOnly(img.Image eyeCrop) async {
-    final ImageTensor pack = await _imageToTensor(
+  Future<List<List<double>>> callIrisOnly(
+    img.Image eyeCrop, {
+    ImageProcessingWorker? worker,
+  }) async {
+    final ImageTensor pack = await imageToTensorWithWorker(
       eyeCrop,
       outW: _inW,
       outH: _inH,
+      worker: worker,
     );
 
     if (_iso == null) {
@@ -554,13 +567,15 @@ class IrisLandmark {
     img.Image src,
     AlignedRoi roi, {
     bool isRight = false,
+    ImageProcessingWorker? worker,
   }) async {
-    final img.Image crop = await extractAlignedSquare(
+    final img.Image crop = await extractAlignedSquareWithWorker(
       src,
       roi.cx,
       roi.cy,
       roi.size,
       roi.theta,
+      worker,
     );
     final img.Image eye = isRight ? await _flipHorizontal(crop) : crop;
     final double ct = math.cos(roi.theta);
@@ -568,7 +583,8 @@ class IrisLandmark {
     final double s = roi.size;
 
     final List<List<double>> out = <List<double>>[];
-    final List<List<double>> lmNorm = await callIrisOnly(eye);
+    final List<List<double>> lmNorm =
+        await callIrisOnly(eye, worker: worker);
     for (final List<double> p in lmNorm) {
       final double px = isRight ? (1.0 - p[0]) : p[0];
       final double py = p[1];

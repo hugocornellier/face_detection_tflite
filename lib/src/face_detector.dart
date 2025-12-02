@@ -324,6 +324,7 @@ class FaceDetector {
         decoded,
         rois[i],
         isRight: isRight,
+        worker: _worker,
       );
       if (allLandmarks != null) {
         allLandmarks.addAll(
@@ -565,7 +566,7 @@ class FaceDetector {
   ) async {
     final fl = _faceLm;
     if (fl == null) return const <Offset>[];
-    final lmNorm = await fl.call(faceCrop);
+    final lmNorm = await fl.call(faceCrop, worker: _worker);
     final ct = math.cos(aligned.theta);
     final st = math.sin(aligned.theta);
     final s = aligned.size;
@@ -660,6 +661,7 @@ class FaceDetector {
         decoded,
         rois[i],
         isRight: isRight,
+        worker: _worker,
       );
       for (final List<double> p in irisLm) {
         pts.add(Offset(p[0].toDouble(), p[1].toDouble()));

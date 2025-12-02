@@ -167,11 +167,15 @@ class FaceLandmark {
   /// final meshPoints = await faceLandmark(alignedFaceCrop);
   /// print('Predicted ${meshPoints.length} mesh points'); // 468
   /// ```
-  Future<List<List<double>>> call(img.Image faceCrop) async {
-    final ImageTensor pack = await _imageToTensor(
+  Future<List<List<double>>> call(
+    img.Image faceCrop, {
+    ImageProcessingWorker? worker,
+  }) async {
+    final ImageTensor pack = await imageToTensorWithWorker(
       faceCrop,
       outW: _inW,
       outH: _inH,
+      worker: worker,
     );
 
     if (_iso == null) {
