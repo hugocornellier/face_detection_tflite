@@ -35,33 +35,236 @@ enum FaceDetectionModel {
 /// - [full]: All features including bounding boxes, landmarks, mesh, and iris tracking
 enum FaceDetectionMode { fast, standard, full }
 
-/// A single iris with center point and contour boundary.
+/// Connections between eye contour landmarks for rendering the visible eyeball outline.
 ///
-/// Each iris is represented by a center point and four contour points that
-/// outline the iris boundary. All coordinates are in absolute pixel positions
-/// relative to the original image.
+/// These define which of the 71 eye contour points should be connected with lines
+/// to form the visible eye shape (eyelids). The connections form the outline of the
+/// visible eyeball by connecting the first 15 eye contour landmarks.
+///
+/// Based on MediaPipe's iris rendering configuration.
+///
+/// Example usage:
+/// ```dart
+/// for (final connection in eyeLandmarkConnections) {
+///   final p1 = iris.eyeContour[connection[0]];
+///   final p2 = iris.eyeContour[connection[1]];
+///   // Draw line from p1 to p2
+/// }
+/// ```
+const List<List<int>> eyeLandmarkConnections = [
+  [0, 1],
+  [1, 2],
+  [2, 3],
+  [3, 4],
+  [4, 5],
+  [5, 6],
+  [6, 7],
+  [7, 8],
+  [9, 10],
+  [10, 11],
+  [11, 12],
+  [12, 13],
+  [13, 14],
+  [0, 9],
+  [8, 14]
+];
+
+/// Number of eye contour points that form the visible eyeball outline.
+///
+/// The first 15 points of the 71-point eye contour represent the visible
+/// eyelid outline. The remaining 56 points are used for eyebrows and
+/// additional tracking halos around the eye region.
+const int kMaxEyeLandmark = 15;
+
+/// A point with x, y, and optional z coordinates.
+///
+/// Used to represent landmarks with optional depth information.
+/// The x and y coordinates are in absolute pixel positions relative to the original image.
+/// The z coordinate represents relative depth (scale-dependent) when 3D computation is enabled.
+///
+/// When [z] is null, this represents a 2D point. When [z] is non-null, it represents
+/// a 3D point with depth information.
+class Point {
+  /// The x-coordinate in absolute pixels.
+  final double x;
+
+  /// The y-coordinate in absolute pixels.
+  final double y;
+
+  /// The z-coordinate representing relative depth, or null for 2D points.
+  ///
+  /// This is a scale-dependent depth value. The magnitude depends on the face size
+  /// and alignment used during detection. Negative values indicate points closer to
+  /// the camera, positive values indicate points further away.
+  ///
+  /// Will be null for 2D-only landmarks (such as face detection keypoints).
+  /// Face mesh and iris landmarks always include z-coordinates.
+  final double? z;
+
+  /// Creates a point with the given x, y, and optional z coordinates.
+  const Point(this.x, this.y, [this.z]);
+
+  /// Whether this point has depth information (z-coordinate).
+  ///
+  /// Returns true if z-coordinate is non-null, false otherwise.
+  bool get is3D => z != null;
+
+  @override
+  String toString() => z != null ? 'Point($x, $y, $z)' : 'Point($x, $y)';
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Point &&
+          runtimeType == other.runtimeType &&
+          x == other.x &&
+          y == other.y &&
+          z == other.z;
+
+  @override
+  int get hashCode => Object.hash(x, y, z);
+}
+
+/// A 468-point face mesh with optional depth information.
+///
+/// Encapsulates the MediaPipe face mesh data. Each point has x and y coordinates
+/// in absolute pixels, and an optional z coordinate representing depth.
+/// 3D coordinates are always computed for face mesh landmarks.
+///
+/// The mesh contains 468 points following MediaPipe's canonical face mesh topology,
+/// providing detailed geometry for facial features including eyes, eyebrows, nose,
+/// mouth, and face contours.
+///
+/// Example:
+/// ```dart
+/// final FaceMesh? mesh = face.mesh;
+/// if (mesh != null) {
+///   // Access points
+///   final points = mesh.points;
+///   print('Nose tip: (${points[1].x}, ${points[1].y}, ${points[1].z})');
+///
+///   // Direct indexed access
+///   final noseTip = mesh[1];
+///   if (noseTip.z != null) {
+///     print('Depth available: ${noseTip.z}');
+///   }
+/// }
+/// ```
+class FaceMesh {
+  final List<Point> _points;
+
+  /// Creates a face mesh from 468 points.
+  FaceMesh(this._points) : assert(_points.length == kMeshPoints);
+
+  /// The 468 mesh points with depth information.
+  ///
+  /// Each point has x, y, and z coordinates. The z coordinate represents
+  /// relative depth and is always computed for face mesh landmarks.
+  List<Point> get points => _points;
+
+  /// Returns the point at the given index.
+  ///
+  /// Example: `mesh[1]` returns the nose tip.
+  Point operator [](int index) => _points[index];
+
+  /// The number of points in the mesh (always 468).
+  int get length => _points.length;
+
+  @override
+  String toString() => 'FaceMesh(${_points.length} points)';
+}
+
+/// Comprehensive eye tracking data including iris center, iris contour, and eye mesh.
+///
+/// Each eye contains:
+/// - An iris center point for gaze tracking
+/// - Four iris contour points outlining the iris boundary
+/// - Eye mesh landmarks covering the entire eye region (71 points including eyelid contour)
+///
+/// All coordinates are in absolute pixel positions relative to the original image.
+///
+/// **Naming clarity:**
+/// - [irisCenter]: Iris center point for gaze tracking
+/// - [irisContour]: 4 points outlining the iris boundary (the colored part of the eye)
+/// - [contour]: 15 points outlining the eyelid (visible eyeball outline)
+/// - [mesh]: 71 points covering the entire eye region (eyelids, eyebrows, tracking halos)
+///
+/// The eye mesh landmarks provide detailed geometry for the entire eye region including
+/// eyelids, eye corners, and surrounding area. These can be useful for blink detection,
+/// eye openness estimation, and advanced eye tracking applications.
 ///
 /// See also:
-/// - [IrisPair] for accessing both eyes' iris data
-class Iris {
-  /// Center point of the iris in absolute pixel coordinates.
-  final math.Point<double> center;
+/// - [EyePair] for accessing both eyes' data
+class Eye {
+  /// Center point of the iris in absolute pixel coordinates for gaze tracking.
+  final Point irisCenter;
 
   /// Four points outlining the iris boundary in absolute pixel coordinates.
   ///
   /// These points form the contour of the iris and can be used to estimate
   /// the iris size and shape.
-  final List<math.Point<double>> contour;
+  final List<Point> irisContour;
 
-  /// Creates an iris with a center point and four contour points.
-  const Iris({required this.center, required this.contour});
+  /// Complete eye mesh with 71 landmark points in absolute pixel coordinates.
+  ///
+  /// These 71 points form a detailed mesh of the entire eye region including
+  /// eyelids, eye corners, eyebrows, and surrounding area. They provide comprehensive
+  /// geometry information about the eye beyond just the iris.
+  ///
+  /// **Structure:**
+  /// - First 15 points: Visible eyelid outline (use [contour] to access these)
+  /// - Remaining 56 points: Eyebrow landmarks and tracking halos
+  ///
+  /// Useful for:
+  /// - Eyelid position tracking
+  /// - Blink detection
+  /// - Eye openness estimation
+  /// - Eyebrow tracking
+  /// - Detailed eye region analysis
+  ///
+  /// See also:
+  /// - [contour] for just the 15-point eyelid outline
+  /// - [eyeLandmarkConnections] for connecting the eyelid points
+  final List<Point> mesh;
+
+  /// Creates an eye with iris center point, iris contour, and eye mesh landmarks.
+  const Eye({
+    required this.irisCenter,
+    required this.irisContour,
+    this.mesh = const <Point>[],
+  });
+
+  /// The visible eyelid contour (first 15 points of the mesh).
+  ///
+  /// These 15 points form the outline of the visible eyeball (upper and lower eyelids).
+  /// Use [eyeLandmarkConnections] to determine which points to connect with lines
+  /// when rendering the eyelid outline.
+  ///
+  /// The remaining points in [mesh] (indices 15-70) represent eyebrows and
+  /// additional tracking halos around the eye region.
+  ///
+  /// Example:
+  /// ```dart
+  /// final eyelidPoints = eye.contour;
+  /// for (final connection in eyeLandmarkConnections) {
+  ///   final p1 = eyelidPoints[connection[0]];
+  ///   final p2 = eyelidPoints[connection[1]];
+  ///   canvas.drawLine(p1, p2, paint);
+  /// }
+  /// ```
+  List<Point> get contour =>
+      mesh.length >= kMaxEyeLandmark ? mesh.sublist(0, kMaxEyeLandmark) : mesh;
 }
 
-/// Iris tracking data for both eyes.
+/// Eye tracking data for both eyes including iris and eye mesh landmarks.
 ///
-/// Contains structured iris data for the left and right eyes. Individual
-/// iris data may be null if not detected or if called with a detection mode
-/// that doesn't include iris tracking.
+/// Contains comprehensive eye tracking data for the left and right eyes. Each eye includes:
+/// - Iris center point for gaze tracking
+/// - Four iris contour points (iris boundary)
+/// - Eye mesh landmarks (71 points covering the entire eye region)
+///
+/// Individual eye data may be null if not detected or if called with a detection
+/// mode that doesn't include iris tracking.
 ///
 /// Only available when using [FaceDetectionMode.full]. Returns null for
 /// [FaceDetectionMode.fast] and [FaceDetectionMode.standard].
@@ -69,21 +272,25 @@ class Iris {
 /// Example:
 /// ```dart
 /// final faces = await detector.detectFaces(imageBytes, mode: FaceDetectionMode.full);
-/// final irises = faces.first.irises;
-/// if (irises != null) {
-///   final leftCenter = irises.leftIris?.center;
-///   final rightContour = irises.rightIris?.contour;
+/// final eyes = faces.first.eyes;
+/// if (eyes != null) {
+///   final leftIrisCenter = eyes.leftEye?.irisCenter;
+///   final rightIrisContour = eyes.rightEye?.irisContour;
+///   final leftEyeMesh = eyes.leftEye?.mesh;
 /// }
 /// ```
-class IrisPair {
-  /// The left iris, or null if not detected.
-  final Iris? leftIris;
+///
+/// See also:
+/// - [Eye] for the structure of individual eye data
+class EyePair {
+  /// The left eye data, or null if not detected.
+  final Eye? leftEye;
 
-  /// The right iris, or null if not detected.
-  final Iris? rightIris;
+  /// The right eye data, or null if not detected.
+  final Eye? rightEye;
 
-  /// Creates an iris pair with optional left and right iris data.
-  const IrisPair({this.leftIris, this.rightIris});
+  /// Creates an eye pair with optional left and right eye data.
+  const EyePair({this.leftEye, this.rightEye});
 }
 
 /// Facial landmark points with convenient named access.
@@ -103,34 +310,32 @@ class IrisPair {
 /// final leftEye = landmarks[FaceLandmarkType.leftEye];
 /// ```
 class FaceLandmarks {
-  final Map<FaceLandmarkType, math.Point<double>> _landmarks;
+  final Map<FaceLandmarkType, Point> _landmarks;
 
   /// Creates facial landmarks from a map of landmark types to points.
   const FaceLandmarks(this._landmarks);
 
   /// Left eye center point in pixel coordinates.
-  math.Point<double>? get leftEye => _landmarks[FaceLandmarkType.leftEye];
+  Point? get leftEye => _landmarks[FaceLandmarkType.leftEye];
 
   /// Right eye center point in pixel coordinates.
-  math.Point<double>? get rightEye => _landmarks[FaceLandmarkType.rightEye];
+  Point? get rightEye => _landmarks[FaceLandmarkType.rightEye];
 
   /// Nose tip point in pixel coordinates.
-  math.Point<double>? get noseTip => _landmarks[FaceLandmarkType.noseTip];
+  Point? get noseTip => _landmarks[FaceLandmarkType.noseTip];
 
   /// Mouth center point in pixel coordinates.
-  math.Point<double>? get mouth => _landmarks[FaceLandmarkType.mouth];
+  Point? get mouth => _landmarks[FaceLandmarkType.mouth];
 
   /// Left eye tragion point in pixel coordinates.
   ///
   /// The tragion is the notch just above the ear canal opening.
-  math.Point<double>? get leftEyeTragion =>
-      _landmarks[FaceLandmarkType.leftEyeTragion];
+  Point? get leftEyeTragion => _landmarks[FaceLandmarkType.leftEyeTragion];
 
   /// Right eye tragion point in pixel coordinates.
   ///
   /// The tragion is the notch just above the ear canal opening.
-  math.Point<double>? get rightEyeTragion =>
-      _landmarks[FaceLandmarkType.rightEyeTragion];
+  Point? get rightEyeTragion => _landmarks[FaceLandmarkType.rightEyeTragion];
 
   /// Access landmark by type (backwards compatible with map access).
   ///
@@ -138,7 +343,7 @@ class FaceLandmarks {
   /// ```dart
   /// final leftEye = landmarks[FaceLandmarkType.leftEye];
   /// ```
-  math.Point<double>? operator [](FaceLandmarkType type) => _landmarks[type];
+  Point? operator [](FaceLandmarkType type) => _landmarks[type];
 
   /// All landmark points as an iterable (backwards compatible with map.values).
   ///
@@ -148,7 +353,7 @@ class FaceLandmarks {
   ///   print('(${point.x}, ${point.y})');
   /// }
   /// ```
-  Iterable<math.Point<double>> get values => _landmarks.values;
+  Iterable<Point> get values => _landmarks.values;
 
   /// All available landmark types in this detection.
   Iterable<FaceLandmarkType> get keys => _landmarks.keys;
@@ -156,8 +361,7 @@ class FaceLandmarks {
   /// Returns all landmarks as an unmodifiable map.
   ///
   /// Use this when you need explicit Map type for compatibility.
-  Map<FaceLandmarkType, math.Point<double>> toMap() =>
-      Map.unmodifiable(_landmarks);
+  Map<FaceLandmarkType, Point> toMap() => Map.unmodifiable(_landmarks);
 }
 
 /// Face bounding box with corner points in pixel coordinates.
@@ -176,16 +380,16 @@ class FaceLandmarks {
 /// ```
 class BoundingBox {
   /// Top-left corner point in absolute pixel coordinates.
-  final math.Point<double> topLeft;
+  final Point topLeft;
 
   /// Top-right corner point in absolute pixel coordinates.
-  final math.Point<double> topRight;
+  final Point topRight;
 
   /// Bottom-right corner point in absolute pixel coordinates.
-  final math.Point<double> bottomRight;
+  final Point bottomRight;
 
   /// Bottom-left corner point in absolute pixel coordinates.
-  final math.Point<double> bottomLeft;
+  final Point bottomLeft;
 
   /// Creates a bounding box with four corner points.
   ///
@@ -201,8 +405,7 @@ class BoundingBox {
   /// bottom-right, bottom-left.
   ///
   /// Useful for iteration or when you need all corners at once.
-  List<math.Point<double>> get corners =>
-      [topLeft, topRight, bottomRight, bottomLeft];
+  List<Point> get corners => [topLeft, topRight, bottomRight, bottomLeft];
 
   /// Width of the bounding box in pixels.
   double get width => topRight.x - topLeft.x;
@@ -211,9 +414,9 @@ class BoundingBox {
   double get height => bottomLeft.y - topLeft.y;
 
   /// Center point of the bounding box in absolute pixel coordinates.
-  math.Point<double> get center => math.Point<double>(
-        (topLeft.x + topRight.x) / 2,
-        (topLeft.y + bottomLeft.y) / 2,
+  Point get center => Point(
+        (topLeft.x + topRight.x + bottomRight.x + bottomLeft.x) / 4,
+        (topLeft.y + topRight.y + bottomRight.y + bottomLeft.y) / 4,
       );
 }
 
@@ -222,91 +425,137 @@ class BoundingBox {
 /// [boundingBox] is the face bounding box in pixel coordinates.
 /// [landmarks] provides convenient access to 6 key facial landmarks (eyes, nose, mouth).
 /// [mesh] contains 468 facial landmarks as pixel coordinates.
-/// [irises] contains 10 points (5 per eye) used to estimate iris position/size.
+/// [eyes] contains iris center, iris contour, and eye mesh landmarks for both eyes.
 class Face {
   final Detection _detection;
 
-  /// The 468-point face mesh in pixel coordinates.
+  /// The 468-point face mesh with optional depth information.
   ///
-  /// Each point contains `x` and `y` as absolute pixel positions in the
-  /// original image.
+  /// The mesh provides convenient access to points with x, y coordinates and
+  /// an optional z coordinate representing depth when 3D computation is enabled.
   ///
   /// The 468 points follow MediaPipe's canonical face mesh topology, providing
   /// detailed geometry for facial features including eyes, eyebrows, nose, mouth,
   /// and face contours.
   ///
-  /// This list is empty when [FaceDetector.detectFaces] is called with
-  /// [FaceDetectionMode.fast]. Use [FaceDetectionMode.standard] or
-  /// [FaceDetectionMode.full] to populate mesh data.
+  /// This is null when [FaceDetector.detectFaces] is called with [FaceDetectionMode.fast].
+  /// Use [FaceDetectionMode.standard] or [FaceDetectionMode.full] to populate mesh data.
+  ///
+  /// Example:
+  /// ```dart
+  /// final FaceMesh? mesh = face.mesh;
+  /// if (mesh != null) {
+  ///   final points = mesh.points;
+  ///   for (final point in points) {
+  ///     if (point.is3D) {
+  ///       print('Point with depth: (${point.x}, ${point.y}, ${point.z})');
+  ///     } else {
+  ///       print('Point: (${point.x}, ${point.y})');
+  ///     }
+  ///   }
+  /// }
+  /// ```
   ///
   /// See also:
+  /// - [FaceMesh] for the mesh class documentation
   /// - [kMeshPoints] for the expected mesh point count (468)
-  /// - [irises] for iris-specific landmarks
-  final List<math.Point<double>> mesh;
+  /// - [eyes] for iris and eye mesh landmarks
+  final FaceMesh? mesh;
 
-  /// Raw iris landmark points in pixel coordinates.
+  /// Raw iris and eye mesh landmark points with depth information.
   ///
-  /// Contains 10 points total: 5 keypoints per iris (left and right eyes).
-  /// Each iris is represented by a center point and 4 contour points.
+  /// Contains landmarks for both eyes (left eye data followed by right eye data).
+  /// The iris model outputs 76 points per eye in this order:
+  /// - 71 eye mesh landmarks (detailed eye region geometry)
+  /// - 5 iris keypoints (1 center + 4 contour points)
   ///
-  /// Each point contains `x` and `y` as absolute pixel positions in the
-  /// original image.
+  /// Total: 152 points (76 per eye × 2 eyes).
+  ///
+  /// Each point contains `x`, `y`, and `z` coordinates where:
+  /// - `x` and `y` are absolute pixel positions in the original image
+  /// - `z` represents relative depth (scale-dependent)
   ///
   /// This list is empty when [FaceDetector.detectFaces] is called with
   /// [FaceDetectionMode.fast] or [FaceDetectionMode.standard]. Use
   /// [FaceDetectionMode.full] to enable iris tracking.
   ///
-  /// For a more convenient structured API, use the [irises] getter instead,
-  /// which returns an [IrisPair] with separate left/right iris data.
+  /// For a more convenient structured API, use the [eyes] getter instead,
+  /// which returns an [EyePair] with separate left/right eye data including
+  /// parsed iris center, iris contour, and eye mesh landmarks.
   ///
   /// Example:
   /// ```dart
   /// final faces = await detector.detectFaces(imageBytes, mode: FaceDetectionMode.full);
   /// if (faces.isNotEmpty && faces.first.irisPoints.isNotEmpty) {
-  ///   final leftIrisPoints = faces.first.irisPoints.sublist(0, 5);
-  ///   final rightIrisPoints = faces.first.irisPoints.sublist(5, 10);
+  ///   // Use structured API for easier access
+  ///   final eyes = faces.first.eyes;
+  ///   final leftIrisCenter = eyes?.leftEye?.irisCenter;
+  ///   final leftEyeMesh = eyes?.leftEye?.mesh;
+  ///
+  ///   // Access 3D depth information
+  ///   if (leftIrisCenter.is3D) {
+  ///     print('Iris depth: ${leftIrisCenter.z}');
+  ///   }
   /// }
   /// ```
-  final List<math.Point<double>> irisPoints;
+  final List<Point> irisPoints;
 
   /// The dimensions of the original source image.
   ///
   /// This size is used internally to convert normalized coordinates to pixel
-  /// coordinates for [boundingBox], [landmarks], [mesh], and [irises].
+  /// coordinates for [boundingBox], [landmarks], [mesh], and [eyes].
   ///
   /// All coordinate data in [Face] is already scaled to these dimensions,
   /// so users typically don't need to use this field directly unless performing
   /// custom coordinate transformations.
   final Size originalSize;
 
-  /// Creates a face detection result with bounding box, landmarks, and optional mesh/iris data.
+  /// Creates a face detection result with bounding box, landmarks, and optional mesh/eye data.
   ///
   /// This constructor is typically called internally by [FaceDetector.detectFaces].
   /// Most users should not need to construct [Face] instances directly.
   ///
   /// The [detection] contains the bounding box and coarse facial keypoints.
-  /// The [mesh] contains 468 facial landmark points (empty if not computed).
-  /// The [irises] contains iris keypoints (empty if not computed).
+  /// The [mesh] contains the 468-point face mesh with 3D coordinates (null if not computed).
+  /// The [irisPoints] contains iris and eye mesh keypoints with 3D coordinates (empty if not computed).
   /// The [originalSize] specifies the dimensions of the source image for coordinate mapping.
   Face({
     required Detection detection,
     required this.mesh,
-    required List<math.Point<double>> irises,
+    required List<Point> irises,
     required this.originalSize,
   })  : _detection = detection,
         irisPoints = irises;
 
-  /// Parses 5 raw iris points into a structured Iris object.
+  /// Parses raw iris and eye contour points into a structured Eye object.
   ///
-  /// Identifies the center point as the one with minimum sum of squared
-  /// distances to all other points, and treats the remaining 4 points
-  /// as the iris contour.
+  /// The iris landmark model outputs 76 points per eye in this order:
+  /// - First 71 points: eye mesh landmarks (detailed eye region geometry)
+  /// - Last 5 points: iris landmarks (center + 4 contour points)
   ///
-  /// Returns null if the input doesn't contain exactly 5 points.
-  static Iris? _parseIris(List<math.Point<double>> points) {
-    if (points.length != 5) return null;
+  /// For backward compatibility, also handles legacy format (5 points only).
+  ///
+  /// Identifies the iris center as the point with minimum sum of squared
+  /// distances to all other iris points, and treats the remaining 4 as contour.
+  ///
+  /// Returns null if the input contains fewer than 5 points.
+  static Eye? _parseIris(List<Point> points) {
+    if (points.length < 5) return null;
 
-    // Find center: point with minimum sum of squared distances to all others
+    List<Point> eyeMesh;
+    List<Point> irisPoints;
+
+    if (points.length == 76) {
+      eyeMesh = points.sublist(0, 71);
+      irisPoints = points.sublist(71, 76);
+    } else if (points.length > 5) {
+      final irisStart = points.length - 5;
+      eyeMesh = points.sublist(0, irisStart);
+      irisPoints = points.sublist(irisStart);
+    } else {
+      eyeMesh = const <Point>[];
+      irisPoints = points;
+    }
     int centerIdx = 0;
     double minDistSum = double.infinity;
 
@@ -314,8 +563,8 @@ class Face {
       double distSum = 0;
       for (int j = 0; j < 5; j++) {
         if (i == j) continue;
-        final dx = points[j].x - points[i].x;
-        final dy = points[j].y - points[i].y;
+        final dx = irisPoints[j].x - irisPoints[i].x;
+        final dy = irisPoints[j].y - irisPoints[i].y;
         distSum += dx * dx + dy * dy;
       }
       if (distSum < minDistSum) {
@@ -324,54 +573,63 @@ class Face {
       }
     }
 
-    // Extract center and contour
-    final center = points[centerIdx];
-    final contour = <math.Point<double>>[];
+    final center = irisPoints[centerIdx];
+    final contour = <Point>[];
     for (int i = 0; i < 5; i++) {
-      if (i != centerIdx) contour.add(points[i]);
+      if (i != centerIdx) contour.add(irisPoints[i]);
     }
 
-    return Iris(center: center, contour: contour);
+    return Eye(irisCenter: center, irisContour: contour, mesh: eyeMesh);
   }
 
-  /// Structured iris tracking data for both eyes.
+  /// Comprehensive eye tracking data for both eyes.
   ///
-  /// Returns an [IrisPair] containing left and right iris data with center
-  /// points and contour boundaries. Individual irises may be null if not detected.
+  /// Returns an [EyePair] containing left and right eye data with:
+  /// - Iris center points
+  /// - Iris contour boundaries (4 points per iris)
+  /// - Eye mesh landmarks (71 points per eye covering the entire eye region)
+  ///
+  /// Individual eyes may be null if not detected.
   ///
   /// Returns null when [FaceDetector.detectFaces] is called with
   /// [FaceDetectionMode.fast] or [FaceDetectionMode.standard]. Use
-  /// [FaceDetectionMode.full] to enable iris tracking.
+  /// [FaceDetectionMode.full] to enable eye tracking.
   ///
   /// For raw iris point data, use [irisPoints] instead.
   ///
   /// Example:
   /// ```dart
-  /// final irises = face.irises;
-  /// final leftCenter = irises?.leftIris?.center;
-  /// final leftContour = irises?.leftIris?.contour;
-  /// final rightCenter = irises?.rightIris?.center;
+  /// final eyes = face.eyes;
+  /// final leftIrisCenter = eyes?.leftEye?.irisCenter;
+  /// final leftIrisContour = eyes?.leftEye?.irisContour;
+  /// final leftContour = eyes?.leftEye?.contour;
+  /// final rightIrisCenter = eyes?.rightEye?.irisCenter;
   /// ```
-  IrisPair? get irises {
+  EyePair? get eyes {
     if (irisPoints.isEmpty) return null;
 
-    Iris? leftIris;
-    Iris? rightIris;
+    Eye? leftEye;
+    Eye? rightEye;
 
-    // Try to parse left iris (first 5 points)
-    if (irisPoints.length >= 5) {
-      leftIris = _parseIris(irisPoints.sublist(0, 5));
+    if (irisPoints.length == 152) {
+      leftEye = _parseIris(irisPoints.sublist(0, 76));
+      rightEye = _parseIris(irisPoints.sublist(76, 152));
+    } else if (irisPoints.length == 76) {
+      leftEye = _parseIris(irisPoints);
+    } else if (irisPoints.length == 10) {
+      leftEye = _parseIris(irisPoints.sublist(0, 5));
+      rightEye = _parseIris(irisPoints.sublist(5, 10));
+    } else if (irisPoints.length > 10 && irisPoints.length.isEven) {
+      final int pointsPerEye = irisPoints.length ~/ 2;
+      leftEye = _parseIris(irisPoints.sublist(0, pointsPerEye));
+      rightEye = _parseIris(irisPoints.sublist(pointsPerEye));
+    } else if (irisPoints.length >= 5) {
+      leftEye = _parseIris(irisPoints);
     }
 
-    // Try to parse right iris (next 5 points)
-    if (irisPoints.length >= 10) {
-      rightIris = _parseIris(irisPoints.sublist(5, 10));
-    }
+    if (leftEye == null && rightEye == null) return null;
 
-    // Return null only if both are null
-    if (leftIris == null && rightIris == null) return null;
-
-    return IrisPair(leftIris: leftIris, rightIris: rightIris);
+    return EyePair(leftEye: leftEye, rightEye: rightEye);
   }
 
   /// The face bounding box in pixel coordinates.
@@ -393,10 +651,10 @@ class Face {
     final double w = originalSize.width.toDouble();
     final double h = originalSize.height.toDouble();
     return BoundingBox(
-      topLeft: math.Point<double>(r.xmin * w, r.ymin * h),
-      topRight: math.Point<double>(r.xmax * w, r.ymin * h),
-      bottomRight: math.Point<double>(r.xmax * w, r.ymax * h),
-      bottomLeft: math.Point<double>(r.xmin * w, r.ymax * h),
+      topLeft: Point(r.xmin * w, r.ymin * h),
+      topRight: Point(r.xmax * w, r.ymin * h),
+      bottomRight: Point(r.xmax * w, r.ymax * h),
+      bottomLeft: Point(r.xmin * w, r.ymax * h),
     );
   }
 
@@ -405,6 +663,10 @@ class Face {
   /// Returns a [FaceLandmarks] object with convenient named access to key
   /// facial features. Use named properties like [FaceLandmarks.leftEye],
   /// [FaceLandmarks.rightEye], [FaceLandmarks.noseTip], etc. for cleaner code.
+  ///
+  /// When iris tracking is enabled ([FaceDetectionMode.full]), the left and
+  /// right eye landmarks are automatically replaced with the precise iris centers
+  /// for improved accuracy.
   ///
   /// Example:
   /// ```dart
@@ -419,7 +681,21 @@ class Face {
   /// final leftEye = landmarks[FaceLandmarkType.leftEye];
   /// for (final point in landmarks.values) { ... }
   /// ```
-  FaceLandmarks get landmarks => FaceLandmarks(_detection.landmarks);
+  FaceLandmarks get landmarks {
+    final Map<FaceLandmarkType, Point> landmarkMap = _detection.landmarks;
+
+    final EyePair? eyeData = eyes;
+    if (eyeData != null) {
+      if (eyeData.leftEye?.irisCenter != null) {
+        landmarkMap[FaceLandmarkType.leftEye] = eyeData.leftEye!.irisCenter;
+      }
+      if (eyeData.rightEye?.irisCenter != null) {
+        landmarkMap[FaceLandmarkType.rightEye] = eyeData.rightEye!.irisCenter;
+      }
+    }
+
+    return FaceLandmarks(landmarkMap);
+  }
 }
 
 /// The expected number of landmark points in a complete face mesh.
@@ -572,7 +848,7 @@ class Detection {
   double operator [](int i) => keypointsXY[i];
 
   /// Returns facial landmarks in pixel coordinates keyed by landmark type.
-  Map<FaceLandmarkType, math.Point<double>> get landmarks {
+  Map<FaceLandmarkType, Point> get landmarks {
     final Size? sz = imageSize;
     if (sz == null) {
       throw StateError(
@@ -580,12 +856,11 @@ class Detection {
       );
     }
     final double w = sz.width.toDouble(), h = sz.height.toDouble();
-    final Map<FaceLandmarkType, math.Point<double>> map =
-        <FaceLandmarkType, math.Point<double>>{};
+    final Map<FaceLandmarkType, Point> map = <FaceLandmarkType, Point>{};
     for (final FaceLandmarkType idx in FaceLandmarkType.values) {
       final double xn = keypointsXY[idx.index * 2];
       final double yn = keypointsXY[idx.index * 2 + 1];
-      map[idx] = math.Point<double>(xn * w, yn * h);
+      map[idx] = Point(xn * w, yn * h);
     }
     return map;
   }

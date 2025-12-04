@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart' show Size;
-import 'dart:math' as math;
+import 'package:face_detection_tflite/face_detection_tflite.dart' show Point;
 
 /// Global test setup and configuration for face_detection_tflite tests.
 ///
@@ -21,12 +21,12 @@ class TestUtils {
   /// Values are in normalized coordinates [0.0, 1.0]
   /// Order: leftEye, rightEye, noseTip, mouth, leftEyeTragion, rightEyeTragion
   static List<double> generateValidKeypoints({
-    math.Point<double>? leftEye,
-    math.Point<double>? rightEye,
-    math.Point<double>? noseTip,
-    math.Point<double>? mouth,
-    math.Point<double>? leftEyeTragion,
-    math.Point<double>? rightEyeTragion,
+    Point? leftEye,
+    Point? rightEye,
+    Point? noseTip,
+    Point? mouth,
+    Point? leftEyeTragion,
+    Point? rightEyeTragion,
   }) {
     return [
       leftEye?.x ?? 0.3,
@@ -64,7 +64,7 @@ class TestUtils {
   }
 
   /// Validates that a Point is within reasonable bounds
-  static bool isValidPixelCoordinate(math.Point<double> point, Size imageSize) {
+  static bool isValidPixelCoordinate(Point point, Size imageSize) {
     return point.x >= 0 &&
         point.x <= imageSize.width &&
         point.y >= 0 &&
@@ -82,8 +82,8 @@ class TestUtils {
 
   /// Checks if two Points are approximately equal
   static bool pointsApproximatelyEqual(
-    math.Point<double> a,
-    math.Point<double> b, {
+    Point a,
+    Point b, {
     double epsilon = 0.0001,
   }) {
     return approximatelyEqual(a.x, b.x, epsilon: epsilon) &&
@@ -95,7 +95,7 @@ class TestUtils {
 class FaceDetectionMatchers {
   /// Matcher for checking if a Point is approximately equal to expected
   static Matcher approximatelyEqualsPoint(
-    math.Point<double> expected, {
+    Point expected, {
     double epsilon = 0.0001,
   }) {
     return _ApproximatePointMatcher(expected, epsilon);
@@ -114,15 +114,15 @@ class FaceDetectionMatchers {
 
 /// Custom matcher for approximate point equality
 class _ApproximatePointMatcher extends Matcher {
-  final math.Point<double> expected;
+  final Point expected;
   final double epsilon;
 
   _ApproximatePointMatcher(this.expected, this.epsilon);
 
   @override
   bool matches(Object? item, Map matchState) {
-    if (item is! math.Point<double>) {
-      matchState['error'] = 'Expected a Point<double>, got ${item.runtimeType}';
+    if (item is! Point) {
+      matchState['error'] = 'Expected a Point, got ${item.runtimeType}';
       return false;
     }
 
@@ -158,7 +158,7 @@ class _ApproximatePointMatcher extends Matcher {
     }
 
     final buffer = StringBuffer('was Point(');
-    if (item is math.Point<double>) {
+    if (item is Point) {
       buffer.write('${item.x}, ${item.y}');
     } else {
       buffer.write(item.toString());
@@ -223,8 +223,8 @@ class _WithinImageBoundsMatcher extends Matcher {
 
   @override
   bool matches(Object? item, Map matchState) {
-    if (item is! math.Point<double>) {
-      matchState['error'] = 'Expected a Point<double>, got ${item.runtimeType}';
+    if (item is! Point) {
+      matchState['error'] = 'Expected a Point, got ${item.runtimeType}';
       return false;
     }
 
@@ -260,7 +260,7 @@ class _WithinImageBoundsMatcher extends Matcher {
     }
 
     final buffer = StringBuffer('Point(');
-    if (item is math.Point<double>) {
+    if (item is Point) {
       buffer.write('${item.x}, ${item.y}');
     }
     buffer.write(') is out of bounds');

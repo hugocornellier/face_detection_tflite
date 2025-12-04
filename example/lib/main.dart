@@ -104,6 +104,7 @@ class _ExampleState extends State<Example> {
   bool _showMesh = true;
   bool _showLandmarks = true;
   bool _showIrises = true;
+  bool _showEyeContours = true;
   bool _showSettings = true;
   bool _hasProcessedMesh = false;
   bool _hasProcessedIris = false;
@@ -122,6 +123,8 @@ class _ExampleState extends State<Example> {
   double _landmarkSize = 3.0;
   double _meshSize = 1.25;
 
+  FaceDetectionModel _detectionModel = FaceDetectionModel.backCamera;
+
   @override
   void initState() {
     super.initState();
@@ -130,7 +133,7 @@ class _ExampleState extends State<Example> {
 
   Future<void> _initFaceDetector() async {
     try {
-      await _faceDetector.initialize(model: FaceDetectionModel.backCamera);
+      await _faceDetector.initialize(model: _detectionModel);
     } catch (_) {}
     setState(() {});
   }
@@ -184,14 +187,14 @@ class _ExampleState extends State<Example> {
 
     int? meshTime;
     int? irisTime;
-    if (_showMesh || _showIrises) {
+    if (_showMesh || _showIrises || _showEyeContours) {
       final int extraTime = totalTime - detectionTime;
-      if (_showMesh && _showIrises) {
+      if (_showMesh && (_showIrises || _showEyeContours)) {
         meshTime = (extraTime * 0.6).round();
         irisTime = (extraTime * 0.4).round();
       } else if (_showMesh) {
         meshTime = extraTime;
-      } else if (_showIrises) {
+      } else if (_showIrises || _showEyeContours) {
         irisTime = extraTime;
       }
     }
@@ -212,7 +215,7 @@ class _ExampleState extends State<Example> {
   }
 
   FaceDetectionMode _determineMode() {
-    if (_showIrises) {
+    if (_showIrises || _showEyeContours) {
       return FaceDetectionMode.full;
     } else if (_showMesh) {
       return FaceDetectionMode.standard;
@@ -228,6 +231,8 @@ class _ExampleState extends State<Example> {
       setState(() => _showMesh = newValue);
     } else if (feature == 'iris') {
       setState(() => _showIrises = newValue);
+    } else if (feature == 'eyeContour') {
+      setState(() => _showEyeContours = newValue);
     }
 
     final FaceDetectionMode newMode = _determineMode();
@@ -488,6 +493,64 @@ class _ExampleState extends State<Example> {
                               ),
                             ),
                           ),
+                          Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 8),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: Colors.grey.shade300),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.tune, size: 20),
+                                  const SizedBox(width: 8),
+                                  const Text('Model: '),
+                                  DropdownButton<FaceDetectionModel>(
+                                    value: _detectionModel,
+                                    underline: const SizedBox(),
+                                    items: const [
+                                      DropdownMenuItem(
+                                        value: FaceDetectionModel.frontCamera,
+                                        child: Text('Front'),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: FaceDetectionModel.backCamera,
+                                        child: Text('Back'),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: FaceDetectionModel.shortRange,
+                                        child: Text('Short'),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: FaceDetectionModel.full,
+                                        child: Text('Full Range'),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: FaceDetectionModel.fullSparse,
+                                        child: Text('Full Sparse'),
+                                      ),
+                                    ],
+                                    onChanged: (value) async {
+                                      if (value != null &&
+                                          value != _detectionModel) {
+                                        setState(() => _detectionModel = value);
+                                        // Reinitialize detector with new model
+                                        await _faceDetector.initialize(
+                                            model: _detectionModel);
+                                        // Reprocess current image if one is loaded
+                                        if (_imageBytes != null) {
+                                          await _processImage(_imageBytes!);
+                                        }
+                                      }
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 16),
@@ -516,6 +579,12 @@ class _ExampleState extends State<Example> {
                             'Show Irises',
                             _showIrises,
                             (value) => _onFeatureToggle('iris', value ?? false),
+                          ),
+                          _buildCheckbox(
+                            'Show Eye Mesh',
+                            _showEyeContours,
+                            (value) =>
+                                _onFeatureToggle('eyeContour', value ?? false),
                           ),
                         ],
                       ),
@@ -626,6 +695,7 @@ class _ExampleState extends State<Example> {
                                       showMesh: _showMesh,
                                       showLandmarks: _showLandmarks,
                                       showIrises: _showIrises,
+                                      showEyeContours: _showEyeContours,
                                       boundingBoxColor: _boundingBoxColor,
                                       landmarkColor: _landmarkColor,
                                       meshColor: _meshColor,
@@ -780,6 +850,7 @@ class _DetectionsPainter extends CustomPainter {
   final bool showMesh;
   final bool showLandmarks;
   final bool showIrises;
+  final bool showEyeContours;
   final Color boundingBoxColor;
   final Color landmarkColor;
   final Color meshColor;
@@ -796,6 +867,7 @@ class _DetectionsPainter extends CustomPainter {
     required this.showMesh,
     required this.showLandmarks,
     required this.showIrises,
+    required this.showEyeContours,
     required this.boundingBoxColor,
     required this.landmarkColor,
     required this.meshColor,
@@ -853,7 +925,7 @@ class _DetectionsPainter extends CustomPainter {
         // Iterate over all landmarks using .values
         // You can also access specific landmarks using named properties:
         // face.landmarks.leftEye, face.landmarks.rightEye, etc.
-        for (final Point<double> p in face.landmarks.values) {
+        for (final p in face.landmarks.values) {
           canvas.drawCircle(
             Offset(ox + p.x * scaleX, oy + p.y * scaleY),
             landmarkSize,
@@ -863,13 +935,14 @@ class _DetectionsPainter extends CustomPainter {
       }
 
       if (showMesh) {
-        final List<Point<double>> mesh = face.mesh;
-        if (mesh.isNotEmpty) {
+        final FaceMesh? faceMesh = face.mesh;
+        if (faceMesh != null) {
+          final mesh = faceMesh.points;
           final double imgArea =
               imageRectOnCanvas.width * imageRectOnCanvas.height;
           final double radius = meshSize + sqrt(imgArea) / 1000.0;
 
-          for (final Point<double> p in mesh) {
+          for (final p in mesh) {
             canvas.drawCircle(
               Offset(ox + p.x * scaleX, oy + p.y * scaleY),
               radius,
@@ -879,32 +952,72 @@ class _DetectionsPainter extends CustomPainter {
         }
       }
 
-      if (showIrises) {
-        final irisPair = face.irises;
-        if (irisPair != null) {
-          for (final iris in [irisPair.leftIris, irisPair.rightIris]) {
+      if (showIrises || showEyeContours) {
+        final eyePair = face.eyes;
+        if (eyePair != null) {
+          for (final iris in [eyePair.leftEye, eyePair.rightEye]) {
             if (iris == null) continue;
 
-            // Access contour
-            final List<Point<double>> contour = iris.contour;
-            double minX = contour.first.x, maxX = contour.first.x;
-            double minY = contour.first.y, maxY = contour.first.y;
-            for (final p in contour) {
-              if (p.x < minX) minX = p.x;
-              if (p.x > maxX) maxX = p.x;
-              if (p.y < minY) minY = p.y;
-              if (p.y > maxY) maxY = p.y;
+            // Draw iris (center + contour as oval)
+            if (showIrises) {
+              // Build bounding box from iris center + iris contour points
+              final allIrisPoints = [iris.irisCenter, ...iris.irisContour];
+              double minX = allIrisPoints.first.x, maxX = allIrisPoints.first.x;
+              double minY = allIrisPoints.first.y, maxY = allIrisPoints.first.y;
+              for (final p in allIrisPoints) {
+                if (p.x < minX) minX = p.x;
+                if (p.x > maxX) maxX = p.x;
+                if (p.y < minY) minY = p.y;
+                if (p.y > maxY) maxY = p.y;
+              }
+
+              final cx = ox + ((minX + maxX) * 0.5) * scaleX;
+              final cy = oy + ((minY + maxY) * 0.5) * scaleY;
+              final rx = (maxX - minX) * 0.5 * scaleX;
+              final ry = (maxY - minY) * 0.5 * scaleY;
+
+              final oval = Rect.fromCenter(
+                  center: Offset(cx, cy), width: rx * 2, height: ry * 2);
+              canvas.drawOval(oval, irisFill);
+              canvas.drawOval(oval, irisStroke);
             }
 
-            final cx = ox + ((minX + maxX) * 0.5) * scaleX;
-            final cy = oy + ((minY + maxY) * 0.5) * scaleY;
-            final rx = (maxX - minX) * 0.5 * scaleX;
-            final ry = (maxY - minY) * 0.5 * scaleY;
+            // Draw eye contour landmarks
+            if (showEyeContours && iris.mesh.isNotEmpty) {
+              // Draw the visible eyeball contour (eyelid outline) as connected lines
+              final Paint eyeOutlinePaint = Paint()
+                ..color = irisColor
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = 1.5;
 
-            final oval = Rect.fromCenter(
-                center: Offset(cx, cy), width: rx * 2, height: ry * 2);
-            canvas.drawOval(oval, irisFill);
-            canvas.drawOval(oval, irisStroke);
+              final eyelidContour = iris.contour;
+              for (final connection in eyeLandmarkConnections) {
+                if (connection[0] < eyelidContour.length &&
+                    connection[1] < eyelidContour.length) {
+                  final p1 = eyelidContour[connection[0]];
+                  final p2 = eyelidContour[connection[1]];
+
+                  canvas.drawLine(
+                    Offset(ox + p1.x * scaleX, oy + p1.y * scaleY),
+                    Offset(ox + p2.x * scaleX, oy + p2.y * scaleY),
+                    eyeOutlinePaint,
+                  );
+                }
+              }
+
+              // Optionally draw all 71 eye mesh points as small dots for debugging
+              // (includes eyebrows and tracking halos)
+              final Paint eyeMeshPointPaint = Paint()
+                ..color = irisColor.withValues(alpha: 0.3)
+                ..style = PaintingStyle.fill;
+
+              for (final p in iris.mesh) {
+                final canvasX = ox + p.x * scaleX;
+                final canvasY = oy + p.y * scaleY;
+                canvas.drawCircle(
+                    Offset(canvasX, canvasY), 0.8, eyeMeshPointPaint);
+              }
+            }
           }
         }
       }
@@ -920,6 +1033,7 @@ class _DetectionsPainter extends CustomPainter {
         old.showMesh != showMesh ||
         old.showLandmarks != showLandmarks ||
         old.showIrises != showIrises ||
+        old.showEyeContours != showEyeContours ||
         old.boundingBoxColor != boundingBoxColor ||
         old.landmarkColor != landmarkColor ||
         old.meshColor != meshColor ||
@@ -956,6 +1070,10 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   DateTime? _lastFpsUpdate;
   int _framesSinceLastUpdate = 0;
 
+  // Detection settings
+  FaceDetectionMode _detectionMode = FaceDetectionMode.fast;
+  FaceDetectionModel _detectionModel = FaceDetectionModel.backCamera;
+
   @override
   void initState() {
     super.initState();
@@ -964,8 +1082,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
 
   Future<void> _initCamera() async {
     try {
-      // Initialize face detector
-      await _faceDetector.initialize(model: FaceDetectionModel.backCamera);
+      // Initialize face detector with selected model
+      await _faceDetector.initialize(model: _detectionModel);
 
       if (_isMacOS) {
         if (mounted) {
@@ -1055,10 +1173,10 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         return;
       }
 
-      // Run face detection (fast mode for bounding boxes only)
+      // Run face detection with selected mode
       final faces = await _faceDetector.detectFaces(
         bytes,
-        mode: FaceDetectionMode.fast, // Fast mode for real-time performance
+        mode: _detectionMode,
       );
 
       final endTime = DateTime.now();
@@ -1185,11 +1303,83 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         backgroundColor: Colors.green,
         foregroundColor: Colors.white,
         actions: [
+          // Detection mode dropdown
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: DropdownButton<FaceDetectionMode>(
+                value: _detectionMode,
+                dropdownColor: Colors.green[800],
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+                underline: const SizedBox(),
+                items: const [
+                  DropdownMenuItem(
+                    value: FaceDetectionMode.fast,
+                    child: Text('Fast'),
+                  ),
+                  DropdownMenuItem(
+                    value: FaceDetectionMode.standard,
+                    child: Text('Standard'),
+                  ),
+                  DropdownMenuItem(
+                    value: FaceDetectionMode.full,
+                    child: Text('Full'),
+                  ),
+                ],
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() => _detectionMode = value);
+                  }
+                },
+              ),
+            ),
+          ),
+          // Detection model dropdown
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: DropdownButton<FaceDetectionModel>(
+                value: _detectionModel,
+                dropdownColor: Colors.green[800],
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+                underline: const SizedBox(),
+                items: const [
+                  DropdownMenuItem(
+                    value: FaceDetectionModel.frontCamera,
+                    child: Text('Front'),
+                  ),
+                  DropdownMenuItem(
+                    value: FaceDetectionModel.backCamera,
+                    child: Text('Back'),
+                  ),
+                  DropdownMenuItem(
+                    value: FaceDetectionModel.shortRange,
+                    child: Text('Short'),
+                  ),
+                  DropdownMenuItem(
+                    value: FaceDetectionModel.full,
+                    child: Text('Full Range'),
+                  ),
+                  DropdownMenuItem(
+                    value: FaceDetectionModel.fullSparse,
+                    child: Text('Full Sparse'),
+                  ),
+                ],
+                onChanged: (value) async {
+                  if (value != null && value != _detectionModel) {
+                    setState(() => _detectionModel = value);
+                    // Reinitialize detector with new model
+                    await _faceDetector.initialize(model: _detectionModel);
+                  }
+                },
+              ),
+            ),
+          ),
           Center(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: Text(
-                'FPS: $_fps | Detection: ${_detectionTimeMs}ms',
+                'FPS: $_fps | ${_detectionTimeMs}ms',
                 style: const TextStyle(fontSize: 14),
               ),
             ),
@@ -1212,6 +1402,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                         faces: _faces,
                         imageSize: _imageSize!,
                         cameraAspectRatio: cameraAspectRatio,
+                        detectionMode: _detectionMode,
                       ),
                     ),
                 ],
@@ -1303,11 +1494,83 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         backgroundColor: Colors.green,
         foregroundColor: Colors.white,
         actions: [
+          // Detection mode dropdown
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: DropdownButton<FaceDetectionMode>(
+                value: _detectionMode,
+                dropdownColor: Colors.green[800],
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+                underline: const SizedBox(),
+                items: const [
+                  DropdownMenuItem(
+                    value: FaceDetectionMode.fast,
+                    child: Text('Fast'),
+                  ),
+                  DropdownMenuItem(
+                    value: FaceDetectionMode.standard,
+                    child: Text('Standard'),
+                  ),
+                  DropdownMenuItem(
+                    value: FaceDetectionMode.full,
+                    child: Text('Full'),
+                  ),
+                ],
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() => _detectionMode = value);
+                  }
+                },
+              ),
+            ),
+          ),
+          // Detection model dropdown
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: DropdownButton<FaceDetectionModel>(
+                value: _detectionModel,
+                dropdownColor: Colors.green[800],
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+                underline: const SizedBox(),
+                items: const [
+                  DropdownMenuItem(
+                    value: FaceDetectionModel.frontCamera,
+                    child: Text('Front'),
+                  ),
+                  DropdownMenuItem(
+                    value: FaceDetectionModel.backCamera,
+                    child: Text('Back'),
+                  ),
+                  DropdownMenuItem(
+                    value: FaceDetectionModel.shortRange,
+                    child: Text('Short'),
+                  ),
+                  DropdownMenuItem(
+                    value: FaceDetectionModel.full,
+                    child: Text('Full Range'),
+                  ),
+                  DropdownMenuItem(
+                    value: FaceDetectionModel.fullSparse,
+                    child: Text('Full Sparse'),
+                  ),
+                ],
+                onChanged: (value) async {
+                  if (value != null && value != _detectionModel) {
+                    setState(() => _detectionModel = value);
+                    // Reinitialize detector with new model
+                    await _faceDetector.initialize(model: _detectionModel);
+                  }
+                },
+              ),
+            ),
+          ),
           Center(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: Text(
-                'FPS: $_fps | Detection: ${_detectionTimeMs}ms',
+                'FPS: $_fps | ${_detectionTimeMs}ms',
                 style: const TextStyle(fontSize: 14),
               ),
             ),
@@ -1336,6 +1599,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                         faces: _faces,
                         imageSize: _imageSize!,
                         cameraAspectRatio: cameraAspectRatio,
+                        detectionMode: _detectionMode,
                       ),
                     ),
                 ],
@@ -1449,7 +1713,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
 
         final faces = await _faceDetector.detectFaces(
           bytes,
-          mode: FaceDetectionMode.fast,
+          mode: _detectionMode,
         );
         final detectionTime =
             DateTime.now().difference(startTime).inMilliseconds;
@@ -1476,21 +1740,41 @@ class _CameraDetectionPainter extends CustomPainter {
   final List<Face> faces;
   final Size imageSize;
   final double cameraAspectRatio;
+  final FaceDetectionMode detectionMode;
 
   _CameraDetectionPainter({
     required this.faces,
     required this.imageSize,
     required this.cameraAspectRatio,
+    required this.detectionMode,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     if (faces.isEmpty) return;
 
-    final paint = Paint()
+    final boxPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3.0
       ..color = const Color(0xFF00FFCC);
+
+    final landmarkPaint = Paint()
+      ..style = PaintingStyle.fill
+      ..color = const Color(0xFF89CFF0);
+
+    final meshPaint = Paint()
+      ..style = PaintingStyle.fill
+      ..color = const Color(0xFFF4C2C2);
+
+    final irisFill = Paint()
+      ..style = PaintingStyle.fill
+      ..color = const Color(0xFF22AAFF).withAlpha(153)
+      ..blendMode = BlendMode.srcOver;
+
+    final irisStroke = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5
+      ..color = const Color(0xFF22AAFF).withAlpha(230);
 
     // Calculate the display area for the camera preview using the actual canvas size
     final screenAspectRatio = size.width / size.height;
@@ -1510,8 +1794,9 @@ class _CameraDetectionPainter extends CustomPainter {
     final scaleX = displayWidth / imageSize.width;
     final scaleY = displayHeight / imageSize.height;
 
-    // Draw bounding boxes
+    // Draw bounding boxes and features for each face
     for (final face in faces) {
+      // Draw bounding box
       final boundingBox = face.boundingBox;
       final rect = Rect.fromLTRB(
         offsetX + boundingBox.topLeft.x * scaleX,
@@ -1519,7 +1804,92 @@ class _CameraDetectionPainter extends CustomPainter {
         offsetX + boundingBox.bottomRight.x * scaleX,
         offsetY + boundingBox.bottomRight.y * scaleY,
       );
-      canvas.drawRect(rect, paint);
+      canvas.drawRect(rect, boxPaint);
+
+      // Draw the 6 simple landmarks (available in all modes)
+      for (final landmark in face.landmarks.values) {
+        canvas.drawCircle(
+          Offset(
+            offsetX + landmark.x * scaleX,
+            offsetY + landmark.y * scaleY,
+          ),
+          4.0,
+          landmarkPaint,
+        );
+      }
+
+      // Draw mesh if in standard or full mode
+      if (detectionMode == FaceDetectionMode.standard ||
+          detectionMode == FaceDetectionMode.full) {
+        final FaceMesh? faceMesh = face.mesh;
+        if (faceMesh != null) {
+          final mesh = faceMesh.points;
+          final double imgArea = displayWidth * displayHeight;
+          final double radius = 1.25 + sqrt(imgArea) / 1000.0;
+
+          for (final p in mesh) {
+            canvas.drawCircle(
+              Offset(offsetX + p.x * scaleX, offsetY + p.y * scaleY),
+              radius,
+              meshPaint,
+            );
+          }
+        }
+      }
+
+      // Draw iris and eye contours if in full mode
+      if (detectionMode == FaceDetectionMode.full) {
+        final eyePair = face.eyes;
+        if (eyePair != null) {
+          for (final iris in [eyePair.leftEye, eyePair.rightEye]) {
+            if (iris == null) continue;
+
+            // Draw iris (center + contour as oval)
+            final allIrisPoints = [iris.irisCenter, ...iris.irisContour];
+            double minX = allIrisPoints.first.x, maxX = allIrisPoints.first.x;
+            double minY = allIrisPoints.first.y, maxY = allIrisPoints.first.y;
+            for (final p in allIrisPoints) {
+              if (p.x < minX) minX = p.x;
+              if (p.x > maxX) maxX = p.x;
+              if (p.y < minY) minY = p.y;
+              if (p.y > maxY) maxY = p.y;
+            }
+
+            final cx = offsetX + ((minX + maxX) * 0.5) * scaleX;
+            final cy = offsetY + ((minY + maxY) * 0.5) * scaleY;
+            final rx = (maxX - minX) * 0.5 * scaleX;
+            final ry = (maxY - minY) * 0.5 * scaleY;
+
+            final oval = Rect.fromCenter(
+                center: Offset(cx, cy), width: rx * 2, height: ry * 2);
+            canvas.drawOval(oval, irisFill);
+            canvas.drawOval(oval, irisStroke);
+
+            // Draw eye contour landmarks
+            if (iris.mesh.isNotEmpty) {
+              final Paint eyeOutlinePaint = Paint()
+                ..color = const Color(0xFF22AAFF)
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = 1.5;
+
+              final eyelidContour = iris.contour;
+              for (final connection in eyeLandmarkConnections) {
+                if (connection[0] < eyelidContour.length &&
+                    connection[1] < eyelidContour.length) {
+                  final p1 = eyelidContour[connection[0]];
+                  final p2 = eyelidContour[connection[1]];
+
+                  canvas.drawLine(
+                    Offset(offsetX + p1.x * scaleX, offsetY + p1.y * scaleY),
+                    Offset(offsetX + p2.x * scaleX, offsetY + p2.y * scaleY),
+                    eyeOutlinePaint,
+                  );
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 
@@ -1527,6 +1897,7 @@ class _CameraDetectionPainter extends CustomPainter {
   bool shouldRepaint(covariant _CameraDetectionPainter old) {
     return old.faces != faces ||
         old.imageSize != imageSize ||
-        old.cameraAspectRatio != cameraAspectRatio;
+        old.cameraAspectRatio != cameraAspectRatio ||
+        old.detectionMode != detectionMode;
   }
 }

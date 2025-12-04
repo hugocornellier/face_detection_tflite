@@ -58,15 +58,9 @@ class FaceLandmark {
     obj._inputTensor = itp.getInputTensor(0);
     int numElements(List<int> s) => s.fold(1, (a, b) => a * b);
 
-    final Map<int, List<int>> shapes = <int, List<int>>{};
-    for (int i = 0;; i++) {
-      try {
-        final List<int> s = itp.getOutputTensor(i).shape;
-        shapes[i] = s;
-      } catch (_) {
-        break;
-      }
-    }
+    final Map<int, OutputTensorInfo> outputInfo = collectOutputTensorInfo(itp);
+    final Map<int, List<int>> shapes =
+        outputInfo.map((int k, OutputTensorInfo v) => MapEntry(k, v.shape));
 
     int bestIdx = -1;
     int bestLen = -1;
@@ -89,57 +83,13 @@ class FaceLandmark {
       (i) => shapes[i] ?? const <int>[],
     );
 
-    obj._input4dCache = _createNHWC4D(inH, inW);
+    obj._input4dCache = createNHWCTensor4D(inH, inW);
 
     if (useIsolate) {
       obj._iso = await IsolateInterpreter.create(address: itp.address);
     }
 
     return obj;
-  }
-
-  static List<List<List<List<double>>>> _createNHWC4D(int h, int w) {
-    return List<List<List<List<double>>>>.generate(
-      1,
-      (_) => List.generate(
-        h,
-        (_) => List.generate(
-          w,
-          (_) => List<double>.filled(3, 0.0, growable: false),
-          growable: false,
-        ),
-        growable: false,
-      ),
-      growable: false,
-    );
-  }
-
-  void _fillNHWC4D(Float32List flat) {
-    int k = 0;
-    for (int y = 0; y < _inH; y++) {
-      for (int x = 0; x < _inW; x++) {
-        final List<double> px = _input4dCache[0][y][x];
-        px[0] = flat[k++];
-        px[1] = flat[k++];
-        px[2] = flat[k++];
-      }
-    }
-  }
-
-  Object _allocForShape(List<int> shape) {
-    if (shape.isEmpty) return <double>[];
-    Object build(List<int> s, int depth) {
-      if (depth == s.length - 1) {
-        return List<double>.filled(s[depth], 0.0, growable: false);
-      }
-      return List.generate(
-        s[depth],
-        (_) => build(s, depth + 1),
-        growable: false,
-      );
-    }
-
-    return build(shape, 0);
   }
 
   /// Predicts the 468-point face mesh for an aligned face crop.
@@ -169,7 +119,7 @@ class FaceLandmark {
   /// ```
   Future<List<List<double>>> call(
     img.Image faceCrop, {
-    ImageProcessingWorker? worker,
+    IsolateWorker? worker,
   }) async {
     final ImageTensor pack = await imageToTensorWithWorker(
       faceCrop,
@@ -189,35 +139,20 @@ class FaceLandmark {
         clamp: true,
       );
     } else {
-      _fillNHWC4D(pack.tensorNHWC);
+      fillNHWC4D(pack.tensorNHWC, _input4dCache, _inH, _inW);
       final List<List<List<List<List<double>>>>> inputs = [_input4dCache];
       final Map<int, Object> outputs = <int, Object>{};
       for (int i = 0; i < _outShapes.length; i++) {
         final List<int> s = _outShapes[i];
         if (s.isNotEmpty) {
-          outputs[i] = _allocForShape(s);
+          outputs[i] = allocTensorShape(s);
         }
       }
       await _iso!.runForMultipleInputs(inputs, outputs);
 
       final dynamic best = outputs[_bestIdx];
 
-      final List<double> flat = <double>[];
-      void walk(dynamic x) {
-        if (x is num) {
-          flat.add(x.toDouble());
-        } else if (x is List) {
-          for (final e in x) {
-            walk(e);
-          }
-        } else {
-          throw StateError('Unexpected output element type: ${x.runtimeType}');
-        }
-      }
-
-      walk(best);
-
-      final Float32List bestFlat = Float32List.fromList(flat);
+      final Float32List bestFlat = flattenDynamicTensor(best);
       return _unpackLandmarks(bestFlat, _inW, _inH, pack.padding, clamp: true);
     }
   }

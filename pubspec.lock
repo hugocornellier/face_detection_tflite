@@ -148,7 +148,7 @@ packages:
     source: hosted
     version: "0.11.1"
   meta:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: meta
       sha256: "23f08335362185a5ea2ad3a4e597f1375e78bce8a040df5c600c8d3552ef2394"
@@ -252,10 +252,10 @@ packages:
     dependency: "direct main"
     description:
       name: tflite_flutter_custom
-      sha256: d1877cde1d12696a10959806cb2f949b2597f90ede061ed6bd2aa5fef4bb1260
+      sha256: "9645b8a9e0fb776abd4d1711d37f99548c4e1de2c9322328bcd9e0f2fe4fa300"
       url: "https://pub.dev"
     source: hosted
-    version: "1.0.3"
+    version: "1.1.0"
   typed_data:
     dependency: transitive
     description:

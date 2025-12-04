@@ -18,44 +18,40 @@ Completely local: no remote API, just pure on-device, offline detection.
 
 ![Example Screenshot](assets/screenshots/landmark-ex1.png)
 
-#### Iris Example:
+#### Eye Tracking Example:
 
 ![Example Screenshot](assets/screenshots/iris-detection-ex1.png)
 
 ## Features
 
 - On-device face detection, runs fully offline
-- 468 point mesh, face landmarks, iris landmarks and bounding boxes
+- 468 point mesh with **3D depth information** (x, y, z coordinates)
+- Face landmarks, comprehensive eye tracking (iris + 71-point eye mesh), and bounding boxes
 - All coordinates are in absolute pixel coordinates
 - Truly cross-platform: compatible with Android, iOS, macOS, Windows, and Linux
-- The [example](https://pub.dev/packages/face_detection_tflite/example) app illustrates how to detect and render results on images 
-  - Includes demo for bounding boxes, the 468-point mesh, facial landmarks and iris landmarks.
+- The [example](https://pub.dev/packages/face_detection_tflite/example) app illustrates how to detect and render results on images
+  - Includes demo for bounding boxes, the 468-point mesh, facial landmarks and comprehensive eye tracking.
 
 ## Quick Start
 
 ```dart
 import 'dart:io';
-import 'dart:math'; // Required to work with Point<double> coordinates
 import 'package:face_detection_tflite/face_detection_tflite.dart';
 
 Future main() async {
-  // Initialize & set model
   FaceDetector detector = FaceDetector();
   await detector.initialize(model: FaceDetectionModel.backCamera);
 
-  // Detect faces
   final imageBytes = await File('path/to/image.jpg').readAsBytes();
   List<Face> faces = await detector.detectFaces(imageBytes);
 
-  // Access results
   for (final face in faces) {
     final boundingBox = face.boundingBox;
     final landmarks   = face.landmarks;
     final mesh = face.mesh;
-    final irises = face.irises;
+    final eyes = face.eyes;
   }
 
-  // Don't forget to clean-up when you're done!
   detector.dispose();
 }
 ```
@@ -69,34 +65,32 @@ dimensions (width and height), and the center point.
 ### Accessing Corners
 
 ```dart
-import 'dart:math'; // Required for Point<double>
 
 final BoundingBox boundingBox = face.boundingBox;
 
-// Access individual corners by name (each is a Point<double> with x and y)
-final Point<double> topLeft     = boundingBox.topLeft;       // Top-left corner
-final Point<double> topRight    = boundingBox.topRight;      // Top-right corner
-final Point<double> bottomRight = boundingBox.bottomRight;   // Bottom-right corner
-final Point<double> bottomLeft  = boundingBox.bottomLeft;    // Bottom-left corner
+// Access individual corners by name (each is a Point with x and y)
+final Point topLeft     = boundingBox.topLeft;       // Top-left corner
+final Point topRight    = boundingBox.topRight;      // Top-right corner
+final Point bottomRight = boundingBox.bottomRight;   // Bottom-right corner
+final Point bottomLeft  = boundingBox.bottomLeft;    // Bottom-left corner
 
 // Access all corners as a list (order: top-left, top-right, bottom-right, bottom-left)
-final List<Point<double>> allCorners = boundingBox.corners;
+final List<Point> allCorners = boundingBox.corners;
 
 // Access coordinates
 print('Top-left: (${topLeft.x}, ${topLeft.y})');
 ```
 
-### Additional Parameters
+### Additional Bounding Box Parameters
 
 ```dart
-import 'dart:math'; // Required for Point<double>
 
 final BoundingBox boundingBox = face.boundingBox;
 
 // Access dimensions and center
 final double width  = boundingBox.width;     // Width in pixels
 final double height = boundingBox.height;    // Height in pixels
-final Point<double> center = boundingBox.center;  // Center point
+final Point center = boundingBox.center;  // Center point
 
 // Access coordinates
 print('Size: ${width} x ${height}');
@@ -112,17 +106,15 @@ features with convenient named properties.
 ### Accessing Landmarks
 
 ```dart
-import 'dart:math'; // Required for Point<double>
-
 final FaceLandmarks landmarks = face.landmarks;
 
 // Access individual landmarks using named properties
-final Point<double>? leftEye  = landmarks.leftEye;
-final Point<double>? rightEye = landmarks.rightEye;
-final Point<double>? noseTip  = landmarks.noseTip;
-final Point<double>? mouth    = landmarks.mouth;
-final Point<double>? leftEyeTragion  = landmarks.leftEyeTragion;
-final Point<double>? rightEyeTragion = landmarks.rightEyeTragion;
+final leftEye  = landmarks.leftEye;
+final rightEye = landmarks.rightEye;
+final noseTip  = landmarks.noseTip;
+final mouth    = landmarks.mouth;
+final leftEyeTragion  = landmarks.leftEyeTragion;
+final rightEyeTragion = landmarks.rightEyeTragion;
 
 // Access coordinates
 print('Left eye: (${leftEye?.x}, ${leftEye?.y})');
@@ -136,65 +128,152 @@ for (final point in landmarks.values) {
 
 ## Face Mesh
 
-The mesh property returns a list of 468 facial landmark points that form a detailed 3D
-face mesh in absolute pixel coordinates. These points map to specific facial features
-and can be used for precise face tracking and rendering.
+The `mesh` property returns a `FaceMesh` object containing 468 facial landmark points with both
+2D and 3D coordinate access. These points map to specific facial features and can be used for
+precise face tracking and rendering.
 
-### Accessing Points
+### Accessing Mesh Points
 
   ```dart
-  import 'dart:math'; // Required for Point<double>
+  import 'package:face_detection_tflite/face_detection_tflite.dart';
 
-  final List<Point<double>> mesh = face.mesh;
+  final FaceMesh? mesh = face.mesh;
 
-  // Total number of points (always 468)
-  print('Mesh points: ${mesh.length}');
+  if (mesh != null) {
+    // Get mesh points
+    final points = mesh.points;
 
-  // Iterate through all points
-  for (int i = 0; i < mesh.length; i++) {
-    final Point<double> point = mesh[i];
-    print('Point $i: (${point.x}, ${point.y})');
+    // Total number of points (always 468)
+    print('Mesh points: ${points.length}');
+
+    // Iterate through all points
+    for (int i = 0; i < points.length; i++) {
+      final point = points[i];
+      if (point.z != null) {
+        print('Point $i: (${point.x}, ${point.y}, ${point.z})');
+      } else {
+        print('Point $i: (${point.x}, ${point.y})');
+      }
+    }
+
+    // Access individual points using index operator
+    final noseTip = mesh[1];     // Nose tip point
+    final leftEye = mesh[33];    // Left eye point
+    final rightEye = mesh[263];  // Right eye point
   }
-
-  // Access individual points (each is a Point<double> with x and y)
-  final Point<double> noseTip = mesh[1];     // Nose tip point
-  final Point<double> leftEye = mesh[33];    // Left eye point
-  final Point<double> rightEye = mesh[263];  // Right eye point
   ```
 
-## Irises
+### Accessing Points with Optional Depth Information
 
-The irises property returns detailed iris tracking data for both eyes in absolute pixel
-coordinates. Each iris includes the center point and 4 contour points that outline the
-iris boundary. Only available in FaceDetectionMode.full.
+The `FaceMesh` points have x and y coordinates, and an optional z coordinate representing
+depth. 3D coordinates are always computed for mesh and iris landmarks.
 
-### Accessing Iris Data
+  ```dart
+  import 'package:face_detection_tflite/face_detection_tflite.dart';
+
+  final FaceMesh? mesh = face.mesh;
+
+  if (mesh != null) {
+    // Get all points
+    final points = mesh.points;
+
+    // Iterate through all points
+    for (final point in points) {
+      if (point.is3D) {
+        print('Point with depth: (${point.x}, ${point.y}, ${point.z})');
+      } else {
+        print('Point: (${point.x}, ${point.y})');
+      }
+    }
+
+    // Access individual points directly using index operator
+    final noseTip = mesh[1];
+    if (noseTip.is3D) {
+      print('Nose tip depth: ${noseTip.z}');
+    }
+  }
+  ```
+
+## Eye Tracking (Iris + Eye Mesh)
+
+The `eyes` property returns comprehensive eye tracking data for both eyes in absolute pixel
+coordinates. Each eye includes:
+- **Iris center** (`irisCenter`): The iris center point for precise gaze tracking
+- **Iris contour** (`irisContour`): 4 points outlining the iris boundary (the colored part of the eye)
+- **Contour** (`contour`): 15 points outlining the eyelid (visible eyeball outline)
+- **Mesh** (`mesh`): 71 landmarks covering the entire eye region (eyelids, eyebrows, tracking halos)
+
+The eye mesh landmarks provide detailed geometry for the entire eye region including eyelids,
+eye corners, and surrounding area. These can be useful for blink detection, eye openness
+estimation, and advanced eye tracking applications.
+
+Only available in FaceDetectionMode.full.
+
+### Accessing Eye Data
 
 ```dart
-import 'dart:math'; // Required for Point<double>
 
-final IrisPair? irises = face.irises;
+final EyePair? eyes = face.eyes;
 
-// Access left and right iris (each is an Iris object)
-final Iris? leftIris = irises?.leftIris;
-final Iris? rightIris = irises?.rightIris;
+// Access left and right eye data (each is an Eye object containing all eye info)
+final Eye? leftEye = eyes?.leftEye;
+final Eye? rightEye = eyes?.rightEye;
 
-// Access iris center
-final Point<double>? leftCenter = leftIris?.center;
-print('Left iris center: (${leftCenter?.x}, ${leftCenter?.y})');
+if (leftEye != null) {
+  // Access iris center
+  final irisCenter = leftEye.irisCenter;
+  print('Left iris center: (${irisCenter.x}, ${irisCenter.y})');
 
-// Access iris contour points (4 points outlining the iris)
-final List<Point<double>>? leftContour = leftIris?.contour;
-for (int i = 0; i < (leftContour?.length ?? 0); i++) {
-  final Point<double> point = leftContour![i];
-  print('Left iris contour $i: (${point.x}, ${point.y})');
+  // Access iris contour points (4 points outlining the iris)
+  for (final point in leftEye.irisContour) {
+    print('Iris contour: (${point.x}, ${point.y})');
+  }
+
+  // Access eye mesh landmarks (71 points covering the entire eye region)
+  for (final point in leftEye.mesh) {
+    print('Eye mesh point: (${point.x}, ${point.y})');
+  }
+
+  // Access just the eyelid contour (first 15 points of the eye mesh)
+  for (final point in leftEye.contour) {
+    print('Eyelid contour: (${point.x}, ${point.y})');
+  }
 }
 
-// Right iris
-final Point<double>? rightCenter = rightIris?.center;
-final List<Point<double>>? rightContour = rightIris?.contour;
-print('Right iris center: (${rightCenter?.x}, ${rightCenter?.y})');
+// Right eye works the same way
+if (rightEye != null) {
+  final irisCenter = rightEye.irisCenter;
+  print('Right iris center: (${irisCenter.x}, ${irisCenter.y})');
+}
 ```
+
+### Rendering Eye Contours
+
+The 71 eye mesh landmarks include the visible eyeball outline (eyelids), eyebrows, and tracking halos.
+For rendering the visible eyelid outline, use the `contour` getter which returns the first
+15 points, and connect them using `eyeLandmarkConnections`:
+
+```dart
+import 'package:face_detection_tflite/face_detection_tflite.dart';
+
+// Get the visible eyeball contour (first 15 of 71 points)
+final List<Point> eyelidOutline = leftEye.contour;
+
+// Draw the eyelid outline by connecting the points
+for (final connection in eyeLandmarkConnections) {
+  final p1 = eyelidOutline[connection[0]];
+  final p2 = eyelidOutline[connection[1]];
+  canvas.drawLine(
+    Offset(p1.x, p1.y),
+    Offset(p2.x, p2.y),
+    paint,
+  );
+}
+```
+
+**Eye Mesh Structure:**
+- **First 15 points** (`contour`): Visible eyelid outline - connect these using `eyeLandmarkConnections`
+- **Remaining 56 points**: Eyebrow landmarks and tracking halos - render as individual points for debugging
 
 ## Face Detection Modes
 
@@ -202,7 +281,7 @@ This app supports three detection modes that determine which facial features are
 
 | Mode | Features | Est. Time per Face* |
 |------|----------|---------------------|
-| **Full** (default) | Bounding boxes, landmarks, 468-point mesh, iris tracking | ~80-120ms           |
+| **Full** (default) | Bounding boxes, landmarks, 468-point mesh, eye tracking (iris + 71-point eye mesh) | ~80-120ms           |
 | **Standard** | Bounding boxes, landmarks, 468-point mesh | ~60ms               |
 | **Fast** | Bounding boxes, landmarks | ~30ms               |
 
@@ -213,13 +292,13 @@ This app supports three detection modes that determine which facial features are
 The Face Detection Mode can be set using the `mode` parameter when detectFaces is called. Defaults to FaceDetectionMode.full.
 
 ```dart
-// Full mode (default): bounding boxes, 6 basic landmarks + mesh + iris
+// Full mode (default): bounding boxes, 6 basic landmarks + mesh + comprehensive eye tracking
 // note: full mode provides superior accuracy for left and right eye landmarks
-// compared to fast/standard modes. use full mode when precise eye landmark
-// detection is required for your application. trade-off: longer inference
+// compared to fast/standard modes. use full mode when precise eye tracking
+// (iris center, iris contour, eyelid shape) is required. trade-off: longer inference
 await faceDetector.detectFaces(bytes, mode: FaceDetectionMode.full);
 
-// Standard mode: bounding boxes, 6 basic landmarks + mesh. inference time 
+// Standard mode: bounding boxes, 6 basic landmarks + mesh. inference time
 // is faster than full mode, but slower than fast mode.
 await faceDetector.detectFaces(bytes, mode: FaceDetectionMode.standard);
 
@@ -267,11 +346,34 @@ await faceDetector.initialize(model: FaceDetectionModel.full);
 await faceDetector.initialize(model: FaceDetectionModel.fullSparse);
 ```
 
+## Live Camera Detection
+
+For real-time face detection with a camera feed, use the `camera` package with `FaceDetectionMode.fast`:
+
+```dart
+FaceDetector detector = FaceDetector();
+await detector.initialize(model: FaceDetectionModel.frontCamera);
+
+final cameras = await availableCameras();
+CameraController camera = CameraController(cameras.first, ResolutionPreset.medium);
+await camera.initialize();
+
+camera.startImageStream((image) async {
+  // Convert CameraImage to bytes
+  final bytes = convertToBytes(image);
+
+  // Detect faces in fast mode for real-time performance
+  List<Face> faces = await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+});
+```
+
+See the full [example app](https://pub.dev/packages/face_detection_tflite/example) for complete implementation including frame throttling and YUV420 conversion.
+
 ## Example
 
-The [sample code](https://pub.dev/packages/face_detection_tflite/example) from the pub.dev example tab includes a 
-Flutter app that paints detections onto an image: bounding boxes, landmarks, mesh, and iris. The 
-example code provides inference time, and demonstrates when to use `FaceDetectionMode.standard` or `FaceDetectionMode.fast`.  
+The [sample code](https://pub.dev/packages/face_detection_tflite/example) from the pub.dev example tab includes a
+Flutter app that paints detections onto an image: bounding boxes, landmarks, mesh, and comprehensive eye tracking. The
+example code provides inference time, and demonstrates when to use `FaceDetectionMode.standard` or `FaceDetectionMode.fast`.
 
 ## Inspiration
 

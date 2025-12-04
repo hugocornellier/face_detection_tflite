@@ -10,6 +10,7 @@ import 'dart:ffi' as ffi;
 import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/services.dart';
+import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
 import 'package:image/image.dart' as img;
 import 'package:tflite_flutter_custom/tflite_flutter.dart';
@@ -18,7 +19,7 @@ export 'src/dart_registration.dart';
 
 part 'src/types_and_consts.dart';
 part 'src/helpers.dart';
-part 'src/image_processing_worker.dart';
+part 'src/isolate_worker.dart';
 part 'src/face_detector.dart';
 part 'src/face_detection_model.dart';
 part 'src/face_landmark.dart';

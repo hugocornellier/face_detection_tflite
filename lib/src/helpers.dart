@@ -1,5 +1,176 @@
 part of '../face_detection_tflite.dart';
 
+/// Holds metadata for an output tensor (shape plus its writable buffer).
+class OutputTensorInfo {
+  OutputTensorInfo(this.shape, this.buffer);
+
+  final List<int> shape;
+  final Float32List buffer;
+}
+
+/// Creates a 4D tensor in NHWC format (batch=1, height, width, channels=3).
+///
+/// This pre-allocates a nested list structure used as input buffers for
+/// TensorFlow Lite models to avoid repeated allocations during inference.
+///
+/// - [height]: Tensor height dimension (H)
+/// - [width]: Tensor width dimension (W)
+/// - Returns: [1][height][width][3] nested list structure with double values
+List<List<List<List<double>>>> createNHWCTensor4D(int height, int width) {
+  return List<List<List<List<double>>>>.generate(
+    1,
+    (_) => List.generate(
+      height,
+      (_) => List.generate(
+        width,
+        (_) => List<double>.filled(3, 0.0, growable: false),
+        growable: false,
+      ),
+      growable: false,
+    ),
+    growable: false,
+  );
+}
+
+/// Fills a 4D NHWC tensor cache from a flat Float32List.
+///
+/// Converts a flat array of pixel data into the nested list structure
+/// expected by TensorFlow Lite models in NHWC format:
+/// - N: Batch dimension (assumed to be 1, index 0)
+/// - H: Height dimension (inH)
+/// - W: Width dimension (inW)
+/// - C: Channel dimension (3 for RGB)
+///
+/// [flat] - Flattened pixel data (length must be inH * inW * 3)
+/// [input4dCache] - Pre-allocated 4D structure [1][H][W][3]
+/// [inH] - Input tensor height
+/// [inW] - Input tensor width
+@pragma('vm:prefer-inline')
+void fillNHWC4D(
+  Float32List flat,
+  List<List<List<List<double>>>> input4dCache,
+  int inH,
+  int inW,
+) {
+  double sanitize(double value) =>
+      (value * 1e6).roundToDouble() / 1e6; // Reduce float32 noise.
+
+  int k = 0;
+  for (int y = 0; y < inH; y++) {
+    for (int x = 0; x < inW; x++) {
+      final List<double> px = input4dCache[0][y][x];
+      px[0] = sanitize(flat[k++]);
+      px[1] = sanitize(flat[k++]);
+      px[2] = sanitize(flat[k++]);
+    }
+  }
+}
+
+/// Allocates a nested list structure matching the given tensor shape.
+///
+/// Recursively builds nested lists where the innermost dimension contains
+/// doubles initialized to 0.0. Used for pre-allocating output buffers for
+/// TensorFlow Lite inference.
+///
+/// The [shape] parameter defines the dimensions of the tensor.
+///
+/// Returns an [Object] that is a nested list structure matching the shape.
+/// The actual type depends on the number of dimensions (e.g., `List<double>`
+/// for 1D, `List<List<double>>` for 2D, etc.).
+///
+/// Example:
+/// ```dart
+/// allocTensorShape([3]) → [0.0, 0.0, 0.0]
+/// allocTensorShape([2, 3]) → [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
+/// allocTensorShape([1, 2, 3]) → [[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]]
+/// ```
+Object allocTensorShape(List<int> shape) {
+  if (shape.isEmpty) return <double>[];
+
+  Object build(int depth) {
+    final int size = shape[depth];
+
+    if (depth == shape.length - 1) {
+      return List<double>.filled(size, 0.0, growable: false);
+    }
+
+    switch (shape.length - depth) {
+      case 2:
+        return List<List<double>>.generate(
+          size,
+          (_) => build(depth + 1) as List<double>,
+          growable: false,
+        );
+      case 3:
+        return List<List<List<double>>>.generate(
+          size,
+          (_) => build(depth + 1) as List<List<double>>,
+          growable: false,
+        );
+      case 4:
+        return List<List<List<List<double>>>>.generate(
+          size,
+          (_) => build(depth + 1) as List<List<List<double>>>,
+          growable: false,
+        );
+      default:
+        return List.generate(
+          size,
+          (_) => build(depth + 1),
+          growable: false,
+        );
+    }
+  }
+
+  return build(0);
+}
+
+/// Flattens a nested numeric tensor (dynamic output) into a Float32List.
+///
+/// Supports arbitrarily nested `List` structures containing `num` leaves.
+/// Throws a [StateError] if an unexpected type is encountered or if [out] is null.
+Float32List flattenDynamicTensor(Object? out) {
+  if (out == null) {
+    throw TypeError();
+  }
+  final List<double> flat = <double>[];
+  void walk(dynamic x) {
+    if (x is num) {
+      flat.add(x.toDouble());
+    } else if (x is List) {
+      for (final e in x) {
+        walk(e);
+      }
+    } else {
+      throw StateError('Unexpected output element type: ${x.runtimeType}');
+    }
+  }
+
+  walk(out);
+  return Float32List.fromList(flat);
+}
+
+/// Collects output tensor shapes (and their backing buffers) for an interpreter.
+///
+/// Iterates output indices until `getOutputTensor` throws, mirroring existing
+/// try/break loops in model constructors.
+Map<int, OutputTensorInfo> collectOutputTensorInfo(Interpreter itp) {
+  final Map<int, OutputTensorInfo> outputs = <int, OutputTensorInfo>{};
+  for (int i = 0;; i++) {
+    try {
+      final Tensor t = itp.getOutputTensor(i);
+      outputs[i] = OutputTensorInfo(t.shape, t.data.buffer.asFloat32List());
+    } catch (_) {
+      break;
+    }
+  }
+  return outputs;
+}
+
+@visibleForTesting
+Map<int, OutputTensorInfo> testCollectOutputTensorInfo(Interpreter itp) =>
+    collectOutputTensorInfo(itp);
+
 double _clip(double v, double lo, double hi) => v < lo ? lo : (v > hi ? hi : v);
 
 double _sigmoidClipped(double x, {double limit = _rawScoreLimit}) {
@@ -54,24 +225,70 @@ Future<void> _imageToTensorIsolate(Map<String, dynamic> params) async {
     order: img.ChannelOrder.rgb,
   );
 
+  final ImageTensor result = convertImageToTensor(src, outW: outW, outH: outH);
+
+  sp.send({
+    'tensor': TransferableTypedData.fromList(
+        [result.tensorNHWC.buffer.asUint8List()]),
+    'padding': result.padding,
+    'outW': result.width,
+    'outH': result.height,
+  });
+}
+
+/// Converts an RGB image to a normalized tensor with letterboxing.
+///
+/// This function performs aspect-preserving resize with black padding
+/// and normalizes pixel values to the [-1.0, 1.0] range expected by
+/// MediaPipe TensorFlow Lite models.
+///
+/// The [src] image will be resized to fit within [outW]×[outH] dimensions
+/// while preserving its aspect ratio. Black padding is added to fill
+/// the remaining space.
+///
+/// Returns an [ImageTensor] containing:
+/// - Normalized float32 tensor in NHWC format
+/// - Padding information needed to reverse the letterbox transformation
+///
+/// Example:
+/// ```dart
+/// final img.Image source = img.decodeImage(bytes)!;
+/// final result = convertImageToTensor(source, outW: 192, outH: 192);
+/// // result.tensorNHWC is ready for TFLite inference
+/// // result.padding can be used to unpad output coordinates
+/// ```
+ImageTensor convertImageToTensor(
+  img.Image src, {
+  required int outW,
+  required int outH,
+}) {
+  final int inW = src.width;
+  final int inH = src.height;
+
+  // Calculate letterbox scaling
   final double s1 = outW / inW;
   final double s2 = outH / inH;
   final double scale = s1 < s2 ? s1 : s2;
   final int newW = (inW * scale).round();
   final int newH = (inH * scale).round();
-  final resized = img.copyResize(
+
+  // Resize with letterboxing
+  final img.Image resized = img.copyResize(
     src,
     width: newW,
     height: newH,
     interpolation: img.Interpolation.linear,
   );
 
+  // Calculate padding offsets
   final int dx = (outW - newW) ~/ 2;
   final int dy = (outH - newH) ~/ 2;
 
-  final Float32List t = Float32List(outW * outH * 3);
-  t.fillRange(0, t.length, -1.0); // black padding -> -1.0
+  // Allocate tensor with black padding (-1.0)
+  final Float32List tensor = Float32List(outW * outH * 3);
+  tensor.fillRange(0, tensor.length, -1.0);
 
+  // Normalize pixels to [-1, 1] range
   final Uint8List resizedRgb = resized.getBytes(order: img.ChannelOrder.rgb);
   int srcIdx = 0;
   for (int y = 0; y < resized.height; y++) {
@@ -80,23 +297,24 @@ Future<void> _imageToTensorIsolate(Map<String, dynamic> params) async {
       final int r = resizedRgb[srcIdx++];
       final int g = resizedRgb[srcIdx++];
       final int b = resizedRgb[srcIdx++];
-      t[dstIdx++] = (r / 127.5) - 1.0;
-      t[dstIdx++] = (g / 127.5) - 1.0;
-      t[dstIdx++] = (b / 127.5) - 1.0;
+      tensor[dstIdx++] = (r / 127.5) - 1.0;
+      tensor[dstIdx++] = (g / 127.5) - 1.0;
+      tensor[dstIdx++] = (b / 127.5) - 1.0;
     }
   }
 
+  // Calculate normalized padding fractions
   final double padTop = dy / outH;
   final double padBottom = (outH - dy - newH) / outH;
   final double padLeft = dx / outW;
   final double padRight = (outW - dx - newW) / outW;
 
-  sp.send({
-    'tensor': TransferableTypedData.fromList([t.buffer.asUint8List()]),
-    'padding': [padTop, padBottom, padLeft, padRight],
-    'outW': outW,
-    'outH': outH,
-  });
+  return ImageTensor(
+    tensor,
+    [padTop, padBottom, padLeft, padRight],
+    outW,
+    outH,
+  );
 }
 
 List<Detection> _detectionLetterboxRemoval(
@@ -167,31 +385,6 @@ List<List<double>> _unpackLandmarks(
     out.add([x, y, z]);
   }
   return out;
-}
-
-Detection _mapDetectionToRoi(Detection d, RectF roi) {
-  final double dx = roi.xmin, dy = roi.ymin, sx = roi.w, sy = roi.h;
-  RectF mapRect(RectF r) => RectF(
-        dx + r.xmin * sx,
-        dy + r.ymin * sy,
-        dx + r.xmax * sx,
-        dy + r.ymax * sy,
-      );
-  List<double> mapKp(List<double> k) {
-    final List<double> o = List<double>.from(k);
-    for (int i = 0; i < o.length; i += 2) {
-      o[i] = _clamp01(dx + o[i] * sx);
-      o[i + 1] = _clamp01(dy + o[i + 1] * sy);
-    }
-    return o;
-  }
-
-  return Detection(
-    boundingBox: mapRect(d.boundingBox),
-    score: d.score,
-    keypointsXY: mapKp(d.keypointsXY),
-    imageSize: d.imageSize,
-  );
 }
 
 double _iou(RectF a, RectF b) {
@@ -275,7 +468,7 @@ Float32List _ssdGenerateAnchors(Map<String, Object> opts) {
     final int stride = strides[layerId];
     final int fmH = inputH ~/ stride;
     final int fmW = inputW ~/ stride;
-    for (var y = 0; y < fmH; y++) {
+    for (int y = 0; y < fmH; y++) {
       final double yCenter = (y + ay) / fmH;
       for (int x = 0; x < fmW; x++) {
         final double xCenter = (x + ax) / fmW;
@@ -339,10 +532,10 @@ String _nameFor(FaceDetectionModel m) {
 /// This is typically used to prepare face regions for mesh landmark detection,
 /// which requires a square input with some padding around the face.
 RectF faceDetectionToRoi(RectF boundingBox, {double expandFraction = 0.6}) {
-  final e = boundingBox.expand(expandFraction);
-  final cx = (e.xmin + e.xmax) * 0.5;
-  final cy = (e.ymin + e.ymax) * 0.5;
-  final s = math.max(e.w, e.h) * 0.5;
+  final RectF e = boundingBox.expand(expandFraction);
+  final double cx = (e.xmin + e.xmax) * 0.5;
+  final double cy = (e.ymin + e.ymax) * 0.5;
+  final double s = math.max(e.w, e.h) * 0.5;
   return RectF(cx - s, cy - s, cx + s, cy + s);
 }
 
@@ -517,7 +710,6 @@ img.ColorRgb8 _bilinearSampleRgb8(img.Image src, double fx, double fy) {
   final double r0 = p00.r * (1 - ax) + p10.r * ax;
   final double g0 = p00.g * (1 - ax) + p10.g * ax;
   final double b0 = p00.b * (1 - ax) + p10.b * ax;
-
   final double r1 = p01.r * (1 - ax) + p11.r * ax;
   final double g1 = p01.g * (1 - ax) + p11.g * ax;
   final double b1 = p01.b * (1 - ax) + p11.b * ax;
@@ -571,6 +763,10 @@ Future<DecodedRgb> _decodeImageOffUi(Uint8List bytes) async {
   return DecodedRgb(w, h, rgb);
 }
 
+@visibleForTesting
+Future<DecodedRgb> testDecodeImageOffUi(Uint8List bytes) =>
+    _decodeImageOffUi(bytes);
+
 img.Image _imageFromDecodedRgb(DecodedRgb d) {
   return img.Image.fromBytes(
     width: d.width,
@@ -579,6 +775,9 @@ img.Image _imageFromDecodedRgb(DecodedRgb d) {
     order: img.ChannelOrder.rgb,
   );
 }
+
+@visibleForTesting
+img.Image testImageFromDecodedRgb(DecodedRgb d) => _imageFromDecodedRgb(d);
 
 @pragma('vm:entry-point')
 Future<void> _decodeImageIsolate(Map<String, dynamic> params) async {
@@ -685,16 +884,8 @@ Future<void> _imageTransformIsolate(Map<String, dynamic> params) async {
   }
 }
 
-// =============================================================================
-// WORKER-AWARE HELPER FUNCTIONS (Phase 2 Optimization)
-// =============================================================================
 //
-// These functions provide optimized paths when an ImageProcessingWorker is
-// available. They fall back to the original isolate-spawning implementations
-// when no worker is provided, ensuring full backwards compatibility.
 //
-// Usage: Internal to FaceDetector and related classes.
-// =============================================================================
 
 /// Decodes an image using a worker if provided, otherwise spawns a new isolate.
 ///
@@ -706,7 +897,7 @@ Future<void> _imageTransformIsolate(Map<String, dynamic> params) async {
 /// compatibility.
 Future<DecodedRgb> decodeImageWithWorker(
   Uint8List bytes,
-  ImageProcessingWorker? worker,
+  IsolateWorker? worker,
 ) async {
   if (worker != null) {
     return await worker.decodeImage(bytes);
@@ -727,7 +918,7 @@ Future<ImageTensor> imageToTensorWithWorker(
   img.Image src, {
   required int outW,
   required int outH,
-  ImageProcessingWorker? worker,
+  IsolateWorker? worker,
 }) async {
   if (worker != null) {
     return await worker.imageToTensor(src, outW: outW, outH: outH);
@@ -747,7 +938,7 @@ Future<ImageTensor> imageToTensorWithWorker(
 Future<img.Image> cropFromRoiWithWorker(
   img.Image src,
   RectF roi,
-  ImageProcessingWorker? worker,
+  IsolateWorker? worker,
 ) async {
   if (worker != null) {
     return await worker.cropFromRoi(src, roi);
@@ -770,7 +961,7 @@ Future<img.Image> extractAlignedSquareWithWorker(
   double cy,
   double size,
   double theta,
-  ImageProcessingWorker? worker,
+  IsolateWorker? worker,
 ) async {
   if (worker != null) {
     return await worker.extractAlignedSquare(src, cx, cy, size, theta);
@@ -778,3 +969,40 @@ Future<img.Image> extractAlignedSquareWithWorker(
     return await extractAlignedSquare(src, cx, cy, size, theta);
   }
 }
+
+//
+// Test-only helpers to exercise private utilities.
+//
+
+@visibleForTesting
+double testClip(double v, double lo, double hi) => _clip(v, lo, hi);
+
+@visibleForTesting
+double testSigmoidClipped(double x, {double limit = _rawScoreLimit}) =>
+    _sigmoidClipped(x, limit: limit);
+
+@visibleForTesting
+List<Detection> testDetectionLetterboxRemoval(
+  List<Detection> dets,
+  List<double> padding,
+) =>
+    _detectionLetterboxRemoval(dets, padding);
+
+@visibleForTesting
+List<List<double>> testUnpackLandmarks(
+  Float32List flat,
+  int inW,
+  int inH,
+  List<double> padding, {
+  bool clamp = true,
+}) =>
+    _unpackLandmarks(flat, inW, inH, padding, clamp: clamp);
+
+@visibleForTesting
+List<Detection> testNms(
+  List<Detection> dets,
+  double iouThresh,
+  double scoreThresh, {
+  bool weighted = true,
+}) =>
+    _nms(dets, iouThresh, scoreThresh, weighted: weighted);

@@ -60,20 +60,12 @@ class IrisLandmark {
     obj._inputTensor = itp.getInputTensor(0);
     obj._inputBuf = obj._inputTensor.data.buffer.asFloat32List();
 
-    final Map<int, List<int>> shapes = <int, List<int>>{};
-    final Map<int, Float32List> buffers = <int, Float32List>{};
-    for (int i = 0;; i++) {
-      try {
-        final Tensor t = itp.getOutputTensor(i);
-        shapes[i] = t.shape;
-        buffers[i] = t.data.buffer.asFloat32List();
-      } catch (_) {
-        break;
-      }
-    }
-    obj._outShapes = shapes;
-    obj._outBuffers = buffers;
-    obj._input4dCache = _createNHWC4D(inH, inW);
+    final Map<int, OutputTensorInfo> outputInfo = collectOutputTensorInfo(itp);
+    obj._outShapes =
+        outputInfo.map((int k, OutputTensorInfo v) => MapEntry(k, v.shape));
+    obj._outBuffers =
+        outputInfo.map((int k, OutputTensorInfo v) => MapEntry(k, v.buffer));
+    obj._input4dCache = createNHWCTensor4D(inH, inW);
 
     if (useIsolate) {
       obj._iso = await IsolateInterpreter.create(address: itp.address);
@@ -131,84 +123,18 @@ class IrisLandmark {
     obj._inputTensor = itp.getInputTensor(0);
     obj._inputBuf = obj._inputTensor.data.buffer.asFloat32List();
 
-    final Map<int, List<int>> shapes = <int, List<int>>{};
-    final Map<int, Float32List> buffers = <int, Float32List>{};
-    for (int i = 0;; i++) {
-      try {
-        final Tensor t = itp.getOutputTensor(i);
-        shapes[i] = t.shape;
-        buffers[i] = t.data.buffer.asFloat32List();
-      } catch (_) {
-        break;
-      }
-    }
-    obj._outShapes = shapes;
-    obj._outBuffers = buffers;
-    obj._input4dCache = _createNHWC4D(inH, inW);
+    final Map<int, OutputTensorInfo> outputInfo = collectOutputTensorInfo(itp);
+    obj._outShapes =
+        outputInfo.map((int k, OutputTensorInfo v) => MapEntry(k, v.shape));
+    obj._outBuffers =
+        outputInfo.map((int k, OutputTensorInfo v) => MapEntry(k, v.buffer));
+    obj._input4dCache = createNHWCTensor4D(inH, inW);
 
     if (useIsolate) {
       obj._iso = await IsolateInterpreter.create(address: itp.address);
     }
 
     return obj;
-  }
-
-  static List<List<List<List<double>>>> _createNHWC4D(int h, int w) {
-    return List<List<List<List<double>>>>.generate(
-      1,
-      (_) => List.generate(
-        h,
-        (_) => List.generate(
-          w,
-          (_) => List<double>.filled(3, 0.0, growable: false),
-          growable: false,
-        ),
-        growable: false,
-      ),
-      growable: false,
-    );
-  }
-
-  void _fillNHWC4D(Float32List flat) {
-    int k = 0;
-    for (int y = 0; y < _inH; y++) {
-      for (int x = 0; x < _inW; x++) {
-        final List<double> px = _input4dCache[0][y][x];
-        px[0] = flat[k++];
-        px[1] = flat[k++];
-        px[2] = flat[k++];
-      }
-    }
-  }
-
-  Object _allocForShape(List<int> shape) {
-    if (shape.isEmpty) return <double>[];
-    Object build(List<int> s, int d) {
-      if (d == s.length - 1) {
-        return List<double>.filled(s[d], 0.0, growable: false);
-      }
-      return List.generate(s[d], (_) => build(s, d + 1), growable: false);
-    }
-
-    return build(shape, 0);
-  }
-
-  Float32List _flattenDynamicToFloat(dynamic x) {
-    final List<double> out = <double>[];
-    void walk(dynamic v) {
-      if (v is num) {
-        out.add(v.toDouble());
-      } else if (v is List) {
-        for (final e in v) {
-          walk(e);
-        }
-      } else {
-        throw StateError('Unexpected type');
-      }
-    }
-
-    walk(x);
-    return Float32List.fromList(out);
   }
 
   /// Predicts iris and eye contour landmarks for a cropped eye region.
@@ -244,7 +170,7 @@ class IrisLandmark {
   /// - [runOnImage] to run on a full image with an eye ROI
   Future<List<List<double>>> call(
     img.Image eyeCrop, {
-    ImageProcessingWorker? worker,
+    IsolateWorker? worker,
   }) async {
     final ImageTensor pack = await imageToTensorWithWorker(
       eyeCrop,
@@ -265,18 +191,18 @@ class IrisLandmark {
       }
       return lm;
     } else {
-      _fillNHWC4D(pack.tensorNHWC);
+      fillNHWC4D(pack.tensorNHWC, _input4dCache, _inH, _inW);
       final List<List<List<List<List<double>>>>> inputs = [_input4dCache];
       final Map<int, Object> outputs = <int, Object>{};
       _outShapes.forEach((i, shape) {
-        outputs[i] = _allocForShape(shape);
+        outputs[i] = allocTensorShape(shape);
       });
 
       await _iso!.runForMultipleInputs(inputs, outputs);
 
       final List<List<double>> lm = <List<double>>[];
       _outShapes.forEach((i, _) {
-        final Float32List flat = _flattenDynamicToFloat(outputs[i]);
+        final Float32List flat = flattenDynamicTensor(outputs[i]);
         lm.addAll(
           _unpackLandmarks(flat, _inW, _inH, pack.padding, clamp: false),
         );
@@ -318,10 +244,9 @@ class IrisLandmark {
   Future<List<List<double>>> runOnImage(
     img.Image src,
     RectF eyeRoi, {
-    ImageProcessingWorker? worker,
+    IsolateWorker? worker,
   }) async {
-    final img.Image eyeCrop =
-        await cropFromRoiWithWorker(src, eyeRoi, worker);
+    final img.Image eyeCrop = await cropFromRoiWithWorker(src, eyeRoi, worker);
     final List<List<double>> lmNorm = await call(eyeCrop, worker: worker);
     final double imgW = src.width.toDouble();
     final double imgH = src.height.toDouble();
@@ -459,7 +384,7 @@ class IrisLandmark {
   /// - [runOnImageAlignedIris] for aligned eye ROI processing
   Future<List<List<double>>> callIrisOnly(
     img.Image eyeCrop, {
-    ImageProcessingWorker? worker,
+    IsolateWorker? worker,
   }) async {
     final ImageTensor pack = await imageToTensorWithWorker(
       eyeCrop,
@@ -501,11 +426,11 @@ class IrisLandmark {
       }
       return lm;
     } else {
-      _fillNHWC4D(pack.tensorNHWC);
+      fillNHWC4D(pack.tensorNHWC, _input4dCache, _inH, _inW);
       final List<List<List<List<List<double>>>>> inputs = [_input4dCache];
       final Map<int, Object> outputs = <int, Object>{};
       _outShapes.forEach((i, shape) {
-        outputs[i] = _allocForShape(shape);
+        outputs[i] = allocTensorShape(shape);
       });
 
       await _iso!.runForMultipleInputs(inputs, outputs);
@@ -519,7 +444,7 @@ class IrisLandmark {
 
       Float32List? irisFlat;
       _outShapes.forEach((i, shape) {
-        final Float32List flat = _flattenDynamicToFloat(outputs[i]);
+        final Float32List flat = flattenDynamicTensor(outputs[i]);
         if (flat.length == 15) {
           irisFlat = flat;
         }
@@ -556,10 +481,10 @@ class IrisLandmark {
   /// When [isRight] is true, the extracted eye crop is horizontally flipped
   /// before processing to normalize right eyes to left eye orientation.
   ///
-  /// Returns a list of 5 iris keypoints in absolute pixel coordinates, where
+  /// Returns iris and eye contour landmarks in absolute pixel coordinates, where
   /// each point is `[x, y, z]`:
-  /// - Point 0: Iris center
-  /// - Points 1-4: Iris contour points
+  /// - First 5 points: Iris landmarks (center + 4 contour points)
+  /// - Remaining points: Eye contour landmarks (eyelid outline)
   ///
   /// **Note:** This is an internal method used by [FaceDetector]. Most users
   /// should use [FaceDetector.detectFaces] with [FaceDetectionMode.full] instead.
@@ -567,7 +492,7 @@ class IrisLandmark {
     img.Image src,
     AlignedRoi roi, {
     bool isRight = false,
-    ImageProcessingWorker? worker,
+    IsolateWorker? worker,
   }) async {
     final img.Image crop = await extractAlignedSquareWithWorker(
       src,
@@ -583,8 +508,49 @@ class IrisLandmark {
     final double s = roi.size;
 
     final List<List<double>> out = <List<double>>[];
-    final List<List<double>> lmNorm =
-        await callIrisOnly(eye, worker: worker);
+    final List<List<double>> lmNorm = await call(eye, worker: worker);
+    for (final List<double> p in lmNorm) {
+      final double px = isRight ? (1.0 - p[0]) : p[0];
+      final double py = p[1];
+      final double lx2 = (px - 0.5) * s;
+      final double ly2 = (py - 0.5) * s;
+      final double x = roi.cx + lx2 * ct - ly2 * st;
+      final double y = roi.cy + lx2 * st + ly2 * ct;
+      out.add([x, y, p[2]]);
+    }
+    return out;
+  }
+
+  /// Runs iris detection using a registered frame ID.
+  ///
+  /// This is an optimized variant that uses a pre-registered frame to avoid
+  /// transferring the full image data again.
+  ///
+  /// Returns iris and eye contour landmarks in absolute pixel coordinates.
+  Future<List<List<double>>> runOnImageAlignedIrisWithFrameId(
+    int frameId,
+    AlignedRoi roi, {
+    bool isRight = false,
+    IsolateWorker? worker,
+  }) async {
+    if (worker == null || !worker.isInitialized) {
+      throw StateError('Worker must be initialized to use frame IDs');
+    }
+
+    final img.Image crop = await worker.extractAlignedSquareWithFrameId(
+      frameId,
+      roi.cx,
+      roi.cy,
+      roi.size,
+      roi.theta,
+    );
+    final img.Image eye = isRight ? await _flipHorizontal(crop) : crop;
+    final double ct = math.cos(roi.theta);
+    final double st = math.sin(roi.theta);
+    final double s = roi.size;
+
+    final List<List<double>> out = <List<double>>[];
+    final List<List<double>> lmNorm = await call(eye, worker: worker);
     for (final List<double> p in lmNorm) {
       final double px = isRight ? (1.0 - p[0]) : p[0];
       final double py = p[1];

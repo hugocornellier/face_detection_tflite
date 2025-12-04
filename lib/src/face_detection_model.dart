@@ -65,10 +65,9 @@ class FaceDetection {
     final Map<String, Object> opts = _optsFor(model);
     final int inW = opts['input_size_width'] as int;
     final int inH = opts['input_size_height'] as int;
-    final bool assumeMirrored = switch (model) {
-      FaceDetectionModel.backCamera => false,
-      _ => true,
-    };
+    // All models use the same coordinate system - no mirroring needed
+    // Camera apps should handle mirroring at the display level, not here
+    final bool assumeMirrored = false;
 
     final Interpreter itp = await Interpreter.fromAsset(
       'packages/face_detection_tflite/assets/models/${_nameFor(model)}',
@@ -118,41 +117,13 @@ class FaceDetection {
     obj._boxesBuf = obj._boxesTensor.data.buffer.asFloat32List();
     obj._scoresBuf = obj._scoresTensor.data.buffer.asFloat32List();
 
-    obj._input4dCache = _createNHWC4D(inH, inW);
+    obj._input4dCache = createNHWCTensor4D(inH, inW);
 
     if (useIsolate) {
       obj._iso = await IsolateInterpreter.create(address: itp.address);
     }
 
     return obj;
-  }
-
-  static List<List<List<List<double>>>> _createNHWC4D(int h, int w) {
-    return List<List<List<List<double>>>>.generate(
-      1,
-      (_) => List.generate(
-        h,
-        (_) => List.generate(
-          w,
-          (_) => List<double>.filled(3, 0.0, growable: false),
-          growable: false,
-        ),
-        growable: false,
-      ),
-      growable: false,
-    );
-  }
-
-  void _fillNHWC4D(Float32List flat) {
-    int k = 0;
-    for (int y = 0; y < _inH; y++) {
-      for (int x = 0; x < _inW; x++) {
-        final List<double> px = _input4dCache[0][y][x];
-        px[0] = flat[k++];
-        px[1] = flat[k++];
-        px[2] = flat[k++];
-      }
-    }
   }
 
   void _flatten3D(List<List<List<num>>> src, Float32List dst) {
@@ -220,7 +191,7 @@ class FaceDetection {
   /// Optionally, you can specify a [roi] (region of interest) to detect faces only
   /// within a specific area of the image.
   ///
-  /// The [worker] parameter allows providing an ImageProcessingWorker for
+  /// The [worker] parameter allows providing an IsolateWorker for
   /// optimized image operations. When null, falls back to spawning fresh isolates.
   ///
   /// Returns a list of detected faces as [Detection] objects, each containing:
@@ -233,7 +204,7 @@ class FaceDetection {
   Future<List<Detection>> callWithDecoded(
     img.Image decoded, {
     RectF? roi,
-    ImageProcessingWorker? worker,
+    IsolateWorker? worker,
   }) async {
     final img.Image srcRoi = (roi == null)
         ? decoded
@@ -245,11 +216,54 @@ class FaceDetection {
       worker: worker,
     );
 
+    return _runInference(pack);
+  }
+
+  /// Runs face detection using a registered frame ID.
+  ///
+  /// This is an optimized variant that uses a pre-registered frame to avoid
+  /// transferring the full image data multiple times.
+  Future<List<Detection>> callWithFrameId(
+    int frameId,
+    int width,
+    int height, {
+    RectF? roi,
+    IsolateWorker? worker,
+  }) async {
+    if (worker == null || !worker.isInitialized) {
+      throw StateError('Worker must be initialized to use frame IDs');
+    }
+
+    final ImageTensor pack;
+    if (roi == null) {
+      pack = await worker.imageToTensorWithFrameId(
+        frameId,
+        outW: _inW,
+        outH: _inH,
+      );
+    } else {
+      final img.Image cropped = await worker.cropFromRoiWithFrameId(
+        frameId,
+        roi,
+      );
+      pack = await imageToTensorWithWorker(
+        cropped,
+        outW: _inW,
+        outH: _inH,
+        worker: worker,
+      );
+    }
+
+    return _runInference(pack);
+  }
+
+  /// Runs the actual inference on a tensor.
+  Future<List<Detection>> _runInference(ImageTensor pack) async {
     Float32List boxesBuf;
     Float32List scoresBuf;
 
     if (_iso != null) {
-      _fillNHWC4D(pack.tensorNHWC);
+      fillNHWC4D(pack.tensorNHWC, _input4dCache, _inH, _inW);
       final int inputCount = _itp.getInputTensors().length;
       final List<Object?> inputs = List<Object?>.filled(
         inputCount,
@@ -332,9 +346,7 @@ class FaceDetection {
       pack.padding,
     );
 
-    List<Detection> mapped = roi != null
-        ? fixed.map((d) => _mapDetectionToRoi(d, roi)).toList()
-        : fixed;
+    List<Detection> mapped = fixed;
 
     if (_assumeMirrored) {
       mapped = mapped.map((d) {

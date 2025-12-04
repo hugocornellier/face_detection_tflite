@@ -20,7 +20,7 @@ part of '../face_detection_tflite.dart';
 ///
 /// Example (internal usage):
 /// ```dart
-/// final worker = ImageProcessingWorker();
+/// final worker = IsolateWorker();
 /// await worker.initialize();
 ///
 /// // Process many frames efficiently
@@ -32,9 +32,9 @@ part of '../face_detection_tflite.dart';
 ///
 /// worker.dispose();
 /// ```
-class ImageProcessingWorker {
+class IsolateWorker {
   /// Creates an uninitialized worker; call [initialize] before sending work.
-  ImageProcessingWorker();
+  IsolateWorker();
 
   Isolate? _isolate;
   SendPort? _sendPort;
@@ -42,6 +42,7 @@ class ImageProcessingWorker {
   final Map<int, Completer<dynamic>> _pending = {};
   int _nextId = 0;
   bool _initialized = false;
+  int _nextFrameId = 0;
 
   /// Returns true if the worker has been initialized and is ready for requests.
   bool get isInitialized => _initialized;
@@ -55,23 +56,20 @@ class ImageProcessingWorker {
   /// Throws [StateError] if initialization fails or if already initialized.
   Future<void> initialize() async {
     if (_initialized) {
-      throw StateError('ImageProcessingWorker already initialized');
+      throw StateError('IsolateWorker already initialized');
     }
 
     try {
-      // Spawn the worker isolate
       _isolate = await Isolate.spawn(
         _isolateEntry,
         _receivePort.sendPort,
-        debugName: 'ImageProcessingWorker',
+        debugName: 'IsolateWorker',
       );
 
-      // Set up response listener
       final Completer<SendPort> initCompleter = Completer<SendPort>();
       late final StreamSubscription subscription;
 
       subscription = _receivePort.listen((message) {
-        // First message is the worker's SendPort
         if (!initCompleter.isCompleted) {
           if (message is SendPort) {
             initCompleter.complete(message);
@@ -83,11 +81,9 @@ class ImageProcessingWorker {
           return;
         }
 
-        // Subsequent messages are responses to requests
         _handleResponse(message);
       });
 
-      // Wait for worker to send back its SendPort
       _sendPort = await initCompleter.future.timeout(
         const Duration(seconds: 5),
         onTimeout: () {
@@ -98,7 +94,6 @@ class ImageProcessingWorker {
 
       _initialized = true;
     } catch (e) {
-      // Clean up on failure
       _isolate?.kill(priority: Isolate.immediate);
       _receivePort.close();
       _initialized = false;
@@ -134,7 +129,7 @@ class ImageProcessingWorker {
   ) async {
     if (!_initialized || _sendPort == null) {
       throw StateError(
-        'ImageProcessingWorker not initialized. Call initialize() first.',
+        'IsolateWorker not initialized. Call initialize() first.',
       );
     }
 
@@ -175,6 +170,52 @@ class ImageProcessingWorker {
     return DecodedRgb(w, h, rgb);
   }
 
+  /// Registers a frame in the worker isolate for efficient reuse.
+  ///
+  /// This method transfers the RGB pixel data to the worker once and returns
+  /// a frame ID that can be used for multiple subsequent operations without
+  /// re-transferring the full image data.
+  ///
+  /// The [src] image is converted to RGB format and stored in the worker.
+  ///
+  /// Returns a unique frame ID that can be passed to operations like
+  /// [cropFromRoiWithFrameId], [extractAlignedSquareWithFrameId], etc.
+  ///
+  /// **Important:** Call [releaseFrame] when done with the frame to free memory.
+  ///
+  /// Example:
+  /// ```dart
+  /// final frameId = await worker.registerFrame(image);
+  /// final crop1 = await worker.cropFromRoiWithFrameId(frameId, roi1);
+  /// final crop2 = await worker.cropFromRoiWithFrameId(frameId, roi2);
+  /// await worker.releaseFrame(frameId); // Clean up
+  /// ```
+  Future<int> registerFrame(img.Image src) async {
+    final Uint8List rgb = src.getBytes(order: img.ChannelOrder.rgb);
+    final int frameId = _nextFrameId++;
+
+    await _sendRequest<void>('registerFrame', {
+      'frameId': frameId,
+      'w': src.width,
+      'h': src.height,
+      'rgb': TransferableTypedData.fromList([rgb]),
+    });
+
+    return frameId;
+  }
+
+  /// Releases a registered frame from the worker isolate.
+  ///
+  /// Frees the memory associated with the frame ID returned by [registerFrame].
+  /// After calling this, the frame ID is no longer valid and should not be used.
+  ///
+  /// It's important to call this when done processing a frame to avoid memory leaks.
+  Future<void> releaseFrame(int frameId) async {
+    await _sendRequest<void>('releaseFrame', {
+      'frameId': frameId,
+    });
+  }
+
   /// Converts an image to a normalized tensor for TensorFlow Lite inference.
   ///
   /// The [src] image is resized to [outW]×[outH] using letterboxing (aspect-
@@ -198,6 +239,36 @@ class ImageProcessingWorker {
       'outW': outW,
       'outH': outH,
       'rgb': TransferableTypedData.fromList([rgb]),
+    });
+
+    final ByteBuffer tensorBB =
+        (result['tensor'] as TransferableTypedData).materialize();
+    final Float32List tensor = tensorBB.asUint8List().buffer.asFloat32List();
+    final List paddingRaw = result['padding'] as List;
+    final List<double> padding =
+        paddingRaw.map((e) => (e as num).toDouble()).toList();
+    final int ow = result['outW'] as int;
+    final int oh = result['outH'] as int;
+
+    return ImageTensor(tensor, padding, ow, oh);
+  }
+
+  /// Converts a registered frame to a normalized tensor.
+  ///
+  /// Similar to [imageToTensor] but uses a previously registered frame ID
+  /// instead of transferring the full image data again.
+  ///
+  /// Returns an [ImageTensor] containing the normalized tensor data and
+  /// padding information.
+  Future<ImageTensor> imageToTensorWithFrameId(
+    int frameId, {
+    required int outW,
+    required int outH,
+  }) async {
+    final Map result = await _sendRequest<Map>('tensorFromFrame', {
+      'frameId': frameId,
+      'outW': outW,
+      'outH': outH,
     });
 
     final ByteBuffer tensorBB =
@@ -238,6 +309,50 @@ class ImageProcessingWorker {
       'w': src.width,
       'h': src.height,
       'rgb': TransferableTypedData.fromList([rgb]),
+      'roi': {
+        'xmin': roi.xmin,
+        'ymin': roi.ymin,
+        'xmax': roi.xmax,
+        'ymax': roi.ymax,
+      },
+    });
+
+    if (result['ok'] != true) {
+      final error = result['error'];
+      throw StateError('Image crop failed: ${error ?? "unknown error"}');
+    }
+
+    final ByteBuffer outBB =
+        (result['rgb'] as TransferableTypedData).materialize();
+    final Uint8List outRgb = outBB.asUint8List();
+    final int ow = result['w'] as int;
+    final int oh = result['h'] as int;
+
+    return img.Image.fromBytes(
+      width: ow,
+      height: oh,
+      bytes: outRgb.buffer,
+      order: img.ChannelOrder.rgb,
+    );
+  }
+
+  /// Crops a region of interest from a registered frame.
+  ///
+  /// Similar to [cropFromRoi] but uses a previously registered frame ID
+  /// instead of transferring the full image data again.
+  Future<img.Image> cropFromRoiWithFrameId(int frameId, RectF roi) async {
+    if (roi.xmin < 0 || roi.ymin < 0 || roi.xmax > 1 || roi.ymax > 1) {
+      throw ArgumentError(
+        'ROI coordinates must be normalized [0,1], got: '
+        '(${roi.xmin}, ${roi.ymin}, ${roi.xmax}, ${roi.ymax})',
+      );
+    }
+    if (roi.xmin >= roi.xmax || roi.ymin >= roi.ymax) {
+      throw ArgumentError('Invalid ROI: min coordinates must be less than max');
+    }
+
+    final Map result = await _sendRequest<Map>('cropFromFrame', {
+      'frameId': frameId,
       'roi': {
         'xmin': roi.xmin,
         'ymin': roi.ymin,
@@ -324,6 +439,48 @@ class ImageProcessingWorker {
     );
   }
 
+  /// Extracts a rotated square region from a registered frame.
+  ///
+  /// Similar to [extractAlignedSquare] but uses a previously registered frame ID
+  /// instead of transferring the full image data again.
+  Future<img.Image> extractAlignedSquareWithFrameId(
+    int frameId,
+    double cx,
+    double cy,
+    double size,
+    double theta,
+  ) async {
+    if (size <= 0) {
+      throw ArgumentError('Size must be positive, got: $size');
+    }
+
+    final Map result = await _sendRequest<Map>('extractFromFrame', {
+      'frameId': frameId,
+      'cx': cx,
+      'cy': cy,
+      'size': size,
+      'theta': theta,
+    });
+
+    if (result['ok'] != true) {
+      final error = result['error'];
+      throw StateError('Image extraction failed: ${error ?? "unknown error"}');
+    }
+
+    final ByteBuffer outBB =
+        (result['rgb'] as TransferableTypedData).materialize();
+    final Uint8List outRgb = outBB.asUint8List();
+    final int ow = result['w'] as int;
+    final int oh = result['h'] as int;
+
+    return img.Image.fromBytes(
+      width: ow,
+      height: oh,
+      bytes: outRgb.buffer,
+      order: img.ChannelOrder.rgb,
+    );
+  }
+
   /// Releases all resources held by the worker.
   ///
   /// This kills the background isolate and closes all communication channels.
@@ -331,7 +488,6 @@ class ImageProcessingWorker {
   ///
   /// Any pending requests will be cancelled with an error.
   void dispose() {
-    // Cancel all pending requests
     for (final completer in _pending.values) {
       if (!completer.isCompleted) {
         completer.completeError(StateError('Worker disposed'));
@@ -339,7 +495,6 @@ class ImageProcessingWorker {
     }
     _pending.clear();
 
-    // Kill isolate and close ports
     _isolate?.kill(priority: Isolate.immediate);
     _receivePort.close();
 
@@ -348,18 +503,12 @@ class ImageProcessingWorker {
     _initialized = false;
   }
 
-  // ============================================================================
-  // WORKER ISOLATE IMPLEMENTATION
-  // ============================================================================
-
   @pragma('vm:entry-point')
   static void _isolateEntry(SendPort mainSendPort) {
     final ReceivePort workerReceivePort = ReceivePort();
 
-    // Send our SendPort back to main thread
     mainSendPort.send(workerReceivePort.sendPort);
 
-    // Listen for requests
     workerReceivePort.listen((message) async {
       if (message is! Map) return;
 
@@ -377,6 +526,8 @@ class ImageProcessingWorker {
     });
   }
 
+  static final Map<int, _RegisteredFrame> _frames = {};
+
   static Future<dynamic> _processOperation(
     String op,
     Map<dynamic, dynamic> params,
@@ -390,14 +541,20 @@ class ImageProcessingWorker {
         return _opCrop(params);
       case 'extract':
         return _opExtract(params);
+      case 'registerFrame':
+        return _opRegisterFrame(params);
+      case 'releaseFrame':
+        return _opReleaseFrame(params);
+      case 'tensorFromFrame':
+        return _opTensorFromFrame(params);
+      case 'cropFromFrame':
+        return _opCropFromFrame(params);
+      case 'extractFromFrame':
+        return _opExtractFromFrame(params);
       default:
         throw ArgumentError('Unknown operation: $op');
     }
   }
-
-  // --------------------------------------------------------------------------
-  // Operation: decode
-  // --------------------------------------------------------------------------
 
   static Map<String, dynamic> _opDecode(Map<dynamic, dynamic> params) {
     final ByteBuffer bb =
@@ -417,10 +574,6 @@ class ImageProcessingWorker {
     };
   }
 
-  // --------------------------------------------------------------------------
-  // Operation: tensor
-  // --------------------------------------------------------------------------
-
   static Map<String, dynamic> _opTensor(Map<dynamic, dynamic> params) {
     final int inW = params['inW'] as int;
     final int inH = params['inH'] as int;
@@ -437,60 +590,17 @@ class ImageProcessingWorker {
       order: img.ChannelOrder.rgb,
     );
 
-    // Letterbox resize (aspect-preserving with padding)
-    final double s1 = outW / inW;
-    final double s2 = outH / inH;
-    final double scale = s1 < s2 ? s1 : s2;
-    final int newW = (inW * scale).round();
-    final int newH = (inH * scale).round();
-
-    final img.Image resized = img.copyResize(
-      src,
-      width: newW,
-      height: newH,
-      interpolation: img.Interpolation.linear,
-    );
-
-    // Center padding
-    final int dx = (outW - newW) ~/ 2;
-    final int dy = (outH - newH) ~/ 2;
-
-    // Write normalized values straight into the tensor to avoid creating a
-    // padded intermediate image.
-    final Float32List tensor = Float32List(outW * outH * 3);
-    tensor.fillRange(0, tensor.length, -1.0); // black padding -> -1.0
-
-    final Uint8List resizedRgb = resized.getBytes(order: img.ChannelOrder.rgb);
-    int srcIdx = 0;
-    for (int y = 0; y < resized.height; y++) {
-      int dstIdx = ((y + dy) * outW + dx) * 3;
-      for (int x = 0; x < resized.width; x++) {
-        final int r = resizedRgb[srcIdx++];
-        final int g = resizedRgb[srcIdx++];
-        final int b = resizedRgb[srcIdx++];
-        tensor[dstIdx++] = (r / 127.5) - 1.0;
-        tensor[dstIdx++] = (g / 127.5) - 1.0;
-        tensor[dstIdx++] = (b / 127.5) - 1.0;
-      }
-    }
-
-    // Calculate padding for letterbox removal
-    final double padTop = dy / outH;
-    final double padBottom = (outH - dy - newH) / outH;
-    final double padLeft = dx / outW;
-    final double padRight = (outW - dx - newW) / outW;
+    final ImageTensor result =
+        convertImageToTensor(src, outW: outW, outH: outH);
 
     return {
-      'tensor': TransferableTypedData.fromList([tensor.buffer.asUint8List()]),
-      'padding': [padTop, padBottom, padLeft, padRight],
-      'outW': outW,
-      'outH': outH,
+      'tensor': TransferableTypedData.fromList(
+          [result.tensorNHWC.buffer.asUint8List()]),
+      'padding': result.padding,
+      'outW': result.width,
+      'outH': result.height,
     };
   }
-
-  // --------------------------------------------------------------------------
-  // Operation: crop
-  // --------------------------------------------------------------------------
 
   static Map<String, dynamic> _opCrop(Map<dynamic, dynamic> params) {
     try {
@@ -501,11 +611,6 @@ class ImageProcessingWorker {
       final Uint8List inRgb = inBB.asUint8List();
       final Map roiMap = params['roi'] as Map;
 
-      final double xmin = (roiMap['xmin'] as num).toDouble();
-      final double ymin = (roiMap['ymin'] as num).toDouble();
-      final double xmax = (roiMap['xmax'] as num).toDouble();
-      final double ymax = (roiMap['ymax'] as num).toDouble();
-
       final img.Image src = img.Image.fromBytes(
         width: w,
         height: h,
@@ -513,38 +618,11 @@ class ImageProcessingWorker {
         order: img.ChannelOrder.rgb,
       );
 
-      final double W = src.width.toDouble();
-      final double H = src.height.toDouble();
-      final int x0 = (xmin * W).clamp(0.0, W - 1).toInt();
-      final int y0 = (ymin * H).clamp(0.0, H - 1).toInt();
-      final int x1 = (xmax * W).clamp(0.0, W).toInt();
-      final int y1 = (ymax * H).clamp(0.0, H).toInt();
-      final int cw = math.max(1, x1 - x0);
-      final int ch = math.max(1, y1 - y0);
-
-      final img.Image out = img.copyCrop(
-        src,
-        x: x0,
-        y: y0,
-        width: cw,
-        height: ch,
-      );
-      final Uint8List outRgb = out.getBytes(order: img.ChannelOrder.rgb);
-
-      return {
-        'ok': true,
-        'w': out.width,
-        'h': out.height,
-        'rgb': TransferableTypedData.fromList([outRgb]),
-      };
+      return _cropAndPackage(src, roiMap);
     } catch (e) {
       return {'ok': false, 'error': e.toString()};
     }
   }
-
-  // --------------------------------------------------------------------------
-  // Operation: extract (aligned square)
-  // --------------------------------------------------------------------------
 
   static Map<String, dynamic> _opExtract(Map<dynamic, dynamic> params) {
     try {
@@ -565,31 +643,7 @@ class ImageProcessingWorker {
         order: img.ChannelOrder.rgb,
       );
 
-      final int side = math.max(1, size.round());
-      final double ct = math.cos(theta);
-      final double st = math.sin(theta);
-
-      final img.Image out = img.Image(width: side, height: side);
-
-      for (int y = 0; y < side; y++) {
-        final double vy = ((y + 0.5) / side - 0.5) * size;
-        for (int x = 0; x < side; x++) {
-          final double vx = ((x + 0.5) / side - 0.5) * size;
-          final double sx = cx + vx * ct - vy * st;
-          final double sy = cy + vx * st + vy * ct;
-          final img.ColorRgb8 px = _bilinearSampleRgb8(src, sx, sy);
-          out.setPixel(x, y, px);
-        }
-      }
-
-      final Uint8List outRgb = out.getBytes(order: img.ChannelOrder.rgb);
-
-      return {
-        'ok': true,
-        'w': out.width,
-        'h': out.height,
-        'rgb': TransferableTypedData.fromList([outRgb]),
-      };
+      return _extractAndPackage(src, cx, cy, size, theta);
     } catch (e) {
       return {'ok': false, 'error': e.toString()};
     }
@@ -604,9 +658,6 @@ class ImageProcessingWorker {
     final int y0 = fy.floor();
     final int x1 = x0 + 1;
     final int y1 = y0 + 1;
-    final double ax = fx - x0;
-    final double ay = fy - y0;
-
     final int cx0 = x0.clamp(0, src.width - 1);
     final int cx1 = x1.clamp(0, src.width - 1);
     final int cy0 = y0.clamp(0, src.height - 1);
@@ -617,10 +668,11 @@ class ImageProcessingWorker {
     final img.Pixel p01 = src.getPixel(cx0, cy1);
     final img.Pixel p11 = src.getPixel(cx1, cy1);
 
+    final double ax = fx - x0;
+    final double ay = fy - y0;
     final double r0 = p00.r * (1 - ax) + p10.r * ax;
     final double g0 = p00.g * (1 - ax) + p10.g * ax;
     final double b0 = p00.b * (1 - ax) + p10.b * ax;
-
     final double r1 = p01.r * (1 - ax) + p11.r * ax;
     final double g1 = p01.g * (1 - ax) + p11.g * ax;
     final double b1 = p01.b * (1 - ax) + p11.b * ax;
@@ -631,4 +683,207 @@ class ImageProcessingWorker {
 
     return img.ColorRgb8(r, g, b);
   }
+
+  /// Crops an image using normalized ROI coordinates.
+  ///
+  /// Returns the cropped image with the region defined by normalized
+  /// coordinates [xmin], [ymin], [xmax], [ymax] (0.0 to 1.0).
+  static img.Image _cropImageWithRoi(
+    img.Image src,
+    double xmin,
+    double ymin,
+    double xmax,
+    double ymax,
+  ) {
+    final double W = src.width.toDouble();
+    final double H = src.height.toDouble();
+    final int x0 = (xmin * W).clamp(0.0, W - 1).toInt();
+    final int y0 = (ymin * H).clamp(0.0, H - 1).toInt();
+    final int x1 = (xmax * W).clamp(0.0, W).toInt();
+    final int y1 = (ymax * H).clamp(0.0, H).toInt();
+    final int cw = math.max(1, x1 - x0);
+    final int ch = math.max(1, y1 - y0);
+
+    return img.copyCrop(
+      src,
+      x: x0,
+      y: y0,
+      width: cw,
+      height: ch,
+    );
+  }
+
+  /// Extracts a rotated square region from an image.
+  ///
+  /// Returns a square image of [size] pixels centered at ([cx], [cy])
+  /// rotated by [theta] radians, using bilinear interpolation.
+  static img.Image _extractAlignedSquareFromImage(
+    img.Image src,
+    double cx,
+    double cy,
+    double size,
+    double theta,
+  ) {
+    final int side = math.max(1, size.round());
+    final double ct = math.cos(theta);
+    final double st = math.sin(theta);
+
+    final img.Image out = img.Image(width: side, height: side);
+
+    for (int y = 0; y < side; y++) {
+      final double vy = ((y + 0.5) / side - 0.5) * size;
+      for (int x = 0; x < side; x++) {
+        final double vx = ((x + 0.5) / side - 0.5) * size;
+        final double sx = cx + vx * ct - vy * st;
+        final double sy = cy + vx * st + vy * ct;
+        final img.ColorRgb8 px = _bilinearSampleRgb8(src, sx, sy);
+        out.setPixel(x, y, px);
+      }
+    }
+
+    return out;
+  }
+
+  /// Helper to crop image and package result.
+  static Map<String, dynamic> _cropAndPackage(
+    img.Image src,
+    Map roiMap,
+  ) {
+    final double xmin = (roiMap['xmin'] as num).toDouble();
+    final double ymin = (roiMap['ymin'] as num).toDouble();
+    final double xmax = (roiMap['xmax'] as num).toDouble();
+    final double ymax = (roiMap['ymax'] as num).toDouble();
+
+    final img.Image out = _cropImageWithRoi(src, xmin, ymin, xmax, ymax);
+    final Uint8List outRgb = out.getBytes(order: img.ChannelOrder.rgb);
+
+    return {
+      'ok': true,
+      'w': out.width,
+      'h': out.height,
+      'rgb': TransferableTypedData.fromList([outRgb]),
+    };
+  }
+
+  /// Helper to extract aligned square and package result.
+  static Map<String, dynamic> _extractAndPackage(
+    img.Image src,
+    double cx,
+    double cy,
+    double size,
+    double theta,
+  ) {
+    final img.Image out =
+        _extractAlignedSquareFromImage(src, cx, cy, size, theta);
+    final Uint8List outRgb = out.getBytes(order: img.ChannelOrder.rgb);
+
+    return {
+      'ok': true,
+      'w': out.width,
+      'h': out.height,
+      'rgb': TransferableTypedData.fromList([outRgb]),
+    };
+  }
+
+  static Map<String, dynamic> _opRegisterFrame(Map<dynamic, dynamic> params) {
+    final int frameId = params['frameId'] as int;
+    final int w = params['w'] as int;
+    final int h = params['h'] as int;
+    final ByteBuffer bb =
+        (params['rgb'] as TransferableTypedData).materialize();
+    final Uint8List rgb = bb.asUint8List();
+
+    final img.Image image = img.Image.fromBytes(
+      width: w,
+      height: h,
+      bytes: rgb.buffer,
+      order: img.ChannelOrder.rgb,
+    );
+
+    IsolateWorker._frames[frameId] = _RegisteredFrame(w, h, rgb, image);
+    return {};
+  }
+
+  static Map<String, dynamic> _opReleaseFrame(Map<dynamic, dynamic> params) {
+    final int frameId = params['frameId'] as int;
+    IsolateWorker._frames.remove(frameId);
+    return {};
+  }
+
+  static Map<String, dynamic> _opTensorFromFrame(Map<dynamic, dynamic> params) {
+    final int frameId = params['frameId'] as int;
+    final int outW = params['outW'] as int;
+    final int outH = params['outH'] as int;
+
+    final _RegisteredFrame? frame = IsolateWorker._frames[frameId];
+    if (frame == null) {
+      throw StateError('Frame $frameId not found');
+    }
+
+    final ImageTensor result = convertImageToTensor(
+      frame.image,
+      outW: outW,
+      outH: outH,
+    );
+
+    return {
+      'tensor': TransferableTypedData.fromList(
+          [result.tensorNHWC.buffer.asUint8List()]),
+      'padding': result.padding,
+      'outW': result.width,
+      'outH': result.height,
+    };
+  }
+
+  static Map<String, dynamic> _opCropFromFrame(Map<dynamic, dynamic> params) {
+    try {
+      final int frameId = params['frameId'] as int;
+      final Map roiMap = params['roi'] as Map;
+
+      final _RegisteredFrame? frame = IsolateWorker._frames[frameId];
+      if (frame == null) {
+        return {'ok': false, 'error': 'Frame $frameId not found'};
+      }
+
+      return _cropAndPackage(frame.image, roiMap);
+    } catch (e) {
+      return {'ok': false, 'error': e.toString()};
+    }
+  }
+
+  static Map<String, dynamic> _opExtractFromFrame(
+      Map<dynamic, dynamic> params) {
+    try {
+      final int frameId = params['frameId'] as int;
+      final double cx = (params['cx'] as num).toDouble();
+      final double cy = (params['cy'] as num).toDouble();
+      final double size = (params['size'] as num).toDouble();
+      final double theta = (params['theta'] as num).toDouble();
+
+      final _RegisteredFrame? frame = IsolateWorker._frames[frameId];
+      if (frame == null) {
+        return {'ok': false, 'error': 'Frame $frameId not found'};
+      }
+
+      return _extractAndPackage(frame.image, cx, cy, size, theta);
+    } catch (e) {
+      return {'ok': false, 'error': e.toString()};
+    }
+  }
+}
+
+/// Holds a registered frame's data in the worker isolate.
+class _RegisteredFrame {
+  final int width;
+  final int height;
+  final Uint8List rgb;
+  final img.Image image;
+
+  _RegisteredFrame(this.width, this.height, this.rgb, this.image);
+}
+
+/// Backwards-compatible alias for the previous worker name.
+@Deprecated('Use IsolateWorker instead')
+class ImageProcessingWorker extends IsolateWorker {
+  ImageProcessingWorker() : super();
 }
