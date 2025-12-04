@@ -105,6 +105,7 @@ class _ExampleState extends State<Example> {
   bool _showLandmarks = true;
   bool _showIrises = true;
   bool _showEyeContours = true;
+  bool _showEyeMesh = true;
   bool _showSettings = true;
   bool _hasProcessedMesh = false;
   bool _hasProcessedIris = false;
@@ -118,10 +119,13 @@ class _ExampleState extends State<Example> {
   Color _landmarkColor = const Color(0xFF89CFF0);
   Color _meshColor = const Color(0xFFF4C2C2);
   Color _irisColor = const Color(0xFF22AAFF);
+  Color _eyeContourColor = const Color(0xFF22AAFF);
+  Color _eyeMeshColor = const Color(0xFFFFAA22);
 
   double _boundingBoxThickness = 2.0;
   double _landmarkSize = 3.0;
   double _meshSize = 1.25;
+  double _eyeMeshSize = 0.8;
 
   FaceDetectionModel _detectionModel = FaceDetectionModel.backCamera;
 
@@ -187,14 +191,14 @@ class _ExampleState extends State<Example> {
 
     int? meshTime;
     int? irisTime;
-    if (_showMesh || _showIrises || _showEyeContours) {
+    if (_showMesh || _showIrises || _showEyeContours || _showEyeMesh) {
       final int extraTime = totalTime - detectionTime;
-      if (_showMesh && (_showIrises || _showEyeContours)) {
+      if (_showMesh && (_showIrises || _showEyeContours || _showEyeMesh)) {
         meshTime = (extraTime * 0.6).round();
         irisTime = (extraTime * 0.4).round();
       } else if (_showMesh) {
         meshTime = extraTime;
-      } else if (_showIrises || _showEyeContours) {
+      } else if (_showIrises || _showEyeContours || _showEyeMesh) {
         irisTime = extraTime;
       }
     }
@@ -215,7 +219,7 @@ class _ExampleState extends State<Example> {
   }
 
   FaceDetectionMode _determineMode() {
-    if (_showIrises || _showEyeContours) {
+    if (_showIrises || _showEyeContours || _showEyeMesh) {
       return FaceDetectionMode.full;
     } else if (_showMesh) {
       return FaceDetectionMode.standard;
@@ -233,6 +237,8 @@ class _ExampleState extends State<Example> {
       setState(() => _showIrises = newValue);
     } else if (feature == 'eyeContour') {
       setState(() => _showEyeContours = newValue);
+    } else if (feature == 'eyeMesh') {
+      setState(() => _showEyeMesh = newValue);
     }
 
     final FaceDetectionMode newMode = _determineMode();
@@ -460,44 +466,43 @@ class _ExampleState extends State<Example> {
             children: [
               if (_showSettings)
                 Container(
-                  padding: const EdgeInsets.all(16),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Wrap(
-                        spacing: 16,
-                        runSpacing: 8,
+                      // Top buttons row
+                      Row(
                         children: [
-                          Padding(
-                            padding: const EdgeInsets.all(8.0),
-                            child: ElevatedButton.icon(
-                              onPressed: _pickAndRun,
-                              icon: const Icon(Icons.image),
-                              label: const Text('Pick Image'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.blue,
-                                foregroundColor: Colors.white,
-                              ),
+                          ElevatedButton.icon(
+                            onPressed: _pickAndRun,
+                            icon: const Icon(Icons.image, size: 18),
+                            label: const Text('Pick Image'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
                             ),
                           ),
-                          Padding(
-                            padding: const EdgeInsets.all(8.0),
-                            child: ElevatedButton.icon(
-                              onPressed: () =>
-                                  setState(() => _showSettings = false),
-                              icon: const Icon(Icons.visibility_off),
-                              label: const Text('Hide Settings'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.black,
-                                foregroundColor: Colors.white,
-                              ),
+                          const SizedBox(width: 8),
+                          ElevatedButton.icon(
+                            onPressed: () =>
+                                setState(() => _showSettings = false),
+                            icon: const Icon(Icons.visibility_off, size: 18),
+                            label: const Text('Hide'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.black,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
                             ),
                           ),
-                          Padding(
-                            padding: const EdgeInsets.all(8.0),
+                          const SizedBox(width: 8),
+                          Expanded(
                             child: Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 8),
+                                  horizontal: 12, vertical: 4),
                               decoration: BoxDecoration(
                                 border: Border.all(color: Colors.grey.shade300),
                                 borderRadius: BorderRadius.circular(8),
@@ -505,47 +510,53 @@ class _ExampleState extends State<Example> {
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  const Icon(Icons.tune, size: 20),
-                                  const SizedBox(width: 8),
-                                  const Text('Model: '),
-                                  DropdownButton<FaceDetectionModel>(
-                                    value: _detectionModel,
-                                    underline: const SizedBox(),
-                                    items: const [
-                                      DropdownMenuItem(
-                                        value: FaceDetectionModel.frontCamera,
-                                        child: Text('Front'),
-                                      ),
-                                      DropdownMenuItem(
-                                        value: FaceDetectionModel.backCamera,
-                                        child: Text('Back'),
-                                      ),
-                                      DropdownMenuItem(
-                                        value: FaceDetectionModel.shortRange,
-                                        child: Text('Short'),
-                                      ),
-                                      DropdownMenuItem(
-                                        value: FaceDetectionModel.full,
-                                        child: Text('Full Range'),
-                                      ),
-                                      DropdownMenuItem(
-                                        value: FaceDetectionModel.fullSparse,
-                                        child: Text('Full Sparse'),
-                                      ),
-                                    ],
-                                    onChanged: (value) async {
-                                      if (value != null &&
-                                          value != _detectionModel) {
-                                        setState(() => _detectionModel = value);
-                                        // Reinitialize detector with new model
-                                        await _faceDetector.initialize(
-                                            model: _detectionModel);
-                                        // Reprocess current image if one is loaded
-                                        if (_imageBytes != null) {
-                                          await _processImage(_imageBytes!);
+                                  const Icon(Icons.tune, size: 16),
+                                  const SizedBox(width: 6),
+                                  const Text('Model:',
+                                      style: TextStyle(fontSize: 13)),
+                                  const SizedBox(width: 4),
+                                  Expanded(
+                                    child: DropdownButton<FaceDetectionModel>(
+                                      value: _detectionModel,
+                                      underline: const SizedBox(),
+                                      isExpanded: true,
+                                      style: const TextStyle(
+                                          fontSize: 13, color: Colors.black),
+                                      items: const [
+                                        DropdownMenuItem(
+                                          value: FaceDetectionModel.frontCamera,
+                                          child: Text('Front'),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: FaceDetectionModel.backCamera,
+                                          child: Text('Back'),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: FaceDetectionModel.shortRange,
+                                          child: Text('Short'),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: FaceDetectionModel.full,
+                                          child: Text('Full Range'),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: FaceDetectionModel.fullSparse,
+                                          child: Text('Full Sparse'),
+                                        ),
+                                      ],
+                                      onChanged: (value) async {
+                                        if (value != null &&
+                                            value != _detectionModel) {
+                                          setState(
+                                              () => _detectionModel = value);
+                                          await _faceDetector.initialize(
+                                              model: _detectionModel);
+                                          if (_imageBytes != null) {
+                                            await _processImage(_imageBytes!);
+                                          }
                                         }
-                                      }
-                                    },
+                                      },
+                                    ),
                                   ),
                                 ],
                               ),
@@ -553,97 +564,92 @@ class _ExampleState extends State<Example> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 12),
+                      // Checkboxes in a compact grid
                       Wrap(
-                        spacing: 16,
-                        runSpacing: 8,
+                        spacing: 8,
+                        runSpacing: 4,
                         children: [
                           _buildCheckbox(
-                            'Show Bounding Boxes',
-                            _showBoundingBoxes,
-                            (value) => setState(
-                                () => _showBoundingBoxes = value ?? false),
-                          ),
+                              'Bounding Boxes',
+                              _showBoundingBoxes,
+                              (value) => setState(
+                                  () => _showBoundingBoxes = value ?? false)),
                           _buildCheckbox(
-                            'Show Mesh',
-                            _showMesh,
-                            (value) => _onFeatureToggle('mesh', value ?? false),
-                          ),
+                              'Mesh',
+                              _showMesh,
+                              (value) =>
+                                  _onFeatureToggle('mesh', value ?? false)),
                           _buildCheckbox(
-                            'Show Landmarks',
-                            _showLandmarks,
-                            (value) =>
-                                setState(() => _showLandmarks = value ?? false),
-                          ),
+                              'Landmarks',
+                              _showLandmarks,
+                              (value) => setState(
+                                  () => _showLandmarks = value ?? false)),
                           _buildCheckbox(
-                            'Show Irises',
-                            _showIrises,
-                            (value) => _onFeatureToggle('iris', value ?? false),
-                          ),
+                              'Irises',
+                              _showIrises,
+                              (value) =>
+                                  _onFeatureToggle('iris', value ?? false)),
                           _buildCheckbox(
-                            'Show Eye Mesh',
-                            _showEyeContours,
-                            (value) =>
-                                _onFeatureToggle('eyeContour', value ?? false),
-                          ),
+                              'Eye Contour',
+                              _showEyeContours,
+                              (value) => _onFeatureToggle(
+                                  'eyeContour', value ?? false)),
+                          _buildCheckbox(
+                              'Eye Mesh',
+                              _showEyeMesh,
+                              (value) =>
+                                  _onFeatureToggle('eyeMesh', value ?? false)),
                         ],
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 8),
+                      const Divider(height: 1),
+                      const SizedBox(height: 8),
+                      // Color pickers in a compact grid
                       Wrap(
-                        spacing: 12,
-                        runSpacing: 8,
+                        spacing: 6,
+                        runSpacing: 6,
                         children: [
                           _buildColorButton(
-                            'Bounding Box',
-                            _boundingBoxColor,
-                            (color) =>
-                                setState(() => _boundingBoxColor = color),
-                          ),
+                              'BBox',
+                              _boundingBoxColor,
+                              (color) =>
+                                  setState(() => _boundingBoxColor = color)),
                           _buildColorButton(
-                            'Landmarks',
-                            _landmarkColor,
-                            (color) => setState(() => _landmarkColor = color),
-                          ),
+                              'Landmarks',
+                              _landmarkColor,
+                              (color) =>
+                                  setState(() => _landmarkColor = color)),
+                          _buildColorButton('Mesh', _meshColor,
+                              (color) => setState(() => _meshColor = color)),
+                          _buildColorButton('Irises', _irisColor,
+                              (color) => setState(() => _irisColor = color)),
                           _buildColorButton(
-                            'Mesh',
-                            _meshColor,
-                            (color) => setState(() => _meshColor = color),
-                          ),
-                          _buildColorButton(
-                            'Irises',
-                            _irisColor,
-                            (color) => setState(() => _irisColor = color),
-                          ),
+                              'Eye Contour',
+                              _eyeContourColor,
+                              (color) =>
+                                  setState(() => _eyeContourColor = color)),
+                          _buildColorButton('Eye Mesh', _eyeMeshColor,
+                              (color) => setState(() => _eyeMeshColor = color)),
                         ],
                       ),
-                      const SizedBox(height: 16),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildSlider(
-                            'Bounding Box Thickness',
-                            _boundingBoxThickness,
-                            0.5,
-                            10.0,
-                            (value) =>
-                                setState(() => _boundingBoxThickness = value),
-                          ),
-                          _buildSlider(
-                            'Landmark Size',
-                            _landmarkSize,
-                            0.5,
-                            15.0,
-                            (value) => setState(() => _landmarkSize = value),
-                          ),
-                          _buildSlider(
-                            'Mesh Point Size',
-                            _meshSize,
-                            0.1,
-                            10.0,
-                            (value) => setState(() => _meshSize = value),
-                          ),
-                        ],
-                      ),
+                      const SizedBox(height: 8),
+                      const Divider(height: 1),
+                      const SizedBox(height: 4),
+                      // Sliders in a more compact layout
+                      _buildSlider(
+                          'BBox Thickness',
+                          _boundingBoxThickness,
+                          0.5,
+                          10.0,
+                          (value) =>
+                              setState(() => _boundingBoxThickness = value)),
+                      _buildSlider('Landmark Size', _landmarkSize, 0.5, 15.0,
+                          (value) => setState(() => _landmarkSize = value)),
+                      _buildSlider('Mesh Size', _meshSize, 0.1, 10.0,
+                          (value) => setState(() => _meshSize = value)),
+                      _buildSlider('Eye Mesh Size', _eyeMeshSize, 0.1, 10.0,
+                          (value) => setState(() => _eyeMeshSize = value)),
                     ],
                   ),
                 ),
@@ -696,14 +702,18 @@ class _ExampleState extends State<Example> {
                                       showLandmarks: _showLandmarks,
                                       showIrises: _showIrises,
                                       showEyeContours: _showEyeContours,
+                                      showEyeMesh: _showEyeMesh,
                                       boundingBoxColor: _boundingBoxColor,
                                       landmarkColor: _landmarkColor,
                                       meshColor: _meshColor,
                                       irisColor: _irisColor,
+                                      eyeContourColor: _eyeContourColor,
+                                      eyeMeshColor: _eyeMeshColor,
                                       boundingBoxThickness:
                                           _boundingBoxThickness,
                                       landmarkSize: _landmarkSize,
                                       meshSize: _meshSize,
+                                      eyeMeshSize: _eyeMeshSize,
                                     ),
                                   ),
                                 ),
@@ -764,12 +774,18 @@ class _ExampleState extends State<Example> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Checkbox(
-            value: value,
-            onChanged: onChanged,
-            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          SizedBox(
+            width: 24,
+            height: 24,
+            child: Checkbox(
+              value: value,
+              onChanged: onChanged,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
+            ),
           ),
-          Text(label),
+          const SizedBox(width: 4),
+          Text(label, style: const TextStyle(fontSize: 12)),
         ],
       ),
     );
@@ -779,29 +795,29 @@ class _ExampleState extends State<Example> {
       String label, Color color, ValueChanged<Color> onColorChanged) {
     return InkWell(
       onTap: () => _pickColor(label, color, onColorChanged),
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(6),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(
           border: Border.all(color: Colors.grey.shade300),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(6),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 24,
-              height: 24,
+              width: 18,
+              height: 18,
               decoration: BoxDecoration(
                 color: color,
                 border: Border.all(color: Colors.grey.shade400),
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: BorderRadius.circular(3),
               ),
             ),
-            const SizedBox(width: 8),
-            Text(label),
-            const SizedBox(width: 4),
-            const Icon(Icons.arrow_drop_down, size: 20),
+            const SizedBox(width: 6),
+            Text(label, style: const TextStyle(fontSize: 12)),
+            const SizedBox(width: 2),
+            const Icon(Icons.arrow_drop_down, size: 16),
           ],
         ),
       ),
@@ -811,28 +827,37 @@ class _ExampleState extends State<Example> {
   Widget _buildSlider(String label, double value, double min, double max,
       ValueChanged<double> onChanged) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      padding: const EdgeInsets.symmetric(vertical: 2.0),
       child: Row(
         children: [
           SizedBox(
-            width: 180,
-            child: Text(label, style: const TextStyle(fontSize: 14)),
+            width: 120,
+            child: Text(label, style: const TextStyle(fontSize: 12)),
           ),
           Expanded(
-            child: Slider(
-              value: value,
-              min: min,
-              max: max,
-              divisions: ((max - min) * 10).round(),
-              label: value.toStringAsFixed(1),
-              onChanged: onChanged,
+            child: SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 2.0,
+                thumbShape:
+                    const RoundSliderThumbShape(enabledThumbRadius: 6.0),
+                overlayShape:
+                    const RoundSliderOverlayShape(overlayRadius: 12.0),
+              ),
+              child: Slider(
+                value: value,
+                min: min,
+                max: max,
+                divisions: ((max - min) * 10).round(),
+                label: value.toStringAsFixed(1),
+                onChanged: onChanged,
+              ),
             ),
           ),
           SizedBox(
-            width: 50,
+            width: 35,
             child: Text(
               value.toStringAsFixed(1),
-              style: const TextStyle(fontSize: 14),
+              style: const TextStyle(fontSize: 11),
               textAlign: TextAlign.right,
             ),
           ),
@@ -851,13 +876,17 @@ class _DetectionsPainter extends CustomPainter {
   final bool showLandmarks;
   final bool showIrises;
   final bool showEyeContours;
+  final bool showEyeMesh;
   final Color boundingBoxColor;
   final Color landmarkColor;
   final Color meshColor;
   final Color irisColor;
+  final Color eyeContourColor;
+  final Color eyeMeshColor;
   final double boundingBoxThickness;
   final double landmarkSize;
   final double meshSize;
+  final double eyeMeshSize;
 
   _DetectionsPainter({
     required this.faces,
@@ -868,13 +897,17 @@ class _DetectionsPainter extends CustomPainter {
     required this.showLandmarks,
     required this.showIrises,
     required this.showEyeContours,
+    required this.showEyeMesh,
     required this.boundingBoxColor,
     required this.landmarkColor,
     required this.meshColor,
     required this.irisColor,
+    required this.eyeContourColor,
+    required this.eyeMeshColor,
     required this.boundingBoxThickness,
     required this.landmarkSize,
     required this.meshSize,
+    required this.eyeMeshSize,
   });
 
   @override
@@ -952,7 +985,7 @@ class _DetectionsPainter extends CustomPainter {
         }
       }
 
-      if (showIrises || showEyeContours) {
+      if (showIrises || showEyeContours || showEyeMesh) {
         final eyePair = face.eyes;
         if (eyePair != null) {
           for (final iris in [eyePair.leftEye, eyePair.rightEye]) {
@@ -986,7 +1019,7 @@ class _DetectionsPainter extends CustomPainter {
             if (showEyeContours && iris.mesh.isNotEmpty) {
               // Draw the visible eyeball contour (eyelid outline) as connected lines
               final Paint eyeOutlinePaint = Paint()
-                ..color = irisColor
+                ..color = eyeContourColor
                 ..style = PaintingStyle.stroke
                 ..strokeWidth = 1.5;
 
@@ -1004,18 +1037,20 @@ class _DetectionsPainter extends CustomPainter {
                   );
                 }
               }
+            }
 
-              // Optionally draw all 71 eye mesh points as small dots for debugging
-              // (includes eyebrows and tracking halos)
+            // Draw all 71 eye mesh points as small dots
+            // (includes eyebrows and tracking halos)
+            if (showEyeMesh && iris.mesh.isNotEmpty) {
               final Paint eyeMeshPointPaint = Paint()
-                ..color = irisColor.withValues(alpha: 0.3)
+                ..color = eyeMeshColor
                 ..style = PaintingStyle.fill;
 
               for (final p in iris.mesh) {
                 final canvasX = ox + p.x * scaleX;
                 final canvasY = oy + p.y * scaleY;
                 canvas.drawCircle(
-                    Offset(canvasX, canvasY), 0.8, eyeMeshPointPaint);
+                    Offset(canvasX, canvasY), eyeMeshSize, eyeMeshPointPaint);
               }
             }
           }
@@ -1034,13 +1069,17 @@ class _DetectionsPainter extends CustomPainter {
         old.showLandmarks != showLandmarks ||
         old.showIrises != showIrises ||
         old.showEyeContours != showEyeContours ||
+        old.showEyeMesh != showEyeMesh ||
         old.boundingBoxColor != boundingBoxColor ||
         old.landmarkColor != landmarkColor ||
         old.meshColor != meshColor ||
         old.irisColor != irisColor ||
+        old.eyeContourColor != eyeContourColor ||
+        old.eyeMeshColor != eyeMeshColor ||
         old.boundingBoxThickness != boundingBoxThickness ||
         old.landmarkSize != landmarkSize ||
-        old.meshSize != meshSize;
+        old.meshSize != meshSize ||
+        old.eyeMeshSize != eyeMeshSize;
   }
 }
 
@@ -1867,6 +1906,7 @@ class _CameraDetectionPainter extends CustomPainter {
 
             // Draw eye contour landmarks
             if (iris.mesh.isNotEmpty) {
+              // Draw the visible eyeball contour (eyelid outline) as connected lines
               final Paint eyeOutlinePaint = Paint()
                 ..color = const Color(0xFF22AAFF)
                 ..style = PaintingStyle.stroke
@@ -1885,6 +1925,18 @@ class _CameraDetectionPainter extends CustomPainter {
                     eyeOutlinePaint,
                   );
                 }
+              }
+
+              // Draw all 71 eye mesh points as small dots
+              final Paint eyeMeshPointPaint = Paint()
+                ..color = const Color(0xFFFFAA22)
+                ..style = PaintingStyle.fill;
+
+              for (final p in iris.mesh) {
+                final canvasX = offsetX + p.x * scaleX;
+                final canvasY = offsetY + p.y * scaleY;
+                canvas.drawCircle(
+                    Offset(canvasX, canvasY), 0.8, eyeMeshPointPaint);
               }
             }
           }

@@ -73,12 +73,15 @@ class FaceDetector {
 
   IsolateWorker? _worker;
   FaceDetection? _detector;
-  FaceLandmark? _faceLm;
-  IrisLandmark? _iris;
+  final List<FaceLandmark> _meshPool = [];
+  IrisLandmark? _irisLeft;
+  IrisLandmark? _irisRight;
 
   // Serialization chains to prevent concurrent model inference (race conditions)
-  Future<void> _meshInferenceLock = Future.value();
-  Future<void> _irisInferenceLock = Future.value();
+  // Mesh pool uses multiple locks for parallel inference across multiple faces
+  final List<Future<void>> _meshInferenceLocks = [];
+  Future<void> _irisLeftInferenceLock = Future.value();
+  Future<void> _irisRightInferenceLock = Future.value();
 
   /// Counts successful iris landmark detections since initialization.
   ///
@@ -107,7 +110,11 @@ class FaceDetector {
   /// Returns true if all models are loaded and ready for inference.
   ///
   /// You must call [initialize] before this returns true.
-  bool get isReady => _detector != null && _faceLm != null && _iris != null;
+  bool get isReady =>
+      _detector != null &&
+      _meshPool.isNotEmpty &&
+      _irisLeft != null &&
+      _irisRight != null;
 
   /// Loads the face detection, face mesh, and iris landmark models and prepares the interpreters for inference.
   ///
@@ -115,11 +122,17 @@ class FaceDetector {
   /// The [model] argument specifies which detection model variant to load
   /// (for example, `FaceDetectionModel.backCamera`).
   ///
+  /// The [meshPoolSize] parameter controls how many face mesh model instances
+  /// to create for parallel processing. Default is 3, which allows up to 3 faces
+  /// to have their meshes computed in parallel. Increase for better multi-face
+  /// performance (at the cost of ~7-10MB memory per additional instance).
+  ///
   /// Optionally, you can pass [options] to configure interpreter settings
   /// such as the number of threads or delegate type.
   Future<void> initialize({
     FaceDetectionModel model = FaceDetectionModel.backCamera,
     InterpreterOptions? options,
+    int meshPoolSize = 3,
   }) async {
     await _ensureTFLiteLoaded();
     try {
@@ -129,19 +142,35 @@ class FaceDetector {
       _detector = await FaceDetection.create(
         model,
         options: options,
-        useIsolate: true,
       );
-      _faceLm = await FaceLandmark.create(options: options, useIsolate: true);
-      _iris = await IrisLandmark.create(options: options, useIsolate: true);
+
+      // Create pool of mesh models for parallel multi-face inference
+      // Each model has its own buffers to prevent race conditions
+      _meshPool.clear();
+      _meshInferenceLocks.clear();
+      for (int i = 0; i < meshPoolSize; i++) {
+        _meshPool.add(await FaceLandmark.create(options: options));
+        _meshInferenceLocks.add(Future.value());
+      }
+
+      // Create separate iris models for parallel left/right eye inference
+      // Each model has its own buffers to prevent race conditions
+      _irisLeft = await IrisLandmark.create(options: options);
+      _irisRight = await IrisLandmark.create(options: options);
     } catch (e) {
       _worker?.dispose();
       _detector?.dispose();
-      _faceLm?.dispose();
-      _iris?.dispose();
+      for (final mesh in _meshPool) {
+        mesh.dispose();
+      }
+      _meshPool.clear();
+      _meshInferenceLocks.clear();
+      _irisLeft?.dispose();
+      _irisRight?.dispose();
       _worker = null;
       _detector = null;
-      _faceLm = null;
-      _iris = null;
+      _irisLeft = null;
+      _irisRight = null;
       rethrow;
     }
   }
@@ -204,16 +233,46 @@ class FaceDetector {
     );
   }
 
-  /// Serializes mesh model inference to prevent race conditions.
+  /// Serializes mesh model inference using a pool of models for parallel processing.
   ///
-  /// The FaceLandmark model uses shared mutable buffers that cannot be safely
-  /// accessed concurrently. This method ensures only one mesh inference runs
-  /// at a time by chaining futures, while allowing other operations to proceed
-  /// in parallel.
-  Future<T> _withMeshLock<T>(Future<T> Function() fn) async {
-    final previous = _meshInferenceLock;
+  /// Each FaceLandmark model uses shared mutable buffers that cannot be safely
+  /// accessed concurrently. This method selects an available model from the pool
+  /// and ensures only one inference runs per model instance at a time, while
+  /// allowing different faces to use different models in parallel.
+  ///
+  /// Uses round-robin selection to distribute load across the pool.
+  int _meshPoolCounter = 0;
+  Future<T> _withMeshLock<T>(Future<T> Function(FaceLandmark) fn) async {
+    if (_meshPool.isEmpty) {
+      throw StateError('Mesh pool is empty. Call initialize() first.');
+    }
+
+    // Round-robin selection to distribute load
+    final int poolIndex = _meshPoolCounter % _meshPool.length;
+    _meshPoolCounter = (_meshPoolCounter + 1) % _meshPool.length;
+
+    final previous = _meshInferenceLocks[poolIndex];
     final completer = Completer<void>();
-    _meshInferenceLock = completer.future;
+    _meshInferenceLocks[poolIndex] = completer.future;
+
+    try {
+      await previous;
+      return await fn(_meshPool[poolIndex]);
+    } finally {
+      completer.complete();
+    }
+  }
+
+  /// Serializes left iris inference calls to prevent buffer race conditions.
+  ///
+  /// The left IrisLandmark model uses shared mutable buffers that cannot be safely
+  /// accessed concurrently. This method ensures only one inference runs
+  /// at a time on the left model by chaining futures, while allowing the right
+  /// model to run in parallel.
+  Future<T> _withIrisLeftLock<T>(Future<T> Function() fn) async {
+    final previous = _irisLeftInferenceLock;
+    final completer = Completer<void>();
+    _irisLeftInferenceLock = completer.future;
 
     try {
       await previous;
@@ -223,16 +282,16 @@ class FaceDetector {
     }
   }
 
-  /// Serializes iris model inference to prevent race conditions.
+  /// Serializes right iris inference calls to prevent buffer race conditions.
   ///
-  /// The IrisLandmark model uses shared mutable buffers that cannot be safely
-  /// accessed concurrently. This method ensures only one iris inference runs
-  /// at a time by chaining futures, while allowing other operations to proceed
-  /// in parallel.
-  Future<T> _withIrisLock<T>(Future<T> Function() fn) async {
-    final previous = _irisInferenceLock;
+  /// The right IrisLandmark model uses shared mutable buffers that cannot be safely
+  /// accessed concurrently. This method ensures only one inference runs
+  /// at a time on the right model by chaining futures, while allowing the left
+  /// model to run in parallel.
+  Future<T> _withIrisRightLock<T>(Future<T> Function() fn) async {
+    final previous = _irisRightInferenceLock;
     final completer = Completer<void>();
-    _irisInferenceLock = completer.future;
+    _irisRightInferenceLock = completer.future;
 
     try {
       await previous;
@@ -271,9 +330,9 @@ class FaceDetector {
   Future<List<Detection>> getDetectionsWithIrisCenters(
     Uint8List imageBytes,
   ) async {
-    if (_iris == null) {
+    if (_irisLeft == null || _irisRight == null) {
       throw StateError(
-        'Iris model not initialized. Call initialize() before getDetectionsWithIrisCenters().',
+        'Iris models not initialized. Call initialize() before getDetectionsWithIrisCenters().',
       );
     }
 
@@ -291,8 +350,8 @@ class FaceDetector {
     List<Point>? allLandmarks,
   }) async {
     final Stopwatch sw = Stopwatch()..start();
-    final IrisLandmark iris = _iris!;
-    final List<Offset> centers = <Offset>[];
+    final IrisLandmark irisLeft = _irisLeft!;
+    final IrisLandmark irisRight = _irisRight!;
     allLandmarks?.clear();
 
     Offset pickCenter(List<List<double>> lm, Offset? fallback) {
@@ -317,33 +376,77 @@ class FaceDetector {
       return pts[bestIdx];
     }
 
-    for (int i = 0; i < rois.length; i++) {
-      final bool isRight = i == 1;
-      // Serialize iris inference to prevent race conditions with shared buffers
-      final List<List<double>> lm =
-          await _withIrisLock(() => iris.runOnImageAlignedIris(
-                decoded,
-                rois[i],
-                isRight: isRight,
-                worker: _worker,
-              ));
+    // Run left and right eye iris detection in parallel using separate models
+    final results = await Future.wait([
+      // Left eye (index 0)
+      if (rois.isNotEmpty && rois[0].size > 0)
+        _withIrisLeftLock(() => irisLeft.runOnImageAlignedIris(
+              decoded,
+              rois[0],
+              isRight: false,
+              worker: _worker,
+            ))
+      else
+        Future.value(<List<double>>[]),
+      // Right eye (index 1)
+      if (rois.length > 1 && rois[1].size > 0)
+        _withIrisRightLock(() => irisRight.runOnImageAlignedIris(
+              decoded,
+              rois[1],
+              isRight: true,
+              worker: _worker,
+            ))
+      else
+        Future.value(<List<double>>[]),
+    ]);
+
+    final List<List<double>> leftLm = results[0];
+    final List<List<double>> rightLm = results[1];
+
+    // Build centers list and allLandmarks
+    final List<Offset> centers = <Offset>[];
+    bool usedFallback = false;
+
+    // Process left eye
+    if (rois.isEmpty || rois[0].size <= 0) {
+      centers.add(leftFallback ?? const Offset(0, 0));
+      usedFallback = true;
+      irisUsedFallbackCount++;
+    } else {
       if (allLandmarks != null) {
         allLandmarks.addAll(
-          lm.map((p) => Point(
+          leftLm.map((p) => Point(
                 p[0].toDouble(),
                 p[1].toDouble(),
                 p.length > 2 ? p[2].toDouble() : 0.0,
               )),
         );
       }
-      final Offset? fb = i == 0 ? leftFallback : rightFallback;
-      centers.add(pickCenter(lm, fb));
+      centers.add(pickCenter(leftLm, leftFallback));
+    }
+
+    // Process right eye
+    if (rois.length <= 1 || rois[1].size <= 0) {
+      centers.add(rightFallback ?? const Offset(0, 0));
+      usedFallback = true;
+      irisUsedFallbackCount++;
+    } else {
+      if (allLandmarks != null) {
+        allLandmarks.addAll(
+          rightLm.map((p) => Point(
+                p[0].toDouble(),
+                p[1].toDouble(),
+                p.length > 2 ? p[2].toDouble() : 0.0,
+              )),
+        );
+      }
+      centers.add(pickCenter(rightLm, rightFallback));
     }
 
     sw.stop();
     lastIrisTime = sw.elapsed;
 
-    if (centers.isNotEmpty) {
+    if (centers.isNotEmpty && !usedFallback) {
       irisOkCount++;
     } else {
       irisFailCount++;
@@ -378,9 +481,9 @@ class FaceDetector {
         'FaceDetector not initialized. Call initialize() before detectDetections().',
       );
     }
-    if (_iris == null) {
+    if (_irisLeft == null || _irisRight == null) {
       throw StateError(
-        'Iris model not initialized. initialize() must succeed before detectDetections().',
+        'Iris models not initialized. initialize() must succeed before detectDetections().',
       );
     }
 
@@ -577,13 +680,12 @@ class FaceDetector {
     img.Image faceCrop,
     AlignedFace aligned,
   ) async {
-    final fl = _faceLm;
-    if (fl == null) {
+    if (_meshPool.isEmpty) {
       return const <Point>[];
     }
-    // Serialize mesh inference to prevent race conditions with shared buffers
+    // Use pool to allow parallel mesh inference for multiple faces
     final lmNorm =
-        await _withMeshLock(() => fl.call(faceCrop, worker: _worker));
+        await _withMeshLock((fl) => fl.call(faceCrop, worker: _worker));
     final ct = math.cos(aligned.theta);
     final st = math.sin(aligned.theta);
     final s = aligned.size;
@@ -671,21 +773,36 @@ class FaceDetector {
     img.Image decoded,
     List<AlignedRoi> rois,
   ) async {
-    final IrisLandmark? ir = _iris;
-    if (ir == null) {
+    if (_irisLeft == null || _irisRight == null) {
+      return const <Point>[];
+    }
+    if (rois.length < 2) {
       return const <Point>[];
     }
 
-    final List<Point> pts = <Point>[];
+    final IrisLandmark irisLeft = _irisLeft!;
+    final IrisLandmark irisRight = _irisRight!;
 
-    for (int i = 0; i < rois.length; i++) {
-      final bool isRight = (i == 1);
-      final List<List<double>> irisLm = await ir.runOnImageAlignedIris(
-        decoded,
-        rois[i],
-        isRight: isRight,
-        worker: _worker,
-      );
+    // Run left and right eye iris detection in parallel using separate models
+    final results = await Future.wait([
+      // Left eye (index 0)
+      _withIrisLeftLock(() => irisLeft.runOnImageAlignedIris(
+            decoded,
+            rois[0],
+            isRight: false,
+            worker: _worker,
+          )),
+      // Right eye (index 1)
+      _withIrisRightLock(() => irisRight.runOnImageAlignedIris(
+            decoded,
+            rois[1],
+            isRight: true,
+            worker: _worker,
+          )),
+    ]);
+
+    final List<Point> pts = <Point>[];
+    for (final List<List<double>> irisLm in results) {
       for (final List<double> p in irisLm) {
         final double x = p[0].toDouble();
         final double y = p[1].toDouble();
@@ -968,20 +1085,20 @@ class FaceDetector {
     Uint8List imageBytes, {
     FaceDetectionMode mode = FaceDetectionMode.full,
   }) async {
+    // Fast path: decode and register in worker, avoid RGB round-trip
+    if (_worker != null && _worker!.isInitialized) {
+      final (frameId, w, h) = await _worker!.decodeAndRegisterFrame(imageBytes);
+      final Size imgSize = Size(w.toDouble(), h.toDouble());
+      return _detectFacesWithFrameId(frameId, w, h, mode, imgSize);
+    }
+
+    // Fallback: no worker available
     final DecodedRgb d = await decodeImageWithWorker(imageBytes, _worker);
     final img.Image decoded = _imageFromDecodedRgb(d);
     final Size imgSize = Size(
       decoded.width.toDouble(),
       decoded.height.toDouble(),
     );
-
-    if (_worker != null && _worker!.isInitialized) {
-      return _detectFacesWithFrameRegistration(
-        decoded,
-        mode,
-        imgSize,
-      );
-    }
 
     final bool computeIris = mode == FaceDetectionMode.full;
     final bool computeMesh =
@@ -1041,14 +1158,17 @@ class FaceDetector {
   }
 
   /// Optimized face detection using frame registration to avoid redundant transfers.
-  Future<List<Face>> _detectFacesWithFrameRegistration(
-    img.Image decoded,
+  ///
+  /// The frame is already registered in the worker isolate, so we don't need
+  /// to transfer the decoded image.
+  Future<List<Face>> _detectFacesWithFrameId(
+    int frameId,
+    int width,
+    int height,
     FaceDetectionMode mode,
     Size imgSize,
   ) async {
     final IsolateWorker worker = _worker!;
-
-    final int frameId = await worker.registerFrame(decoded);
 
     try {
       final bool computeIris = mode == FaceDetectionMode.full;
@@ -1058,16 +1178,12 @@ class FaceDetector {
       final bool computeMesh =
           mode == FaceDetectionMode.standard || mode == FaceDetectionMode.full;
       final List<Detection> dets = await _detectDetectionsWithFrameId(
-          frameId,
-          decoded.width,
-          decoded.height,
-          computeIris,
-          computeIris ? features : null);
+          frameId, width, height, computeIris, computeIris ? features : null);
       final List<AlignedFace> allAligned = computeMesh && !computeIris
           ? await Future.wait(dets.map((det) => estimateAlignedFaceWithFrameId(
                 frameId,
-                decoded.width,
-                decoded.height,
+                width,
+                height,
                 det,
               )))
           : <AlignedFace>[];
@@ -1086,19 +1202,17 @@ class FaceDetector {
                       ? await _getMeshForFace(allAligned[i])
                       : <Point>[];
 
-          final List<Point> irisPx =
-              computeIris && feat != null && feat.iris.isNotEmpty
-                  ? feat.iris
-                  : computeIris && i < allAligned.length
-                      ? await _getIrisForFaceWithFrameId(frameId, meshPx,
-                          decoded.width.toDouble(), decoded.height.toDouble())
-                      : computeIris
-                          ? await _getIrisForFaceWithFrameId(
-                              frameId,
-                              meshPx,
-                              decoded.width.toDouble(),
-                              decoded.height.toDouble())
-                          : <Point>[];
+          final List<Point> irisPx = computeIris &&
+                  feat != null &&
+                  feat.iris.isNotEmpty
+              ? feat.iris
+              : computeIris && i < allAligned.length
+                  ? await _getIrisForFaceWithFrameId(
+                      frameId, meshPx, width.toDouble(), height.toDouble())
+                  : computeIris
+                      ? await _getIrisForFaceWithFrameId(
+                          frameId, meshPx, width.toDouble(), height.toDouble())
+                      : <Point>[];
 
           final FaceMesh? faceMesh =
               meshPx.isNotEmpty ? FaceMesh(meshPx) : null;
@@ -1136,8 +1250,8 @@ class FaceDetector {
         'FaceDetector not initialized. Call initialize() before detection.',
       );
     }
-    if (_iris == null) {
-      throw StateError('Iris model not initialized.');
+    if (_irisLeft == null || _irisRight == null) {
+      throw StateError('Iris models not initialized.');
     }
 
     final List<Detection> dets =
@@ -1278,9 +1392,8 @@ class FaceDetector {
     List<Point>? allLandmarks,
   }) async {
     final Stopwatch sw = Stopwatch()..start();
-    final IrisLandmark iris = _iris!;
-    final List<Offset> centers = <Offset>[];
-    bool usedFallback = false;
+    final IrisLandmark irisLeft = _irisLeft!;
+    final IrisLandmark irisRight = _irisRight!;
     allLandmarks?.clear();
 
     Offset pickCenter(List<List<double>> lm, Offset? fallback) {
@@ -1305,37 +1418,71 @@ class FaceDetector {
       return pts[bestIdx];
     }
 
-    for (int i = 0; i < rois.length; i++) {
-      final bool isRight = i == 1;
-      final AlignedRoi roi = rois[i];
+    // Run left and right eye iris detection in parallel using separate models
+    final results = await Future.wait([
+      // Left eye (index 0)
+      if (rois.isNotEmpty && rois[0].size > 0)
+        _withIrisLeftLock(() => irisLeft.runOnImageAlignedIrisWithFrameId(
+              frameId,
+              rois[0],
+              isRight: false,
+              worker: _worker,
+            ))
+      else
+        Future.value(<List<double>>[]),
+      // Right eye (index 1)
+      if (rois.length > 1 && rois[1].size > 0)
+        _withIrisRightLock(() => irisRight.runOnImageAlignedIrisWithFrameId(
+              frameId,
+              rois[1],
+              isRight: true,
+              worker: _worker,
+            ))
+      else
+        Future.value(<List<double>>[]),
+    ]);
 
-      if (roi.size <= 0) {
-        final Offset? fb = i == 0 ? leftFallback : rightFallback;
-        centers.add(fb ?? const Offset(0, 0));
-        usedFallback = true;
-        irisUsedFallbackCount++;
-        continue;
-      }
+    final List<List<double>> leftLm = results[0];
+    final List<List<double>> rightLm = results[1];
 
-      // Serialize iris inference to prevent race conditions with shared buffers
-      final List<List<double>> lm =
-          await _withIrisLock(() => iris.runOnImageAlignedIrisWithFrameId(
-                frameId,
-                roi,
-                isRight: isRight,
-                worker: _worker,
-              ));
+    // Build centers list and allLandmarks
+    final List<Offset> centers = <Offset>[];
+    bool usedFallback = false;
+
+    // Process left eye
+    if (rois.isEmpty || rois[0].size <= 0) {
+      centers.add(leftFallback ?? const Offset(0, 0));
+      usedFallback = true;
+      irisUsedFallbackCount++;
+    } else {
       if (allLandmarks != null) {
         allLandmarks.addAll(
-          lm.map((p) => Point(
+          leftLm.map((p) => Point(
                 p[0].toDouble(),
                 p[1].toDouble(),
                 p.length > 2 ? p[2].toDouble() : 0.0,
               )),
         );
       }
-      final Offset? fb = i == 0 ? leftFallback : rightFallback;
-      centers.add(pickCenter(lm, fb));
+      centers.add(pickCenter(leftLm, leftFallback));
+    }
+
+    // Process right eye
+    if (rois.length <= 1 || rois[1].size <= 0) {
+      centers.add(rightFallback ?? const Offset(0, 0));
+      usedFallback = true;
+      irisUsedFallbackCount++;
+    } else {
+      if (allLandmarks != null) {
+        allLandmarks.addAll(
+          rightLm.map((p) => Point(
+                p[0].toDouble(),
+                p[1].toDouble(),
+                p.length > 2 ? p[2].toDouble() : 0.0,
+              )),
+        );
+      }
+      centers.add(pickCenter(rightLm, rightFallback));
     }
 
     sw.stop();
@@ -1357,7 +1504,7 @@ class FaceDetector {
     double imgW,
     double imgH,
   ) async {
-    if (_iris == null) return <Point>[];
+    if (_irisLeft == null || _irisRight == null) return <Point>[];
     if (meshPx.isEmpty) return <Point>[];
 
     final List<AlignedRoi> rois = eyeRoisFromMesh(meshPx);
@@ -1369,29 +1516,35 @@ class FaceDetector {
     int frameId,
     List<AlignedRoi> rois,
   ) async {
-    if (_iris == null) return <Point>[];
+    if (_irisLeft == null || _irisRight == null) return <Point>[];
     if (rois.length < 2) return <Point>[];
 
-    final IrisLandmark iris = _iris!;
-    final List<Point> pts = <Point>[];
+    final IrisLandmark irisLeft = _irisLeft!;
+    final IrisLandmark irisRight = _irisRight!;
 
-    for (int i = 0; i < rois.length; i++) {
-      final bool isRight = i == 1;
-      try {
-        // Serialize iris inference to prevent race conditions with shared buffers
-        final List<List<double>> lm =
-            await _withIrisLock(() => iris.runOnImageAlignedIrisWithFrameId(
-                  frameId,
-                  rois[i],
-                  isRight: isRight,
-                  worker: _worker,
-                ));
-        for (final List<double> p in lm) {
-          final double z = p.length > 2 ? p[2].toDouble() : 0.0;
-          pts.add(Point(p[0], p[1], z));
-        }
-      } catch (e) {
-        // ignore: silently skip failed eye
+    // Run left and right eye iris detection in parallel using separate models
+    final results = await Future.wait([
+      // Left eye (index 0)
+      _withIrisLeftLock(() => irisLeft.runOnImageAlignedIrisWithFrameId(
+            frameId,
+            rois[0],
+            isRight: false,
+            worker: _worker,
+          )),
+      // Right eye (index 1)
+      _withIrisRightLock(() => irisRight.runOnImageAlignedIrisWithFrameId(
+            frameId,
+            rois[1],
+            isRight: true,
+            worker: _worker,
+          )),
+    ]);
+
+    final List<Point> pts = <Point>[];
+    for (final List<List<double>> lm in results) {
+      for (final List<double> p in lm) {
+        final double z = p.length > 2 ? p[2].toDouble() : 0.0;
+        pts.add(Point(p[0], p[1], z));
       }
     }
 
@@ -1406,8 +1559,13 @@ class FaceDetector {
   void dispose() {
     _worker?.dispose();
     _detector?.dispose();
-    _faceLm?.dispose();
-    _iris?.dispose();
+    for (final mesh in _meshPool) {
+      mesh.dispose();
+    }
+    _meshPool.clear();
+    _meshInferenceLocks.clear();
+    _irisLeft?.dispose();
+    _irisRight?.dispose();
   }
 
   @pragma('vm:entry-point')
@@ -1421,7 +1579,7 @@ class FaceDetector {
     final List roisData = params['rois'] as List;
 
     try {
-      final IrisLandmark iris = await IrisLandmark.create(useIsolate: false);
+      final IrisLandmark iris = await IrisLandmark.create();
       final img.Image? decoded = img.decodeImage(bytes);
       if (decoded == null) {
         sp.send({'ok': false});

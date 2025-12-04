@@ -39,10 +39,6 @@ class FaceDetection {
   /// The [options] parameter allows you to customize the TFLite interpreter
   /// configuration (e.g., number of threads, use of GPU delegate).
   ///
-  /// When [useIsolate] is true (default), inference runs in a separate isolate
-  /// to avoid blocking the UI thread. Set to false if you plan to manage isolates
-  /// yourself or need synchronous execution.
-  ///
   /// Returns a fully initialized [FaceDetection] instance ready to detect faces.
   ///
   /// **Note:** Most users should use the high-level [FaceDetector] class instead
@@ -52,7 +48,6 @@ class FaceDetection {
   /// ```dart
   /// final detector = await FaceDetection.create(
   ///   FaceDetectionModel.frontCamera,
-  ///   useIsolate: true,
   /// );
   /// ```
   ///
@@ -60,7 +55,6 @@ class FaceDetection {
   static Future<FaceDetection> create(
     FaceDetectionModel model, {
     InterpreterOptions? options,
-    bool useIsolate = true,
   }) async {
     final Map<String, Object> opts = _optsFor(model);
     final int inW = opts['input_size_width'] as int;
@@ -119,9 +113,7 @@ class FaceDetection {
 
     obj._input4dCache = createNHWCTensor4D(inH, inW);
 
-    if (useIsolate) {
-      obj._iso = await IsolateInterpreter.create(address: itp.address);
-    }
+    obj._iso = await IsolateInterpreter.create(address: itp.address);
 
     return obj;
   }

@@ -23,9 +23,6 @@ class IrisLandmark {
   /// The [options] parameter allows you to customize the TFLite interpreter
   /// configuration (e.g., number of threads, use of GPU delegate).
   ///
-  /// When [useIsolate] is true (default), inference runs in a separate isolate
-  /// to avoid blocking the UI thread.
-  ///
   /// Returns a fully initialized [IrisLandmark] instance ready to detect irises.
   ///
   /// **Note:** This model expects a cropped eye region as input. For full pipeline
@@ -33,7 +30,7 @@ class IrisLandmark {
   ///
   /// Example:
   /// ```dart
-  /// final irisModel = await IrisLandmark.create(useIsolate: true);
+  /// final irisModel = await IrisLandmark.create();
   /// final irisPoints = await irisModel(eyeCropImage);
   /// ```
   ///
@@ -43,7 +40,6 @@ class IrisLandmark {
   /// Throws [StateError] if the model cannot be loaded or initialized.
   static Future<IrisLandmark> create({
     InterpreterOptions? options,
-    bool useIsolate = true,
   }) async {
     final Interpreter itp = await Interpreter.fromAsset(
       'packages/face_detection_tflite/assets/models/$_irisLandmarkModel',
@@ -67,9 +63,7 @@ class IrisLandmark {
         outputInfo.map((int k, OutputTensorInfo v) => MapEntry(k, v.buffer));
     obj._input4dCache = createNHWCTensor4D(inH, inW);
 
-    if (useIsolate) {
-      obj._iso = await IsolateInterpreter.create(address: itp.address);
-    }
+    obj._iso = await IsolateInterpreter.create(address: itp.address);
 
     return obj;
   }
@@ -84,16 +78,12 @@ class IrisLandmark {
   /// The [options] parameter allows you to customize the TFLite interpreter
   /// configuration (e.g., number of threads, use of GPU delegate).
   ///
-  /// When [useIsolate] is true (default), inference runs in a separate isolate
-  /// to avoid blocking the UI thread.
-  ///
   /// Returns a fully initialized [IrisLandmark] instance ready to detect irises.
   ///
   /// Example:
   /// ```dart
   /// final customModel = await IrisLandmark.createFromFile(
   ///   '/path/to/custom_iris_model.tflite',
-  ///   useIsolate: true,
   /// );
   /// final irisPoints = await customModel(eyeCropImage);
   /// customModel.dispose(); // Clean up when done
@@ -106,7 +96,6 @@ class IrisLandmark {
   static Future<IrisLandmark> createFromFile(
     String modelPath, {
     InterpreterOptions? options,
-    bool useIsolate = true,
   }) async {
     final Interpreter itp = Interpreter.fromFile(
       File(modelPath),
@@ -130,9 +119,7 @@ class IrisLandmark {
         outputInfo.map((int k, OutputTensorInfo v) => MapEntry(k, v.buffer));
     obj._input4dCache = createNHWCTensor4D(inH, inW);
 
-    if (useIsolate) {
-      obj._iso = await IsolateInterpreter.create(address: itp.address);
-    }
+    obj._iso = await IsolateInterpreter.create(address: itp.address);
 
     return obj;
   }
@@ -285,7 +272,7 @@ class IrisLandmark {
   /// relative to the eye crop, where each point is `[x, y, z]`.
   ///
   /// **Performance:** Creates a new isolate for each call. For repeated detections,
-  /// prefer creating an [IrisLandmark] instance with `useIsolate: true`.
+  /// prefer creating a long-lived [IrisLandmark] instance.
   ///
   /// Example:
   /// ```dart
@@ -300,7 +287,7 @@ class IrisLandmark {
   /// Throws [StateError] if the model cannot be loaded or inference fails.
   ///
   /// See also:
-  /// - [create] with `useIsolate: true` for persistent isolate inference
+  /// - [create] for persistent isolate inference
   /// - [callIrisOnly] for the instance method alternative
   static Future<List<List<double>>> callWithIsolate(
     Uint8List eyeCropBytes,
@@ -337,10 +324,7 @@ class IrisLandmark {
     final String mode = params['mode'] as String;
 
     try {
-      final IrisLandmark iris = await IrisLandmark.createFromFile(
-        modelPath,
-        useIsolate: false,
-      );
+      final IrisLandmark iris = await IrisLandmark.createFromFile(modelPath);
       final img.Image? eye = img.decodeImage(eyeCropBytes);
       if (eye == null) {
         sendPort.send({'ok': false, 'err': 'decode_failed'});

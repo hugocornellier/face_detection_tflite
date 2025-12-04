@@ -25,9 +25,6 @@ class FaceLandmark {
   /// The [options] parameter allows you to customize the TFLite interpreter
   /// configuration (e.g., number of threads, use of GPU delegate).
   ///
-  /// When [useIsolate] is true (default), inference runs in a separate isolate
-  /// to avoid blocking the UI thread.
-  ///
   /// Returns a fully initialized [FaceLandmark] instance ready to predict face meshes.
   ///
   /// **Note:** This model expects an aligned face crop as input. For full pipeline
@@ -35,14 +32,13 @@ class FaceLandmark {
   ///
   /// Example:
   /// ```dart
-  /// final landmarkModel = await FaceLandmark.create(useIsolate: true);
+  /// final landmarkModel = await FaceLandmark.create();
   /// final meshPoints = await landmarkModel(alignedFaceCrop);
   /// ```
   ///
   /// Throws [StateError] if the model cannot be loaded or initialized.
   static Future<FaceLandmark> create({
     InterpreterOptions? options,
-    bool useIsolate = true,
   }) async {
     final Interpreter itp = await Interpreter.fromAsset(
       'packages/face_detection_tflite/assets/models/$_faceLandmarkModel',
@@ -85,9 +81,7 @@ class FaceLandmark {
 
     obj._input4dCache = createNHWCTensor4D(inH, inW);
 
-    if (useIsolate) {
-      obj._iso = await IsolateInterpreter.create(address: itp.address);
-    }
+    obj._iso = await IsolateInterpreter.create(address: itp.address);
 
     return obj;
   }

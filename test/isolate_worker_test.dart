@@ -44,6 +44,25 @@ void main() {
       expect(decoded.rgb, isNotEmpty);
     });
 
+    test('decodeAndRegisterFrame avoids RGB round-trip', () async {
+      final bytes = TestUtils.createDummyImageBytes();
+      final (frameId, w, h) = await worker.decodeAndRegisterFrame(bytes);
+
+      expect(frameId, greaterThanOrEqualTo(0));
+      expect(w, 1);
+      expect(h, 1);
+
+      // Verify frame is usable by cropping
+      final crop = await worker.cropFromRoiWithFrameId(
+        frameId,
+        RectF(0, 0, 1, 1),
+      );
+      expect(crop.width, 1);
+      expect(crop.height, 1);
+
+      await worker.releaseFrame(frameId);
+    });
+
     test('registers frame and converts to tensor', () async {
       final image = _gradientImage(2, 2);
       final frameId = await worker.registerFrame(image);

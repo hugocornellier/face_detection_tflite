@@ -170,6 +170,41 @@ class IsolateWorker {
     return DecodedRgb(w, h, rgb);
   }
 
+  /// Decodes and registers an image in one operation (optimized fast-path).
+  ///
+  /// This combines [decodeImage] and [registerFrame] into a single operation
+  /// that avoids transferring RGB data back to the main isolate. The image
+  /// is decoded and stored in the worker, returning only the frameId and
+  /// dimensions.
+  ///
+  /// This is more efficient than calling [decodeImage] followed by [registerFrame]
+  /// when you don't need the decoded image on the main isolate. It eliminates
+  /// a wasteful round-trip of RGB data (worker → main → worker).
+  ///
+  /// Returns a record `(frameId, width, height)`.
+  ///
+  /// **Important:** Call [releaseFrame] when done with the frame to free memory.
+  ///
+  /// Example:
+  /// ```dart
+  /// final (frameId, w, h) = await worker.decodeAndRegisterFrame(imageBytes);
+  /// final crop = await worker.cropFromRoiWithFrameId(frameId, roi);
+  /// await worker.releaseFrame(frameId); // Clean up
+  /// ```
+  Future<(int, int, int)> decodeAndRegisterFrame(Uint8List bytes) async {
+    final int frameId = _nextFrameId++;
+
+    final Map result = await _sendRequest<Map>('decodeAndRegister', {
+      'bytes': TransferableTypedData.fromList([bytes]),
+      'frameId': frameId,
+    });
+
+    final int w = result['w'] as int;
+    final int h = result['h'] as int;
+
+    return (frameId, w, h);
+  }
+
   /// Registers a frame in the worker isolate for efficient reuse.
   ///
   /// This method transfers the RGB pixel data to the worker once and returns
@@ -535,6 +570,8 @@ class IsolateWorker {
     switch (op) {
       case 'decode':
         return _opDecode(params);
+      case 'decodeAndRegister':
+        return _opDecodeAndRegister(params);
       case 'tensor':
         return _opTensor(params);
       case 'crop':
@@ -571,6 +608,40 @@ class IsolateWorker {
       'w': decoded.width,
       'h': decoded.height,
       'rgb': TransferableTypedData.fromList([rgb]),
+    };
+  }
+
+  static Map<String, dynamic> _opDecodeAndRegister(
+      Map<dynamic, dynamic> params) {
+    final int frameId = params['frameId'] as int;
+    final ByteBuffer bb =
+        (params['bytes'] as TransferableTypedData).materialize();
+    final Uint8List inBytes = bb.asUint8List();
+
+    final img.Image? decoded = img.decodeImage(inBytes);
+    if (decoded == null) {
+      throw FormatException('Failed to decode image format');
+    }
+
+    // Extract RGB once and store directly in frames map
+    final Uint8List rgb = decoded.getBytes(order: img.ChannelOrder.rgb);
+    final img.Image image = img.Image.fromBytes(
+      width: decoded.width,
+      height: decoded.height,
+      bytes: rgb.buffer,
+      order: img.ChannelOrder.rgb,
+    );
+
+    IsolateWorker._frames[frameId] = _RegisteredFrame(
+      decoded.width,
+      decoded.height,
+      rgb,
+      image,
+    );
+
+    return {
+      'w': decoded.width,
+      'h': decoded.height,
     };
   }
 
