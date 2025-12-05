@@ -27,8 +27,7 @@ class FaceDetection {
     this._inW,
     this._inH,
     this._anchors,
-    this._assumeMirrored,
-  );
+  ) : _assumeMirrored = false;
 
   /// Creates and initializes a face detection model instance.
   ///
@@ -59,9 +58,6 @@ class FaceDetection {
     final Map<String, Object> opts = _optsFor(model);
     final int inW = opts['input_size_width'] as int;
     final int inH = opts['input_size_height'] as int;
-    // All models use the same coordinate system - no mirroring needed
-    // Camera apps should handle mirroring at the display level, not here
-    final bool assumeMirrored = false;
 
     final Interpreter itp = await Interpreter.fromAsset(
       'packages/face_detection_tflite/assets/models/${_nameFor(model)}',
@@ -74,7 +70,6 @@ class FaceDetection {
       inW,
       inH,
       anchors,
-      assumeMirrored,
     );
 
     int foundIdx = -1;
@@ -112,7 +107,6 @@ class FaceDetection {
     obj._scoresBuf = obj._scoresTensor.data.buffer.asFloat32List();
 
     obj._input4dCache = createNHWCTensor4D(inH, inW);
-
     obj._iso = await IsolateInterpreter.create(address: itp.address);
 
     return obj;

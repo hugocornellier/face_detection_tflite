@@ -926,7 +926,6 @@ class FaceDetector {
   ///
   /// See also:
   /// - [getFaceMesh] for single-face mesh detection
-  /// - [getIrisFromMesh] to generate iris landmarks from these meshes
   /// - [detectFaces] for the complete pipeline in one call
   Future<List<List<Point>>> getFaceMeshFromDetections(
     Uint8List imageBytes,
@@ -943,69 +942,6 @@ class FaceDetector {
         aligned,
       );
       out.add(mesh);
-    }
-    return out;
-  }
-
-  /// Generates iris landmarks from face mesh data.
-  ///
-  /// **DEPRECATED:** Use [detectFaces] with [FaceDetectionMode.full] and access
-  /// `face.eyes` for structured iris data instead. This method is superseded by
-  /// the high-level API which provides better structured access to iris landmarks
-  /// via `face.eyes.leftEye.irisCenter` and `face.eyes.leftEye.irisContour`.
-  ///
-  /// This method takes pre-computed 468-point face meshes and extracts iris
-  /// landmarks for each face. The face mesh is used to locate eye regions,
-  /// which are then processed by the iris landmark model to detect 152 keypoints
-  /// (76 per eye: 71 eye mesh + 5 iris keypoints) total per face.
-  ///
-  /// The iris detection process:
-  /// 1. Extracts eye corner landmarks from the mesh (indices 33, 133, 362, 263)
-  /// 2. Computes aligned eye region crops
-  /// 3. Runs iris landmark detection on each eye
-  /// 4. Transforms iris points back to original image coordinates
-  ///
-  /// The [imageBytes] parameter should contain the same encoded image data used
-  /// for the mesh generation.
-  ///
-  /// The [meshesPerFace] parameter should be a list of face meshes, typically
-  /// from [getFaceMeshFromDetections].
-  ///
-  /// Returns a list of iris landmark sets, where each set contains points for
-  /// both eyes (left and right). Returns an empty list if [meshesPerFace] is empty.
-  /// If a face mesh is empty, returns an empty landmark set for that face.
-  ///
-  /// Example:
-  /// ```dart
-  /// final meshes = await detector.getFaceMeshFromDetections(imageBytes, detections);
-  /// final irises = await detector.getIrisFromMesh(imageBytes, meshes);
-  /// // irises[0] contains 152 iris and eye mesh points (76 per eye) for the first face
-  /// ```
-  ///
-  /// See also:
-  /// - [getEyeMeshWithIris] for single-face iris detection
-  /// - [getFaceMeshFromDetections] to generate the required mesh input
-  /// - [detectFaces] for the complete pipeline in one call (recommended)
-  @Deprecated(
-    'Use detectFaces() with FaceDetectionMode.full and access face.eyes instead. '
-    'Will be removed in v5.0.0.',
-  )
-  Future<List<List<Point>>> getIrisFromMesh(
-    Uint8List imageBytes,
-    List<List<Point>> meshesPerFace,
-  ) async {
-    if (meshesPerFace.isEmpty) return const <List<Point>>[];
-    final DecodedRgb d = await decodeImageWithWorker(imageBytes, _worker);
-    final img.Image decoded = _imageFromDecodedRgb(d);
-    final out = <List<Point>>[];
-    for (final meshPts in meshesPerFace) {
-      if (meshPts.isEmpty) {
-        out.add(const <Point>[]);
-        continue;
-      }
-      final List<AlignedRoi> rois = eyeRoisFromMesh(meshPts);
-      final List<Point> iris = await irisFromEyeRois(decoded, rois);
-      out.add(iris);
     }
     return out;
   }
@@ -1085,7 +1021,6 @@ class FaceDetector {
     Uint8List imageBytes, {
     FaceDetectionMode mode = FaceDetectionMode.full,
   }) async {
-    // Fast path: decode and register in worker, avoid RGB round-trip
     if (_worker != null && _worker!.isInitialized) {
       final (frameId, w, h) = await _worker!.decodeAndRegisterFrame(imageBytes);
       final Size imgSize = Size(w.toDouble(), h.toDouble());
@@ -1418,7 +1353,6 @@ class FaceDetector {
       return pts[bestIdx];
     }
 
-    // Run left and right eye iris detection in parallel using separate models
     final results = await Future.wait([
       // Left eye (index 0)
       if (rois.isNotEmpty && rois[0].size > 0)
@@ -1445,11 +1379,9 @@ class FaceDetector {
     final List<List<double>> leftLm = results[0];
     final List<List<double>> rightLm = results[1];
 
-    // Build centers list and allLandmarks
     final List<Offset> centers = <Offset>[];
     bool usedFallback = false;
 
-    // Process left eye
     if (rois.isEmpty || rois[0].size <= 0) {
       centers.add(leftFallback ?? const Offset(0, 0));
       usedFallback = true;
@@ -1467,7 +1399,6 @@ class FaceDetector {
       centers.add(pickCenter(leftLm, leftFallback));
     }
 
-    // Process right eye
     if (rois.length <= 1 || rois[1].size <= 0) {
       centers.add(rightFallback ?? const Offset(0, 0));
       usedFallback = true;

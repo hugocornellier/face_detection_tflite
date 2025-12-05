@@ -6,21 +6,33 @@
 Flutter implementation of Google's MediaPipe face and facial landmark detection models using TensorFlow Lite.
 Completely local: no remote API, just pure on-device, offline detection.
 
-#### Bounding Box Example:
+### Bounding Boxes
 
 ![Example Screenshot](assets/screenshots/group-shot-bounding-box-ex1.png)
 
-#### Mesh (468-Point) Example:
+### Facial Mesh (468-Point)
 
 ![Example Screenshot](assets/screenshots/mesh-ex1.png)
 
-#### Landmark Example:
+### Facial Landmarks
 
 ![Example Screenshot](assets/screenshots/landmark-ex1.png)
 
-#### Eye Tracking Example:
+### Eye Tracking
+
+#### Iris Detection:
 
 ![Example Screenshot](assets/screenshots/iris-detection-ex1.png)
+
+#### Eye Area Mesh (71-Point):
+
+Note: The Facial mesh and eye area mesh are separate. 
+
+![Example Screenshot](assets/screenshots/eyemesh-ex1.png)
+
+#### Eye Contour:
+
+![Example Screenshot](assets/screenshots/eyecontour-ex1.png)
 
 ## Features
 
@@ -74,9 +86,6 @@ final Point topRight    = boundingBox.topRight;      // Top-right corner
 final Point bottomRight = boundingBox.bottomRight;   // Bottom-right corner
 final Point bottomLeft  = boundingBox.bottomLeft;    // Bottom-left corner
 
-// Access all corners as a list (order: top-left, top-right, bottom-right, bottom-left)
-final List<Point> allCorners = boundingBox.corners;
-
 // Access coordinates
 print('Top-left: (${topLeft.x}, ${topLeft.y})');
 ```
@@ -95,6 +104,9 @@ final Point center = boundingBox.center;  // Center point
 // Access coordinates
 print('Size: ${width} x ${height}');
 print('Center: (${center.x}, ${center.y})');
+
+// Access all corners as a list (order: top-left, top-right, bottom-right, bottom-left)
+final List<Point> allCorners = boundingBox.corners;
 ```
 
 ## Landmarks
@@ -146,14 +158,10 @@ precise face tracking and rendering.
     // Total number of points (always 468)
     print('Mesh points: ${points.length}');
 
-    // Iterate through all points
+    // Iterate through all points (all mesh points have z-coordinates)
     for (int i = 0; i < points.length; i++) {
       final point = points[i];
-      if (point.z != null) {
-        print('Point $i: (${point.x}, ${point.y}, ${point.z})');
-      } else {
-        print('Point $i: (${point.x}, ${point.y})');
-      }
+      print('Point $i: (${point.x}, ${point.y}, ${point.z})');
     }
 
     // Access individual points using index operator
@@ -198,14 +206,10 @@ depth. 3D coordinates are always computed for mesh and iris landmarks.
 
 The `eyes` property returns comprehensive eye tracking data for both eyes in absolute pixel
 coordinates. Each eye includes:
-- **Iris center** (`irisCenter`): The iris center point for precise gaze tracking
-- **Iris contour** (`irisContour`): 4 points outlining the iris boundary (the colored part of the eye)
-- **Contour** (`contour`): 15 points outlining the eyelid (visible eyeball outline)
-- **Mesh** (`mesh`): 71 landmarks covering the entire eye region (eyelids, eyebrows, tracking halos)
-
-The eye mesh landmarks provide detailed geometry for the entire eye region including eyelids,
-eye corners, and surrounding area. These can be useful for blink detection, eye openness
-estimation, and advanced eye tracking applications.
+- **Iris center** (`irisCenter`): The iris center point
+- **Iris contour** (`irisContour`): 4 points outlining the iris boundary
+- **Contour** (`contour`): 15 points outlining the eyelid
+- **Mesh** (`mesh`): 71 landmarks covering the entire eye region
 
 Only available in FaceDetectionMode.full.
 
@@ -249,9 +253,7 @@ if (rightEye != null) {
 
 ### Rendering Eye Contours
 
-The 71 eye mesh landmarks include the visible eyeball outline (eyelids), eyebrows, and tracking halos.
-For rendering the visible eyelid outline, use the `contour` getter which returns the first
-15 points, and connect them using `eyeLandmarkConnections`:
+For rendering the visible eyelid outline, use the `contour` getter and connect them using `eyeLandmarkConnections`:
 
 ```dart
 import 'package:face_detection_tflite/face_detection_tflite.dart';
@@ -270,10 +272,6 @@ for (final connection in eyeLandmarkConnections) {
   );
 }
 ```
-
-**Eye Mesh Structure:**
-- **First 15 points** (`contour`): Visible eyelid outline - connect these using `eyeLandmarkConnections`
-- **Remaining 56 points**: Eyebrow landmarks and tracking halos - render as individual points for debugging
 
 ## Face Detection Modes
 
@@ -348,6 +346,8 @@ await faceDetector.initialize(model: FaceDetectionModel.fullSparse);
 
 ## Live Camera Detection
 
+![Example Screenshot](assets/screenshots/livecamera_ex1.gif)
+
 For real-time face detection with a camera feed, use the `camera` package with `FaceDetectionMode.fast`:
 
 ```dart
@@ -367,7 +367,7 @@ camera.startImageStream((image) async {
 });
 ```
 
-See the full [example app](https://pub.dev/packages/face_detection_tflite/example) for complete implementation including frame throttling and YUV420 conversion.
+See the full [example app](https://pub.dev/packages/face_detection_tflite/example) for complete implementation including frame throttling.
 
 ## Example
 

@@ -1,53 +1,29 @@
-## Unreleased
-
-**Breaking changes:**
-- Removed `compute3DMesh` parameter from `FaceDetector.detectFaces()` - 3D coordinates are now always computed when available (the ~3.75KB memory savings was negligible)
-- **Removed redundant mesh2D/mesh3D split**: `meshFromAlignedFace()` now returns `List<Point>` instead of record with `mesh2D` and `mesh3D`. All points now include x, y, and z coordinates.
-- **Removed redundant iris2D/iris3D split**: `irisFromEyeRois()` now returns `List<Point>` instead of record. All points include depth information.
-- **Simplified Face API**: Removed `Face.irisPoints3D` field - `Face.irisPoints` now contains full 3D data (Point with x, y, z).
-- **Renamed method**: `getIris()` → `getEyeMeshWithIris()` to accurately reflect that it returns 152 points (76 per eye: 71 eye mesh + 5 iris keypoints), not just 10 iris points.
-- **Deprecated method**: `getIrisFromMesh()` is now deprecated - use `detectFaces()` with `FaceDetectionMode.full` and access `face.eyes` instead. Will be removed in v5.0.0.
-- **Updated internal types**: `_DetectionFeatures` now uses simplified `mesh` and `iris` fields (both `List<Point>`) instead of separate 2D/3D variants.
-- **Signature changes**: `eyeRoisFromMesh()` now accepts `List<Point>` instead of `List<Offset>`.
-
-**Improvements:**
-- **Memory optimization**: Eliminated redundant storage of x/y coordinates (previously stored in both 2D and 3D lists).
-- **Cleaner API**: Single mesh/iris representations reduce confusion about which to use.
-- **Consistent 3D support**: All landmark data now includes depth information by default.
-
 ## 4.0.0
 
 **Breaking changes:**
-- Renamed `Iris` class to `Eye` (better represents iris + eye mesh data)
-- Renamed `Eye.center` to `Eye.irisCenter` for clarity
-- Renamed `Eye.eyeMesh` to `Eye.mesh` and `Eye.eyeContour` to `Eye.contour` for brevity
-**- Removed `IrisPair` typedef - use `EyePair` instead
-- Removed `Face.irises` property - use `Face.eyes` instead
-- Removed `EyePair.leftIris` and `EyePair.rightIris` - use `leftEye` and `rightEye` instead
-- Removed `Iris.contour` property - use `Eye.irisContour` instead
-- Removed `Iris.eyeballContour` property - use `Eye.contour` instead
-- Removed `kEyeLandmarkConnections` constant - use `eyeLandmarkConnections` instead
-- Changed `Face.mesh` from `List<Point<double>>` to `FaceMesh` class
-- Unified point representation: custom `Point` class replaces `dart:math Point<double>` throughout API
-- `Point` class now has optional z coordinate (replaces separate 2D/3D types)
-- Removed `FaceMesh.points2D` and `FaceMesh.points3D` - use single `FaceMesh.points` getter
-- All landmarks, bounding box corners, eye tracking, and mesh points now use custom `Point` class
 
-**New features:**
-- Added 3D mesh support with depth information (z-coordinate)
-- `FaceMesh` class for unified 2D and 3D mesh access
-- `Point` class with optional z coordinate
+- Replace `math.Point<double>` type references with `Point`
+- Change `face.mesh.isEmpty` to `face.mesh == null`
+- Access mesh points via `face.mesh?.points[i]` or `face.mesh?[i]`
+- Replace `face.irises` → `face.eyes`
+- Replace `IrisPair` → `EyePair`
+- Replace `iris.center` → `eye.irisCenter`
+- Replace `iris.contour` → `eye.irisContour`
 
 **Improvements:**
-- Cleaner, more semantic naming throughout the API
-- Better distinction between iris contour (4 points) and eye contour (15 points)**
+
+- Performance and speed improvements 
+  - Optimize bilinear sampling with direct buffer access, 20-40% speed improvement
+  - Fast-path frame registration
+  - Parallel iris refinement 
+  - Isolate-based image-to-tensor conversion. 
+- Improved test suite, added integration tests
 
 ## 3.1.0
 - EyePair class and eye mesh landmarks (71 points per eye)
 - Add `eyeContour` getter for accessing visible eyelid outline (first 15 of 71 points)
 - Add `eyeLandmarkConnections` constant for rendering connected eyelid outline
 - Add `kMaxEyeLandmark` constant defining eyeball contour point count
-- Rename ImageProcessingWorker to IsolateWorker (old name kept as deprecated alias)
 
 ## 3.0.3
 - Guard iris ROI size and fall back when eye crop collapses
