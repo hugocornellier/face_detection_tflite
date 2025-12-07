@@ -1106,6 +1106,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   final FaceDetector _faceDetector = FaceDetector();
   List<Face> _faces = [];
   Size? _imageSize;
+  int? _sensorOrientation;
+  bool _isFrontCamera = false;
   bool _isProcessing = false;
   bool _isInitialized = false;
   int _frameCounter = 0;
@@ -1175,6 +1177,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
 
       setState(() {
         _isInitialized = true;
+        _sensorOrientation = _cameraController!.description.sensorOrientation;
+        _isFrontCamera = _cameraController!.description.lensDirection == CameraLensDirection.front;
       });
 
       // Start image stream
@@ -1232,13 +1236,23 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         mode: _detectionMode,
       );
 
+      print('Detected ${faces.length} faces');
+
       final endTime = DateTime.now();
       final detectionTime = endTime.difference(startTime).inMilliseconds;
 
       if (mounted) {
+        // Determine the actual processed image size
+        // If we rotated the image for portrait mode, swap width/height
+        final bool needsRotation = _sensorOrientation == 90 &&
+                                    MediaQuery.of(context).orientation == Orientation.portrait;
+        final Size processedSize = needsRotation
+            ? Size(image.height.toDouble(), image.width.toDouble())
+            : Size(image.width.toDouble(), image.height.toDouble());
+
         setState(() {
           _faces = faces;
-          _imageSize = Size(image.width.toDouble(), image.height.toDouble());
+          _imageSize = processedSize;
           _detectionTimeMs = detectionTime;
         });
       }
@@ -1254,6 +1268,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       // Convert YUV420 to RGB
       final int width = image.width;
       final int height = image.height;
+      final int yRowStride = image.planes[0].bytesPerRow;
+      final int yPixelStride = image.planes[0].bytesPerPixel ?? 1;
 
       // Create an image using the img package
       final imgLib = img.Image(width: width, height: height);
@@ -1269,7 +1285,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
           for (int x = 0; x < width; x++) {
             final int uvIndex =
                 uvPixelStride * (x / 2).floor() + uvRowStride * (y / 2).floor();
-            final int index = y * width + x;
+            final int index = y * yRowStride + x * yPixelStride;
 
             final yp = image.planes[0].bytes[index];
             final up = image.planes[1].bytes[uvIndex];
@@ -1297,7 +1313,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
           for (int x = 0; x < width; x++) {
             final int uvIndex =
                 uvPixelStride * (x / 2).floor() + uvRowStride * (y / 2).floor();
-            final int index = y * width + x;
+            final int index = y * yRowStride + x * yPixelStride;
 
             final yp = image.planes[0].bytes[index];
             final up = image.planes[1].bytes[uvIndex];
@@ -1318,8 +1334,24 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         return null;
       }
 
+      // Rotate image if needed for portrait mode
+      // When sensor is 90° and device is portrait, we need to rotate the actual image
+      // so the face detector processes it in the correct orientation
+      final bool needsRotation = _sensorOrientation == 90 &&
+                                  MediaQuery.of(context).orientation == Orientation.portrait;
+
+      print('Converting image: ${imgLib.width}x${imgLib.height}, needsRotation: $needsRotation');
+
+      final img.Image finalImage = needsRotation
+          ? img.copyRotate(imgLib, angle: 90)
+          : imgLib;
+
+      print('Final image: ${finalImage.width}x${finalImage.height}');
+
       // Encode to JPEG
-      return Uint8List.fromList(img.encodeJpg(imgLib));
+      final bytes = Uint8List.fromList(img.encodeJpg(finalImage));
+      print('Encoded ${bytes.length} bytes');
+      return bytes;
     } catch (e, stackTrace) {
       print('ERROR converting camera image: $e');
       print('Stack trace: $stackTrace');
@@ -1386,6 +1418,15 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     }
 
     final cameraAspectRatio = _cameraController!.value.aspectRatio;
+    final deviceOrientation = MediaQuery.of(context).orientation;
+
+    // Determine if we need to swap aspect ratio for portrait mode
+    // On iOS with sensor orientation 90, the camera is landscape but device may be portrait
+    final bool needsAspectSwap = _sensorOrientation == 90 &&
+                                  deviceOrientation == Orientation.portrait;
+    final double displayAspectRatio = needsAspectSwap
+        ? 1.0 / cameraAspectRatio
+        : cameraAspectRatio;
 
     return Scaffold(
       appBar: AppBar(
@@ -1484,7 +1525,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         children: [
           Center(
             child: AspectRatio(
-              aspectRatio: cameraAspectRatio,
+              aspectRatio: displayAspectRatio,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
@@ -1495,7 +1536,11 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                         faces: _faces,
                         imageSize: _imageSize!,
                         cameraAspectRatio: cameraAspectRatio,
+                        displayAspectRatio: displayAspectRatio,
                         detectionMode: _detectionMode,
+                        sensorOrientation: _sensorOrientation ?? 0,
+                        deviceOrientation: deviceOrientation,
+                        isFrontCamera: _isFrontCamera,
                       ),
                     ),
                 ],
@@ -1695,7 +1740,11 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                         faces: _faces,
                         imageSize: _imageSize!,
                         cameraAspectRatio: cameraAspectRatio,
+                        displayAspectRatio: cameraAspectRatio,
                         detectionMode: _detectionMode,
+                        sensorOrientation: 0, // macOS doesn't need rotation
+                        deviceOrientation: Orientation.landscape,
+                        isFrontCamera: true, // macOS typically uses front camera
                       ),
                     ),
                 ],
@@ -1836,14 +1885,41 @@ class _CameraDetectionPainter extends CustomPainter {
   final List<Face> faces;
   final Size imageSize;
   final double cameraAspectRatio;
+  final double displayAspectRatio;
   final FaceDetectionMode detectionMode;
+  final int sensorOrientation;
+  final Orientation deviceOrientation;
+  final bool isFrontCamera;
+
+  static bool _hasLoggedDebug = false;
 
   _CameraDetectionPainter({
     required this.faces,
     required this.imageSize,
     required this.cameraAspectRatio,
+    required this.displayAspectRatio,
     required this.detectionMode,
+    required this.sensorOrientation,
+    required this.deviceOrientation,
+    required this.isFrontCamera,
   });
+
+  // Helper to transform a point based on device orientation and camera type
+  // Detection was done on a rotated image, so we need to reverse the rotation
+  // to map coordinates back to the camera preview
+  Offset _transformPoint(double x, double y) {
+    // Check if we rotated the image for detection
+    final bool wasRotated = sensorOrientation == 90 &&
+                            deviceOrientation == Orientation.portrait;
+
+    if (wasRotated) {
+      // Image was rotated 90° clockwise for detection
+      // To reverse 90° clockwise: (x, y) -> (y, width - x)
+      // imageSize.width is the width of the rotated image (which was the original height)
+      return Offset(y, imageSize.width - x);
+    }
+    return Offset(x, y);
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1877,37 +1953,49 @@ class _CameraDetectionPainter extends CustomPainter {
     double displayWidth, displayHeight;
     double offsetX = 0, offsetY = 0;
 
-    if (cameraAspectRatio > screenAspectRatio) {
+    if (displayAspectRatio > screenAspectRatio) {
       displayWidth = size.width;
-      displayHeight = size.width / cameraAspectRatio;
+      displayHeight = size.width / displayAspectRatio;
       offsetY = (size.height - displayHeight) / 2;
     } else {
       displayHeight = size.height;
-      displayWidth = size.height * cameraAspectRatio;
+      displayWidth = size.height * displayAspectRatio;
       offsetX = (size.width - displayWidth) / 2;
     }
 
-    final scaleX = displayWidth / imageSize.width;
-    final scaleY = displayHeight / imageSize.height;
+    // Determine the preview dimensions (before rotation was applied for detection)
+    // After _transformPoint, coordinates are in the original preview space
+    final bool wasRotated = sensorOrientation == 90 &&
+                            deviceOrientation == Orientation.portrait;
+    final Size previewSize = wasRotated
+        ? Size(imageSize.height, imageSize.width)  // Swap back to original preview dimensions
+        : imageSize;
+
+    final scaleX = displayWidth / previewSize.width;
+    final scaleY = displayHeight / previewSize.height;
 
     // Draw bounding boxes and features for each face
     for (final face in faces) {
       // Draw bounding box
       final boundingBox = face.boundingBox;
+      final topLeft = _transformPoint(boundingBox.topLeft.x, boundingBox.topLeft.y);
+      final bottomRight = _transformPoint(boundingBox.bottomRight.x, boundingBox.bottomRight.y);
+
       final rect = Rect.fromLTRB(
-        offsetX + boundingBox.topLeft.x * scaleX,
-        offsetY + boundingBox.topLeft.y * scaleY,
-        offsetX + boundingBox.bottomRight.x * scaleX,
-        offsetY + boundingBox.bottomRight.y * scaleY,
+        offsetX + topLeft.dx * scaleX,
+        offsetY + topLeft.dy * scaleY,
+        offsetX + bottomRight.dx * scaleX,
+        offsetY + bottomRight.dy * scaleY,
       );
       canvas.drawRect(rect, boxPaint);
 
       // Draw the 6 simple landmarks (available in all modes)
       for (final landmark in face.landmarks.values) {
+        final transformed = _transformPoint(landmark.x, landmark.y);
         canvas.drawCircle(
           Offset(
-            offsetX + landmark.x * scaleX,
-            offsetY + landmark.y * scaleY,
+            offsetX + transformed.dx * scaleX,
+            offsetY + transformed.dy * scaleY,
           ),
           4.0,
           landmarkPaint,
@@ -1924,8 +2012,9 @@ class _CameraDetectionPainter extends CustomPainter {
           final double radius = 1.25 + sqrt(imgArea) / 1000.0;
 
           for (final p in mesh) {
+            final transformed = _transformPoint(p.x, p.y);
             canvas.drawCircle(
-              Offset(offsetX + p.x * scaleX, offsetY + p.y * scaleY),
+              Offset(offsetX + transformed.dx * scaleX, offsetY + transformed.dy * scaleY),
               radius,
               meshPaint,
             );
@@ -1942,13 +2031,17 @@ class _CameraDetectionPainter extends CustomPainter {
 
             // Draw iris (center + contour as oval)
             final allIrisPoints = [iris.irisCenter, ...iris.irisContour];
-            double minX = allIrisPoints.first.x, maxX = allIrisPoints.first.x;
-            double minY = allIrisPoints.first.y, maxY = allIrisPoints.first.y;
-            for (final p in allIrisPoints) {
-              if (p.x < minX) minX = p.x;
-              if (p.x > maxX) maxX = p.x;
-              if (p.y < minY) minY = p.y;
-              if (p.y > maxY) maxY = p.y;
+            final transformedIrisPoints = allIrisPoints
+                .map((p) => _transformPoint(p.x, p.y))
+                .toList();
+
+            double minX = transformedIrisPoints.first.dx, maxX = transformedIrisPoints.first.dx;
+            double minY = transformedIrisPoints.first.dy, maxY = transformedIrisPoints.first.dy;
+            for (final p in transformedIrisPoints) {
+              if (p.dx < minX) minX = p.dx;
+              if (p.dx > maxX) maxX = p.dx;
+              if (p.dy < minY) minY = p.dy;
+              if (p.dy > maxY) maxY = p.dy;
             }
 
             final cx = offsetX + ((minX + maxX) * 0.5) * scaleX;
@@ -1975,10 +2068,12 @@ class _CameraDetectionPainter extends CustomPainter {
                     connection[1] < eyelidContour.length) {
                   final p1 = eyelidContour[connection[0]];
                   final p2 = eyelidContour[connection[1]];
+                  final t1 = _transformPoint(p1.x, p1.y);
+                  final t2 = _transformPoint(p2.x, p2.y);
 
                   canvas.drawLine(
-                    Offset(offsetX + p1.x * scaleX, offsetY + p1.y * scaleY),
-                    Offset(offsetX + p2.x * scaleX, offsetY + p2.y * scaleY),
+                    Offset(offsetX + t1.dx * scaleX, offsetY + t1.dy * scaleY),
+                    Offset(offsetX + t2.dx * scaleX, offsetY + t2.dy * scaleY),
                     eyeOutlinePaint,
                   );
                 }
@@ -1990,8 +2085,9 @@ class _CameraDetectionPainter extends CustomPainter {
                 ..style = PaintingStyle.fill;
 
               for (final p in iris.mesh) {
-                final canvasX = offsetX + p.x * scaleX;
-                final canvasY = offsetY + p.y * scaleY;
+                final transformed = _transformPoint(p.x, p.y);
+                final canvasX = offsetX + transformed.dx * scaleX;
+                final canvasY = offsetY + transformed.dy * scaleY;
                 canvas.drawCircle(
                     Offset(canvasX, canvasY), 0.8, eyeMeshPointPaint);
               }
@@ -2007,6 +2103,10 @@ class _CameraDetectionPainter extends CustomPainter {
     return old.faces != faces ||
         old.imageSize != imageSize ||
         old.cameraAspectRatio != cameraAspectRatio ||
-        old.detectionMode != detectionMode;
+        old.displayAspectRatio != displayAspectRatio ||
+        old.detectionMode != detectionMode ||
+        old.sensorOrientation != sensorOrientation ||
+        old.deviceOrientation != deviceOrientation ||
+        old.isFrontCamera != isFrontCamera;
   }
 }
