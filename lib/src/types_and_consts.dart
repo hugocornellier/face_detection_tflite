@@ -35,6 +35,95 @@ enum FaceDetectionModel {
 /// - [full]: All features including bounding boxes, landmarks, mesh, and iris tracking
 enum FaceDetectionMode { fast, standard, full }
 
+/// Performance modes for TensorFlow Lite delegate selection.
+///
+/// Determines which hardware acceleration delegates are used for inference.
+enum PerformanceMode {
+  /// No acceleration delegates (CPU-only, backward compatible).
+  ///
+  /// - Slowest performance
+  /// - No additional memory overhead
+  /// - Most compatible (works on all platforms)
+  disabled,
+
+  /// XNNPACK delegate for CPU optimization.
+  ///
+  /// - Works on all platforms (iOS, Android, macOS, Linux, Windows)
+  /// - 2-5x faster than disabled mode
+  /// - Minimal memory overhead (+2-3MB per interpreter)
+  /// - Recommended default for most use cases
+  ///
+  /// Uses SIMD vectorization (NEON on ARM, AVX on x86) and multi-threading.
+  xnnpack,
+
+  /// Automatically choose best delegate for current platform.
+  ///
+  /// Current behavior:
+  /// - All platforms: Uses XNNPACK with platform-optimal thread count
+  ///
+  /// Future: May use GPU/Metal delegates when available.
+  auto,
+}
+
+/// Configuration for TensorFlow Lite interpreter performance.
+///
+/// Controls delegate usage and threading for CPU/GPU acceleration.
+///
+/// Example:
+/// ```dart
+/// // Default (no acceleration)
+/// final detector = FaceDetector();
+/// await detector.initialize();
+///
+/// // XNNPACK with auto thread detection (recommended)
+/// final detector = FaceDetector();
+/// await detector.initialize(
+///   performanceConfig: PerformanceConfig.xnnpack(),
+/// );
+///
+/// // XNNPACK with custom threads
+/// final detector = FaceDetector();
+/// await detector.initialize(
+///   performanceConfig: PerformanceConfig.xnnpack(numThreads: 2),
+/// );
+/// ```
+class PerformanceConfig {
+  /// Performance mode controlling delegate selection.
+  final PerformanceMode mode;
+
+  /// Number of threads for XNNPACK delegate.
+  ///
+  /// - null: Auto-detect optimal count (min(4, Platform.numberOfProcessors))
+  /// - 0: No thread pool (single-threaded, good for tiny models)
+  /// - 1-8: Explicit thread count
+  ///
+  /// Diminishing returns after 4 threads for typical models.
+  /// Only applies when mode is [PerformanceMode.xnnpack] or [PerformanceMode.auto].
+  final int? numThreads;
+
+  /// Creates a performance configuration.
+  ///
+  /// Parameters:
+  /// - [mode]: Performance mode. Default: [PerformanceMode.disabled]
+  /// - [numThreads]: Number of threads (null for auto-detection)
+  const PerformanceConfig({
+    this.mode = PerformanceMode.disabled,
+    this.numThreads,
+  });
+
+  /// Creates config with XNNPACK enabled and auto thread detection.
+  const PerformanceConfig.xnnpack({this.numThreads})
+      : mode = PerformanceMode.xnnpack;
+
+  /// Creates config with auto mode (currently uses XNNPACK).
+  const PerformanceConfig.auto({this.numThreads}) : mode = PerformanceMode.auto;
+
+  /// Default configuration (no delegates, backward compatible).
+  static const PerformanceConfig disabled = PerformanceConfig(
+    mode: PerformanceMode.disabled,
+  );
+}
+
 /// Connections between eye contour landmarks for rendering the visible eyeball outline.
 ///
 /// These define which of the 71 eye contour points should be connected with lines

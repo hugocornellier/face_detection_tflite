@@ -137,7 +137,11 @@ class _ExampleState extends State<Example> {
 
   Future<void> _initFaceDetector() async {
     try {
-      await _faceDetector.initialize(model: _detectionModel);
+      await _faceDetector.initialize(
+        model: _detectionModel,
+        performanceConfig:
+            PerformanceConfig.xnnpack(), // Enable XNNPACK for 2-5x speedup
+      );
     } catch (_) {}
     setState(() {});
   }
@@ -550,7 +554,10 @@ class _ExampleState extends State<Example> {
                                           setState(
                                               () => _detectionModel = value);
                                           await _faceDetector.initialize(
-                                              model: _detectionModel);
+                                            model: _detectionModel,
+                                            performanceConfig:
+                                                PerformanceConfig.xnnpack(),
+                                          );
                                           if (_imageBytes != null) {
                                             await _processImage(_imageBytes!);
                                           }
@@ -1122,7 +1129,11 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   Future<void> _initCamera() async {
     try {
       // Initialize face detector with selected model
-      await _faceDetector.initialize(model: _detectionModel);
+      await _faceDetector.initialize(
+        model: _detectionModel,
+        performanceConfig:
+            PerformanceConfig.xnnpack(), // Enable XNNPACK for 2-5x speedup
+      );
 
       if (_isMacOS) {
         if (mounted) {
@@ -1408,7 +1419,10 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                   if (value != null && value != _detectionModel) {
                     setState(() => _detectionModel = value);
                     // Reinitialize detector with new model
-                    await _faceDetector.initialize(model: _detectionModel);
+                    await _faceDetector.initialize(
+                      model: _detectionModel,
+                      performanceConfig: PerformanceConfig.xnnpack(),
+                    );
                   }
                 },
               ),
@@ -1599,7 +1613,10 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                   if (value != null && value != _detectionModel) {
                     setState(() => _detectionModel = value);
                     // Reinitialize detector with new model
-                    await _faceDetector.initialize(model: _detectionModel);
+                    await _faceDetector.initialize(
+                      model: _detectionModel,
+                      performanceConfig: PerformanceConfig.xnnpack(),
+                    );
                   }
                 },
               ),

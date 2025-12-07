@@ -6,6 +6,7 @@ class FaceLandmark {
   IsolateInterpreter? _iso;
   final Interpreter _itp;
   final int _inW, _inH;
+  Delegate? _delegate;
   late final int _bestIdx;
   late final Tensor _inputTensor;
   late final Tensor _bestTensor;
@@ -25,6 +26,10 @@ class FaceLandmark {
   /// The [options] parameter allows you to customize the TFLite interpreter
   /// configuration (e.g., number of threads, use of GPU delegate).
   ///
+  /// The [performanceConfig] parameter enables hardware acceleration delegates.
+  /// Use [PerformanceConfig.xnnpack()] for 2-5x speedup on CPU. If both [options]
+  /// and [performanceConfig] are provided, [options] takes precedence.
+  ///
   /// Returns a fully initialized [FaceLandmark] instance ready to predict face meshes.
   ///
   /// **Note:** This model expects an aligned face crop as input. For full pipeline
@@ -32,17 +37,34 @@ class FaceLandmark {
   ///
   /// Example:
   /// ```dart
+  /// // Default (no acceleration)
   /// final landmarkModel = await FaceLandmark.create();
   /// final meshPoints = await landmarkModel(alignedFaceCrop);
+  ///
+  /// // With XNNPACK acceleration
+  /// final landmarkModel = await FaceLandmark.create(
+  ///   performanceConfig: PerformanceConfig.xnnpack(),
+  /// );
   /// ```
   ///
   /// Throws [StateError] if the model cannot be loaded or initialized.
   static Future<FaceLandmark> create({
     InterpreterOptions? options,
+    PerformanceConfig? performanceConfig,
   }) async {
+    Delegate? delegate;
+    final InterpreterOptions interpreterOptions;
+    if (options != null) {
+      interpreterOptions = options;
+    } else {
+      final result = _createInterpreterOptions(performanceConfig);
+      interpreterOptions = result.$1;
+      delegate = result.$2;
+    }
+
     final Interpreter itp = await Interpreter.fromAsset(
       'packages/face_detection_tflite/assets/models/$_faceLandmarkModel',
-      options: options ?? InterpreterOptions(),
+      options: interpreterOptions,
     );
     final List<int> ishape = itp.getInputTensor(0).shape;
     final int inH = ishape[1];
@@ -51,6 +73,7 @@ class FaceLandmark {
     itp.allocateTensors();
 
     final FaceLandmark obj = FaceLandmark._(itp, inW, inH);
+    obj._delegate = delegate;
     obj._inputTensor = itp.getInputTensor(0);
     int numElements(List<int> s) => s.fold(1, (a, b) => a * b);
 
@@ -159,10 +182,53 @@ class FaceLandmark {
   /// **Note:** Most users should call [FaceDetector.dispose] instead, which
   /// automatically disposes all internal models (detection, mesh, and iris).
   void dispose() {
+    _delegate?.delete();
+    _delegate = null;
     final IsolateInterpreter? iso = _iso;
     if (iso != null) {
       iso.close();
     }
     _itp.close();
+  }
+
+  /// Creates interpreter options with delegates based on performance configuration.
+  ///
+  /// Returns a record containing the InterpreterOptions and an optional Delegate
+  /// that must be stored and cleaned up when the model is disposed.
+  static (InterpreterOptions, Delegate?) _createInterpreterOptions(
+      PerformanceConfig? config) {
+    final options = InterpreterOptions();
+
+    // If no config or disabled mode, return default options (backward compatible)
+    if (config == null || config.mode == PerformanceMode.disabled) {
+      return (options, null);
+    }
+
+    // Get effective thread count
+    final threadCount = config.numThreads?.clamp(0, 8) ??
+        math.min(4, Platform.numberOfProcessors);
+
+    // Set CPU threads
+    options.threads = threadCount;
+
+    // Add XNNPACK delegate (for xnnpack or auto mode)
+    if (config.mode == PerformanceMode.xnnpack ||
+        config.mode == PerformanceMode.auto) {
+      try {
+        final xnnpackDelegate = XNNPackDelegate(
+          options: XNNPackDelegateOptions(numThreads: threadCount),
+        );
+        options.addDelegate(xnnpackDelegate);
+        return (options, xnnpackDelegate);
+      } catch (e) {
+        // Graceful fallback: if delegate creation fails, continue with CPU
+        // ignore: avoid_print
+        print('[FaceLandmark] Warning: Failed to create XNNPACK delegate: $e');
+        // ignore: avoid_print
+        print('[FaceLandmark] Falling back to default CPU execution');
+      }
+    }
+
+    return (options, null);
   }
 }

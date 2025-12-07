@@ -129,9 +129,27 @@ class FaceDetector {
   ///
   /// Optionally, you can pass [options] to configure interpreter settings
   /// such as the number of threads or delegate type.
+  ///
+  /// The [performanceConfig] parameter enables hardware acceleration delegates.
+  /// Use [PerformanceConfig.xnnpack()] for 2-5x speedup on CPU across all models.
+  /// If both [options] and [performanceConfig] are provided, [options] takes precedence.
+  ///
+  /// Example:
+  /// ```dart
+  /// // Default (no acceleration)
+  /// final detector = FaceDetector();
+  /// await detector.initialize();
+  ///
+  /// // With XNNPACK acceleration (recommended)
+  /// final detector = FaceDetector();
+  /// await detector.initialize(
+  ///   performanceConfig: PerformanceConfig.xnnpack(),
+  /// );
+  /// ```
   Future<void> initialize({
     FaceDetectionModel model = FaceDetectionModel.backCamera,
     InterpreterOptions? options,
+    PerformanceConfig? performanceConfig,
     int meshPoolSize = 3,
   }) async {
     await _ensureTFLiteLoaded();
@@ -142,6 +160,7 @@ class FaceDetector {
       _detector = await FaceDetection.create(
         model,
         options: options,
+        performanceConfig: performanceConfig,
       );
 
       // Create pool of mesh models for parallel multi-face inference
@@ -149,14 +168,23 @@ class FaceDetector {
       _meshPool.clear();
       _meshInferenceLocks.clear();
       for (int i = 0; i < meshPoolSize; i++) {
-        _meshPool.add(await FaceLandmark.create(options: options));
+        _meshPool.add(await FaceLandmark.create(
+          options: options,
+          performanceConfig: performanceConfig,
+        ));
         _meshInferenceLocks.add(Future.value());
       }
 
       // Create separate iris models for parallel left/right eye inference
       // Each model has its own buffers to prevent race conditions
-      _irisLeft = await IrisLandmark.create(options: options);
-      _irisRight = await IrisLandmark.create(options: options);
+      _irisLeft = await IrisLandmark.create(
+        options: options,
+        performanceConfig: performanceConfig,
+      );
+      _irisRight = await IrisLandmark.create(
+        options: options,
+        performanceConfig: performanceConfig,
+      );
     } catch (e) {
       _worker?.dispose();
       _detector?.dispose();
@@ -686,20 +714,38 @@ class FaceDetector {
     // Use pool to allow parallel mesh inference for multiple faces
     final lmNorm =
         await _withMeshLock((fl) => fl.call(faceCrop, worker: _worker));
-    final ct = math.cos(aligned.theta);
-    final st = math.sin(aligned.theta);
-    final s = aligned.size;
-    final cx = aligned.cx;
-    final cy = aligned.cy;
-    final mesh = <Point>[];
 
-    for (final p in lmNorm) {
-      final lx2 = (p[0] - 0.5) * s;
-      final ly2 = (p[1] - 0.5) * s;
-      final x = cx + lx2 * ct - ly2 * st;
-      final y = cy + lx2 * st + ly2 * ct;
-      final z = p[2] * s;
-      mesh.add(Point(x, y, z));
+    // Pre-compute rotation matrix components once (avoid repeated trig calls)
+    final double ct = math.cos(aligned.theta);
+    final double st = math.sin(aligned.theta);
+    final double s = aligned.size;
+    final double cx = aligned.cx;
+    final double cy = aligned.cy;
+
+    // Pre-compute combined scale*rotation matrix elements
+    // Transform: [x'] = cx + s*ct*(nx-0.5) - s*st*(ny-0.5)
+    //            [y'] = cy + s*st*(nx-0.5) + s*ct*(ny-0.5)
+    // Simplify:  [x'] = cx - 0.5*s*ct + 0.5*s*st + s*ct*nx - s*st*ny
+    //            [y'] = cy - 0.5*s*st - 0.5*s*ct + s*st*nx + s*ct*ny
+    final double sct = s * ct;
+    final double sst = s * st;
+    final double tx = cx - 0.5 * sct + 0.5 * sst; // translation x
+    final double ty = cy - 0.5 * sst - 0.5 * sct; // translation y
+
+    final int n = lmNorm.length;
+    final List<Point> mesh = List<Point>.filled(n, const Point(0, 0, 0));
+
+    for (int i = 0; i < n; i++) {
+      final List<double> p = lmNorm[i];
+      final double nx = p[0];
+      final double ny = p[1];
+      final double nz = p[2];
+      // Apply combined transform: rotation + scale + translation
+      mesh[i] = Point(
+        tx + sct * nx - sst * ny,
+        ty + sst * nx + sct * ny,
+        nz * s,
+      );
     }
     return mesh;
   }

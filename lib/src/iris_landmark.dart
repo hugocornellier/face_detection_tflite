@@ -6,6 +6,7 @@ class IrisLandmark {
   IsolateInterpreter? _iso;
   final Interpreter _itp;
   final int _inW, _inH;
+  Delegate? _delegate;
   late final Tensor _inputTensor;
   late final Float32List _inputBuf;
   late final Map<int, List<int>> _outShapes;
@@ -23,6 +24,10 @@ class IrisLandmark {
   /// The [options] parameter allows you to customize the TFLite interpreter
   /// configuration (e.g., number of threads, use of GPU delegate).
   ///
+  /// The [performanceConfig] parameter enables hardware acceleration delegates.
+  /// Use [PerformanceConfig.xnnpack()] for 2-5x speedup on CPU. If both [options]
+  /// and [performanceConfig] are provided, [options] takes precedence.
+  ///
   /// Returns a fully initialized [IrisLandmark] instance ready to detect irises.
   ///
   /// **Note:** This model expects a cropped eye region as input. For full pipeline
@@ -30,8 +35,14 @@ class IrisLandmark {
   ///
   /// Example:
   /// ```dart
+  /// // Default (no acceleration)
   /// final irisModel = await IrisLandmark.create();
   /// final irisPoints = await irisModel(eyeCropImage);
+  ///
+  /// // With XNNPACK acceleration
+  /// final irisModel = await IrisLandmark.create(
+  ///   performanceConfig: PerformanceConfig.xnnpack(),
+  /// );
   /// ```
   ///
   /// See also:
@@ -40,10 +51,21 @@ class IrisLandmark {
   /// Throws [StateError] if the model cannot be loaded or initialized.
   static Future<IrisLandmark> create({
     InterpreterOptions? options,
+    PerformanceConfig? performanceConfig,
   }) async {
+    Delegate? delegate;
+    final InterpreterOptions interpreterOptions;
+    if (options != null) {
+      interpreterOptions = options;
+    } else {
+      final result = _createInterpreterOptions(performanceConfig);
+      interpreterOptions = result.$1;
+      delegate = result.$2;
+    }
+
     final Interpreter itp = await Interpreter.fromAsset(
       'packages/face_detection_tflite/assets/models/$_irisLandmarkModel',
-      options: options ?? InterpreterOptions(),
+      options: interpreterOptions,
     );
     final List<int> ishape = itp.getInputTensor(0).shape;
     final int inH = ishape[1];
@@ -52,6 +74,7 @@ class IrisLandmark {
     itp.allocateTensors();
 
     final IrisLandmark obj = IrisLandmark._(itp, inW, inH);
+    obj._delegate = delegate;
 
     obj._inputTensor = itp.getInputTensor(0);
     obj._inputBuf = obj._inputTensor.data.buffer.asFloat32List();
@@ -78,15 +101,26 @@ class IrisLandmark {
   /// The [options] parameter allows you to customize the TFLite interpreter
   /// configuration (e.g., number of threads, use of GPU delegate).
   ///
+  /// The [performanceConfig] parameter enables hardware acceleration delegates.
+  /// Use [PerformanceConfig.xnnpack()] for 2-5x speedup on CPU. If both [options]
+  /// and [performanceConfig] are provided, [options] takes precedence.
+  ///
   /// Returns a fully initialized [IrisLandmark] instance ready to detect irises.
   ///
   /// Example:
   /// ```dart
+  /// // Default (no acceleration)
   /// final customModel = await IrisLandmark.createFromFile(
   ///   '/path/to/custom_iris_model.tflite',
   /// );
   /// final irisPoints = await customModel(eyeCropImage);
   /// customModel.dispose(); // Clean up when done
+  ///
+  /// // With XNNPACK acceleration
+  /// final customModel = await IrisLandmark.createFromFile(
+  ///   '/path/to/custom_iris_model.tflite',
+  ///   performanceConfig: PerformanceConfig.xnnpack(),
+  /// );
   /// ```
   ///
   /// See also:
@@ -96,10 +130,21 @@ class IrisLandmark {
   static Future<IrisLandmark> createFromFile(
     String modelPath, {
     InterpreterOptions? options,
+    PerformanceConfig? performanceConfig,
   }) async {
+    Delegate? delegate;
+    final InterpreterOptions interpreterOptions;
+    if (options != null) {
+      interpreterOptions = options;
+    } else {
+      final result = _createInterpreterOptions(performanceConfig);
+      interpreterOptions = result.$1;
+      delegate = result.$2;
+    }
+
     final Interpreter itp = Interpreter.fromFile(
       File(modelPath),
-      options: options ?? InterpreterOptions(),
+      options: interpreterOptions,
     );
     final List<int> ishape = itp.getInputTensor(0).shape;
     final int inH = ishape[1];
@@ -108,6 +153,7 @@ class IrisLandmark {
     itp.allocateTensors();
 
     final IrisLandmark obj = IrisLandmark._(itp, inW, inH);
+    obj._delegate = delegate;
 
     obj._inputTensor = itp.getInputTensor(0);
     obj._inputBuf = obj._inputTensor.data.buffer.asFloat32List();
@@ -555,8 +601,51 @@ class IrisLandmark {
   /// **Note:** Most users should call [FaceDetector.dispose] instead, which
   /// automatically disposes all internal models (detection, mesh, and iris).
   void dispose() {
+    _delegate?.delete();
+    _delegate = null;
     _iso?.close();
     _itp.close();
+  }
+
+  /// Creates interpreter options with delegates based on performance configuration.
+  ///
+  /// Returns a record containing the InterpreterOptions and an optional Delegate
+  /// that must be stored and cleaned up when the model is disposed.
+  static (InterpreterOptions, Delegate?) _createInterpreterOptions(
+      PerformanceConfig? config) {
+    final options = InterpreterOptions();
+
+    // If no config or disabled mode, return default options (backward compatible)
+    if (config == null || config.mode == PerformanceMode.disabled) {
+      return (options, null);
+    }
+
+    // Get effective thread count
+    final threadCount = config.numThreads?.clamp(0, 8) ??
+        math.min(4, Platform.numberOfProcessors);
+
+    // Set CPU threads
+    options.threads = threadCount;
+
+    // Add XNNPACK delegate (for xnnpack or auto mode)
+    if (config.mode == PerformanceMode.xnnpack ||
+        config.mode == PerformanceMode.auto) {
+      try {
+        final xnnpackDelegate = XNNPackDelegate(
+          options: XNNPackDelegateOptions(numThreads: threadCount),
+        );
+        options.addDelegate(xnnpackDelegate);
+        return (options, xnnpackDelegate);
+      } catch (e) {
+        // Graceful fallback: if delegate creation fails, continue with CPU
+        // ignore: avoid_print
+        print('[IrisLandmark] Warning: Failed to create XNNPACK delegate: $e');
+        // ignore: avoid_print
+        print('[IrisLandmark] Falling back to default CPU execution');
+      }
+    }
+
+    return (options, null);
   }
 }
 

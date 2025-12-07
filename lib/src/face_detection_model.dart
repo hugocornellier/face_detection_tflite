@@ -9,6 +9,7 @@ class FaceDetection {
   final int _boundingBoxIndex = 0, _scoreIndex = 1;
   final Float32List _anchors;
   final bool _assumeMirrored;
+  Delegate? _delegate;
   late final int _inputIdx;
   late final List<int> _boxesShape;
   late final List<int> _scoresShape;
@@ -38,6 +39,10 @@ class FaceDetection {
   /// The [options] parameter allows you to customize the TFLite interpreter
   /// configuration (e.g., number of threads, use of GPU delegate).
   ///
+  /// The [performanceConfig] parameter enables hardware acceleration delegates.
+  /// Use [PerformanceConfig.xnnpack()] for 2-5x speedup on CPU. If both [options]
+  /// and [performanceConfig] are provided, [options] takes precedence.
+  ///
   /// Returns a fully initialized [FaceDetection] instance ready to detect faces.
   ///
   /// **Note:** Most users should use the high-level [FaceDetector] class instead
@@ -45,8 +50,15 @@ class FaceDetection {
   ///
   /// Example:
   /// ```dart
+  /// // Default (no acceleration)
   /// final detector = await FaceDetection.create(
   ///   FaceDetectionModel.frontCamera,
+  /// );
+  ///
+  /// // With XNNPACK acceleration
+  /// final detector = await FaceDetection.create(
+  ///   FaceDetectionModel.backCamera,
+  ///   performanceConfig: PerformanceConfig.xnnpack(),
   /// );
   /// ```
   ///
@@ -54,14 +66,25 @@ class FaceDetection {
   static Future<FaceDetection> create(
     FaceDetectionModel model, {
     InterpreterOptions? options,
+    PerformanceConfig? performanceConfig,
   }) async {
     final Map<String, Object> opts = _optsFor(model);
     final int inW = opts['input_size_width'] as int;
     final int inH = opts['input_size_height'] as int;
 
+    Delegate? delegate;
+    final InterpreterOptions interpreterOptions;
+    if (options != null) {
+      interpreterOptions = options;
+    } else {
+      final result = _createInterpreterOptions(performanceConfig);
+      interpreterOptions = result.$1;
+      delegate = result.$2;
+    }
+
     final Interpreter itp = await Interpreter.fromAsset(
       'packages/face_detection_tflite/assets/models/${_nameFor(model)}',
-      options: options ?? InterpreterOptions(),
+      options: interpreterOptions,
     );
 
     final Float32List anchors = _ssdGenerateAnchors(opts);
@@ -71,6 +94,7 @@ class FaceDetection {
       inH,
       anchors,
     );
+    obj._delegate = delegate;
 
     int foundIdx = -1;
     for (int i = 0; i < 10; i++) {
@@ -423,7 +447,50 @@ class FaceDetection {
   /// **Note:** Most users should call [FaceDetector.dispose] instead, which
   /// automatically disposes all internal models (detection, mesh, and iris).
   void dispose() {
+    _delegate?.delete();
+    _delegate = null;
     _iso?.close();
     _itp.close();
+  }
+
+  /// Creates interpreter options with delegates based on performance configuration.
+  ///
+  /// Returns a record containing the InterpreterOptions and an optional Delegate
+  /// that must be stored and cleaned up when the model is disposed.
+  static (InterpreterOptions, Delegate?) _createInterpreterOptions(
+      PerformanceConfig? config) {
+    final options = InterpreterOptions();
+
+    // If no config or disabled mode, return default options (backward compatible)
+    if (config == null || config.mode == PerformanceMode.disabled) {
+      return (options, null);
+    }
+
+    // Get effective thread count
+    final threadCount = config.numThreads?.clamp(0, 8) ??
+        math.min(4, Platform.numberOfProcessors);
+
+    // Set CPU threads
+    options.threads = threadCount;
+
+    // Add XNNPACK delegate (for xnnpack or auto mode)
+    if (config.mode == PerformanceMode.xnnpack ||
+        config.mode == PerformanceMode.auto) {
+      try {
+        final xnnpackDelegate = XNNPackDelegate(
+          options: XNNPackDelegateOptions(numThreads: threadCount),
+        );
+        options.addDelegate(xnnpackDelegate);
+        return (options, xnnpackDelegate);
+      } catch (e) {
+        // Graceful fallback: if delegate creation fails, continue with CPU
+        // ignore: avoid_print
+        print('[FaceDetection] Warning: Failed to create XNNPACK delegate: $e');
+        // ignore: avoid_print
+        print('[FaceDetection] Falling back to default CPU execution');
+      }
+    }
+
+    return (options, null);
   }
 }

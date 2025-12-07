@@ -12,6 +12,9 @@
 .swiftpm/
 migrate_working_dir/
 
+# Benchmark results
+/benchmark_results/
+
 # IntelliJ related
 *.iml
 *.ipr
