@@ -1,3 +1,8 @@
+## 4.1.0
+- Add XNNPACK support (10% speed improvement)
+- Benchmark tests
+- Minor performance improvements
+
 ## 4.0.0
 
 **Breaking changes:**
