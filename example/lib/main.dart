@@ -1118,7 +1118,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
 
   // Detection settings
   FaceDetectionMode _detectionMode = FaceDetectionMode.fast;
-  FaceDetectionModel _detectionModel = FaceDetectionModel.backCamera;
+  FaceDetectionModel _detectionModel = FaceDetectionModel.frontCamera;
 
   @override
   void initState() {
@@ -1155,8 +1155,11 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         return;
       }
 
-      // Use the first available camera (usually front camera)
-      final camera = cameras.first;
+      // Prefer the front camera on mobile; fall back to the first camera
+      final camera = cameras.firstWhere(
+        (c) => c.lensDirection == CameraLensDirection.front,
+        orElse: () => cameras.first,
+      );
 
       _cameraController = CameraController(
         camera,
@@ -1255,34 +1258,71 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       // Create an image using the img package
       final imgLib = img.Image(width: width, height: height);
 
-      // YUV420 format has Y plane and UV planes
-      final int uvRowStride = image.planes[1].bytesPerRow;
-      final int uvPixelStride = image.planes[1].bytesPerPixel ?? 1;
+      if (image.planes.length == 2) {
+        // iOS NV12 format (bi-planar YUV420 with interleaved UV)
+        // Plane 0: Y (luma)
+        // Plane 1: UV interleaved (chroma)
+        final int uvRowStride = image.planes[1].bytesPerRow;
+        final int uvPixelStride = image.planes[1].bytesPerPixel ?? 2;
 
-      for (int y = 0; y < height; y++) {
-        for (int x = 0; x < width; x++) {
-          final int uvIndex =
-              uvPixelStride * (x / 2).floor() + uvRowStride * (y / 2).floor();
-          final int index = y * width + x;
+        for (int y = 0; y < height; y++) {
+          for (int x = 0; x < width; x++) {
+            final int uvIndex =
+                uvPixelStride * (x / 2).floor() + uvRowStride * (y / 2).floor();
+            final int index = y * width + x;
 
-          final yp = image.planes[0].bytes[index];
-          final up = image.planes[1].bytes[uvIndex];
-          final vp = image.planes[2].bytes[uvIndex];
+            final yp = image.planes[0].bytes[index];
+            final up = image.planes[1].bytes[uvIndex];
+            final vp = image.planes[1].bytes[uvIndex + 1];
 
-          // Convert YUV to RGB
-          int r = (yp + vp * 1436 / 1024 - 179).round().clamp(0, 255);
-          int g = (yp - up * 46549 / 131072 + 44 - vp * 93604 / 131072 + 91)
-              .round()
-              .clamp(0, 255);
-          int b = (yp + up * 1814 / 1024 - 227).round().clamp(0, 255);
+            // Convert YUV to RGB
+            int r = (yp + vp * 1436 / 1024 - 179).round().clamp(0, 255);
+            int g = (yp - up * 46549 / 131072 + 44 - vp * 93604 / 131072 + 91)
+                .round()
+                .clamp(0, 255);
+            int b = (yp + up * 1814 / 1024 - 227).round().clamp(0, 255);
 
-          imgLib.setPixelRgb(x, y, r, g, b);
+            imgLib.setPixelRgb(x, y, r, g, b);
+          }
         }
+      } else if (image.planes.length >= 3) {
+        // Android I420 format (3-plane YUV420)
+        // Plane 0: Y (luma)
+        // Plane 1: U (chroma)
+        // Plane 2: V (chroma)
+        final int uvRowStride = image.planes[1].bytesPerRow;
+        final int uvPixelStride = image.planes[1].bytesPerPixel ?? 1;
+
+        for (int y = 0; y < height; y++) {
+          for (int x = 0; x < width; x++) {
+            final int uvIndex =
+                uvPixelStride * (x / 2).floor() + uvRowStride * (y / 2).floor();
+            final int index = y * width + x;
+
+            final yp = image.planes[0].bytes[index];
+            final up = image.planes[1].bytes[uvIndex];
+            final vp = image.planes[2].bytes[uvIndex];
+
+            // Convert YUV to RGB
+            int r = (yp + vp * 1436 / 1024 - 179).round().clamp(0, 255);
+            int g = (yp - up * 46549 / 131072 + 44 - vp * 93604 / 131072 + 91)
+                .round()
+                .clamp(0, 255);
+            int b = (yp + up * 1814 / 1024 - 227).round().clamp(0, 255);
+
+            imgLib.setPixelRgb(x, y, r, g, b);
+          }
+        }
+      } else {
+        print('Unsupported number of planes: ${image.planes.length}');
+        return null;
       }
 
       // Encode to JPEG
       return Uint8List.fromList(img.encodeJpg(imgLib));
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('ERROR converting camera image: $e');
+      print('Stack trace: $stackTrace');
       return null;
     }
   }
