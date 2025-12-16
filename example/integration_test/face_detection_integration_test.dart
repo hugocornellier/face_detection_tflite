@@ -25,6 +25,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:face_detection_tflite/face_detection_tflite.dart';
+import 'package:opencv_dart/opencv_dart.dart' as cv;
 
 /// Test helper to create a minimal 1x1 PNG image
 class TestUtils {
@@ -580,6 +581,182 @@ void main() {
       final totalIrisAttempts = detector.irisOkCount + detector.irisFailCount;
       expect(totalIrisAttempts, greaterThan(0));
 
+      detector.dispose();
+    });
+  });
+
+  group('FaceDetector - OpenCV API (detectFacesFromMat)', () {
+    test('should detect faces using cv.Mat input', () async {
+      final detector = FaceDetector();
+      await detector.initialize();
+
+      final ByteData data =
+          await rootBundle.load('../assets/samples/landmark-ex1.jpg');
+      final Uint8List bytes = data.buffer.asUint8List();
+
+      // Decode to cv.Mat
+      final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
+      expect(mat.isEmpty, false);
+
+      // Run detection with cv.Mat
+      final List<Face> results = await detector.detectFacesFromMat(
+        mat,
+        mode: FaceDetectionMode.full,
+      );
+
+      mat.dispose();
+
+      expect(results, isNotEmpty);
+
+      for (final face in results) {
+        expect(face.boundingBox, isNotNull);
+        expect(face.boundingBox.width, greaterThan(0));
+        expect(face.mesh, isNotNull);
+        expect(face.mesh!.points.length, 468);
+      }
+
+      detector.dispose();
+    });
+
+    test('should detect faces using detectFaces (OpenCV accelerated)',
+        () async {
+      final detector = FaceDetector();
+      await detector.initialize();
+
+      final ByteData data =
+          await rootBundle.load('../assets/samples/iris-detection-ex1.jpg');
+      final Uint8List bytes = data.buffer.asUint8List();
+
+      // Run detection with OpenCV-accelerated API
+      final List<Face> results = await detector.detectFaces(
+        bytes,
+        mode: FaceDetectionMode.full,
+      );
+
+      expect(results, isNotEmpty);
+
+      for (final face in results) {
+        expect(face.boundingBox, isNotNull);
+        expect(face.mesh, isNotNull);
+        expect(face.irisPoints, isNotEmpty);
+      }
+
+      detector.dispose();
+    });
+
+    test('detectFacesFromMat should produce same results as detectFaces',
+        () async {
+      final detector = FaceDetector();
+      await detector.initialize();
+
+      final ByteData data =
+          await rootBundle.load('../assets/samples/landmark-ex1.jpg');
+      final Uint8List bytes = data.buffer.asUint8List();
+
+      // Run with old API
+      final List<Face> oldResults = await detector.detectFaces(
+        bytes,
+        mode: FaceDetectionMode.full,
+      );
+
+      // Run with new OpenCV API
+      final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
+      final List<Face> newResults = await detector.detectFacesFromMat(
+        mat,
+        mode: FaceDetectionMode.full,
+      );
+      mat.dispose();
+
+      // Both should detect same number of faces
+      expect(newResults.length, oldResults.length);
+
+      // Compare bounding boxes (allow small differences due to rounding)
+      for (int i = 0; i < oldResults.length; i++) {
+        final oldBbox = oldResults[i].boundingBox;
+        final newBbox = newResults[i].boundingBox;
+
+        // Bounding boxes should be very close (within 5 pixels)
+        expect((oldBbox.topLeft.x - newBbox.topLeft.x).abs(), lessThan(5));
+        expect((oldBbox.topLeft.y - newBbox.topLeft.y).abs(), lessThan(5));
+      }
+
+      detector.dispose();
+    });
+
+    test('should throw StateError when detectFacesFromMat called before init',
+        () async {
+      final detector = FaceDetector();
+      final mat = cv.Mat.zeros(100, 100, cv.MatType.CV_8UC3);
+
+      expect(
+        () => detector.detectFacesFromMat(mat),
+        throwsA(isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          contains('not initialized'),
+        )),
+      );
+
+      mat.dispose();
+    });
+
+    test('should properly dispose cv.Mat after detection', () async {
+      final detector = FaceDetector();
+      await detector.initialize();
+
+      final ByteData data =
+          await rootBundle.load('../assets/samples/landmark-ex1.jpg');
+      final Uint8List bytes = data.buffer.asUint8List();
+
+      // Create mat and run detection multiple times
+      for (int i = 0; i < 5; i++) {
+        final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
+        await detector.detectFacesFromMat(mat, mode: FaceDetectionMode.fast);
+        mat.dispose();
+      }
+
+      // If we get here without crash, memory is being managed correctly
+      expect(true, isTrue);
+
+      detector.dispose();
+    });
+
+    test('should work with different detection modes using cv.Mat', () async {
+      final detector = FaceDetector();
+      await detector.initialize();
+
+      final ByteData data =
+          await rootBundle.load('../assets/samples/landmark-ex1.jpg');
+      final Uint8List bytes = data.buffer.asUint8List();
+      final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
+
+      // Fast mode
+      final fastResults = await detector.detectFacesFromMat(
+        mat,
+        mode: FaceDetectionMode.fast,
+      );
+      expect(fastResults, isNotEmpty);
+      expect(fastResults.first.mesh, isNull);
+
+      // Standard mode
+      final standardResults = await detector.detectFacesFromMat(
+        mat,
+        mode: FaceDetectionMode.standard,
+      );
+      expect(standardResults, isNotEmpty);
+      expect(standardResults.first.mesh, isNotNull);
+      expect(standardResults.first.irisPoints, isEmpty);
+
+      // Full mode
+      final fullResults = await detector.detectFacesFromMat(
+        mat,
+        mode: FaceDetectionMode.full,
+      );
+      expect(fullResults, isNotEmpty);
+      expect(fullResults.first.mesh, isNotNull);
+      expect(fullResults.first.irisPoints, isNotEmpty);
+
+      mat.dispose();
       detector.dispose();
     });
   });

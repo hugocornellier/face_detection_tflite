@@ -593,6 +593,126 @@ class IrisLandmark {
     return out;
   }
 
+  /// Predicts iris and eye contour landmarks from a cv.Mat eye crop.
+  ///
+  /// This is the OpenCV-based variant of [call] that accepts a cv.Mat directly,
+  /// providing better performance by avoiding image format conversions.
+  ///
+  /// The [eyeCrop] parameter should contain a tight crop around a single eye as cv.Mat.
+  /// The Mat is NOT disposed by this method - caller is responsible for disposal.
+  ///
+  /// The optional [buffer] parameter allows reusing a pre-allocated Float32List
+  /// for the tensor conversion to reduce GC pressure.
+  ///
+  /// Returns a list of 3D landmark points in normalized coordinates.
+  ///
+  /// Example:
+  /// ```dart
+  /// final eyeCropMat = cv.imdecode(bytes, cv.IMREAD_COLOR);
+  /// final irisPoints = await irisLandmark.callFromMat(eyeCropMat);
+  /// eyeCropMat.dispose();
+  /// ```
+  Future<List<List<double>>> callFromMat(
+    cv.Mat eyeCrop, {
+    Float32List? buffer,
+  }) async {
+    final ImageTensor pack = convertImageToTensorFromMat(
+      eyeCrop,
+      outW: _inW,
+      outH: _inH,
+      buffer: buffer,
+    );
+
+    if (_iso == null) {
+      _inputBuf.setAll(0, pack.tensorNHWC);
+      _itp.invoke();
+
+      final List<List<double>> lm = <List<double>>[];
+      for (final Float32List flat in _outBuffers.values) {
+        lm.addAll(
+          _unpackLandmarks(flat, _inW, _inH, pack.padding, clamp: false),
+        );
+      }
+      return lm;
+    } else {
+      fillNHWC4D(pack.tensorNHWC, _input4dCache, _inH, _inW);
+      final List<List<List<List<List<double>>>>> inputs = [_input4dCache];
+      final Map<int, Object> outputs = <int, Object>{};
+      _outShapes.forEach((i, shape) {
+        outputs[i] = allocTensorShape(shape);
+      });
+
+      await _iso!.runForMultipleInputs(inputs, outputs);
+
+      final List<List<double>> lm = <List<double>>[];
+      _outShapes.forEach((i, _) {
+        final Float32List flat = flattenDynamicTensor(outputs[i]);
+        lm.addAll(
+          _unpackLandmarks(flat, _inW, _inH, pack.padding, clamp: false),
+        );
+      });
+      return lm;
+    }
+  }
+
+  /// Runs iris detection on a cv.Mat using an aligned eye ROI.
+  ///
+  /// This is the OpenCV-based variant of [runOnImageAlignedIris] that uses
+  /// SIMD-accelerated warpAffine for the rotation crop, providing 10-50x
+  /// better performance than the Dart-based bilinear interpolation.
+  ///
+  /// The [src] parameter is the full image as cv.Mat.
+  /// The [roi] parameter defines the eye region with center, size, and rotation.
+  /// When [isRight] is true, the eye crop is flipped before processing.
+  ///
+  /// Returns iris landmarks in absolute pixel coordinates.
+  ///
+  /// Note: The input cv.Mat is NOT disposed by this method.
+  Future<List<List<double>>> runOnImageAlignedIrisFromMat(
+    cv.Mat src,
+    AlignedRoi roi, {
+    bool isRight = false,
+    Float32List? buffer,
+  }) async {
+    final cv.Mat? crop = extractAlignedSquareFromMat(
+      src,
+      roi.cx,
+      roi.cy,
+      roi.size,
+      roi.theta,
+    );
+    if (crop == null) {
+      return const <List<double>>[];
+    }
+
+    cv.Mat eye;
+    if (isRight) {
+      eye = cv.flip(crop, 1); // Horizontal flip
+      crop.dispose();
+    } else {
+      eye = crop;
+    }
+
+    final double ct = math.cos(roi.theta);
+    final double st = math.sin(roi.theta);
+    final double s = roi.size;
+
+    final List<List<double>> out = <List<double>>[];
+    final List<List<double>> lmNorm = await callFromMat(eye, buffer: buffer);
+    eye.dispose();
+
+    for (final List<double> p in lmNorm) {
+      final double px = isRight ? (1.0 - p[0]) : p[0];
+      final double py = p[1];
+      final double lx2 = (px - 0.5) * s;
+      final double ly2 = (py - 0.5) * s;
+      final double x = roi.cx + lx2 * ct - ly2 * st;
+      final double y = roi.cy + lx2 * st + ly2 * ct;
+      out.add([x, y, p[2]]);
+    }
+    return out;
+  }
+
   /// Releases all TensorFlow Lite resources held by this model.
   ///
   /// Call this when you're done using the iris landmark model to free up memory.

@@ -8,8 +8,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:camera/camera.dart';
 import 'package:camera_macos/camera_macos.dart';
-import 'package:image/image.dart' as img;
 import 'package:face_detection_tflite/face_detection_tflite.dart';
+import 'package:opencv_dart/opencv_dart.dart' as cv;
 
 Future<void> main() async {
   // Ensure platform plugins (camera_macos, etc.) are registered before use.
@@ -137,11 +137,7 @@ class _ExampleState extends State<Example> {
 
   Future<void> _initFaceDetector() async {
     try {
-      await _faceDetector.initialize(
-        model: _detectionModel,
-        performanceConfig:
-            PerformanceConfig.xnnpack(), // Enable XNNPACK for 2-5x speedup
-      );
+      await _faceDetector.initialize(model: _detectionModel);
     } catch (_) {}
     setState(() {});
   }
@@ -555,8 +551,6 @@ class _ExampleState extends State<Example> {
                                               () => _detectionModel = value);
                                           await _faceDetector.initialize(
                                             model: _detectionModel,
-                                            performanceConfig:
-                                                PerformanceConfig.xnnpack(),
                                           );
                                           if (_imageBytes != null) {
                                             await _processImage(_imageBytes!);
@@ -1131,11 +1125,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   Future<void> _initCamera() async {
     try {
       // Initialize face detector with selected model
-      await _faceDetector.initialize(
-        model: _detectionModel,
-        performanceConfig:
-            PerformanceConfig.xnnpack(), // Enable XNNPACK for 2-5x speedup
-      );
+      await _faceDetector.initialize(model: _detectionModel);
 
       if (_isMacOS) {
         if (mounted) {
@@ -1178,7 +1168,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       setState(() {
         _isInitialized = true;
         _sensorOrientation = _cameraController!.description.sensorOrientation;
-        _isFrontCamera = _cameraController!.description.lensDirection == CameraLensDirection.front;
+        _isFrontCamera = _cameraController!.description.lensDirection ==
+            CameraLensDirection.front;
       });
 
       // Start image stream
@@ -1222,20 +1213,22 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     try {
       final startTime = DateTime.now();
 
-      // Convert CameraImage to bytes
-      final bytes = await _convertCameraImageToBytes(image);
+      // Convert CameraImage to cv.Mat for OpenCV-accelerated processing
+      final mat = await _convertCameraImageToMat(image);
 
-      if (bytes == null) {
+      if (mat == null) {
         _isProcessing = false;
         return;
       }
 
-      // Run face detection with selected mode
-      final faces = await _faceDetector.detectFaces(
-        bytes,
+      // Run face detection with OpenCV-accelerated pipeline
+      final faces = await _faceDetector.detectFacesFromMat(
+        mat,
         mode: _detectionMode,
       );
 
+      // Dispose the Mat after detection
+      mat.dispose();
 
       final endTime = DateTime.now();
       final detectionTime = endTime.difference(startTime).inMilliseconds;
@@ -1243,7 +1236,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       if (mounted) {
         // Image size is the size after rotation (if any)
         final bool needsRotation = _sensorOrientation == 90 &&
-                                    MediaQuery.of(context).orientation == Orientation.portrait;
+            MediaQuery.of(context).orientation == Orientation.portrait;
         // When rotated -90°, width and height swap
         final Size processedSize = needsRotation
             ? Size(image.height.toDouble(), image.width.toDouble())
@@ -1262,28 +1255,28 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     }
   }
 
-  Future<Uint8List?> _convertCameraImageToBytes(CameraImage image) async {
+  /// Converts CameraImage (YUV420) to cv.Mat (BGR) for OpenCV processing.
+  ///
+  /// This avoids the JPEG encode/decode overhead by creating cv.Mat directly.
+  Future<cv.Mat?> _convertCameraImageToMat(CameraImage image) async {
     try {
-      // Convert YUV420 to RGB
       final int width = image.width;
       final int height = image.height;
       final int yRowStride = image.planes[0].bytesPerRow;
       final int yPixelStride = image.planes[0].bytesPerPixel ?? 1;
 
-      // Create an image using the img package
-      final imgLib = img.Image(width: width, height: height);
+      // Allocate BGR buffer for OpenCV (3 bytes per pixel)
+      final bgrBytes = Uint8List(width * height * 3);
 
       if (image.planes.length == 2) {
-        // iOS NV12 format (bi-planar YUV420 with interleaved UV)
-        // Plane 0: Y (luma)
-        // Plane 1: UV interleaved (chroma)
+        // iOS NV12 format
         final int uvRowStride = image.planes[1].bytesPerRow;
         final int uvPixelStride = image.planes[1].bytesPerPixel ?? 2;
 
         for (int y = 0; y < height; y++) {
           for (int x = 0; x < width; x++) {
             final int uvIndex =
-                uvPixelStride * (x / 2).floor() + uvRowStride * (y / 2).floor();
+                uvPixelStride * (x ~/ 2) + uvRowStride * (y ~/ 2);
             final int index = y * yRowStride + x * yPixelStride;
 
             final yp = image.planes[0].bytes[index];
@@ -1297,21 +1290,22 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                 .clamp(0, 255);
             int b = (yp + up * 1814 / 1024 - 227).round().clamp(0, 255);
 
-            imgLib.setPixelRgb(x, y, r, g, b);
+            // Write BGR (OpenCV format)
+            final int bgrIdx = (y * width + x) * 3;
+            bgrBytes[bgrIdx] = b;
+            bgrBytes[bgrIdx + 1] = g;
+            bgrBytes[bgrIdx + 2] = r;
           }
         }
       } else if (image.planes.length >= 3) {
-        // Android I420 format (3-plane YUV420)
-        // Plane 0: Y (luma)
-        // Plane 1: U (chroma)
-        // Plane 2: V (chroma)
+        // Android I420 format
         final int uvRowStride = image.planes[1].bytesPerRow;
         final int uvPixelStride = image.planes[1].bytesPerPixel ?? 1;
 
         for (int y = 0; y < height; y++) {
           for (int x = 0; x < width; x++) {
             final int uvIndex =
-                uvPixelStride * (x / 2).floor() + uvRowStride * (y / 2).floor();
+                uvPixelStride * (x ~/ 2) + uvRowStride * (y ~/ 2);
             final int index = y * yRowStride + x * yPixelStride;
 
             final yp = image.planes[0].bytes[index];
@@ -1325,52 +1319,68 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                 .clamp(0, 255);
             int b = (yp + up * 1814 / 1024 - 227).round().clamp(0, 255);
 
-            imgLib.setPixelRgb(x, y, r, g, b);
+            // Write BGR (OpenCV format)
+            final int bgrIdx = (y * width + x) * 3;
+            bgrBytes[bgrIdx] = b;
+            bgrBytes[bgrIdx + 1] = g;
+            bgrBytes[bgrIdx + 2] = r;
           }
         }
       } else {
         return null;
       }
 
+      // Create cv.Mat from BGR bytes
+      cv.Mat mat = cv.Mat.fromList(height, width, cv.MatType.CV_8UC3, bgrBytes);
+
       // Rotate image for portrait mode so face detector sees upright faces
-      // The face detection model works best with upright faces
       final bool needsRotation = _sensorOrientation == 90 &&
-                                  MediaQuery.of(context).orientation == Orientation.portrait;
+          MediaQuery.of(context).orientation == Orientation.portrait;
 
-      final img.Image finalImage = needsRotation
-          ? img.copyRotate(imgLib, angle: -90)  // Rotate CCW to make faces upright
-          : imgLib;
+      if (needsRotation) {
+        // Rotate 90° counter-clockwise
+        final rotated = cv.rotate(mat, cv.ROTATE_90_COUNTERCLOCKWISE);
+        mat.dispose();
+        return rotated;
+      }
 
-      // Encode to JPEG
-      final bytes = Uint8List.fromList(img.encodeJpg(finalImage));
-      return bytes;
+      return mat;
     } catch (e) {
       return null;
     }
   }
 
-  Uint8List? _convertMacImageToBytes(CameraImageData image) {
+  /// Converts macOS CameraImageData (ARGB) to cv.Mat (BGR) for OpenCV processing.
+  cv.Mat? _convertMacImageToMat(CameraImageData image) {
     try {
-      final imgLib = img.Image(width: image.width, height: image.height);
       final bytes = image.bytes;
       final stride = image.bytesPerRow;
+      final width = image.width;
+      final height = image.height;
 
-      for (int y = 0; y < image.height; y++) {
+      // Allocate BGR buffer for OpenCV (3 bytes per pixel)
+      final bgrBytes = Uint8List(width * height * 3);
+
+      for (int y = 0; y < height; y++) {
         final rowStart = y * stride;
-        for (int x = 0; x < image.width; x++) {
+        for (int x = 0; x < width; x++) {
           final pixelStart = rowStart + x * 4;
           if (pixelStart + 3 >= bytes.length) break;
 
-          final a = bytes[pixelStart];
+          // macOS uses ARGB format
           final r = bytes[pixelStart + 1];
           final g = bytes[pixelStart + 2];
           final b = bytes[pixelStart + 3];
 
-          imgLib.setPixelRgba(x, y, r, g, b, a);
+          // Write BGR (OpenCV format)
+          final int bgrIdx = (y * width + x) * 3;
+          bgrBytes[bgrIdx] = b;
+          bgrBytes[bgrIdx + 1] = g;
+          bgrBytes[bgrIdx + 2] = r;
         }
       }
 
-      return Uint8List.fromList(img.encodeJpg(imgLib));
+      return cv.Mat.fromList(height, width, cv.MatType.CV_8UC3, bgrBytes);
     } catch (_) {
       return null;
     }
@@ -1412,11 +1422,10 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
 
     // Determine if we need to swap aspect ratio for portrait mode
     // On iOS with sensor orientation 90, the camera is landscape but device may be portrait
-    final bool needsAspectSwap = _sensorOrientation == 90 &&
-                                  deviceOrientation == Orientation.portrait;
-    final double displayAspectRatio = needsAspectSwap
-        ? 1.0 / cameraAspectRatio
-        : cameraAspectRatio;
+    final bool needsAspectSwap =
+        _sensorOrientation == 90 && deviceOrientation == Orientation.portrait;
+    final double displayAspectRatio =
+        needsAspectSwap ? 1.0 / cameraAspectRatio : cameraAspectRatio;
 
     return Scaffold(
       appBar: AppBar(
@@ -1490,10 +1499,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                   if (value != null && value != _detectionModel) {
                     setState(() => _detectionModel = value);
                     // Reinitialize detector with new model
-                    await _faceDetector.initialize(
-                      model: _detectionModel,
-                      performanceConfig: PerformanceConfig.xnnpack(),
-                    );
+                    await _faceDetector.initialize(model: _detectionModel);
                   }
                 },
               ),
@@ -1688,10 +1694,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                   if (value != null && value != _detectionModel) {
                     setState(() => _detectionModel = value);
                     // Reinitialize detector with new model
-                    await _faceDetector.initialize(
-                      model: _detectionModel,
-                      performanceConfig: PerformanceConfig.xnnpack(),
-                    );
+                    await _faceDetector.initialize(model: _detectionModel);
                   }
                 },
               ),
@@ -1734,7 +1737,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                         detectionMode: _detectionMode,
                         sensorOrientation: 0, // macOS doesn't need rotation
                         deviceOrientation: Orientation.landscape,
-                        isFrontCamera: true, // macOS typically uses front camera
+                        isFrontCamera:
+                            true, // macOS typically uses front camera
                       ),
                     ),
                 ],
@@ -1840,16 +1844,21 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
 
       try {
         final startTime = DateTime.now();
-        final bytes = _convertMacImageToBytes(image);
-        if (bytes == null) {
+        // Use OpenCV-based processing for better performance
+        final mat = _convertMacImageToMat(image);
+        if (mat == null) {
           _isProcessing = false;
           return;
         }
 
-        final faces = await _faceDetector.detectFaces(
-          bytes,
+        final faces = await _faceDetector.detectFacesFromMat(
+          mat,
           mode: _detectionMode,
         );
+
+        // Dispose the Mat after detection
+        mat.dispose();
+
         final detectionTime =
             DateTime.now().difference(startTime).inMilliseconds;
 
@@ -1928,14 +1937,16 @@ class _CameraDetectionPainter extends CustomPainter {
     // We need to transform detection coords to match CameraPreview's display
 
     // Check if CameraPreview is showing a rotated view
-    final bool isPortraitMode = sensorOrientation == 90 &&
-                                 deviceOrientation == Orientation.portrait;
+    final bool isPortraitMode =
+        sensorOrientation == 90 && deviceOrientation == Orientation.portrait;
 
     // After CameraPreview rotation, the displayed image dimensions are:
     // - Portrait: height x width (swapped)
     // - Landscape: width x height (same)
-    final double sourceWidth = isPortraitMode ? imageSize.height : imageSize.width;
-    final double sourceHeight = isPortraitMode ? imageSize.width : imageSize.height;
+    final double sourceWidth =
+        isPortraitMode ? imageSize.height : imageSize.width;
+    final double sourceHeight =
+        isPortraitMode ? imageSize.width : imageSize.height;
 
     final double scaleX = displayWidth / sourceWidth;
     final double scaleY = displayHeight / sourceHeight;
@@ -1971,7 +1982,8 @@ class _CameraDetectionPainter extends CustomPainter {
       // Draw bounding box - need to handle that top-left might not be top-left after rotation
       final boundingBox = face.boundingBox;
       final p1 = transformPoint(boundingBox.topLeft.x, boundingBox.topLeft.y);
-      final p2 = transformPoint(boundingBox.bottomRight.x, boundingBox.bottomRight.y);
+      final p2 =
+          transformPoint(boundingBox.bottomRight.x, boundingBox.bottomRight.y);
 
       // After rotation, we need to find the actual min/max
       final rect = Rect.fromLTRB(
@@ -2013,12 +2025,13 @@ class _CameraDetectionPainter extends CustomPainter {
 
             // Draw iris (center + contour as oval)
             final allIrisPoints = [iris.irisCenter, ...iris.irisContour];
-            final transformedIrisPoints = allIrisPoints
-                .map((p) => transformPoint(p.x, p.y))
-                .toList();
+            final transformedIrisPoints =
+                allIrisPoints.map((p) => transformPoint(p.x, p.y)).toList();
 
-            double minX = transformedIrisPoints.first.dx, maxX = transformedIrisPoints.first.dx;
-            double minY = transformedIrisPoints.first.dy, maxY = transformedIrisPoints.first.dy;
+            double minX = transformedIrisPoints.first.dx,
+                maxX = transformedIrisPoints.first.dx;
+            double minY = transformedIrisPoints.first.dy,
+                maxY = transformedIrisPoints.first.dy;
             for (final p in transformedIrisPoints) {
               if (p.dx < minX) minX = p.dx;
               if (p.dx > maxX) maxX = p.dx;

@@ -41,6 +41,7 @@ Note: The Facial mesh and eye area mesh are separate.
 - Face landmarks, comprehensive eye tracking (iris + 71-point eye mesh), and bounding boxes
 - All coordinates are in absolute pixel coordinates
 - Truly cross-platform: compatible with Android, iOS, macOS, Windows, and Linux
+- Native OpenCV preprocessing (resize/letterbox/crops) for 2x+ throughput vs pure Dart
 - The [example](https://pub.dev/packages/face_detection_tflite/example) app illustrates how to detect and render results on images
   - Includes demo for bounding boxes, the 468-point mesh, facial landmarks and comprehensive eye tracking.
 
@@ -67,6 +68,38 @@ Future main() async {
   detector.dispose();
 }
 ```
+
+## Performance
+
+Version 4.1 moved image preprocessing to native OpenCV (via `opencv_dart`) for ~2x faster performance with SIMD acceleration. The standard `detectFaces()` method now uses OpenCV internally, so all existing code automatically gets the performance boost.
+
+Additionally, XNNPACK is now enabled by default, providing 2-5x CPU speedup via SIMD vectorization (NEON on ARM, AVX on x86). No configuration needed - just call `initialize()` and you get the optimized performance automatically.
+
+### Advanced: Direct Mat Input
+
+For live camera streams, you can bypass image encoding/decoding entirely by using `detectFacesFromMat()`:
+
+```dart
+import 'package:face_detection_tflite/face_detection_tflite.dart';
+
+Future<void> processFrame(cv.Mat frame) async {
+  final detector = FaceDetector();
+  await detector.initialize(model: FaceDetectionModel.frontCamera);
+
+  // Direct Mat input - fastest for video streams
+  final faces = await detector.detectFacesFromMat(frame, mode: FaceDetectionMode.fast);
+
+  frame.dispose(); // always dispose Mats after use
+  detector.dispose();
+}
+```
+
+**When to use `detectFacesFromMat()`:**
+- Live camera streams where frames are already in memory
+- When you need to preprocess images with OpenCV before detection
+- Maximum throughput scenarios (avoids JPEG encode/decode overhead)
+
+**For all other cases**, use the standard `detectFaces()` method with image bytes.
 
 ## Bounding Boxes
 
@@ -287,7 +320,7 @@ This app supports three detection modes that determine which facial features are
 
 ### Code Examples
 
-The Face Detection Mode can be set using the `mode` parameter when detectFaces is called. Defaults to FaceDetectionMode.full.
+The Face Detection Mode can be set using the `mode` parameter. Defaults to FaceDetectionMode.full.
 
 ```dart
 // Full mode (default): bounding boxes, 6 basic landmarks + mesh + comprehensive eye tracking
@@ -348,9 +381,12 @@ await faceDetector.initialize(model: FaceDetectionModel.fullSparse);
 
 ![Example Screenshot](assets/screenshots/livecamera_ex1.gif)
 
-For real-time face detection with a camera feed, use the `camera` package with `FaceDetectionMode.fast`:
+For real-time face detection with a camera feed, use `detectFacesFromMat()` to avoid repeated JPEG encode/decode overhead. This provides the best performance for video streams.
 
 ```dart
+import 'package:camera/camera.dart';
+import 'package:face_detection_tflite/face_detection_tflite.dart';
+
 FaceDetector detector = FaceDetector();
 await detector.initialize(model: FaceDetectionModel.frontCamera);
 
@@ -358,16 +394,30 @@ final cameras = await availableCameras();
 CameraController camera = CameraController(cameras.first, ResolutionPreset.medium);
 await camera.initialize();
 
-camera.startImageStream((image) async {
-  // Convert CameraImage to bytes
-  final bytes = convertToBytes(image);
+camera.startImageStream((CameraImage image) async {
+  // Convert CameraImage (YUV420) directly to cv.Mat (BGR)
+  final cv.Mat mat = convertCameraImageToMat(image); // see example app
 
-  // Detect faces in fast mode for real-time performance
-  List<Face> faces = await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+  // Detect faces using Mat for maximum performance
+  List<Face> faces = await detector.detectFacesFromMat(
+    mat,
+    mode: FaceDetectionMode.fast,
+  );
+
+  // Always dispose Mat after use
+  mat.dispose();
+
+  // Process faces...
 });
 ```
 
-See the full [example app](https://pub.dev/packages/face_detection_tflite/example) for complete implementation including frame throttling.
+**Key differences from image detection:**
+- Use `detectFacesFromMat()` instead of `detectFaces()` to bypass JPEG encoding/decoding
+- Convert YUV420 camera frames directly to BGR Mat format
+- Always call `mat.dispose()` after detection
+- Use `FaceDetectionMode.fast` for real-time performance
+
+See the full [example app](https://pub.dev/packages/face_detection_tflite/example) for complete implementation including YUV-to-Mat conversion and frame throttling.
 
 ## Example
 

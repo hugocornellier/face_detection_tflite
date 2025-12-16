@@ -71,20 +71,20 @@ enum PerformanceMode {
 ///
 /// Example:
 /// ```dart
-/// // Default (no acceleration)
+/// // Default (XNNPACK enabled with auto thread detection)
 /// final detector = FaceDetector();
 /// await detector.initialize();
-///
-/// // XNNPACK with auto thread detection (recommended)
-/// final detector = FaceDetector();
-/// await detector.initialize(
-///   performanceConfig: PerformanceConfig.xnnpack(),
-/// );
 ///
 /// // XNNPACK with custom threads
 /// final detector = FaceDetector();
 /// await detector.initialize(
 ///   performanceConfig: PerformanceConfig.xnnpack(numThreads: 2),
+/// );
+///
+/// // Disable XNNPACK (not recommended)
+/// final detector = FaceDetector();
+/// await detector.initialize(
+///   performanceConfig: PerformanceConfig.disabled,
 /// );
 /// ```
 class PerformanceConfig {
@@ -104,10 +104,10 @@ class PerformanceConfig {
   /// Creates a performance configuration.
   ///
   /// Parameters:
-  /// - [mode]: Performance mode. Default: [PerformanceMode.disabled]
+  /// - [mode]: Performance mode. Default: [PerformanceMode.xnnpack]
   /// - [numThreads]: Number of threads (null for auto-detection)
   const PerformanceConfig({
-    this.mode = PerformanceMode.disabled,
+    this.mode = PerformanceMode.xnnpack,
     this.numThreads,
   });
 
@@ -872,6 +872,36 @@ class AlignedFace {
   /// Creates an aligned face crop with pixel-based center, size, rotation,
   /// and the cropped [faceCrop] image ready for landmark inference.
   AlignedFace({
+    required this.cx,
+    required this.cy,
+    required this.size,
+    required this.theta,
+    required this.faceCrop,
+  });
+}
+
+/// Aligned face crop data holder for OpenCV-based processing.
+///
+/// Similar to [AlignedFace] but holds a cv.Mat instead of img.Image.
+/// Used internally by the OpenCV-accelerated detection pipeline.
+class AlignedFaceFromMat {
+  /// X coordinate of the face center in absolute pixel coordinates.
+  final double cx;
+
+  /// Y coordinate of the face center in absolute pixel coordinates.
+  final double cy;
+
+  /// Length of the square crop edge in absolute pixels.
+  final double size;
+
+  /// Rotation applied to align the face, in radians.
+  final double theta;
+
+  /// The aligned face crop as cv.Mat. Caller must dispose when done.
+  final cv.Mat faceCrop;
+
+  /// Creates an aligned face crop with cv.Mat instead of img.Image.
+  AlignedFaceFromMat({
     required this.cx,
     required this.cy,
     required this.size,

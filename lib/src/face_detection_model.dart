@@ -30,6 +30,12 @@ class FaceDetection {
     this._anchors,
   ) : _assumeMirrored = false;
 
+  /// The model input width in pixels.
+  int get inputWidth => _inW;
+
+  /// The model input height in pixels.
+  int get inputHeight => _inH;
+
   /// Creates and initializes a face detection model instance.
   ///
   /// This factory method loads the specified TensorFlow Lite [model] from package
@@ -264,6 +270,14 @@ class FaceDetection {
       );
     }
 
+    return _runInference(pack);
+  }
+
+  /// Runs face detection on a pre-computed tensor.
+  ///
+  /// This is used by the OpenCV pipeline which computes the tensor directly
+  /// from cv.Mat without going through the isolate worker.
+  Future<List<Detection>> callWithTensor(ImageTensor pack) async {
     return _runInference(pack);
   }
 

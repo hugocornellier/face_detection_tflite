@@ -174,6 +174,65 @@ class FaceLandmark {
     }
   }
 
+  /// Predicts the 468-point face mesh for an aligned face crop using cv.Mat.
+  ///
+  /// This is the OpenCV-based variant of [call] that accepts a cv.Mat directly,
+  /// providing better performance by avoiding image format conversions.
+  ///
+  /// The [faceCrop] parameter should contain an aligned, cropped face as cv.Mat.
+  /// The Mat is NOT disposed by this method - caller is responsible for disposal.
+  ///
+  /// The optional [buffer] parameter allows reusing a pre-allocated Float32List
+  /// for the tensor conversion to reduce GC pressure.
+  ///
+  /// Returns a list of 468 3D landmark points in normalized coordinates.
+  ///
+  /// Example:
+  /// ```dart
+  /// final faceCropMat = cv.imdecode(bytes, cv.IMREAD_COLOR);
+  /// final meshPoints = await faceLandmark.callFromMat(faceCropMat);
+  /// faceCropMat.dispose();
+  /// ```
+  Future<List<List<double>>> callFromMat(
+    cv.Mat faceCrop, {
+    Float32List? buffer,
+  }) async {
+    final ImageTensor pack = convertImageToTensorFromMat(
+      faceCrop,
+      outW: _inW,
+      outH: _inH,
+      buffer: buffer,
+    );
+
+    if (_iso == null) {
+      _inputBuf.setAll(0, pack.tensorNHWC);
+      _itp.invoke();
+      return _unpackLandmarks(
+        _bestOutBuf,
+        _inW,
+        _inH,
+        pack.padding,
+        clamp: true,
+      );
+    } else {
+      fillNHWC4D(pack.tensorNHWC, _input4dCache, _inH, _inW);
+      final List<List<List<List<List<double>>>>> inputs = [_input4dCache];
+      final Map<int, Object> outputs = <int, Object>{};
+      for (int i = 0; i < _outShapes.length; i++) {
+        final List<int> s = _outShapes[i];
+        if (s.isNotEmpty) {
+          outputs[i] = allocTensorShape(s);
+        }
+      }
+      await _iso!.runForMultipleInputs(inputs, outputs);
+
+      final dynamic best = outputs[_bestIdx];
+
+      final Float32List bestFlat = flattenDynamicTensor(best);
+      return _unpackLandmarks(bestFlat, _inW, _inH, pack.padding, clamp: true);
+    }
+  }
+
   /// Releases all TensorFlow Lite resources held by this model.
   ///
   /// Call this when you're done using the face landmark model to free up memory.

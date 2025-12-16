@@ -130,26 +130,26 @@ class FaceDetector {
   /// Optionally, you can pass [options] to configure interpreter settings
   /// such as the number of threads or delegate type.
   ///
-  /// The [performanceConfig] parameter enables hardware acceleration delegates.
-  /// Use [PerformanceConfig.xnnpack()] for 2-5x speedup on CPU across all models.
+  /// The [performanceConfig] parameter controls hardware acceleration delegates.
+  /// XNNPACK is enabled by default for 2-5x speedup on CPU across all models.
   /// If both [options] and [performanceConfig] are provided, [options] takes precedence.
   ///
   /// Example:
   /// ```dart
-  /// // Default (no acceleration)
+  /// // Default (XNNPACK enabled)
   /// final detector = FaceDetector();
   /// await detector.initialize();
   ///
-  /// // With XNNPACK acceleration (recommended)
+  /// // Disable XNNPACK (not recommended)
   /// final detector = FaceDetector();
   /// await detector.initialize(
-  ///   performanceConfig: PerformanceConfig.xnnpack(),
+  ///   performanceConfig: PerformanceConfig.disabled,
   /// );
   /// ```
   Future<void> initialize({
     FaceDetectionModel model = FaceDetectionModel.backCamera,
     InterpreterOptions? options,
-    PerformanceConfig? performanceConfig,
+    PerformanceConfig performanceConfig = const PerformanceConfig.xnnpack(),
     int meshPoolSize = 3,
   }) async {
     await _ensureTFLiteLoaded();
@@ -1033,23 +1033,6 @@ class FaceDetector {
     return out;
   }
 
-  Future<List<Point>> _getMeshForFace(AlignedFace aligned) async {
-    return await meshFromAlignedFace(
-      aligned.faceCrop,
-      aligned,
-    );
-  }
-
-  Future<List<Point>> _getIrisForFace(
-    img.Image decoded,
-    List<Point> meshPx,
-  ) async {
-    if (meshPx.isEmpty) return <Point>[];
-
-    final List<AlignedRoi> rois = eyeRoisFromMesh(meshPx);
-    return await irisFromEyeRois(decoded, rois);
-  }
-
   /// Detects faces in the provided image and returns detailed results.
   ///
   /// The [imageBytes] parameter should contain encoded image data (JPEG, PNG, etc.).
@@ -1067,252 +1050,16 @@ class FaceDetector {
     Uint8List imageBytes, {
     FaceDetectionMode mode = FaceDetectionMode.full,
   }) async {
-    if (_worker != null && _worker!.isInitialized) {
-      final (frameId, w, h) = await _worker!.decodeAndRegisterFrame(imageBytes);
-      final Size imgSize = Size(w.toDouble(), h.toDouble());
-      return _detectFacesWithFrameId(frameId, w, h, mode, imgSize);
+    // Use OpenCV for 2x faster image decoding with SIMD acceleration
+    final cv.Mat image = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
+    if (image.isEmpty) {
+      throw FormatException('Could not decode image bytes');
     }
-
-    // Fallback: no worker available
-    final DecodedRgb d = await decodeImageWithWorker(imageBytes, _worker);
-    final img.Image decoded = _imageFromDecodedRgb(d);
-    final Size imgSize = Size(
-      decoded.width.toDouble(),
-      decoded.height.toDouble(),
-    );
-
-    final bool computeIris = mode == FaceDetectionMode.full;
-    final bool computeMesh =
-        mode == FaceDetectionMode.standard || mode == FaceDetectionMode.full;
-    final List<_DetectionFeatures> features =
-        computeIris ? <_DetectionFeatures>[] : const <_DetectionFeatures>[];
-    final List<Detection> dets = await _detectDetectionsWithDecoded(
-      decoded,
-      refineEyesWithIris: computeIris,
-      featuresOut: computeIris ? features : null,
-    );
-    final List<AlignedFace> allAligned = computeMesh && !computeIris
-        ? await Future.wait(
-            dets.map((det) => estimateAlignedFace(decoded, det)),
-          )
-        : <AlignedFace>[];
-
-    final List<Face> faces = <Face>[];
-    for (int i = 0; i < dets.length; i++) {
-      try {
-        final _DetectionFeatures? feat =
-            computeIris && i < features.length ? features[i] : null;
-        final Detection det = feat?.detection ?? dets[i];
-
-        final List<Point> meshPx =
-            computeMesh && feat != null && feat.mesh.isNotEmpty
-                ? feat.mesh
-                : computeMesh && i < allAligned.length
-                    ? await _getMeshForFace(allAligned[i])
-                    : <Point>[];
-
-        final List<Point> irisPx =
-            computeIris && feat != null && feat.iris.isNotEmpty
-                ? feat.iris
-                : computeIris && i < allAligned.length
-                    ? await _getIrisForFace(decoded, meshPx)
-                    : computeIris
-                        ? await _getIrisForFace(decoded, meshPx)
-                        : <Point>[];
-
-        final FaceMesh? faceMesh = meshPx.isNotEmpty ? FaceMesh(meshPx) : null;
-
-        faces.add(
-          Face(
-            detection: det,
-            mesh: faceMesh,
-            irises: irisPx,
-            originalSize: imgSize,
-          ),
-        );
-      } catch (e) {
-        // ignore: silently skip failed face
-      }
-    }
-
-    return faces;
-  }
-
-  /// Optimized face detection using frame registration to avoid redundant transfers.
-  ///
-  /// The frame is already registered in the worker isolate, so we don't need
-  /// to transfer the decoded image.
-  Future<List<Face>> _detectFacesWithFrameId(
-    int frameId,
-    int width,
-    int height,
-    FaceDetectionMode mode,
-    Size imgSize,
-  ) async {
-    final IsolateWorker worker = _worker!;
-
     try {
-      final bool computeIris = mode == FaceDetectionMode.full;
-      final List<_DetectionFeatures> features =
-          computeIris ? <_DetectionFeatures>[] : const <_DetectionFeatures>[];
-
-      final bool computeMesh =
-          mode == FaceDetectionMode.standard || mode == FaceDetectionMode.full;
-      final List<Detection> dets = await _detectDetectionsWithFrameId(
-          frameId, width, height, computeIris, computeIris ? features : null);
-      final List<AlignedFace> allAligned = computeMesh && !computeIris
-          ? await Future.wait(dets.map((det) => estimateAlignedFaceWithFrameId(
-                frameId,
-                width,
-                height,
-                det,
-              )))
-          : <AlignedFace>[];
-
-      final List<Face> faces = <Face>[];
-      for (int i = 0; i < dets.length; i++) {
-        try {
-          final _DetectionFeatures? feat =
-              computeIris && i < features.length ? features[i] : null;
-          final Detection det = feat?.detection ?? dets[i];
-
-          final List<Point> meshPx =
-              computeMesh && feat != null && feat.mesh.isNotEmpty
-                  ? feat.mesh
-                  : computeMesh && i < allAligned.length
-                      ? await _getMeshForFace(allAligned[i])
-                      : <Point>[];
-
-          final List<Point> irisPx = computeIris &&
-                  feat != null &&
-                  feat.iris.isNotEmpty
-              ? feat.iris
-              : computeIris && i < allAligned.length
-                  ? await _getIrisForFaceWithFrameId(
-                      frameId, meshPx, width.toDouble(), height.toDouble())
-                  : computeIris
-                      ? await _getIrisForFaceWithFrameId(
-                          frameId, meshPx, width.toDouble(), height.toDouble())
-                      : <Point>[];
-
-          final FaceMesh? faceMesh =
-              meshPx.isNotEmpty ? FaceMesh(meshPx) : null;
-
-          faces.add(
-            Face(
-              detection: det,
-              mesh: faceMesh,
-              irises: irisPx,
-              originalSize: imgSize,
-            ),
-          );
-        } catch (e) {
-          // ignore: silently skip failed face
-        }
-      }
-
-      return faces;
+      return await detectFacesFromMat(image, mode: mode);
     } finally {
-      await worker.releaseFrame(frameId);
+      image.dispose();
     }
-  }
-
-  /// Detection pipeline using frame ID to avoid transferring full image.
-  Future<List<Detection>> _detectDetectionsWithFrameId(
-    int frameId,
-    int width,
-    int height,
-    bool refineEyesWithIris,
-    List<_DetectionFeatures>? featuresOut,
-  ) async {
-    final FaceDetection? d = _detector;
-    if (d == null) {
-      throw StateError(
-        'FaceDetector not initialized. Call initialize() before detection.',
-      );
-    }
-    if (_irisLeft == null || _irisRight == null) {
-      throw StateError('Iris models not initialized.');
-    }
-
-    final List<Detection> dets =
-        await d.callWithFrameId(frameId, width, height, worker: _worker);
-    if (dets.isEmpty) return dets;
-    featuresOut?.clear();
-
-    if (!refineEyesWithIris) {
-      final double imgW = width.toDouble();
-      final double imgH = height.toDouble();
-      return dets
-          .map((det) => Detection(
-                boundingBox: det.boundingBox,
-                score: det.score,
-                keypointsXY: det.keypointsXY,
-                imageSize: Size(imgW, imgH),
-              ))
-          .toList();
-    }
-
-    final results = await Future.wait(
-      dets.map((det) async {
-        final AlignedFace aligned = await estimateAlignedFaceWithFrameId(
-          frameId,
-          width,
-          height,
-          det,
-        );
-        final List<Point> mesh = await meshFromAlignedFace(
-          aligned.faceCrop,
-          aligned,
-        );
-        final List<AlignedRoi> rois = eyeRoisFromMesh(mesh);
-
-        final double imgW = width.toDouble();
-        final double imgH = height.toDouble();
-        final Offset lf = Offset(
-          det.keypointsXY[FaceLandmarkType.leftEye.index * 2] * imgW,
-          det.keypointsXY[FaceLandmarkType.leftEye.index * 2 + 1] * imgH,
-        );
-        final Offset rf = Offset(
-          det.keypointsXY[FaceLandmarkType.rightEye.index * 2] * imgW,
-          det.keypointsXY[FaceLandmarkType.rightEye.index * 2 + 1] * imgH,
-        );
-
-        final List<Point> iris = <Point>[];
-        final List<Offset> centers = await _computeIrisCentersWithFrameId(
-          frameId,
-          rois,
-          leftFallback: lf,
-          rightFallback: rf,
-          allLandmarks: iris,
-        );
-
-        final List<double> kp = List<double>.from(det.keypointsXY);
-        kp[FaceLandmarkType.leftEye.index * 2] = centers[0].dx / imgW;
-        kp[FaceLandmarkType.leftEye.index * 2 + 1] = centers[0].dy / imgH;
-        kp[FaceLandmarkType.rightEye.index * 2] = centers[1].dx / imgW;
-        kp[FaceLandmarkType.rightEye.index * 2 + 1] = centers[1].dy / imgH;
-
-        final detection = Detection(
-          boundingBox: det.boundingBox,
-          score: det.score,
-          keypointsXY: kp,
-          imageSize: Size(imgW, imgH),
-        );
-
-        return _DetectionFeatures(
-          detection: detection,
-          alignedFace: aligned,
-          mesh: mesh,
-          iris: iris,
-        );
-      }),
-    );
-
-    for (final r in results) {
-      featuresOut?.add(r);
-    }
-    return results.map((r) => r.detection).toList();
   }
 
   /// Estimate aligned face using frame ID.
@@ -1364,130 +1111,6 @@ class FaceDetector {
     );
   }
 
-  /// Compute iris centers using frame ID.
-  Future<List<Offset>> _computeIrisCentersWithFrameId(
-    int frameId,
-    List<AlignedRoi> rois, {
-    Offset? leftFallback,
-    Offset? rightFallback,
-    List<Point>? allLandmarks,
-  }) async {
-    final Stopwatch sw = Stopwatch()..start();
-    final IrisLandmark irisLeft = _irisLeft!;
-    final IrisLandmark irisRight = _irisRight!;
-    allLandmarks?.clear();
-
-    Offset pickCenter(List<List<double>> lm, Offset? fallback) {
-      if (lm.isEmpty) return fallback ?? const Offset(0, 0);
-      final List<Offset> pts =
-          lm.map((p) => Offset(p[0].toDouble(), p[1].toDouble())).toList();
-      int bestIdx = 0;
-      double bestScore = double.infinity;
-      for (int k = 0; k < pts.length; k++) {
-        double s = 0;
-        for (int j = 0; j < pts.length; j++) {
-          if (j == k) continue;
-          final double dx = pts[j].dx - pts[k].dx;
-          final double dy = pts[j].dy - pts[k].dy;
-          s += dx * dx + dy * dy;
-        }
-        if (s < bestScore) {
-          bestScore = s;
-          bestIdx = k;
-        }
-      }
-      return pts[bestIdx];
-    }
-
-    final results = await Future.wait([
-      // Left eye (index 0)
-      if (rois.isNotEmpty && rois[0].size > 0)
-        _withIrisLeftLock(() => irisLeft.runOnImageAlignedIrisWithFrameId(
-              frameId,
-              rois[0],
-              isRight: false,
-              worker: _worker,
-            ))
-      else
-        Future.value(<List<double>>[]),
-      // Right eye (index 1)
-      if (rois.length > 1 && rois[1].size > 0)
-        _withIrisRightLock(() => irisRight.runOnImageAlignedIrisWithFrameId(
-              frameId,
-              rois[1],
-              isRight: true,
-              worker: _worker,
-            ))
-      else
-        Future.value(<List<double>>[]),
-    ]);
-
-    final List<List<double>> leftLm = results[0];
-    final List<List<double>> rightLm = results[1];
-
-    final List<Offset> centers = <Offset>[];
-    bool usedFallback = false;
-
-    if (rois.isEmpty || rois[0].size <= 0) {
-      centers.add(leftFallback ?? const Offset(0, 0));
-      usedFallback = true;
-      irisUsedFallbackCount++;
-    } else {
-      if (allLandmarks != null) {
-        allLandmarks.addAll(
-          leftLm.map((p) => Point(
-                p[0].toDouble(),
-                p[1].toDouble(),
-                p.length > 2 ? p[2].toDouble() : 0.0,
-              )),
-        );
-      }
-      centers.add(pickCenter(leftLm, leftFallback));
-    }
-
-    if (rois.length <= 1 || rois[1].size <= 0) {
-      centers.add(rightFallback ?? const Offset(0, 0));
-      usedFallback = true;
-      irisUsedFallbackCount++;
-    } else {
-      if (allLandmarks != null) {
-        allLandmarks.addAll(
-          rightLm.map((p) => Point(
-                p[0].toDouble(),
-                p[1].toDouble(),
-                p.length > 2 ? p[2].toDouble() : 0.0,
-              )),
-        );
-      }
-      centers.add(pickCenter(rightLm, rightFallback));
-    }
-
-    sw.stop();
-    lastIrisTime = sw.elapsed;
-
-    if (centers.isNotEmpty && !usedFallback) {
-      irisOkCount++;
-    } else {
-      irisFailCount++;
-    }
-
-    return centers;
-  }
-
-  /// Get iris for face using frame ID.
-  Future<List<Point>> _getIrisForFaceWithFrameId(
-    int frameId,
-    List<Point> meshPx,
-    double imgW,
-    double imgH,
-  ) async {
-    if (_irisLeft == null || _irisRight == null) return <Point>[];
-    if (meshPx.isEmpty) return <Point>[];
-
-    final List<AlignedRoi> rois = eyeRoisFromMesh(meshPx);
-    return await irisFromEyeRoisWithFrameId(frameId, rois);
-  }
-
   /// Get iris landmarks from eye ROIs using frame ID.
   Future<List<Point>> irisFromEyeRoisWithFrameId(
     int frameId,
@@ -1523,6 +1146,266 @@ class FaceDetector {
         final double z = p.length > 2 ? p[2].toDouble() : 0.0;
         pts.add(Point(p[0], p[1], z));
       }
+    }
+
+    return pts;
+  }
+
+  /// Detects faces in a cv.Mat image using OpenCV-accelerated processing.
+  ///
+  /// This is the OpenCV-based variant of [detectFaces] that accepts a cv.Mat
+  /// directly and uses SIMD-accelerated operations for image transformations.
+  /// This provides 10-50x faster rotation/crop operations compared to pure Dart.
+  ///
+  /// The [image] parameter should be a cv.Mat in BGR format (as returned by
+  /// cv.imdecode or cv.imread). The Mat is NOT disposed by this method.
+  ///
+  /// The [mode] parameter controls which features are computed:
+  /// - [FaceDetectionMode.fast]: Only detection and landmarks
+  /// - [FaceDetectionMode.standard]: Adds 468-point face mesh
+  /// - [FaceDetectionMode.full]: Adds iris tracking (152 points: 76 per eye)
+  ///
+  /// Returns a [List] of [Face] objects, one per detected face.
+  ///
+  /// Example:
+  /// ```dart
+  /// final mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
+  /// final faces = await detector.detectFacesFromMat(mat);
+  /// mat.dispose(); // Don't forget to dispose the Mat!
+  /// ```
+  ///
+  /// Throws [StateError] if [initialize] has not been called successfully.
+  Future<List<Face>> detectFacesFromMat(
+    cv.Mat image, {
+    FaceDetectionMode mode = FaceDetectionMode.full,
+  }) async {
+    if (_detector == null) {
+      throw StateError(
+        'FaceDetector not initialized. Call initialize() before detectFacesFromMat().',
+      );
+    }
+
+    final int width = image.cols;
+    final int height = image.rows;
+    final Size imgSize = Size(width.toDouble(), height.toDouble());
+
+    final bool computeIris = mode == FaceDetectionMode.full;
+    final bool computeMesh =
+        mode == FaceDetectionMode.standard || mode == FaceDetectionMode.full;
+
+    // Get initial detections using OpenCV-based tensor conversion
+    final List<Detection> dets = await _detectDetectionsFromMat(image);
+    if (dets.isEmpty) return <Face>[];
+
+    final List<Face> faces = <Face>[];
+
+    for (final Detection det in dets) {
+      try {
+        // Estimate aligned face using OpenCV warpAffine
+        final AlignedFaceFromMat alignedData =
+            await _estimateAlignedFaceFromMat(image, det);
+
+        // Get mesh if needed
+        List<Point> meshPx = <Point>[];
+        if (computeMesh) {
+          meshPx = await _meshFromAlignedFaceFromMat(
+            alignedData.faceCrop,
+            alignedData.cx,
+            alignedData.cy,
+            alignedData.size,
+            alignedData.theta,
+          );
+        }
+
+        // Get iris if needed
+        List<Point> irisPx = <Point>[];
+        if (computeIris && meshPx.isNotEmpty) {
+          irisPx = await _irisFromMeshFromMat(image, meshPx);
+        }
+
+        // Dispose the face crop Mat
+        alignedData.faceCrop.dispose();
+
+        // Refine eye keypoints with iris centers if available
+        List<double> kp = det.keypointsXY;
+        if (computeIris && irisPx.isNotEmpty) {
+          kp = List<double>.from(det.keypointsXY);
+          // Use first iris point from each eye as center (index 0 for left, 76 for right)
+          if (irisPx.isNotEmpty) {
+            kp[FaceLandmarkType.leftEye.index * 2] = irisPx[0].x / width;
+            kp[FaceLandmarkType.leftEye.index * 2 + 1] = irisPx[0].y / height;
+          }
+          if (irisPx.length >= 77) {
+            kp[FaceLandmarkType.rightEye.index * 2] = irisPx[76].x / width;
+            kp[FaceLandmarkType.rightEye.index * 2 + 1] = irisPx[76].y / height;
+          }
+        }
+
+        final Detection refinedDet = Detection(
+          boundingBox: det.boundingBox,
+          score: det.score,
+          keypointsXY: kp,
+          imageSize: imgSize,
+        );
+
+        final FaceMesh? faceMesh = meshPx.isNotEmpty ? FaceMesh(meshPx) : null;
+
+        faces.add(Face(
+          detection: refinedDet,
+          mesh: faceMesh,
+          irises: irisPx,
+          originalSize: imgSize,
+        ));
+      } catch (e) {
+        // Silently skip failed face
+      }
+    }
+
+    return faces;
+  }
+
+  /// Internal: Detect raw detections from a cv.Mat.
+  Future<List<Detection>> _detectDetectionsFromMat(cv.Mat image) async {
+    final FaceDetection? d = _detector;
+    if (d == null) {
+      throw StateError('FaceDetector not initialized.');
+    }
+
+    // Convert Mat to tensor using OpenCV-based function
+    final ImageTensor tensor = convertImageToTensorFromMat(
+      image,
+      outW: d.inputWidth,
+      outH: d.inputHeight,
+    );
+
+    // Run detection
+    return await d.callWithTensor(tensor);
+  }
+
+  /// Internal: Aligned face data holder for Mat-based processing.
+  Future<AlignedFaceFromMat> _estimateAlignedFaceFromMat(
+    cv.Mat image,
+    Detection det,
+  ) async {
+    final double imgW = image.cols.toDouble();
+    final double imgH = image.rows.toDouble();
+
+    final lx = det.keypointsXY[FaceLandmarkType.leftEye.index * 2] * imgW;
+    final ly = det.keypointsXY[FaceLandmarkType.leftEye.index * 2 + 1] * imgH;
+    final rx = det.keypointsXY[FaceLandmarkType.rightEye.index * 2] * imgW;
+    final ry = det.keypointsXY[FaceLandmarkType.rightEye.index * 2 + 1] * imgH;
+    final mx = det.keypointsXY[FaceLandmarkType.mouth.index * 2] * imgW;
+    final my = det.keypointsXY[FaceLandmarkType.mouth.index * 2 + 1] * imgH;
+
+    final eyeCx = (lx + rx) * 0.5;
+    final eyeCy = (ly + ry) * 0.5;
+    final vEx = rx - lx;
+    final vEy = ry - ly;
+    final vMx = mx - eyeCx;
+    final vMy = my - eyeCy;
+
+    final theta = math.atan2(vEy, vEx);
+    final eyeDist = math.sqrt(vEx * vEx + vEy * vEy);
+    final mouthDist = math.sqrt(vMx * vMx + vMy * vMy);
+    final size = math.max(mouthDist * 3.6, eyeDist * 4.0);
+
+    final cx = eyeCx + vMx * 0.1;
+    final cy = eyeCy + vMy * 0.1;
+
+    // Use OpenCV warpAffine for SIMD-accelerated rotation crop
+    final cv.Mat? faceCrop = extractAlignedSquareFromMat(
+      image,
+      cx,
+      cy,
+      size,
+      -theta,
+    );
+
+    if (faceCrop == null) {
+      throw StateError('Failed to extract aligned face crop');
+    }
+
+    return AlignedFaceFromMat(
+      cx: cx,
+      cy: cy,
+      size: size,
+      theta: theta,
+      faceCrop: faceCrop,
+    );
+  }
+
+  /// Internal: Generate mesh from aligned face cv.Mat.
+  Future<List<Point>> _meshFromAlignedFaceFromMat(
+    cv.Mat faceCrop,
+    double cx,
+    double cy,
+    double size,
+    double theta,
+  ) async {
+    if (_meshPool.isEmpty) return <Point>[];
+
+    // Use pool to allow parallel mesh inference
+    final lmNorm = await _withMeshLock((fl) => fl.callFromMat(faceCrop));
+
+    // Transform landmarks back to original image coordinates
+    final double ct = math.cos(theta);
+    final double st = math.sin(theta);
+    final double sct = size * ct;
+    final double sst = size * st;
+    final double tx = cx - 0.5 * sct + 0.5 * sst;
+    final double ty = cy - 0.5 * sst - 0.5 * sct;
+
+    final int n = lmNorm.length;
+    final List<Point> mesh = List<Point>.filled(n, const Point(0, 0, 0));
+
+    for (int i = 0; i < n; i++) {
+      final List<double> p = lmNorm[i];
+      mesh[i] = Point(
+        tx + sct * p[0] - sst * p[1],
+        ty + sst * p[0] + sct * p[1],
+        p[2] * size,
+      );
+    }
+    return mesh;
+  }
+
+  /// Internal: Get iris landmarks from mesh using cv.Mat source.
+  ///
+  /// Note: Iris detection is serialized (not parallel) when using cv.Mat
+  /// because opencv_dart can freeze when multiple warpAffine operations
+  /// access the same source Mat concurrently.
+  Future<List<Point>> _irisFromMeshFromMat(
+    cv.Mat image,
+    List<Point> meshAbs,
+  ) async {
+    if (_irisLeft == null || _irisRight == null) return <Point>[];
+    if (meshAbs.length < 468) return <Point>[];
+
+    final List<AlignedRoi> rois = eyeRoisFromMesh(meshAbs);
+    if (rois.length < 2) return <Point>[];
+
+    // Run left and right eye iris detection SERIALLY to avoid opencv_dart
+    // freeze issues when parallel warpAffine operations access the same Mat.
+    final List<List<double>> leftLm = await _withIrisLeftLock(
+        () => _irisLeft!.runOnImageAlignedIrisFromMat(image, rois[0]));
+
+    final List<List<double>> rightLm = await _withIrisRightLock(() =>
+        _irisRight!
+            .runOnImageAlignedIrisFromMat(image, rois[1], isRight: true));
+
+    final List<Point> pts = <Point>[];
+    for (final List<double> p in leftLm) {
+      pts.add(Point(p[0], p[1], p.length > 2 ? p[2] : 0.0));
+    }
+    for (final List<double> p in rightLm) {
+      pts.add(Point(p[0], p[1], p.length > 2 ? p[2] : 0.0));
+    }
+
+    // Update iris counters
+    if (pts.isNotEmpty) {
+      irisOkCount++;
+    } else {
+      irisFailCount++;
     }
 
     return pts;

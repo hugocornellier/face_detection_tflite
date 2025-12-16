@@ -19,6 +19,7 @@ dependencies:
   flutter:
     sdk: flutter
   image: ^4.5.4
+  opencv_dart: ^2.1.0
   tflite_flutter_custom: ^1.1.0
   path: ^1.9.1
   meta: ^1.9.1

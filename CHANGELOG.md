@@ -1,7 +1,9 @@
 ## 4.1.0
-- Add XNNPACK support (10% speed improvement)
+- Native image processing with opencv_dart for ~2x performance improvement via SIMD acceleration
+  - `detectFaces()` now uses OpenCV internally
+  - New `detectFacesFromMat()` method for camera streams (avoids repeated encode/decode overhead)
+- XNNPACK delegate enabled by default for 2-5x CPU speedup (use `PerformanceConfig.disabled` to opt out)
 - Benchmark tests
-- Minor performance improvements
 
 ## 4.0.0
 
