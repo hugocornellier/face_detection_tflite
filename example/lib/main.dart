@@ -1236,16 +1236,15 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         mode: _detectionMode,
       );
 
-      print('Detected ${faces.length} faces');
 
       final endTime = DateTime.now();
       final detectionTime = endTime.difference(startTime).inMilliseconds;
 
       if (mounted) {
-        // Determine the actual processed image size
-        // If we rotated the image for portrait mode, swap width/height
+        // Image size is the size after rotation (if any)
         final bool needsRotation = _sensorOrientation == 90 &&
                                     MediaQuery.of(context).orientation == Orientation.portrait;
+        // When rotated -90°, width and height swap
         final Size processedSize = needsRotation
             ? Size(image.height.toDouble(), image.width.toDouble())
             : Size(image.width.toDouble(), image.height.toDouble());
@@ -1330,31 +1329,22 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
           }
         }
       } else {
-        print('Unsupported number of planes: ${image.planes.length}');
         return null;
       }
 
-      // Rotate image if needed for portrait mode
-      // When sensor is 90° and device is portrait, we need to rotate the actual image
-      // so the face detector processes it in the correct orientation
+      // Rotate image for portrait mode so face detector sees upright faces
+      // The face detection model works best with upright faces
       final bool needsRotation = _sensorOrientation == 90 &&
                                   MediaQuery.of(context).orientation == Orientation.portrait;
 
-      print('Converting image: ${imgLib.width}x${imgLib.height}, needsRotation: $needsRotation');
-
       final img.Image finalImage = needsRotation
-          ? img.copyRotate(imgLib, angle: 90)
+          ? img.copyRotate(imgLib, angle: -90)  // Rotate CCW to make faces upright
           : imgLib;
-
-      print('Final image: ${finalImage.width}x${finalImage.height}');
 
       // Encode to JPEG
       final bytes = Uint8List.fromList(img.encodeJpg(finalImage));
-      print('Encoded ${bytes.length} bytes');
       return bytes;
-    } catch (e, stackTrace) {
-      print('ERROR converting camera image: $e');
-      print('Stack trace: $stackTrace');
+    } catch (e) {
       return null;
     }
   }
@@ -1891,8 +1881,6 @@ class _CameraDetectionPainter extends CustomPainter {
   final Orientation deviceOrientation;
   final bool isFrontCamera;
 
-  static bool _hasLoggedDebug = false;
-
   _CameraDetectionPainter({
     required this.faces,
     required this.imageSize,
@@ -1903,23 +1891,6 @@ class _CameraDetectionPainter extends CustomPainter {
     required this.deviceOrientation,
     required this.isFrontCamera,
   });
-
-  // Helper to transform a point based on device orientation and camera type
-  // Detection was done on a rotated image, so we need to reverse the rotation
-  // to map coordinates back to the camera preview
-  Offset _transformPoint(double x, double y) {
-    // Check if we rotated the image for detection
-    final bool wasRotated = sensorOrientation == 90 &&
-                            deviceOrientation == Orientation.portrait;
-
-    if (wasRotated) {
-      // Image was rotated 90° clockwise for detection
-      // To reverse 90° clockwise: (x, y) -> (y, width - x)
-      // imageSize.width is the width of the rotated image (which was the original height)
-      return Offset(y, imageSize.width - x);
-    }
-    return Offset(x, y);
-  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1948,58 +1919,73 @@ class _CameraDetectionPainter extends CustomPainter {
       ..strokeWidth = 1.5
       ..color = const Color(0xFF22AAFF).withAlpha(230);
 
-    // Calculate the display area for the camera preview using the actual canvas size
-    final screenAspectRatio = size.width / size.height;
-    double displayWidth, displayHeight;
-    double offsetX = 0, offsetY = 0;
+    // The canvas fills the AspectRatio widget, so size IS the display area
+    final double displayWidth = size.width;
+    final double displayHeight = size.height;
 
-    if (displayAspectRatio > screenAspectRatio) {
-      displayWidth = size.width;
-      displayHeight = size.width / displayAspectRatio;
-      offsetY = (size.height - displayHeight) / 2;
-    } else {
-      displayHeight = size.height;
-      displayWidth = size.height * displayAspectRatio;
-      offsetX = (size.width - displayWidth) / 2;
+    // Detection was done on raw camera frame (imageSize.width x imageSize.height)
+    // CameraPreview rotates the display based on sensor orientation
+    // We need to transform detection coords to match CameraPreview's display
+
+    // Check if CameraPreview is showing a rotated view
+    final bool isPortraitMode = sensorOrientation == 90 &&
+                                 deviceOrientation == Orientation.portrait;
+
+    // After CameraPreview rotation, the displayed image dimensions are:
+    // - Portrait: height x width (swapped)
+    // - Landscape: width x height (same)
+    final double sourceWidth = isPortraitMode ? imageSize.height : imageSize.width;
+    final double sourceHeight = isPortraitMode ? imageSize.width : imageSize.height;
+
+    final double scaleX = displayWidth / sourceWidth;
+    final double scaleY = displayHeight / sourceHeight;
+
+    // Transform a detection coordinate to canvas coordinate
+    //
+    // In portrait mode:
+    // - Camera frame is landscape (e.g., 480x640 where 480 is width)
+    // - We rotated image -90° (CCW) before detection, so detection image is 640x480
+    // - imageSize = (640, 480) = rotated dimensions
+    // - Detection coords are in this rotated (640x480) space
+    // - CameraPreview displays upright (as if rotated from camera's landscape)
+    // - We need to rotate detection coords +90° (CW) to match CameraPreview
+    // - Rotate CW: (x, y) -> (height - y, x) where height = imageSize.height
+    Offset transformPoint(double x, double y) {
+      double tx, ty;
+
+      if (isPortraitMode) {
+        // Rotate +90° (CW) to undo the -90° we applied before detection
+        // (x, y) -> (imageSize.height - y, x)
+        tx = imageSize.height - y;
+        ty = x;
+      } else {
+        tx = x;
+        ty = y;
+      }
+
+      return Offset(tx * scaleX, ty * scaleY);
     }
-
-    // Determine the preview dimensions (before rotation was applied for detection)
-    // After _transformPoint, coordinates are in the original preview space
-    final bool wasRotated = sensorOrientation == 90 &&
-                            deviceOrientation == Orientation.portrait;
-    final Size previewSize = wasRotated
-        ? Size(imageSize.height, imageSize.width)  // Swap back to original preview dimensions
-        : imageSize;
-
-    final scaleX = displayWidth / previewSize.width;
-    final scaleY = displayHeight / previewSize.height;
 
     // Draw bounding boxes and features for each face
     for (final face in faces) {
-      // Draw bounding box
+      // Draw bounding box - need to handle that top-left might not be top-left after rotation
       final boundingBox = face.boundingBox;
-      final topLeft = _transformPoint(boundingBox.topLeft.x, boundingBox.topLeft.y);
-      final bottomRight = _transformPoint(boundingBox.bottomRight.x, boundingBox.bottomRight.y);
+      final p1 = transformPoint(boundingBox.topLeft.x, boundingBox.topLeft.y);
+      final p2 = transformPoint(boundingBox.bottomRight.x, boundingBox.bottomRight.y);
 
+      // After rotation, we need to find the actual min/max
       final rect = Rect.fromLTRB(
-        offsetX + topLeft.dx * scaleX,
-        offsetY + topLeft.dy * scaleY,
-        offsetX + bottomRight.dx * scaleX,
-        offsetY + bottomRight.dy * scaleY,
+        min(p1.dx, p2.dx),
+        min(p1.dy, p2.dy),
+        max(p1.dx, p2.dx),
+        max(p1.dy, p2.dy),
       );
       canvas.drawRect(rect, boxPaint);
 
       // Draw the 6 simple landmarks (available in all modes)
       for (final landmark in face.landmarks.values) {
-        final transformed = _transformPoint(landmark.x, landmark.y);
-        canvas.drawCircle(
-          Offset(
-            offsetX + transformed.dx * scaleX,
-            offsetY + transformed.dy * scaleY,
-          ),
-          4.0,
-          landmarkPaint,
-        );
+        final transformed = transformPoint(landmark.x, landmark.y);
+        canvas.drawCircle(transformed, 4.0, landmarkPaint);
       }
 
       // Draw mesh if in standard or full mode
@@ -2012,12 +1998,8 @@ class _CameraDetectionPainter extends CustomPainter {
           final double radius = 1.25 + sqrt(imgArea) / 1000.0;
 
           for (final p in mesh) {
-            final transformed = _transformPoint(p.x, p.y);
-            canvas.drawCircle(
-              Offset(offsetX + transformed.dx * scaleX, offsetY + transformed.dy * scaleY),
-              radius,
-              meshPaint,
-            );
+            final transformed = transformPoint(p.x, p.y);
+            canvas.drawCircle(transformed, radius, meshPaint);
           }
         }
       }
@@ -2032,7 +2014,7 @@ class _CameraDetectionPainter extends CustomPainter {
             // Draw iris (center + contour as oval)
             final allIrisPoints = [iris.irisCenter, ...iris.irisContour];
             final transformedIrisPoints = allIrisPoints
-                .map((p) => _transformPoint(p.x, p.y))
+                .map((p) => transformPoint(p.x, p.y))
                 .toList();
 
             double minX = transformedIrisPoints.first.dx, maxX = transformedIrisPoints.first.dx;
@@ -2044,10 +2026,10 @@ class _CameraDetectionPainter extends CustomPainter {
               if (p.dy > maxY) maxY = p.dy;
             }
 
-            final cx = offsetX + ((minX + maxX) * 0.5) * scaleX;
-            final cy = offsetY + ((minY + maxY) * 0.5) * scaleY;
-            final rx = (maxX - minX) * 0.5 * scaleX;
-            final ry = (maxY - minY) * 0.5 * scaleY;
+            final cx = (minX + maxX) * 0.5;
+            final cy = (minY + maxY) * 0.5;
+            final rx = (maxX - minX) * 0.5;
+            final ry = (maxY - minY) * 0.5;
 
             final oval = Rect.fromCenter(
                 center: Offset(cx, cy), width: rx * 2, height: ry * 2);
@@ -2068,14 +2050,9 @@ class _CameraDetectionPainter extends CustomPainter {
                     connection[1] < eyelidContour.length) {
                   final p1 = eyelidContour[connection[0]];
                   final p2 = eyelidContour[connection[1]];
-                  final t1 = _transformPoint(p1.x, p1.y);
-                  final t2 = _transformPoint(p2.x, p2.y);
-
-                  canvas.drawLine(
-                    Offset(offsetX + t1.dx * scaleX, offsetY + t1.dy * scaleY),
-                    Offset(offsetX + t2.dx * scaleX, offsetY + t2.dy * scaleY),
-                    eyeOutlinePaint,
-                  );
+                  final t1 = transformPoint(p1.x, p1.y);
+                  final t2 = transformPoint(p2.x, p2.y);
+                  canvas.drawLine(t1, t2, eyeOutlinePaint);
                 }
               }
 
@@ -2085,11 +2062,8 @@ class _CameraDetectionPainter extends CustomPainter {
                 ..style = PaintingStyle.fill;
 
               for (final p in iris.mesh) {
-                final transformed = _transformPoint(p.x, p.y);
-                final canvasX = offsetX + transformed.dx * scaleX;
-                final canvasY = offsetY + transformed.dy * scaleY;
-                canvas.drawCircle(
-                    Offset(canvasX, canvasY), 0.8, eyeMeshPointPaint);
+                final transformed = transformPoint(p.x, p.y);
+                canvas.drawCircle(transformed, 0.8, eyeMeshPointPaint);
               }
             }
           }
