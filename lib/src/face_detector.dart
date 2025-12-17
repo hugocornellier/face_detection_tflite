@@ -1371,9 +1371,8 @@ class FaceDetector {
 
   /// Internal: Get iris landmarks from mesh using cv.Mat source.
   ///
-  /// Note: Iris detection is serialized (not parallel) when using cv.Mat
-  /// because opencv_dart can freeze when multiple warpAffine operations
-  /// access the same source Mat concurrently.
+  /// Eye crop extraction (warpAffine) is done serially to avoid opencv_dart
+  /// freeze issues, but TFLite inference runs in parallel for performance.
   Future<List<Point>> _irisFromMeshFromMat(
     cv.Mat image,
     List<Point> meshAbs,
@@ -1384,21 +1383,74 @@ class FaceDetector {
     final List<AlignedRoi> rois = eyeRoisFromMesh(meshAbs);
     if (rois.length < 2) return <Point>[];
 
-    // Run left and right eye iris detection SERIALLY to avoid opencv_dart
-    // freeze issues when parallel warpAffine operations access the same Mat.
-    final List<List<double>> leftLm = await _withIrisLeftLock(
-        () => _irisLeft!.runOnImageAlignedIrisFromMat(image, rois[0]));
+    // Extract eye crops SERIALLY to avoid opencv_dart freeze when multiple
+    // warpAffine operations access the same source Mat concurrently.
+    final cv.Mat? leftCrop = extractAlignedSquareFromMat(
+      image,
+      rois[0].cx,
+      rois[0].cy,
+      rois[0].size,
+      rois[0].theta,
+    );
+    final cv.Mat? rightCropRaw = extractAlignedSquareFromMat(
+      image,
+      rois[1].cx,
+      rois[1].cy,
+      rois[1].size,
+      rois[1].theta,
+    );
 
-    final List<List<double>> rightLm = await _withIrisRightLock(() =>
-        _irisRight!
-            .runOnImageAlignedIrisFromMat(image, rois[1], isRight: true));
+    if (leftCrop == null || rightCropRaw == null) {
+      leftCrop?.dispose();
+      rightCropRaw?.dispose();
+      irisFailCount++;
+      return <Point>[];
+    }
+
+    // Flip right eye horizontally to normalize orientation
+    final cv.Mat rightCrop = cv.flip(rightCropRaw, 1);
+    rightCropRaw.dispose();
+
+    // Now run TFLite inference IN PARALLEL - crops are independent Mats
+    final results = await Future.wait([
+      _withIrisLeftLock(() => _irisLeft!.callFromMat(leftCrop)),
+      _withIrisRightLock(() => _irisRight!.callFromMat(rightCrop)),
+    ]);
+
+    // Dispose crops after inference
+    leftCrop.dispose();
+    rightCrop.dispose();
+
+    final List<List<double>> leftLmNorm = results[0];
+    final List<List<double>> rightLmNorm = results[1];
+
+    // Transform left eye landmarks back to original image coordinates
+    final double ctL = math.cos(rois[0].theta);
+    final double stL = math.sin(rois[0].theta);
+    final double sL = rois[0].size;
 
     final List<Point> pts = <Point>[];
-    for (final List<double> p in leftLm) {
-      pts.add(Point(p[0], p[1], p.length > 2 ? p[2] : 0.0));
+    for (final List<double> p in leftLmNorm) {
+      final double lx2 = (p[0] - 0.5) * sL;
+      final double ly2 = (p[1] - 0.5) * sL;
+      final double x = rois[0].cx + lx2 * ctL - ly2 * stL;
+      final double y = rois[0].cy + lx2 * stL + ly2 * ctL;
+      pts.add(Point(x, y, p.length > 2 ? p[2] : 0.0));
     }
-    for (final List<double> p in rightLm) {
-      pts.add(Point(p[0], p[1], p.length > 2 ? p[2] : 0.0));
+
+    // Transform right eye landmarks (with flip correction)
+    final double ctR = math.cos(rois[1].theta);
+    final double stR = math.sin(rois[1].theta);
+    final double sR = rois[1].size;
+
+    for (final List<double> p in rightLmNorm) {
+      final double px = 1.0 - p[0]; // Undo horizontal flip
+      final double py = p[1];
+      final double lx2 = (px - 0.5) * sR;
+      final double ly2 = (py - 0.5) * sR;
+      final double x = rois[1].cx + lx2 * ctR - ly2 * stR;
+      final double y = rois[1].cy + lx2 * stR + ly2 * ctR;
+      pts.add(Point(x, y, p.length > 2 ? p[2] : 0.0));
     }
 
     // Update iris counters

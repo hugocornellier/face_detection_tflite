@@ -1,3 +1,6 @@
+## 4.1.1
+- Re-implement parallel iris inference using native image processing
+
 ## 4.1.0
 - Native image processing with opencv_dart for ~2x performance improvement via SIMD acceleration
   - `detectFaces()` now uses OpenCV internally
