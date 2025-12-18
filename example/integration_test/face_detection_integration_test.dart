@@ -1,3 +1,5 @@
+// ignore_for_file: avoid_print
+
 // Comprehensive integration tests for FaceDetector.
 //
 // These tests cover:
@@ -831,7 +833,8 @@ void main() {
           await rootBundle.load('../assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
-      final faces = await detector.detectFaces(bytes, mode: FaceDetectionMode.full);
+      final faces =
+          await detector.detectFaces(bytes, mode: FaceDetectionMode.full);
 
       expect(faces, isNotEmpty);
 
@@ -865,19 +868,22 @@ void main() {
       final Uint8List bytes = data.buffer.asUint8List();
 
       // Fast mode - no mesh or iris
-      final fastFaces = await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+      final fastFaces =
+          await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
       expect(fastFaces, isNotEmpty);
       expect(fastFaces.first.mesh, isNull);
       expect(fastFaces.first.irisPoints, isEmpty);
 
       // Standard mode - mesh but no iris
-      final standardFaces = await detector.detectFaces(bytes, mode: FaceDetectionMode.standard);
+      final standardFaces =
+          await detector.detectFaces(bytes, mode: FaceDetectionMode.standard);
       expect(standardFaces, isNotEmpty);
       expect(standardFaces.first.mesh, isNotNull);
       expect(standardFaces.first.irisPoints, isEmpty);
 
       // Full mode - mesh and iris
-      final fullFaces = await detector.detectFaces(bytes, mode: FaceDetectionMode.full);
+      final fullFaces =
+          await detector.detectFaces(bytes, mode: FaceDetectionMode.full);
       expect(fullFaces, isNotEmpty);
       expect(fullFaces.first.mesh, isNotNull);
       expect(fullFaces.first.irisPoints, isNotEmpty);
@@ -928,8 +934,10 @@ void main() {
       final Uint8List bytes = data.buffer.asUint8List();
 
       // Run detection with both
-      final isolateFaces = await isolateDetector.detectFaces(bytes, mode: FaceDetectionMode.full);
-      final regularFaces = await regularDetector.detectFaces(bytes, mode: FaceDetectionMode.full);
+      final isolateFaces = await isolateDetector.detectFaces(bytes,
+          mode: FaceDetectionMode.full);
+      final regularFaces = await regularDetector.detectFaces(bytes,
+          mode: FaceDetectionMode.full);
 
       // Should detect same number of faces
       expect(isolateFaces.length, regularFaces.length);
@@ -939,8 +947,10 @@ void main() {
         final isolateBbox = isolateFaces[i].boundingBox;
         final regularBbox = regularFaces[i].boundingBox;
 
-        expect((isolateBbox.topLeft.x - regularBbox.topLeft.x).abs(), lessThan(1));
-        expect((isolateBbox.topLeft.y - regularBbox.topLeft.y).abs(), lessThan(1));
+        expect(
+            (isolateBbox.topLeft.x - regularBbox.topLeft.x).abs(), lessThan(1));
+        expect(
+            (isolateBbox.topLeft.y - regularBbox.topLeft.y).abs(), lessThan(1));
         expect((isolateBbox.width - regularBbox.width).abs(), lessThan(1));
         expect((isolateBbox.height - regularBbox.height).abs(), lessThan(1));
       }
@@ -959,7 +969,8 @@ void main() {
       // Decode to cv.Mat
       final mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
 
-      final faces = await detector.detectFacesFromMat(mat, mode: FaceDetectionMode.full);
+      final faces =
+          await detector.detectFacesFromMat(mat, mode: FaceDetectionMode.full);
 
       expect(faces, isNotEmpty);
       expect(faces.first.boundingBox, isNotNull);
@@ -970,7 +981,9 @@ void main() {
       await detector.dispose();
     });
 
-    test('detectFacesFromMat produces same results as detectFacesFromMat on FaceDetector', () async {
+    test(
+        'detectFacesFromMat produces same results as detectFacesFromMat on FaceDetector',
+        () async {
       final isolateDetector = await FaceDetectorIsolate.spawn();
       final regularDetector = FaceDetector();
       await regularDetector.initialize();
@@ -983,8 +996,10 @@ void main() {
       final mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
 
       // Run detection with both
-      final isolateFaces = await isolateDetector.detectFacesFromMat(mat, mode: FaceDetectionMode.full);
-      final regularFaces = await regularDetector.detectFacesFromMat(mat, mode: FaceDetectionMode.full);
+      final isolateFaces = await isolateDetector.detectFacesFromMat(mat,
+          mode: FaceDetectionMode.full);
+      final regularFaces = await regularDetector.detectFacesFromMat(mat,
+          mode: FaceDetectionMode.full);
 
       // Should detect same number of faces
       expect(isolateFaces.length, regularFaces.length);
@@ -994,8 +1009,10 @@ void main() {
         final isolateBbox = isolateFaces[i].boundingBox;
         final regularBbox = regularFaces[i].boundingBox;
 
-        expect((isolateBbox.topLeft.x - regularBbox.topLeft.x).abs(), lessThan(1));
-        expect((isolateBbox.topLeft.y - regularBbox.topLeft.y).abs(), lessThan(1));
+        expect(
+            (isolateBbox.topLeft.x - regularBbox.topLeft.x).abs(), lessThan(1));
+        expect(
+            (isolateBbox.topLeft.y - regularBbox.topLeft.y).abs(), lessThan(1));
       }
 
       mat.dispose();
@@ -1040,19 +1057,22 @@ void main() {
       final mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
 
       // Fast mode - no mesh or iris
-      final fastFaces = await detector.detectFacesFromMat(mat, mode: FaceDetectionMode.fast);
+      final fastFaces =
+          await detector.detectFacesFromMat(mat, mode: FaceDetectionMode.fast);
       expect(fastFaces, isNotEmpty);
       expect(fastFaces.first.mesh, isNull);
       expect(fastFaces.first.irisPoints, isEmpty);
 
       // Standard mode - mesh but no iris
-      final standardFaces = await detector.detectFacesFromMat(mat, mode: FaceDetectionMode.standard);
+      final standardFaces = await detector.detectFacesFromMat(mat,
+          mode: FaceDetectionMode.standard);
       expect(standardFaces, isNotEmpty);
       expect(standardFaces.first.mesh, isNotNull);
       expect(standardFaces.first.irisPoints, isEmpty);
 
       // Full mode - mesh and iris
-      final fullFaces = await detector.detectFacesFromMat(mat, mode: FaceDetectionMode.full);
+      final fullFaces =
+          await detector.detectFacesFromMat(mat, mode: FaceDetectionMode.full);
       expect(fullFaces, isNotEmpty);
       expect(fullFaces.first.mesh, isNotNull);
       expect(fullFaces.first.irisPoints, isNotEmpty);
@@ -1116,8 +1136,10 @@ void main() {
           isolateTimes.add(sw.elapsedMicroseconds);
         }
 
-        final regularAvg = regularTimes.reduce((a, b) => a + b) / benchmarkRuns / 1000;
-        final isolateAvg = isolateTimes.reduce((a, b) => a + b) / benchmarkRuns / 1000;
+        final regularAvg =
+            regularTimes.reduce((a, b) => a + b) / benchmarkRuns / 1000;
+        final isolateAvg =
+            isolateTimes.reduce((a, b) => a + b) / benchmarkRuns / 1000;
         final overhead = isolateAvg - regularAvg;
         final overheadPct = (overhead / regularAvg) * 100;
 
@@ -1132,7 +1154,7 @@ void main() {
       // Print results
       print('\n${'=' * 70}');
       print('BENCHMARK: FaceDetector vs FaceDetectorIsolate');
-      print('${'=' * 70}');
+      print('=' * 70);
       print('Runs: $benchmarkRuns (after $warmupRuns warmup)');
       print('-' * 70);
       print('Mode'.padRight(12) +
@@ -1154,8 +1176,10 @@ void main() {
 
       // Verify both produce valid results
       for (final mode in FaceDetectionMode.values) {
-        final regularFaces = await regularDetector.detectFaces(bytes, mode: mode);
-        final isolateFaces = await isolateDetector.detectFaces(bytes, mode: mode);
+        final regularFaces =
+            await regularDetector.detectFaces(bytes, mode: mode);
+        final isolateFaces =
+            await isolateDetector.detectFaces(bytes, mode: mode);
         expect(regularFaces.length, isolateFaces.length,
             reason: 'Face count should match for ${mode.name}');
       }
@@ -1202,16 +1226,21 @@ void main() {
         isolateTimes.add(sw.elapsedMicroseconds);
       }
 
-      final regularAvg = regularTimes.reduce((a, b) => a + b) / benchmarkRuns / 1000;
-      final isolateAvg = isolateTimes.reduce((a, b) => a + b) / benchmarkRuns / 1000;
+      final regularAvg =
+          regularTimes.reduce((a, b) => a + b) / benchmarkRuns / 1000;
+      final isolateAvg =
+          isolateTimes.reduce((a, b) => a + b) / benchmarkRuns / 1000;
       final overhead = isolateAvg - regularAvg;
 
       print('\n${'=' * 70}');
       print('BENCHMARK: Mat-based Detection (full mode)');
-      print('${'=' * 70}');
-      print('FaceDetector.detectFacesFromMat:        ${regularAvg.toStringAsFixed(2)} ms');
-      print('FaceDetectorIsolate.detectFacesFromMat: ${isolateAvg.toStringAsFixed(2)} ms');
-      print('Overhead:                               ${overhead.toStringAsFixed(2)} ms');
+      print('=' * 70);
+      print(
+          'FaceDetector.detectFacesFromMat:        ${regularAvg.toStringAsFixed(2)} ms');
+      print(
+          'FaceDetectorIsolate.detectFacesFromMat: ${isolateAvg.toStringAsFixed(2)} ms');
+      print(
+          'Overhead:                               ${overhead.toStringAsFixed(2)} ms');
       print('=' * 70);
 
       mat.dispose();
@@ -1227,7 +1256,8 @@ void main() {
       final Uint8List bytes = data.buffer.asUint8List();
 
       // First, get a face to measure serialization
-      final faces = await isolateDetector.detectFaces(bytes, mode: FaceDetectionMode.full);
+      final faces = await isolateDetector.detectFaces(bytes,
+          mode: FaceDetectionMode.full);
       expect(faces, isNotEmpty);
 
       final face = faces.first;
@@ -1254,10 +1284,11 @@ void main() {
 
       print('\n${'=' * 70}');
       print('BENCHMARK: Face Serialization Overhead');
-      print('${'=' * 70}');
+      print('=' * 70);
       print('Face.toMap():   ${toMapAvg.toStringAsFixed(1)} µs');
       print('Face.fromMap(): ${fromMapAvg.toStringAsFixed(1)} µs');
-      print('Total per face: ${totalPerFace.toStringAsFixed(1)} µs (${(totalPerFace / 1000).toStringAsFixed(3)} ms)');
+      print(
+          'Total per face: ${totalPerFace.toStringAsFixed(1)} µs (${(totalPerFace / 1000).toStringAsFixed(3)} ms)');
       print('');
       print('Mesh points: ${face.mesh?.length ?? 0}');
       print('Iris points: ${face.irisPoints.length}');

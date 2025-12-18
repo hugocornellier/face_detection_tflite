@@ -1,3 +1,6 @@
+## 4.2.0
+- Add FaceDetectorIsolate for background thread detection
+
 ## 4.1.1
 - Re-implement parallel iris inference using native image processing
 

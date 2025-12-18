@@ -505,7 +505,8 @@ class FaceLandmarks {
   factory FaceLandmarks.fromSerializableMap(Map<String, dynamic> map) {
     final landmarks = <FaceLandmarkType, Point>{};
     for (final entry in map.entries) {
-      final type = FaceLandmarkType.values.firstWhere((t) => t.name == entry.key);
+      final type =
+          FaceLandmarkType.values.firstWhere((t) => t.name == entry.key);
       landmarks[type] = Point.fromMap(entry.value);
     }
     return FaceLandmarks(landmarks);
@@ -881,7 +882,8 @@ class Face {
   factory Face.fromMap(Map<String, dynamic> map) => Face(
         detection: Detection.fromMap(map['detection']),
         mesh: map['mesh'] != null ? FaceMesh.fromMap(map['mesh']) : null,
-        irises: (map['irisPoints'] as List).map((p) => Point.fromMap(p)).toList(),
+        irises:
+            (map['irisPoints'] as List).map((p) => Point.fromMap(p)).toList(),
         originalSize:
             Size(map['originalSize']['width'], map['originalSize']['height']),
       );

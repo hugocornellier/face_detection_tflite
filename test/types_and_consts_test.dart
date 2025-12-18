@@ -235,7 +235,8 @@ void main() {
         Point(110.0, 110.0, 4.0),
         Point(90.0, 110.0, 4.0),
       ];
-      final mesh = List.generate(71, (i) => Point(i.toDouble(), i * 2.0, i * 0.1));
+      final mesh =
+          List.generate(71, (i) => Point(i.toDouble(), i * 2.0, i * 0.1));
 
       final eye = Eye(irisCenter: center, irisContour: irisContour, mesh: mesh);
       final map = eye.toMap();
@@ -304,12 +305,22 @@ void main() {
     test('toMap/fromMap round-trip with both eyes', () {
       final leftEye = Eye(
         irisCenter: Point(50.0, 50.0),
-        irisContour: [Point(45.0, 50.0), Point(55.0, 50.0), Point(50.0, 45.0), Point(50.0, 55.0)],
+        irisContour: [
+          Point(45.0, 50.0),
+          Point(55.0, 50.0),
+          Point(50.0, 45.0),
+          Point(50.0, 55.0)
+        ],
         mesh: [],
       );
       final rightEye = Eye(
         irisCenter: Point(150.0, 50.0),
-        irisContour: [Point(145.0, 50.0), Point(155.0, 50.0), Point(150.0, 45.0), Point(150.0, 55.0)],
+        irisContour: [
+          Point(145.0, 50.0),
+          Point(155.0, 50.0),
+          Point(150.0, 45.0),
+          Point(150.0, 55.0)
+        ],
         mesh: [],
       );
 
@@ -842,8 +853,10 @@ void main() {
       final restored = Face.fromMap(map);
 
       // Verify bounding box preserved
-      expect(restored.boundingBox.topLeft.x, closeTo(face.boundingBox.topLeft.x, 0.01));
-      expect(restored.boundingBox.topLeft.y, closeTo(face.boundingBox.topLeft.y, 0.01));
+      expect(restored.boundingBox.topLeft.x,
+          closeTo(face.boundingBox.topLeft.x, 0.01));
+      expect(restored.boundingBox.topLeft.y,
+          closeTo(face.boundingBox.topLeft.y, 0.01));
 
       // Verify mesh preserved
       expect(restored.mesh, isNotNull);

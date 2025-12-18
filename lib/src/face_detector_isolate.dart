@@ -185,7 +185,8 @@ class FaceDetectorIsolate {
         const Duration(seconds: 30),
         onTimeout: () {
           subscription.cancel();
-          throw TimeoutException('FaceDetectorIsolate initialization timed out');
+          throw TimeoutException(
+              'FaceDetectorIsolate initialization timed out');
         },
       );
 
@@ -214,7 +215,8 @@ class FaceDetectorIsolate {
     }
   }
 
-  Future<T> _sendRequest<T>(String operation, Map<String, dynamic> params) async {
+  Future<T> _sendRequest<T>(
+      String operation, Map<String, dynamic> params) async {
     if (!_initialized && operation != 'init') {
       throw StateError(
         'FaceDetectorIsolate not initialized. Use FaceDetectorIsolate.spawn().',
@@ -364,7 +366,8 @@ class FaceDetectorIsolate {
     int matType = 16, // CV_8UC3
     FaceDetectionMode mode = FaceDetectionMode.full,
   }) async {
-    final List<dynamic> result = await _sendRequest<List<dynamic>>('detectMat', {
+    final List<dynamic> result =
+        await _sendRequest<List<dynamic>>('detectMat', {
       'bytes': TransferableTypedData.fromList([bytes]),
       'width': width,
       'height': height,
@@ -528,7 +531,7 @@ class FaceDetectorIsolate {
             detector?.dispose();
             detector = null;
             workerReceivePort.close();
-            // Don't send response for dispose (id is -1)
+          // Don't send response for dispose (id is -1)
         }
       } catch (e, st) {
         mainSendPort.send({'id': id, 'error': '$e\n$st'});
