@@ -75,20 +75,53 @@ class IrisLandmark {
 
     final IrisLandmark obj = IrisLandmark._(itp, inW, inH);
     obj._delegate = delegate;
-
-    obj._inputTensor = itp.getInputTensor(0);
-    obj._inputBuf = obj._inputTensor.data.buffer.asFloat32List();
-
-    final Map<int, OutputTensorInfo> outputInfo = collectOutputTensorInfo(itp);
-    obj._outShapes =
-        outputInfo.map((int k, OutputTensorInfo v) => MapEntry(k, v.shape));
-    obj._outBuffers =
-        outputInfo.map((int k, OutputTensorInfo v) => MapEntry(k, v.buffer));
-    obj._input4dCache = createNHWCTensor4D(inH, inW);
-
-    obj._iso = await IsolateInterpreter.create(address: itp.address);
-
+    await obj._initializeTensors();
     return obj;
+  }
+
+  /// Creates an iris landmark model from pre-loaded model bytes.
+  ///
+  /// This is primarily used by [FaceDetectorIsolate] to initialize models
+  /// in a background isolate where asset loading is not available.
+  ///
+  /// The [modelBytes] parameter should contain the raw TFLite model file contents.
+  static Future<IrisLandmark> createFromBuffer(
+    Uint8List modelBytes, {
+    PerformanceConfig? performanceConfig,
+  }) async {
+    final result = _createInterpreterOptions(performanceConfig);
+    final interpreterOptions = result.$1;
+    final delegate = result.$2;
+
+    final Interpreter itp = Interpreter.fromBuffer(
+      modelBytes,
+      options: interpreterOptions,
+    );
+    final List<int> ishape = itp.getInputTensor(0).shape;
+    final int inH = ishape[1];
+    final int inW = ishape[2];
+    itp.resizeInputTensor(0, [1, inH, inW, 3]);
+    itp.allocateTensors();
+
+    final IrisLandmark obj = IrisLandmark._(itp, inW, inH);
+    obj._delegate = delegate;
+    await obj._initializeTensors();
+    return obj;
+  }
+
+  /// Shared tensor initialization logic.
+  Future<void> _initializeTensors() async {
+    _inputTensor = _itp.getInputTensor(0);
+    _inputBuf = _inputTensor.data.buffer.asFloat32List();
+
+    final Map<int, OutputTensorInfo> outputInfo = collectOutputTensorInfo(_itp);
+    _outShapes =
+        outputInfo.map((int k, OutputTensorInfo v) => MapEntry(k, v.shape));
+    _outBuffers =
+        outputInfo.map((int k, OutputTensorInfo v) => MapEntry(k, v.buffer));
+    _input4dCache = createNHWCTensor4D(_inH, _inW);
+
+    _iso = await IsolateInterpreter.create(address: _itp.address);
   }
 
   /// Creates and initializes an iris landmark model from a custom file path.

@@ -212,6 +212,13 @@ class Point {
 
   @override
   int get hashCode => Object.hash(x, y, z);
+
+  /// Converts this point to a map for isolate serialization.
+  Map<String, dynamic> toMap() => {'x': x, 'y': y, if (z != null) 'z': z};
+
+  /// Creates a point from a map (isolate deserialization).
+  factory Point.fromMap(Map<String, dynamic> map) =>
+      Point(map['x'] as double, map['y'] as double, map['z'] as double?);
 }
 
 /// A 468-point face mesh with optional depth information.
@@ -261,6 +268,15 @@ class FaceMesh {
 
   @override
   String toString() => 'FaceMesh(${_points.length} points)';
+
+  /// Converts this mesh to a map for isolate serialization.
+  Map<String, dynamic> toMap() =>
+      {'points': _points.map((p) => p.toMap()).toList()};
+
+  /// Creates a face mesh from a map (isolate deserialization).
+  factory FaceMesh.fromMap(Map<String, dynamic> map) => FaceMesh(
+        (map['points'] as List).map((p) => Point.fromMap(p)).toList(),
+      );
 }
 
 /// Comprehensive eye tracking data including iris center, iris contour, and eye mesh.
@@ -343,6 +359,21 @@ class Eye {
   /// ```
   List<Point> get contour =>
       mesh.length >= kMaxEyeLandmark ? mesh.sublist(0, kMaxEyeLandmark) : mesh;
+
+  /// Converts this eye to a map for isolate serialization.
+  Map<String, dynamic> toMap() => {
+        'irisCenter': irisCenter.toMap(),
+        'irisContour': irisContour.map((p) => p.toMap()).toList(),
+        'mesh': mesh.map((p) => p.toMap()).toList(),
+      };
+
+  /// Creates an eye from a map (isolate deserialization).
+  factory Eye.fromMap(Map<String, dynamic> map) => Eye(
+        irisCenter: Point.fromMap(map['irisCenter']),
+        irisContour:
+            (map['irisContour'] as List).map((p) => Point.fromMap(p)).toList(),
+        mesh: (map['mesh'] as List).map((p) => Point.fromMap(p)).toList(),
+      );
 }
 
 /// Eye tracking data for both eyes including iris and eye mesh landmarks.
@@ -380,6 +411,18 @@ class EyePair {
 
   /// Creates an eye pair with optional left and right eye data.
   const EyePair({this.leftEye, this.rightEye});
+
+  /// Converts this eye pair to a map for isolate serialization.
+  Map<String, dynamic> toMap() => {
+        if (leftEye != null) 'leftEye': leftEye!.toMap(),
+        if (rightEye != null) 'rightEye': rightEye!.toMap(),
+      };
+
+  /// Creates an eye pair from a map (isolate deserialization).
+  factory EyePair.fromMap(Map<String, dynamic> map) => EyePair(
+        leftEye: map['leftEye'] != null ? Eye.fromMap(map['leftEye']) : null,
+        rightEye: map['rightEye'] != null ? Eye.fromMap(map['rightEye']) : null,
+      );
 }
 
 /// Facial landmark points with convenient named access.
@@ -451,6 +494,22 @@ class FaceLandmarks {
   ///
   /// Use this when you need explicit Map type for compatibility.
   Map<FaceLandmarkType, Point> toMap() => Map.unmodifiable(_landmarks);
+
+  /// Converts landmarks to a serializable map for isolate transfer.
+  Map<String, dynamic> toSerializableMap() => {
+        for (final entry in _landmarks.entries)
+          entry.key.name: entry.value.toMap(),
+      };
+
+  /// Creates landmarks from a serializable map (isolate deserialization).
+  factory FaceLandmarks.fromSerializableMap(Map<String, dynamic> map) {
+    final landmarks = <FaceLandmarkType, Point>{};
+    for (final entry in map.entries) {
+      final type = FaceLandmarkType.values.firstWhere((t) => t.name == entry.key);
+      landmarks[type] = Point.fromMap(entry.value);
+    }
+    return FaceLandmarks(landmarks);
+  }
 }
 
 /// Face bounding box with corner points in pixel coordinates.
@@ -506,6 +565,22 @@ class BoundingBox {
   Point get center => Point(
         (topLeft.x + topRight.x + bottomRight.x + bottomLeft.x) / 4,
         (topLeft.y + topRight.y + bottomRight.y + bottomLeft.y) / 4,
+      );
+
+  /// Converts this bounding box to a map for isolate serialization.
+  Map<String, dynamic> toMap() => {
+        'topLeft': topLeft.toMap(),
+        'topRight': topRight.toMap(),
+        'bottomRight': bottomRight.toMap(),
+        'bottomLeft': bottomLeft.toMap(),
+      };
+
+  /// Creates a bounding box from a map (isolate deserialization).
+  factory BoundingBox.fromMap(Map<String, dynamic> map) => BoundingBox(
+        topLeft: Point.fromMap(map['topLeft']),
+        topRight: Point.fromMap(map['topRight']),
+        bottomRight: Point.fromMap(map['bottomRight']),
+        bottomLeft: Point.fromMap(map['bottomLeft']),
       );
 }
 
@@ -785,6 +860,31 @@ class Face {
 
     return FaceLandmarks(landmarkMap);
   }
+
+  /// Converts this face to a map for isolate serialization.
+  ///
+  /// Serializes all face data including detection, mesh, iris points, and
+  /// original image size. Use [Face.fromMap] to reconstruct.
+  Map<String, dynamic> toMap() => {
+        'detection': _detection.toMap(),
+        if (mesh != null) 'mesh': mesh!.toMap(),
+        'irisPoints': irisPoints.map((p) => p.toMap()).toList(),
+        'originalSize': {
+          'width': originalSize.width,
+          'height': originalSize.height
+        },
+      };
+
+  /// Creates a face from a map (isolate deserialization).
+  ///
+  /// Reconstructs a Face object from data serialized via [toMap].
+  factory Face.fromMap(Map<String, dynamic> map) => Face(
+        detection: Detection.fromMap(map['detection']),
+        mesh: map['mesh'] != null ? FaceMesh.fromMap(map['mesh']) : null,
+        irises: (map['irisPoints'] as List).map((p) => Point.fromMap(p)).toList(),
+        originalSize:
+            Size(map['originalSize']['width'], map['originalSize']['height']),
+      );
 }
 
 /// The expected number of landmark points in a complete face mesh.
@@ -939,6 +1039,18 @@ class RectF {
     final double hh = (h * (1.0 + frac)) * 0.5;
     return RectF(cx - hw, cy - hh, cx + hw, cy + hh);
   }
+
+  /// Converts this rect to a map for isolate serialization.
+  Map<String, dynamic> toMap() =>
+      {'xmin': xmin, 'ymin': ymin, 'xmax': xmax, 'ymax': ymax};
+
+  /// Creates a rect from a map (isolate deserialization).
+  factory RectF.fromMap(Map<String, dynamic> map) => RectF(
+        map['xmin'] as double,
+        map['ymin'] as double,
+        map['xmax'] as double,
+        map['ymax'] as double,
+      );
 }
 
 /// Raw detection output from the face detector containing the bounding box and keypoints.
@@ -983,6 +1095,25 @@ class Detection {
     }
     return map;
   }
+
+  /// Converts this detection to a map for isolate serialization.
+  Map<String, dynamic> toMap() => {
+        'boundingBox': boundingBox.toMap(),
+        'score': score,
+        'keypointsXY': keypointsXY,
+        if (imageSize != null)
+          'imageSize': {'width': imageSize!.width, 'height': imageSize!.height},
+      };
+
+  /// Creates a detection from a map (isolate deserialization).
+  factory Detection.fromMap(Map<String, dynamic> map) => Detection(
+        boundingBox: RectF.fromMap(map['boundingBox']),
+        score: map['score'] as double,
+        keypointsXY: (map['keypointsXY'] as List).cast<double>(),
+        imageSize: map['imageSize'] != null
+            ? Size(map['imageSize']['width'], map['imageSize']['height'])
+            : null,
+      );
 }
 
 /// Image tensor plus padding metadata used to undo letterboxing.

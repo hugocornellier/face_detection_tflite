@@ -80,6 +80,24 @@ void main() {
       expect(point.y, -20.0);
       expect(point.z, -5.0);
     });
+
+    test('toMap/fromMap round-trip for 2D point', () {
+      final point = Point(10.5, 20.3);
+      final map = point.toMap();
+      final restored = Point.fromMap(map);
+
+      expect(restored, equals(point));
+      expect(map['z'], isNull);
+    });
+
+    test('toMap/fromMap round-trip for 3D point', () {
+      final point = Point(10.5, 20.3, -5.7);
+      final map = point.toMap();
+      final restored = Point.fromMap(map);
+
+      expect(restored, equals(point));
+      expect(map['z'], -5.7);
+    });
   });
 
   group('FaceMesh', () {
@@ -123,6 +141,21 @@ void main() {
       final mesh = FaceMesh(points);
 
       expect(mesh.points, same(points));
+    });
+
+    test('toMap/fromMap round-trip preserves all points', () {
+      final points =
+          List.generate(468, (i) => Point(i.toDouble(), i * 2.0, i * 0.1));
+      final mesh = FaceMesh(points);
+      final map = mesh.toMap();
+      final restored = FaceMesh.fromMap(map);
+
+      expect(restored.length, 468);
+      for (int i = 0; i < 468; i++) {
+        expect(restored[i].x, mesh[i].x);
+        expect(restored[i].y, mesh[i].y);
+        expect(restored[i].z, mesh[i].z);
+      }
     });
   });
 
@@ -193,6 +226,27 @@ void main() {
 
       expect(eye.contour, isEmpty);
     });
+
+    test('toMap/fromMap round-trip preserves all eye data', () {
+      final center = Point(100.0, 100.0, 5.0);
+      final irisContour = [
+        Point(90.0, 90.0, 4.0),
+        Point(110.0, 90.0, 4.0),
+        Point(110.0, 110.0, 4.0),
+        Point(90.0, 110.0, 4.0),
+      ];
+      final mesh = List.generate(71, (i) => Point(i.toDouble(), i * 2.0, i * 0.1));
+
+      final eye = Eye(irisCenter: center, irisContour: irisContour, mesh: mesh);
+      final map = eye.toMap();
+      final restored = Eye.fromMap(map);
+
+      expect(restored.irisCenter.x, eye.irisCenter.x);
+      expect(restored.irisCenter.y, eye.irisCenter.y);
+      expect(restored.irisCenter.z, eye.irisCenter.z);
+      expect(restored.irisContour.length, 4);
+      expect(restored.mesh.length, 71);
+    });
   });
 
   group('EyePair', () {
@@ -245,6 +299,37 @@ void main() {
 
       expect(pair.leftEye, isNull);
       expect(pair.rightEye, isNull);
+    });
+
+    test('toMap/fromMap round-trip with both eyes', () {
+      final leftEye = Eye(
+        irisCenter: Point(50.0, 50.0),
+        irisContour: [Point(45.0, 50.0), Point(55.0, 50.0), Point(50.0, 45.0), Point(50.0, 55.0)],
+        mesh: [],
+      );
+      final rightEye = Eye(
+        irisCenter: Point(150.0, 50.0),
+        irisContour: [Point(145.0, 50.0), Point(155.0, 50.0), Point(150.0, 45.0), Point(150.0, 55.0)],
+        mesh: [],
+      );
+
+      final pair = EyePair(leftEye: leftEye, rightEye: rightEye);
+      final map = pair.toMap();
+      final restored = EyePair.fromMap(map);
+
+      expect(restored.leftEye, isNotNull);
+      expect(restored.rightEye, isNotNull);
+      expect(restored.leftEye!.irisCenter.x, 50.0);
+      expect(restored.rightEye!.irisCenter.x, 150.0);
+    });
+
+    test('toMap/fromMap round-trip with null eyes', () {
+      final pair = EyePair(leftEye: null, rightEye: null);
+      final map = pair.toMap();
+      final restored = EyePair.fromMap(map);
+
+      expect(restored.leftEye, isNull);
+      expect(restored.rightEye, isNull);
     });
   });
 
@@ -314,6 +399,17 @@ void main() {
 
       expect(map.length, 6);
       expect(map[FaceLandmarkType.leftEye], equals(Point(30.0, 40.0)));
+    });
+
+    test('toSerializableMap/fromSerializableMap round-trip', () {
+      final landmarks = FaceLandmarks(landmarkMap);
+      final map = landmarks.toSerializableMap();
+      final restored = FaceLandmarks.fromSerializableMap(map);
+
+      expect(restored.leftEye, equals(Point(30.0, 40.0)));
+      expect(restored.rightEye, equals(Point(70.0, 40.0)));
+      expect(restored.noseTip, equals(Point(50.0, 60.0)));
+      expect(restored.mouth, equals(Point(50.0, 75.0)));
     });
   });
 
@@ -397,6 +493,22 @@ void main() {
       expect(bbox.height, 0.0);
       expect(bbox.center, equals(Point(50.0, 50.0)));
     });
+
+    test('toMap/fromMap round-trip preserves corners', () {
+      final bbox = BoundingBox(
+        topLeft: Point(10.0, 20.0),
+        topRight: Point(90.0, 20.0),
+        bottomRight: Point(90.0, 80.0),
+        bottomLeft: Point(10.0, 80.0),
+      );
+      final map = bbox.toMap();
+      final restored = BoundingBox.fromMap(map);
+
+      expect(restored.topLeft, equals(bbox.topLeft));
+      expect(restored.topRight, equals(bbox.topRight));
+      expect(restored.bottomRight, equals(bbox.bottomRight));
+      expect(restored.bottomLeft, equals(bbox.bottomLeft));
+    });
   });
 
   group('RectF', () {
@@ -457,6 +569,17 @@ void main() {
 
       expect(rect.w, 0.0);
       expect(rect.h, 0.0);
+    });
+
+    test('toMap/fromMap round-trip preserves coordinates', () {
+      final rect = RectF(0.2, 0.3, 0.8, 0.7);
+      final map = rect.toMap();
+      final restored = RectF.fromMap(map);
+
+      expect(restored.xmin, rect.xmin);
+      expect(restored.ymin, rect.ymin);
+      expect(restored.xmax, rect.xmax);
+      expect(restored.ymax, rect.ymax);
     });
   });
 
@@ -533,6 +656,45 @@ void main() {
       );
 
       expect(() => detection.landmarks, throwsA(isA<StateError>()));
+    });
+
+    test('toMap/fromMap round-trip preserves all data', () {
+      final bbox = RectF(0.2, 0.3, 0.8, 0.7);
+      final keypoints = TestUtils.generateValidKeypoints();
+
+      final detection = Detection(
+        boundingBox: bbox,
+        score: 0.95,
+        keypointsXY: keypoints,
+        imageSize: TestConstants.mediumImage,
+      );
+
+      final map = detection.toMap();
+      final restored = Detection.fromMap(map);
+
+      expect(restored.boundingBox.xmin, detection.boundingBox.xmin);
+      expect(restored.boundingBox.ymax, detection.boundingBox.ymax);
+      expect(restored.score, detection.score);
+      expect(restored.keypointsXY.length, detection.keypointsXY.length);
+      expect(restored.imageSize!.width, detection.imageSize!.width);
+      expect(restored.imageSize!.height, detection.imageSize!.height);
+    });
+
+    test('toMap/fromMap handles null imageSize', () {
+      final bbox = RectF(0.2, 0.3, 0.8, 0.7);
+      final keypoints = TestUtils.generateValidKeypoints();
+
+      final detection = Detection(
+        boundingBox: bbox,
+        score: 0.95,
+        keypointsXY: keypoints,
+        imageSize: null,
+      );
+
+      final map = detection.toMap();
+      final restored = Detection.fromMap(map);
+
+      expect(restored.imageSize, isNull);
     });
   });
 
@@ -648,6 +810,76 @@ void main() {
         landmarks.noseTip,
         equals(const Point(50.0, 60.0)),
       );
+    });
+
+    test('toMap/fromMap round-trip preserves face with mesh and iris', () {
+      final detection = Detection(
+        boundingBox: RectF(0.1, 0.2, 0.4, 0.6),
+        score: 0.9,
+        keypointsXY: TestUtils.generateValidKeypoints(),
+        imageSize: const Size(200, 100),
+      );
+
+      final meshPoints = List.generate(
+        468,
+        (i) => Point(i.toDouble(), i * 2.0, i * 0.1),
+      );
+      final mesh = FaceMesh(meshPoints);
+
+      final irisPoints = List.generate(
+        10,
+        (i) => Point(i * 10.0, i * 5.0, i * 0.5),
+      );
+
+      final face = Face(
+        detection: detection,
+        mesh: mesh,
+        irises: irisPoints,
+        originalSize: const Size(200, 100),
+      );
+
+      final map = face.toMap();
+      final restored = Face.fromMap(map);
+
+      // Verify bounding box preserved
+      expect(restored.boundingBox.topLeft.x, closeTo(face.boundingBox.topLeft.x, 0.01));
+      expect(restored.boundingBox.topLeft.y, closeTo(face.boundingBox.topLeft.y, 0.01));
+
+      // Verify mesh preserved
+      expect(restored.mesh, isNotNull);
+      expect(restored.mesh!.length, 468);
+      expect(restored.mesh![0].x, face.mesh![0].x);
+      expect(restored.mesh![0].z, face.mesh![0].z);
+
+      // Verify iris points preserved
+      expect(restored.irisPoints.length, 10);
+      expect(restored.irisPoints[0].x, face.irisPoints[0].x);
+
+      // Verify original size preserved
+      expect(restored.originalSize.width, 200);
+      expect(restored.originalSize.height, 100);
+    });
+
+    test('toMap/fromMap round-trip handles null mesh', () {
+      final detection = Detection(
+        boundingBox: RectF(0.1, 0.2, 0.4, 0.6),
+        score: 0.9,
+        keypointsXY: TestUtils.generateValidKeypoints(),
+        imageSize: const Size(200, 100),
+      );
+
+      final face = Face(
+        detection: detection,
+        mesh: null,
+        irises: const [],
+        originalSize: const Size(200, 100),
+      );
+
+      final map = face.toMap();
+      final restored = Face.fromMap(map);
+
+      expect(restored.mesh, isNull);
+      expect(restored.irisPoints, isEmpty);
     });
   });
 }

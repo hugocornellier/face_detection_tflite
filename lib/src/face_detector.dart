@@ -203,6 +203,73 @@ class FaceDetector {
     }
   }
 
+  /// Initializes the face detector from pre-loaded model bytes.
+  ///
+  /// This is primarily used by [FaceDetectorIsolate] to initialize models
+  /// in a background isolate where asset loading is not available.
+  ///
+  /// The [faceDetectionBytes] parameter should contain the face detection model.
+  /// The [faceLandmarkBytes] parameter should contain the face mesh model.
+  /// The [irisLandmarkBytes] parameter should contain the iris landmark model.
+  ///
+  /// @internal
+  Future<void> initializeFromBuffers({
+    required Uint8List faceDetectionBytes,
+    required Uint8List faceLandmarkBytes,
+    required Uint8List irisLandmarkBytes,
+    required FaceDetectionModel model,
+    PerformanceConfig performanceConfig = const PerformanceConfig.xnnpack(),
+    int meshPoolSize = 3,
+  }) async {
+    await _ensureTFLiteLoaded();
+    try {
+      _worker = IsolateWorker();
+      await _worker!.initialize();
+
+      _detector = await FaceDetection.createFromBuffer(
+        faceDetectionBytes,
+        model,
+        performanceConfig: performanceConfig,
+      );
+
+      // Create pool of mesh models for parallel multi-face inference
+      _meshPool.clear();
+      _meshInferenceLocks.clear();
+      for (int i = 0; i < meshPoolSize; i++) {
+        _meshPool.add(await FaceLandmark.createFromBuffer(
+          faceLandmarkBytes,
+          performanceConfig: performanceConfig,
+        ));
+        _meshInferenceLocks.add(Future.value());
+      }
+
+      // Create separate iris models for parallel left/right eye inference
+      _irisLeft = await IrisLandmark.createFromBuffer(
+        irisLandmarkBytes,
+        performanceConfig: performanceConfig,
+      );
+      _irisRight = await IrisLandmark.createFromBuffer(
+        irisLandmarkBytes,
+        performanceConfig: performanceConfig,
+      );
+    } catch (e) {
+      _worker?.dispose();
+      _detector?.dispose();
+      for (final mesh in _meshPool) {
+        mesh.dispose();
+      }
+      _meshPool.clear();
+      _meshInferenceLocks.clear();
+      _irisLeft?.dispose();
+      _irisRight?.dispose();
+      _worker = null;
+      _detector = null;
+      _irisLeft = null;
+      _irisRight = null;
+      rethrow;
+    }
+  }
+
   static ffi.DynamicLibrary? _tfliteLib;
   static Future<void> _ensureTFLiteLoaded() async {
     if (_tfliteLib != null) return;

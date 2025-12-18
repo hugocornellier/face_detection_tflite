@@ -26,6 +26,7 @@ part 'src/types_and_consts.dart';
 part 'src/helpers.dart';
 part 'src/isolate_worker.dart';
 part 'src/face_detector.dart';
+part 'src/face_detector_isolate.dart';
 part 'src/face_detection_model.dart';
 part 'src/face_landmark.dart';
 part 'src/iris_landmark.dart';

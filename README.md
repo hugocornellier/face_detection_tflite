@@ -419,6 +419,75 @@ camera.startImageStream((CameraImage image) async {
 
 See the full [example app](https://pub.dev/packages/face_detection_tflite/example) for complete implementation including YUV-to-Mat conversion and frame throttling.
 
+## Background Isolate Detection
+
+For applications that require guaranteed non-blocking UI, use `FaceDetectorIsolate`. This runs the **entire** detection pipeline in a background isolate, ensuring all processing happens off the main thread.
+
+```dart
+import 'package:face_detection_tflite/face_detection_tflite.dart';
+
+// Spawn isolate (loads models in background)
+final detector = await FaceDetectorIsolate.spawn();
+
+// All detection runs in background isolate - UI never blocked
+final faces = await detector.detectFaces(imageBytes);
+
+for (final face in faces) {
+  print('Face at: ${face.boundingBox.center}');
+  print('Mesh points: ${face.mesh?.length ?? 0}');
+}
+
+// Cleanup when done
+await detector.dispose();
+```
+
+### When to Use FaceDetectorIsolate
+
+| Use Case | Recommended |
+|----------|-------------|
+| Live camera with 60fps UI requirement | `FaceDetectorIsolate` |
+| Processing images in a batch queue | `FaceDetectorIsolate` |
+| Simple single-image detection | `FaceDetector` |
+| Maximum control over pipeline stages | `FaceDetector` |
+
+### Configuration
+
+`FaceDetectorIsolate.spawn()` accepts the same configuration options as `FaceDetector.initialize()`:
+
+```dart
+final detector = await FaceDetectorIsolate.spawn(
+  model: FaceDetectionModel.frontCamera,
+  performanceConfig: PerformanceConfig.xnnpack(numThreads: 2),
+  meshPoolSize: 2,
+);
+```
+
+### OpenCV Mat Support
+
+`FaceDetectorIsolate` fully supports OpenCV `cv.Mat` input, ideal for live camera processing:
+
+```dart
+import 'package:opencv_dart/opencv_dart.dart' as cv;
+
+// From cv.Mat (e.g., decoded image or camera frame)
+final mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
+final faces = await detector.detectFacesFromMat(mat);
+mat.dispose();
+
+// From raw BGR bytes (e.g., converted camera YUV)
+final faces = await detector.detectFacesFromMatBytes(
+  bgrBytes,
+  width: frameWidth,
+  height: frameHeight,
+);
+```
+
+The Mat is reconstructed in the background isolate using zero-copy transfer, so there's no encoding/decoding overhead.
+
+### Memory Considerations
+
+The background isolate holds all TFLite models (~26-40MB for full pipeline). Always call `dispose()` when finished to release these resources. Image data is transferred using zero-copy `TransferableTypedData`, minimizing memory overhead.
+
 ## Example
 
 The [sample code](https://pub.dev/packages/face_detection_tflite/example) from the pub.dev example tab includes a

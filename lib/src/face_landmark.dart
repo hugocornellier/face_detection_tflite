@@ -74,10 +74,46 @@ class FaceLandmark {
 
     final FaceLandmark obj = FaceLandmark._(itp, inW, inH);
     obj._delegate = delegate;
-    obj._inputTensor = itp.getInputTensor(0);
+    await obj._initializeTensors();
+    return obj;
+  }
+
+  /// Creates a face landmark model from pre-loaded model bytes.
+  ///
+  /// This is primarily used by [FaceDetectorIsolate] to initialize models
+  /// in a background isolate where asset loading is not available.
+  ///
+  /// The [modelBytes] parameter should contain the raw TFLite model file contents.
+  static Future<FaceLandmark> createFromBuffer(
+    Uint8List modelBytes, {
+    PerformanceConfig? performanceConfig,
+  }) async {
+    final result = _createInterpreterOptions(performanceConfig);
+    final interpreterOptions = result.$1;
+    final delegate = result.$2;
+
+    final Interpreter itp = Interpreter.fromBuffer(
+      modelBytes,
+      options: interpreterOptions,
+    );
+    final List<int> ishape = itp.getInputTensor(0).shape;
+    final int inH = ishape[1];
+    final int inW = ishape[2];
+    itp.resizeInputTensor(0, [1, inH, inW, 3]);
+    itp.allocateTensors();
+
+    final FaceLandmark obj = FaceLandmark._(itp, inW, inH);
+    obj._delegate = delegate;
+    await obj._initializeTensors();
+    return obj;
+  }
+
+  /// Shared tensor initialization logic.
+  Future<void> _initializeTensors() async {
+    _inputTensor = _itp.getInputTensor(0);
     int numElements(List<int> s) => s.fold(1, (a, b) => a * b);
 
-    final Map<int, OutputTensorInfo> outputInfo = collectOutputTensorInfo(itp);
+    final Map<int, OutputTensorInfo> outputInfo = collectOutputTensorInfo(_itp);
     final Map<int, List<int>> shapes =
         outputInfo.map((int k, OutputTensorInfo v) => MapEntry(k, v.shape));
 
@@ -90,23 +126,20 @@ class FaceLandmark {
         bestIdx = e.key;
       }
     }
-    obj._bestIdx = bestIdx;
-    obj._bestTensor = itp.getOutputTensor(obj._bestIdx);
-    obj._inputBuf = obj._inputTensor.data.buffer.asFloat32List();
-    obj._bestOutBuf = obj._bestTensor.data.buffer.asFloat32List();
+    _bestIdx = bestIdx;
+    _bestTensor = _itp.getOutputTensor(_bestIdx);
+    _inputBuf = _inputTensor.data.buffer.asFloat32List();
+    _bestOutBuf = _bestTensor.data.buffer.asFloat32List();
 
     final int maxIndex =
         shapes.keys.isEmpty ? -1 : shapes.keys.reduce((a, b) => a > b ? a : b);
-    obj._outShapes = List<List<int>>.generate(
+    _outShapes = List<List<int>>.generate(
       maxIndex + 1,
       (i) => shapes[i] ?? const <int>[],
     );
 
-    obj._input4dCache = createNHWCTensor4D(inH, inW);
-
-    obj._iso = await IsolateInterpreter.create(address: itp.address);
-
-    return obj;
+    _input4dCache = createNHWCTensor4D(_inH, _inW);
+    _iso = await IsolateInterpreter.create(address: _itp.address);
   }
 
   /// Predicts the 468-point face mesh for an aligned face crop.

@@ -102,10 +102,54 @@ class FaceDetection {
     );
     obj._delegate = delegate;
 
+    await obj._initializeTensors();
+    return obj;
+  }
+
+  /// Creates a face detection model from pre-loaded model bytes.
+  ///
+  /// This is primarily used by [FaceDetectorIsolate] to initialize models
+  /// in a background isolate where asset loading is not available.
+  ///
+  /// The [modelBytes] parameter should contain the raw TFLite model file contents.
+  /// The [model] parameter specifies which model variant this is (for anchor generation).
+  static Future<FaceDetection> createFromBuffer(
+    Uint8List modelBytes,
+    FaceDetectionModel model, {
+    PerformanceConfig? performanceConfig,
+  }) async {
+    final Map<String, Object> opts = _optsFor(model);
+    final int inW = opts['input_size_width'] as int;
+    final int inH = opts['input_size_height'] as int;
+
+    final result = _createInterpreterOptions(performanceConfig);
+    final interpreterOptions = result.$1;
+    final delegate = result.$2;
+
+    final Interpreter itp = Interpreter.fromBuffer(
+      modelBytes,
+      options: interpreterOptions,
+    );
+
+    final Float32List anchors = _ssdGenerateAnchors(opts);
+    final FaceDetection obj = FaceDetection._(
+      itp,
+      inW,
+      inH,
+      anchors,
+    );
+    obj._delegate = delegate;
+
+    await obj._initializeTensors();
+    return obj;
+  }
+
+  /// Shared tensor initialization logic.
+  Future<void> _initializeTensors() async {
     int foundIdx = -1;
     for (int i = 0; i < 10; i++) {
       try {
-        final List<int> s = itp.getInputTensor(i).shape;
+        final List<int> s = _itp.getInputTensor(i).shape;
         if (s.length == 4 && s.last == 3) {
           foundIdx = i;
           break;
@@ -115,31 +159,29 @@ class FaceDetection {
       }
     }
     if (foundIdx == -1) {
-      itp.close();
+      _itp.close();
       throw StateError(
         'No valid input tensor found with shape [batch, height, width, 3]',
       );
     }
-    obj._inputIdx = foundIdx;
+    _inputIdx = foundIdx;
 
-    itp.resizeInputTensor(obj._inputIdx, [1, inH, inW, 3]);
-    itp.allocateTensors();
+    _itp.resizeInputTensor(_inputIdx, [1, _inH, _inW, 3]);
+    _itp.allocateTensors();
 
-    obj._boxesShape = itp.getOutputTensor(obj._boundingBoxIndex).shape;
-    obj._scoresShape = itp.getOutputTensor(obj._scoreIndex).shape;
-    obj._inputTensor = itp.getInputTensor(obj._inputIdx);
-    obj._boxesTensor = itp.getOutputTensor(obj._boundingBoxIndex);
-    obj._scoresTensor = itp.getOutputTensor(obj._scoreIndex);
-    obj._boxesLen = obj._boxesShape.fold(1, (a, b) => a * b);
-    obj._scoresLen = obj._scoresShape.fold(1, (a, b) => a * b);
-    obj._inputBuf = obj._inputTensor.data.buffer.asFloat32List();
-    obj._boxesBuf = obj._boxesTensor.data.buffer.asFloat32List();
-    obj._scoresBuf = obj._scoresTensor.data.buffer.asFloat32List();
+    _boxesShape = _itp.getOutputTensor(_boundingBoxIndex).shape;
+    _scoresShape = _itp.getOutputTensor(_scoreIndex).shape;
+    _inputTensor = _itp.getInputTensor(_inputIdx);
+    _boxesTensor = _itp.getOutputTensor(_boundingBoxIndex);
+    _scoresTensor = _itp.getOutputTensor(_scoreIndex);
+    _boxesLen = _boxesShape.fold(1, (a, b) => a * b);
+    _scoresLen = _scoresShape.fold(1, (a, b) => a * b);
+    _inputBuf = _inputTensor.data.buffer.asFloat32List();
+    _boxesBuf = _boxesTensor.data.buffer.asFloat32List();
+    _scoresBuf = _scoresTensor.data.buffer.asFloat32List();
 
-    obj._input4dCache = createNHWCTensor4D(inH, inW);
-    obj._iso = await IsolateInterpreter.create(address: itp.address);
-
-    return obj;
+    _input4dCache = createNHWCTensor4D(_inH, _inW);
+    _iso = await IsolateInterpreter.create(address: _itp.address);
   }
 
   void _flatten3D(List<List<List<num>>> src, Float32List dst) {
