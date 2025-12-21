@@ -1129,7 +1129,28 @@ class FaceDetector {
     }
   }
 
-  /// Estimate aligned face using frame ID.
+  /// Estimates an aligned face crop using a native frame ID.
+  ///
+  /// This is a variant of [estimateAlignedFace] optimized for native image
+  /// pipelines. Instead of passing a decoded image, this method references
+  /// an image already stored in native memory via its [frameId].
+  ///
+  /// The alignment process:
+  /// 1. Computes the angle between the eyes to determine face rotation
+  /// 2. Calculates the distance between eyes and between eye-center and mouth
+  /// 3. Determines an appropriate crop size based on these distances
+  /// 4. Extracts a rotated square crop from the native frame
+  ///
+  /// The [frameId] parameter references a native image previously registered
+  /// with the worker.
+  ///
+  /// The [imgW] and [imgH] parameters specify the dimensions of the source image.
+  ///
+  /// The [det] parameter is the face detection containing keypoint positions
+  /// for both eyes and mouth.
+  ///
+  /// Returns an [AlignedFace] object containing center coordinates, crop size,
+  /// rotation angle, and the extracted aligned face crop image.
   Future<AlignedFace> estimateAlignedFaceWithFrameId(
     int frameId,
     int imgW,
@@ -1178,7 +1199,27 @@ class FaceDetector {
     );
   }
 
-  /// Get iris landmarks from eye ROIs using frame ID.
+  /// Detects iris landmarks from eye ROIs using a native frame ID.
+  ///
+  /// This is a variant of [irisFromEyeRois] optimized for native image
+  /// pipelines. Instead of passing a decoded image, this method references
+  /// an image already stored in native memory via its [frameId].
+  ///
+  /// The [frameId] parameter references a native image previously registered
+  /// with the worker.
+  ///
+  /// The [rois] parameter is a list of aligned eye regions, typically from
+  /// [eyeRoisFromMesh]. The first ROI should be the left eye, the second
+  /// should be the right eye.
+  ///
+  /// Returns a list of [Point] objects with x, y, and z coordinates in absolute
+  /// pixel coordinates. Typically returns 152 total points (76 per eye × 2 eyes)
+  /// when both eyes are detected. Returns an empty list if the iris model is not
+  /// initialized or if fewer than 2 ROIs are provided.
+  ///
+  /// Each eye's 76 points include:
+  /// - 71 eye mesh landmarks (eyelid, eyebrow, and tracking halos)
+  /// - 5 iris keypoints (1 center + 4 contour points)
   Future<List<Point>> irisFromEyeRoisWithFrameId(
     int frameId,
     List<AlignedRoi> rois,
@@ -1267,10 +1308,10 @@ class FaceDetector {
     final List<Face> faces = <Face>[];
 
     for (final Detection det in dets) {
+      AlignedFaceFromMat? alignedData;
       try {
         // Estimate aligned face using OpenCV warpAffine
-        final AlignedFaceFromMat alignedData =
-            await _estimateAlignedFaceFromMat(image, det);
+        alignedData = await _estimateAlignedFaceFromMat(image, det);
 
         // Get mesh if needed
         List<Point> meshPx = <Point>[];
@@ -1289,9 +1330,6 @@ class FaceDetector {
         if (computeIris && meshPx.isNotEmpty) {
           irisPx = await _irisFromMeshFromMat(image, meshPx);
         }
-
-        // Dispose the face crop Mat
-        alignedData.faceCrop.dispose();
 
         // Refine eye keypoints with iris centers if available
         List<double> kp = det.keypointsXY;
@@ -1324,7 +1362,10 @@ class FaceDetector {
           originalSize: imgSize,
         ));
       } catch (e) {
-        // Silently skip failed face
+        // Skip failed face - Mat cleanup handled in finally block
+      } finally {
+        // Always dispose the face crop Mat if it was allocated
+        alignedData?.faceCrop.dispose();
       }
     }
 
@@ -1478,15 +1519,19 @@ class FaceDetector {
     final cv.Mat rightCrop = cv.flip(rightCropRaw, 1);
     rightCropRaw.dispose();
 
-    // Now run TFLite inference IN PARALLEL - crops are independent Mats
-    final results = await Future.wait([
-      _withIrisLeftLock(() => _irisLeft!.callFromMat(leftCrop)),
-      _withIrisRightLock(() => _irisRight!.callFromMat(rightCrop)),
-    ]);
-
-    // Dispose crops after inference
-    leftCrop.dispose();
-    rightCrop.dispose();
+    // Run TFLite inference IN PARALLEL - crops are independent Mats
+    // Use try-finally to ensure Mats are disposed even if inference throws
+    final List<List<List<double>>> results;
+    try {
+      results = await Future.wait([
+        _withIrisLeftLock(() => _irisLeft!.callFromMat(leftCrop)),
+        _withIrisRightLock(() => _irisRight!.callFromMat(rightCrop)),
+      ]);
+    } finally {
+      // Always dispose crops after inference attempt
+      leftCrop.dispose();
+      rightCrop.dispose();
+    }
 
     final List<List<double>> leftLmNorm = results[0];
     final List<List<double>> rightLmNorm = results[1];

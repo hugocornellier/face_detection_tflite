@@ -296,6 +296,15 @@ class FaceLandmark {
       return (options, null);
     }
 
+    // XNNPACK crashes on Windows during delegate creation (native library issue)
+    // Auto-disable on Windows to prevent crashes
+    if (Platform.isWindows) {
+      final threadCount = config.numThreads?.clamp(0, 8) ??
+          math.min(4, Platform.numberOfProcessors);
+      options.threads = threadCount;
+      return (options, null);
+    }
+
     // Get effective thread count
     final threadCount = config.numThreads?.clamp(0, 8) ??
         math.min(4, Platform.numberOfProcessors);

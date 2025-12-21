@@ -1,3 +1,6 @@
+## 4.2.1
+- Fix crash on Windows platforms
+
 ## 4.2.0
 - Add FaceDetectorIsolate for background thread detection
 

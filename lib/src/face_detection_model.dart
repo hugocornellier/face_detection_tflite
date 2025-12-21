@@ -74,24 +74,37 @@ class FaceDetection {
     InterpreterOptions? options,
     PerformanceConfig? performanceConfig,
   }) async {
+    // ignore: avoid_print
+    print('[FaceDetection] create() called for model: $model');
     final Map<String, Object> opts = _optsFor(model);
     final int inW = opts['input_size_width'] as int;
     final int inH = opts['input_size_height'] as int;
+    // ignore: avoid_print
+    print('[FaceDetection] Model input size: ${inW}x$inH');
 
     Delegate? delegate;
     final InterpreterOptions interpreterOptions;
     if (options != null) {
+      // ignore: avoid_print
+      print('[FaceDetection] Using custom InterpreterOptions');
       interpreterOptions = options;
     } else {
+      // ignore: avoid_print
+      print(
+          '[FaceDetection] Creating interpreter options with performanceConfig');
       final result = _createInterpreterOptions(performanceConfig);
       interpreterOptions = result.$1;
       delegate = result.$2;
     }
 
+    // ignore: avoid_print
+    print('[FaceDetection] Loading model from assets...');
     final Interpreter itp = await Interpreter.fromAsset(
       'packages/face_detection_tflite/assets/models/${_nameFor(model)}',
       options: interpreterOptions,
     );
+    // ignore: avoid_print
+    print('[FaceDetection] Model loaded successfully');
 
     final Float32List anchors = _ssdGenerateAnchors(opts);
     final FaceDetection obj = FaceDetection._(
@@ -102,7 +115,11 @@ class FaceDetection {
     );
     obj._delegate = delegate;
 
+    // ignore: avoid_print
+    print('[FaceDetection] Calling _initializeTensors...');
     await obj._initializeTensors();
+    // ignore: avoid_print
+    print('[FaceDetection] create() completed successfully');
     return obj;
   }
 
@@ -146,6 +163,8 @@ class FaceDetection {
 
   /// Shared tensor initialization logic.
   Future<void> _initializeTensors() async {
+    // ignore: avoid_print
+    print('[FaceDetection] _initializeTensors() started');
     int foundIdx = -1;
     for (int i = 0; i < 10; i++) {
       try {
@@ -165,10 +184,24 @@ class FaceDetection {
       );
     }
     _inputIdx = foundIdx;
+    // ignore: avoid_print
+    print('[FaceDetection] Found input tensor at index $_inputIdx');
 
+    // ignore: avoid_print
+    print('[FaceDetection] Calling resizeInputTensor([1, $_inH, $_inW, 3])...');
     _itp.resizeInputTensor(_inputIdx, [1, _inH, _inW, 3]);
-    _itp.allocateTensors();
+    // ignore: avoid_print
+    print('[FaceDetection] resizeInputTensor completed');
 
+    // ignore: avoid_print
+    print(
+        '[FaceDetection] Calling allocateTensors() - THIS IS WHERE XNNPACK CRASH MAY OCCUR...');
+    _itp.allocateTensors();
+    // ignore: avoid_print
+    print('[FaceDetection] allocateTensors() completed successfully');
+
+    // ignore: avoid_print
+    print('[FaceDetection] Getting output tensor shapes...');
     _boxesShape = _itp.getOutputTensor(_boundingBoxIndex).shape;
     _scoresShape = _itp.getOutputTensor(_scoreIndex).shape;
     _inputTensor = _itp.getInputTensor(_inputIdx);
@@ -176,12 +209,27 @@ class FaceDetection {
     _scoresTensor = _itp.getOutputTensor(_scoreIndex);
     _boxesLen = _boxesShape.fold(1, (a, b) => a * b);
     _scoresLen = _scoresShape.fold(1, (a, b) => a * b);
+    // ignore: avoid_print
+    print(
+        '[FaceDetection] Output shapes: boxes=$_boxesShape, scores=$_scoresShape');
+
+    // ignore: avoid_print
+    print('[FaceDetection] Getting tensor data buffers...');
     _inputBuf = _inputTensor.data.buffer.asFloat32List();
     _boxesBuf = _boxesTensor.data.buffer.asFloat32List();
     _scoresBuf = _scoresTensor.data.buffer.asFloat32List();
+    // ignore: avoid_print
+    print('[FaceDetection] Tensor buffers acquired');
 
+    // ignore: avoid_print
+    print('[FaceDetection] Creating input 4D cache...');
     _input4dCache = createNHWCTensor4D(_inH, _inW);
+
+    // ignore: avoid_print
+    print('[FaceDetection] Creating IsolateInterpreter...');
     _iso = await IsolateInterpreter.create(address: _itp.address);
+    // ignore: avoid_print
+    print('[FaceDetection] _initializeTensors() completed successfully');
   }
 
   void _flatten3D(List<List<List<num>>> src, Float32List dst) {
@@ -515,16 +563,38 @@ class FaceDetection {
   /// that must be stored and cleaned up when the model is disposed.
   static (InterpreterOptions, Delegate?) _createInterpreterOptions(
       PerformanceConfig? config) {
+    // ignore: avoid_print
+    print('[FaceDetection] _createInterpreterOptions called');
     final options = InterpreterOptions();
 
     // If no config or disabled mode, return default options (backward compatible)
     if (config == null || config.mode == PerformanceMode.disabled) {
+      // ignore: avoid_print
+      print('[FaceDetection] XNNPACK disabled, using default CPU');
+      return (options, null);
+    }
+
+    // XNNPACK crashes on Windows during delegate creation (native library issue)
+    // Auto-disable on Windows to prevent crashes
+    if (Platform.isWindows) {
+      // ignore: avoid_print
+      print(
+          '[FaceDetection] Windows detected - XNNPACK disabled (known crash issue)');
+      // ignore: avoid_print
+      print('[FaceDetection] Using CPU-only execution on Windows');
+      final threadCount = config.numThreads?.clamp(0, 8) ??
+          math.min(4, Platform.numberOfProcessors);
+      options.threads = threadCount;
       return (options, null);
     }
 
     // Get effective thread count
     final threadCount = config.numThreads?.clamp(0, 8) ??
         math.min(4, Platform.numberOfProcessors);
+
+    // ignore: avoid_print
+    print(
+        '[FaceDetection] Thread count: $threadCount (processors: ${Platform.numberOfProcessors})');
 
     // Set CPU threads
     options.threads = threadCount;
@@ -533,15 +603,23 @@ class FaceDetection {
     if (config.mode == PerformanceMode.xnnpack ||
         config.mode == PerformanceMode.auto) {
       try {
+        // ignore: avoid_print
+        print('[FaceDetection] Creating XNNPackDelegate...');
         final xnnpackDelegate = XNNPackDelegate(
           options: XNNPackDelegateOptions(numThreads: threadCount),
         );
+        // ignore: avoid_print
+        print('[FaceDetection] XNNPackDelegate created, adding to options...');
         options.addDelegate(xnnpackDelegate);
+        // ignore: avoid_print
+        print('[FaceDetection] Delegate added to options successfully');
         return (options, xnnpackDelegate);
-      } catch (e) {
+      } catch (e, st) {
         // Graceful fallback: if delegate creation fails, continue with CPU
         // ignore: avoid_print
         print('[FaceDetection] Warning: Failed to create XNNPACK delegate: $e');
+        // ignore: avoid_print
+        print('[FaceDetection] Stack trace: $st');
         // ignore: avoid_print
         print('[FaceDetection] Falling back to default CPU execution');
       }

@@ -1,6 +1,6 @@
 name: face_detection_tflite
 description: "Face & landmark detection using on-device TFLite models."
-version: 4.2.0
+version: 4.2.1
 
 repository: https://github.com/hugocornellier/face_detection_tflite
 homepage: https://github.com/hugocornellier/face_detection_tflite
