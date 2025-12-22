@@ -129,7 +129,7 @@ void main() {
       await detector.initialize();
 
       final ByteData data =
-          await rootBundle.load('../assets/samples/landmark-ex1.jpg');
+          await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Face> results = await detector.detectFaces(
         bytes,
@@ -174,7 +174,7 @@ void main() {
       await detector.initialize();
 
       final ByteData data =
-          await rootBundle.load('../assets/samples/iris-detection-ex1.jpg');
+          await rootBundle.load('assets/samples/iris-detection-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Face> results = await detector.detectFaces(
         bytes,
@@ -190,7 +190,7 @@ void main() {
       await detector.initialize();
 
       final ByteData data =
-          await rootBundle.load('../assets/samples/iris-detection-ex2.jpg');
+          await rootBundle.load('assets/samples/iris-detection-ex2.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Face> results = await detector.detectFaces(
         bytes,
@@ -207,7 +207,7 @@ void main() {
       await detector.initialize();
 
       final ByteData data = await rootBundle
-          .load('../assets/samples/group-shot-bounding-box-ex1.jpeg');
+          .load('assets/samples/group-shot-bounding-box-ex1.jpeg');
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Face> results = await detector.detectFaces(
         bytes,
@@ -244,7 +244,7 @@ void main() {
       await detector.initialize();
 
       final ByteData data =
-          await rootBundle.load('../assets/samples/mesh-ex1.jpeg');
+          await rootBundle.load('assets/samples/mesh-ex1.jpeg');
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Face> results = await detector.detectFaces(
         bytes,
@@ -266,7 +266,7 @@ void main() {
       await detector.initialize();
 
       final ByteData data =
-          await rootBundle.load('../assets/samples/landmark-ex1.jpg');
+          await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Face> results = await detector.detectFaces(
         bytes,
@@ -295,7 +295,7 @@ void main() {
       await detector.initialize();
 
       final ByteData data =
-          await rootBundle.load('../assets/samples/landmark-ex1.jpg');
+          await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Face> results = await detector.detectFaces(
         bytes,
@@ -324,7 +324,7 @@ void main() {
       await detector.initialize();
 
       final ByteData data =
-          await rootBundle.load('../assets/samples/iris-detection-ex1.jpg');
+          await rootBundle.load('assets/samples/iris-detection-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Face> results = await detector.detectFaces(
         bytes,
@@ -356,7 +356,7 @@ void main() {
       await detector.initialize();
 
       final ByteData data =
-          await rootBundle.load('../assets/samples/landmark-ex1.jpg');
+          await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       faces = await detector.detectFaces(bytes, mode: FaceDetectionMode.full);
     });
@@ -468,9 +468,9 @@ void main() {
       await detector.initialize();
 
       final images = [
-        '../assets/samples/landmark-ex1.jpg',
-        '../assets/samples/iris-detection-ex1.jpg',
-        '../assets/samples/iris-detection-ex2.jpg',
+        'assets/samples/landmark-ex1.jpg',
+        'assets/samples/iris-detection-ex1.jpg',
+        'assets/samples/iris-detection-ex2.jpg',
       ];
 
       for (final imagePath in images) {
@@ -489,9 +489,9 @@ void main() {
       await detector.initialize();
 
       final images = [
-        '../assets/samples/landmark-ex1.jpg',
-        '../assets/samples/mesh-ex1.jpeg',
-        '../assets/samples/group-shot-bounding-box-ex1.jpeg',
+        'assets/samples/landmark-ex1.jpg',
+        'assets/samples/mesh-ex1.jpeg',
+        'assets/samples/group-shot-bounding-box-ex1.jpeg',
       ];
 
       for (final imagePath in images) {
@@ -531,7 +531,7 @@ void main() {
       await detector.initialize();
 
       final ByteData data =
-          await rootBundle.load('../assets/samples/landmark-ex1.jpg');
+          await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final List<Face> results = await detector.detectFaces(bytes);
 
@@ -551,7 +551,7 @@ void main() {
 
       // Load image bytes
       final ByteData data =
-          await rootBundle.load('../assets/samples/landmark-ex1.jpg');
+          await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
       // Use detectFaces
@@ -571,7 +571,7 @@ void main() {
       await detector.initialize();
 
       final ByteData data =
-          await rootBundle.load('../assets/samples/iris-detection-ex1.jpg');
+          await rootBundle.load('assets/samples/iris-detection-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
       // Run detection multiple times
@@ -593,7 +593,7 @@ void main() {
       await detector.initialize();
 
       final ByteData data =
-          await rootBundle.load('../assets/samples/landmark-ex1.jpg');
+          await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
       // Decode to cv.Mat
@@ -626,7 +626,7 @@ void main() {
       await detector.initialize();
 
       final ByteData data =
-          await rootBundle.load('../assets/samples/iris-detection-ex1.jpg');
+          await rootBundle.load('assets/samples/iris-detection-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
       // Run detection with OpenCV-accelerated API
@@ -652,7 +652,7 @@ void main() {
       await detector.initialize();
 
       final ByteData data =
-          await rootBundle.load('../assets/samples/landmark-ex1.jpg');
+          await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
       // Run with old API
@@ -707,7 +707,7 @@ void main() {
       await detector.initialize();
 
       final ByteData data =
-          await rootBundle.load('../assets/samples/landmark-ex1.jpg');
+          await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
       // Create mat and run detection multiple times
@@ -728,7 +728,7 @@ void main() {
       await detector.initialize();
 
       final ByteData data =
-          await rootBundle.load('../assets/samples/landmark-ex1.jpg');
+          await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
 
@@ -830,7 +830,7 @@ void main() {
       final detector = await FaceDetectorIsolate.spawn();
 
       final ByteData data =
-          await rootBundle.load('../assets/samples/landmark-ex1.jpg');
+          await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
       final faces =
@@ -864,7 +864,7 @@ void main() {
       final detector = await FaceDetectorIsolate.spawn();
 
       final ByteData data =
-          await rootBundle.load('../assets/samples/landmark-ex1.jpg');
+          await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
       // Fast mode - no mesh or iris
@@ -895,7 +895,7 @@ void main() {
       final detector = await FaceDetectorIsolate.spawn();
 
       final ByteData data =
-          await rootBundle.load('../assets/samples/landmark-ex1.jpg');
+          await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
       // Fire multiple requests concurrently
@@ -930,7 +930,7 @@ void main() {
       await regularDetector.initialize();
 
       final ByteData data =
-          await rootBundle.load('../assets/samples/landmark-ex1.jpg');
+          await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
       // Run detection with both
@@ -963,7 +963,7 @@ void main() {
       final detector = await FaceDetectorIsolate.spawn();
 
       final ByteData data =
-          await rootBundle.load('../assets/samples/landmark-ex1.jpg');
+          await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
       // Decode to cv.Mat
@@ -989,7 +989,7 @@ void main() {
       await regularDetector.initialize();
 
       final ByteData data =
-          await rootBundle.load('../assets/samples/landmark-ex1.jpg');
+          await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
       // Decode to cv.Mat
@@ -1024,7 +1024,7 @@ void main() {
       final detector = await FaceDetectorIsolate.spawn();
 
       final ByteData data =
-          await rootBundle.load('../assets/samples/landmark-ex1.jpg');
+          await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
       // Decode to cv.Mat to get BGR bytes
@@ -1052,7 +1052,7 @@ void main() {
       final detector = await FaceDetectorIsolate.spawn();
 
       final ByteData data =
-          await rootBundle.load('../assets/samples/landmark-ex1.jpg');
+          await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
 
@@ -1103,7 +1103,7 @@ void main() {
       final isolateDetector = await FaceDetectorIsolate.spawn();
 
       final ByteData data =
-          await rootBundle.load('../assets/samples/landmark-ex1.jpg');
+          await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
       const int warmupRuns = 3;
@@ -1194,7 +1194,7 @@ void main() {
       final isolateDetector = await FaceDetectorIsolate.spawn();
 
       final ByteData data =
-          await rootBundle.load('../assets/samples/landmark-ex1.jpg');
+          await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
       final mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
 
@@ -1252,7 +1252,7 @@ void main() {
       final isolateDetector = await FaceDetectorIsolate.spawn();
 
       final ByteData data =
-          await rootBundle.load('../assets/samples/landmark-ex1.jpg');
+          await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
       // First, get a face to measure serialization

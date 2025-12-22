@@ -20,11 +20,11 @@ import 'package:opencv_dart/opencv_dart.dart' as cv;
 // Benchmark configuration
 const int iterations = 20;
 const List<String> sampleImages = [
-  '../assets/samples/landmark-ex1.jpg',
-  '../assets/samples/iris-detection-ex1.jpg',
-  '../assets/samples/iris-detection-ex2.jpg',
-  '../assets/samples/group-shot-bounding-box-ex1.jpeg',
-  '../assets/samples/mesh-ex1.jpeg',
+  'assets/samples/landmark-ex1.jpg',
+  'assets/samples/iris-detection-ex1.jpg',
+  'assets/samples/iris-detection-ex2.jpg',
+  'assets/samples/group-shot-bounding-box-ex1.jpeg',
+  'assets/samples/mesh-ex1.jpeg',
 ];
 
 /// Statistics for a single image benchmark

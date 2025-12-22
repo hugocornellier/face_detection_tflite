@@ -15,7 +15,14 @@ echo "================================================"
 echo "Running integration tests from example directory..."
 echo "================================================"
 cd example
-flutter test integration_test -d macos
+
+# Run each integration test file separately to avoid debug connection issues
+# when the macOS app restarts between test files
+flutter test integration_test/face_detection_integration_test.dart -d macos
+
+echo ""
+echo "Running benchmark tests..."
+flutter test integration_test/benchmark_test.dart -d macos
 
 echo ""
 echo "================================================"
