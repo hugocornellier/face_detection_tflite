@@ -76,12 +76,14 @@ class FaceDetector {
   final List<FaceLandmark> _meshPool = [];
   IrisLandmark? _irisLeft;
   IrisLandmark? _irisRight;
+  FaceEmbedding? _embedding;
 
   // Serialization chains to prevent concurrent model inference (race conditions)
   // Mesh pool uses multiple locks for parallel inference across multiple faces
   final List<Future<void>> _meshInferenceLocks = [];
   Future<void> _irisLeftInferenceLock = Future.value();
   Future<void> _irisRightInferenceLock = Future.value();
+  Future<void> _embeddingInferenceLock = Future.value();
 
   /// Counts successful iris landmark detections since initialization.
   ///
@@ -185,6 +187,12 @@ class FaceDetector {
         options: options,
         performanceConfig: performanceConfig,
       );
+
+      // Create face embedding model for identity vectors
+      _embedding = await FaceEmbedding.create(
+        options: options,
+        performanceConfig: performanceConfig,
+      );
     } catch (e) {
       _worker?.dispose();
       _detector?.dispose();
@@ -195,10 +203,12 @@ class FaceDetector {
       _meshInferenceLocks.clear();
       _irisLeft?.dispose();
       _irisRight?.dispose();
+      _embedding?.dispose();
       _worker = null;
       _detector = null;
       _irisLeft = null;
       _irisRight = null;
+      _embedding = null;
       rethrow;
     }
   }
@@ -211,12 +221,14 @@ class FaceDetector {
   /// The [faceDetectionBytes] parameter should contain the face detection model.
   /// The [faceLandmarkBytes] parameter should contain the face mesh model.
   /// The [irisLandmarkBytes] parameter should contain the iris landmark model.
+  /// The [embeddingBytes] parameter should contain the face embedding model (optional).
   ///
   /// @internal
   Future<void> initializeFromBuffers({
     required Uint8List faceDetectionBytes,
     required Uint8List faceLandmarkBytes,
     required Uint8List irisLandmarkBytes,
+    Uint8List? embeddingBytes,
     required FaceDetectionModel model,
     PerformanceConfig performanceConfig = const PerformanceConfig.xnnpack(),
     int meshPoolSize = 3,
@@ -252,6 +264,14 @@ class FaceDetector {
         irisLandmarkBytes,
         performanceConfig: performanceConfig,
       );
+
+      // Create face embedding model if bytes provided
+      if (embeddingBytes != null) {
+        _embedding = await FaceEmbedding.createFromBuffer(
+          embeddingBytes,
+          performanceConfig: performanceConfig,
+        );
+      }
     } catch (e) {
       _worker?.dispose();
       _detector?.dispose();
@@ -262,10 +282,12 @@ class FaceDetector {
       _meshInferenceLocks.clear();
       _irisLeft?.dispose();
       _irisRight?.dispose();
+      _embedding?.dispose();
       _worker = null;
       _detector = null;
       _irisLeft = null;
       _irisRight = null;
+      _embedding = null;
       rethrow;
     }
   }
@@ -1575,6 +1597,259 @@ class FaceDetector {
     return pts;
   }
 
+  /// Serializes embedding inference calls to prevent buffer race conditions.
+  ///
+  /// The FaceEmbedding model uses shared mutable buffers that cannot be safely
+  /// accessed concurrently. This method ensures only one inference runs
+  /// at a time by chaining futures.
+  Future<T> _withEmbeddingLock<T>(Future<T> Function() fn) async {
+    final previous = _embeddingInferenceLock;
+    final completer = Completer<void>();
+    _embeddingInferenceLock = completer.future;
+
+    try {
+      await previous;
+      return await fn();
+    } finally {
+      completer.complete();
+    }
+  }
+
+  /// Whether the face embedding model is loaded and ready.
+  ///
+  /// Returns true if [initialize] has been called successfully and the
+  /// embedding model is ready to generate face embeddings.
+  bool get isEmbeddingReady => _embedding != null;
+
+  /// Generates a face embedding (identity vector) for a detected face.
+  ///
+  /// This method extracts the face region from the image, aligns it to a
+  /// canonical pose, and generates a 192-dimensional embedding vector that
+  /// represents the face's identity.
+  ///
+  /// The [face] parameter should be a face detection result from [detectFaces].
+  ///
+  /// The [imageBytes] parameter should contain the same encoded image data
+  /// that was used for detection.
+  ///
+  /// Returns a [Float32List] containing the L2-normalized embedding vector.
+  /// The embedding can be compared with other embeddings using [compareFaces].
+  ///
+  /// Throws [StateError] if the embedding model has not been initialized.
+  ///
+  /// Example:
+  /// ```dart
+  /// final faces = await detector.detectFaces(imageBytes);
+  /// final embedding = await detector.getFaceEmbedding(faces.first, imageBytes);
+  ///
+  /// // Compare with a reference embedding
+  /// final similarity = FaceDetector.compareFaces(embedding, referenceEmbedding);
+  /// if (similarity > 0.6) {
+  ///   print('Same person!');
+  /// }
+  /// ```
+  Future<Float32List> getFaceEmbedding(Face face, Uint8List imageBytes) async {
+    if (_embedding == null) {
+      throw StateError(
+        'Embedding model not initialized. Call initialize() before getFaceEmbedding().',
+      );
+    }
+
+    // Decode image using OpenCV for better performance
+    final cv.Mat image = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
+    if (image.isEmpty) {
+      throw FormatException('Could not decode image bytes');
+    }
+
+    try {
+      return await getFaceEmbeddingFromMat(face, image);
+    } finally {
+      image.dispose();
+    }
+  }
+
+  /// Generates a face embedding from a cv.Mat image.
+  ///
+  /// This is the OpenCV-based variant of [getFaceEmbedding] that accepts a
+  /// cv.Mat directly, providing better performance when you already have
+  /// the image in Mat format.
+  ///
+  /// The [face] parameter should be a face detection result.
+  ///
+  /// The [image] parameter should contain the source image as cv.Mat.
+  /// The Mat is NOT disposed by this method - caller is responsible for disposal.
+  ///
+  /// Returns a [Float32List] containing the L2-normalized embedding vector.
+  ///
+  /// Throws [StateError] if the embedding model has not been initialized.
+  Future<Float32List> getFaceEmbeddingFromMat(Face face, cv.Mat image) async {
+    if (_embedding == null) {
+      throw StateError(
+        'Embedding model not initialized. Call initialize() before getFaceEmbeddingFromMat().',
+      );
+    }
+
+    // Get eye positions from face landmarks
+    final landmarks = face.landmarks;
+    final leftEye = landmarks.leftEye;
+    final rightEye = landmarks.rightEye;
+
+    if (leftEye == null || rightEye == null) {
+      throw StateError('Face must have left and right eye landmarks');
+    }
+
+    // Compute alignment for embedding model (112x112)
+    final alignment = computeEmbeddingAlignment(
+      leftEye: leftEye,
+      rightEye: rightEye,
+    );
+
+    // Extract aligned face crop using OpenCV warpAffine
+    final cv.Mat? faceCrop = extractAlignedSquareFromMat(
+      image,
+      alignment.cx,
+      alignment.cy,
+      alignment.size,
+      -alignment.theta,
+    );
+
+    if (faceCrop == null) {
+      throw StateError('Failed to extract aligned face crop for embedding');
+    }
+
+    try {
+      // Resize to embedding input size if needed
+      final cv.Mat resized;
+      if (faceCrop.cols != _embedding!.inputWidth ||
+          faceCrop.rows != _embedding!.inputHeight) {
+        resized = cv.resize(
+          faceCrop,
+          (_embedding!.inputWidth, _embedding!.inputHeight),
+          interpolation: cv.INTER_LINEAR,
+        );
+        faceCrop.dispose();
+      } else {
+        resized = faceCrop;
+      }
+
+      try {
+        // Run embedding inference with lock to prevent race conditions
+        return await _withEmbeddingLock(() => _embedding!.callFromMat(resized));
+      } finally {
+        resized.dispose();
+      }
+    } catch (e) {
+      faceCrop.dispose();
+      rethrow;
+    }
+  }
+
+  /// Generates face embeddings for multiple detected faces.
+  ///
+  /// This is more efficient than calling [getFaceEmbedding] multiple times
+  /// because it decodes the image only once.
+  ///
+  /// The [faces] parameter should be a list of face detection results from
+  /// [detectFaces].
+  ///
+  /// The [imageBytes] parameter should contain the encoded image data.
+  ///
+  /// Returns a list of [Float32List] embeddings in the same order as [faces].
+  /// Faces that fail to produce embeddings will have null entries.
+  ///
+  /// Example:
+  /// ```dart
+  /// final faces = await detector.detectFaces(imageBytes);
+  /// final embeddings = await detector.getFaceEmbeddings(faces, imageBytes);
+  ///
+  /// for (int i = 0; i < faces.length; i++) {
+  ///   if (embeddings[i] != null) {
+  ///     print('Face $i embedding: ${embeddings[i]!.length} dimensions');
+  ///   }
+  /// }
+  /// ```
+  Future<List<Float32List?>> getFaceEmbeddings(
+    List<Face> faces,
+    Uint8List imageBytes,
+  ) async {
+    if (_embedding == null) {
+      throw StateError(
+        'Embedding model not initialized. Call initialize() before getFaceEmbeddings().',
+      );
+    }
+
+    if (faces.isEmpty) {
+      return <Float32List?>[];
+    }
+
+    // Decode image once
+    final cv.Mat image = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
+    if (image.isEmpty) {
+      throw FormatException('Could not decode image bytes');
+    }
+
+    try {
+      final List<Float32List?> embeddings = <Float32List?>[];
+      for (final face in faces) {
+        try {
+          final embedding = await getFaceEmbeddingFromMat(face, image);
+          embeddings.add(embedding);
+        } catch (e) {
+          // Skip faces that fail, add null placeholder
+          embeddings.add(null);
+        }
+      }
+      return embeddings;
+    } finally {
+      image.dispose();
+    }
+  }
+
+  /// Compares two face embeddings and returns a similarity score.
+  ///
+  /// Uses cosine similarity to measure how similar two faces are.
+  /// The result ranges from -1 (completely different) to 1 (identical).
+  ///
+  /// Typical thresholds:
+  /// - > 0.6: Very likely the same person
+  /// - > 0.5: Probably the same person
+  /// - > 0.4: Possibly the same person
+  /// - < 0.3: Different people
+  ///
+  /// Both [a] and [b] should be embeddings from [getFaceEmbedding].
+  ///
+  /// Example:
+  /// ```dart
+  /// // Compare a face to a reference
+  /// final similarity = FaceDetector.compareFaces(faceEmbedding, referenceEmbedding);
+  /// if (similarity > 0.6) {
+  ///   print('Match found!');
+  /// }
+  /// ```
+  static double compareFaces(Float32List a, Float32List b) {
+    return FaceEmbedding.cosineSimilarity(a, b);
+  }
+
+  /// Computes the Euclidean distance between two face embeddings.
+  ///
+  /// Lower distance means more similar faces.
+  ///
+  /// Typical thresholds for normalized embeddings:
+  /// - < 0.6: Very likely the same person
+  /// - < 0.8: Probably the same person
+  /// - > 1.0: Different people
+  ///
+  /// Example:
+  /// ```dart
+  /// final distance = FaceDetector.faceDistance(embedding1, embedding2);
+  /// if (distance < 0.6) {
+  ///   print('Same person!');
+  /// }
+  /// ```
+  static double faceDistance(Float32List a, Float32List b) {
+    return FaceEmbedding.euclideanDistance(a, b);
+  }
+
   /// Releases all resources held by the detector.
   ///
   /// Call this when you're done using the detector to free up memory.
@@ -1590,6 +1865,7 @@ class FaceDetector {
     _meshInferenceLocks.clear();
     _irisLeft?.dispose();
     _irisRight?.dispose();
+    _embedding?.dispose();
   }
 
   @pragma('vm:entry-point')

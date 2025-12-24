@@ -1,6 +1,6 @@
 name: face_detection_tflite
 description: "Face & landmark detection using on-device TFLite models."
-version: 4.2.1
+version: 4.3.0
 
 repository: https://github.com/hugocornellier/face_detection_tflite
 homepage: https://github.com/hugocornellier/face_detection_tflite
@@ -39,6 +39,7 @@ flutter:
     - assets/models/face_detection_full_range_sparse.tflite
     - assets/models/face_landmark.tflite
     - assets/models/iris_landmark.tflite
+    - assets/models/mobilefacenet.tflite
     - assets/bin/libtensorflowlite_c-win.dll
     - assets/bin/libtensorflowlite_c-linux.so
 

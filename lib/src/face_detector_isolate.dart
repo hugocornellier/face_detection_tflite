@@ -6,6 +6,7 @@ class _IsolateStartupData {
   final TransferableTypedData faceDetectionBytes;
   final TransferableTypedData faceLandmarkBytes;
   final TransferableTypedData irisLandmarkBytes;
+  final TransferableTypedData embeddingBytes;
   final String modelName;
   final String performanceModeName;
   final int? numThreads;
@@ -16,6 +17,7 @@ class _IsolateStartupData {
     required this.faceDetectionBytes,
     required this.faceLandmarkBytes,
     required this.irisLandmarkBytes,
+    required this.embeddingBytes,
     required this.modelName,
     required this.performanceModeName,
     required this.numThreads,
@@ -132,16 +134,20 @@ class FaceDetectorIsolate {
           'packages/face_detection_tflite/assets/models/$_faceLandmarkModel';
       const irisLandmarkPath =
           'packages/face_detection_tflite/assets/models/$_irisLandmarkModel';
+      const embeddingPath =
+          'packages/face_detection_tflite/assets/models/$_embeddingModel';
 
       final results = await Future.wait([
         rootBundle.load(faceDetectionPath),
         rootBundle.load(faceLandmarkPath),
         rootBundle.load(irisLandmarkPath),
+        rootBundle.load(embeddingPath),
       ]);
 
       final faceDetectionBytes = results[0].buffer.asUint8List();
       final faceLandmarkBytes = results[1].buffer.asUint8List();
       final irisLandmarkBytes = results[2].buffer.asUint8List();
+      final embeddingBytes = results[3].buffer.asUint8List();
 
       _isolate = await Isolate.spawn(
         _isolateEntry,
@@ -153,6 +159,7 @@ class FaceDetectorIsolate {
               TransferableTypedData.fromList([faceLandmarkBytes]),
           irisLandmarkBytes:
               TransferableTypedData.fromList([irisLandmarkBytes]),
+          embeddingBytes: TransferableTypedData.fromList([embeddingBytes]),
           modelName: model.name,
           performanceModeName: performanceConfig.mode.name,
           numThreads: performanceConfig.numThreads,
@@ -380,6 +387,75 @@ class FaceDetectorIsolate {
         .toList();
   }
 
+  /// Generates a face embedding for a detected face in the background isolate.
+  ///
+  /// This method runs the entire embedding pipeline (face alignment, crop,
+  /// and embedding inference) in the background isolate, ensuring the UI
+  /// thread is never blocked.
+  ///
+  /// Parameters:
+  /// - [face]: A face detection result from [detectFaces]
+  /// - [imageBytes]: Encoded image data (same image used for detection)
+  ///
+  /// Returns a [Float32List] containing the L2-normalized embedding vector.
+  ///
+  /// Example:
+  /// ```dart
+  /// final faces = await detector.detectFaces(imageBytes);
+  /// final embedding = await detector.getFaceEmbedding(faces.first, imageBytes);
+  ///
+  /// // Compare with a reference
+  /// final similarity = FaceDetector.compareFaces(embedding, referenceEmbedding);
+  /// ```
+  Future<Float32List> getFaceEmbedding(Face face, Uint8List imageBytes) async {
+    final List<double> result = await _sendRequest<List<double>>('embedding', {
+      'bytes': TransferableTypedData.fromList([imageBytes]),
+      'face': face.toMap(),
+    });
+
+    return Float32List.fromList(result);
+  }
+
+  /// Generates face embeddings for multiple detected faces in the background isolate.
+  ///
+  /// This is more efficient than calling [getFaceEmbedding] multiple times
+  /// as it decodes the image only once in the isolate.
+  ///
+  /// Parameters:
+  /// - [faces]: List of face detection results from [detectFaces]
+  /// - [imageBytes]: Encoded image data (same image used for detection)
+  ///
+  /// Returns a list of [Float32List] embeddings in the same order as [faces].
+  /// Faces that fail to produce embeddings will have null entries.
+  ///
+  /// Example:
+  /// ```dart
+  /// final faces = await detector.detectFaces(imageBytes);
+  /// final embeddings = await detector.getFaceEmbeddings(faces, imageBytes);
+  ///
+  /// for (int i = 0; i < faces.length; i++) {
+  ///   if (embeddings[i] != null) {
+  ///     print('Face $i: ${embeddings[i]!.length} dimensions');
+  ///   }
+  /// }
+  /// ```
+  Future<List<Float32List?>> getFaceEmbeddings(
+    List<Face> faces,
+    Uint8List imageBytes,
+  ) async {
+    final List<dynamic> result =
+        await _sendRequest<List<dynamic>>('embeddings', {
+      'bytes': TransferableTypedData.fromList([imageBytes]),
+      'faces': faces.map((f) => f.toMap()).toList(),
+    });
+
+    return result.map((dynamic item) {
+      if (item == null) return null;
+      final List<double> values = (item as List).cast<double>();
+      return Float32List.fromList(values);
+    }).toList();
+  }
+
   /// Disposes the background isolate and releases all resources.
   ///
   /// This method:
@@ -433,6 +509,7 @@ class FaceDetectorIsolate {
           data.faceLandmarkBytes.materialize().asUint8List();
       final irisLandmarkBytes =
           data.irisLandmarkBytes.materialize().asUint8List();
+      final embeddingBytes = data.embeddingBytes.materialize().asUint8List();
 
       final model = FaceDetectionModel.values.firstWhere(
         (m) => m.name == data.modelName,
@@ -441,12 +518,13 @@ class FaceDetectorIsolate {
         (m) => m.name == data.performanceModeName,
       );
 
-      // Initialize FaceDetector with pre-loaded model bytes
+      // Initialize FaceDetector with pre-loaded model bytes (including embedding)
       detector = FaceDetector();
       await detector.initializeFromBuffers(
         faceDetectionBytes: faceDetectionBytes,
         faceLandmarkBytes: faceLandmarkBytes,
         irisLandmarkBytes: irisLandmarkBytes,
+        embeddingBytes: embeddingBytes,
         model: model,
         performanceConfig: PerformanceConfig(
           mode: performanceMode,
@@ -526,6 +604,48 @@ class FaceDetectorIsolate {
               // Always dispose the reconstructed Mat
               mat.dispose();
             }
+
+          case 'embedding':
+            if (detector == null || !detector!.isEmbeddingReady) {
+              mainSendPort.send({
+                'id': id,
+                'error': 'FaceDetector embedding not initialized in isolate',
+              });
+              return;
+            }
+
+            final ByteBuffer bb =
+                (message['bytes'] as TransferableTypedData).materialize();
+            final Uint8List imageBytes = bb.asUint8List();
+            final Map<String, dynamic> faceMap =
+                Map<String, dynamic>.from(message['face'] as Map);
+            final Face face = Face.fromMap(faceMap);
+
+            final embedding =
+                await detector!.getFaceEmbedding(face, imageBytes);
+            mainSendPort.send({'id': id, 'result': embedding.toList()});
+
+          case 'embeddings':
+            if (detector == null || !detector!.isEmbeddingReady) {
+              mainSendPort.send({
+                'id': id,
+                'error': 'FaceDetector embedding not initialized in isolate',
+              });
+              return;
+            }
+
+            final ByteBuffer bb =
+                (message['bytes'] as TransferableTypedData).materialize();
+            final Uint8List imageBytes = bb.asUint8List();
+            final List<dynamic> faceMaps = message['faces'] as List;
+            final List<Face> faces = faceMaps
+                .map((m) => Face.fromMap(Map<String, dynamic>.from(m as Map)))
+                .toList();
+
+            final embeddings =
+                await detector!.getFaceEmbeddings(faces, imageBytes);
+            final serialized = embeddings.map((e) => e?.toList()).toList();
+            mainSendPort.send({'id': id, 'result': serialized});
 
           case 'dispose':
             detector?.dispose();

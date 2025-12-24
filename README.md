@@ -37,6 +37,7 @@ Note: The Facial mesh and eye area mesh are separate.
 ## Features
 
 - On-device face detection, runs fully offline
+- **Face recognition**: 192-dim embeddings to identify/compare faces across images
 - 468 point mesh with **3D depth information** (x, y, z coordinates)
 - Face landmarks, comprehensive eye tracking (iris + 71-point eye mesh), and bounding boxes
 - All coordinates are in absolute pixel coordinates
@@ -483,6 +484,36 @@ final faces = await detector.detectFacesFromMatBytes(
 ```
 
 The Mat is reconstructed in the background isolate using zero-copy transfer, so there's no encoding/decoding overhead.
+
+## Face Recognition (Embeddings)
+
+Generate 192-dimensional identity vectors to compare faces across images. Useful for identifying the same person in different photos.
+
+```dart
+final detector = FaceDetector();
+await detector.initialize();
+
+// Get reference embedding from a photo with one face
+final refFaces = await detector.detectFaces(photo1Bytes, mode: FaceDetectionMode.fast);
+final refEmbedding = await detector.getFaceEmbedding(refFaces.first, photo1Bytes);
+
+// Compare against faces in another photo
+final faces = await detector.detectFaces(photo2Bytes, mode: FaceDetectionMode.fast);
+for (final face in faces) {
+  final embedding = await detector.getFaceEmbedding(face, photo2Bytes);
+  final similarity = FaceDetector.compareFaces(refEmbedding, embedding);
+  print('Similarity: ${similarity.toStringAsFixed(2)}'); // 0.0 to 1.0
+}
+
+detector.dispose();
+```
+
+**Similarity thresholds:**
+- `> 0.6` — Very likely same person
+- `> 0.5` — Probably same person
+- `< 0.3` — Different people
+
+Also available: `FaceDetector.faceDistance()` for Euclidean distance, and batch processing with `getFaceEmbeddings()`.
 
 ### Memory Considerations
 

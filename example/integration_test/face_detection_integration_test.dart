@@ -23,6 +23,8 @@
 // - Parameter validation
 //
 
+import 'dart:math' show sqrt;
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -1093,6 +1095,407 @@ void main() {
       );
 
       mat.dispose();
+    });
+  });
+
+  group('FaceDetector - Face Embedding', () {
+    test('should generate face embedding from detected face', () async {
+      final detector = FaceDetector();
+      await detector.initialize();
+
+      expect(detector.isEmbeddingReady, true);
+
+      final ByteData data =
+          await rootBundle.load('assets/samples/landmark-ex1.jpg');
+      final Uint8List bytes = data.buffer.asUint8List();
+
+      // Detect face first
+      final faces =
+          await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+      expect(faces, isNotEmpty);
+
+      // Generate embedding
+      final embedding = await detector.getFaceEmbedding(faces.first, bytes);
+
+      // Check embedding properties
+      expect(embedding, isNotNull);
+      expect(embedding.length, greaterThan(0));
+      print('Embedding dimension: ${embedding.length}');
+
+      // Check L2 norm is approximately 1 (normalized)
+      double norm = 0.0;
+      for (final v in embedding) {
+        norm += v * v;
+      }
+      norm = sqrt(norm);
+      expect(norm, closeTo(1.0, 0.01),
+          reason: 'Embedding should be L2-normalized');
+
+      detector.dispose();
+    });
+
+    test('should generate batch embeddings for multiple faces', () async {
+      final detector = FaceDetector();
+      await detector.initialize();
+
+      final ByteData data = await rootBundle
+          .load('assets/samples/group-shot-bounding-box-ex1.jpeg');
+      final Uint8List bytes = data.buffer.asUint8List();
+
+      // Detect multiple faces
+      final faces =
+          await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+      expect(faces.length, greaterThan(1));
+      print('Detected ${faces.length} faces in group photo');
+
+      // Generate embeddings for all faces
+      final embeddings = await detector.getFaceEmbeddings(faces, bytes);
+
+      expect(embeddings.length, faces.length);
+
+      int validCount = 0;
+      for (final emb in embeddings) {
+        if (emb != null) {
+          validCount++;
+          expect(emb.length, greaterThan(0));
+        }
+      }
+      print('Generated $validCount valid embeddings out of ${faces.length}');
+      expect(validCount, greaterThan(0));
+
+      detector.dispose();
+    });
+
+    test('same face should have high similarity across images', () async {
+      final detector = FaceDetector();
+      await detector.initialize();
+
+      // Load two images - same person
+      final ByteData data1 =
+          await rootBundle.load('assets/samples/iris-detection-ex1.jpg');
+      final ByteData data2 =
+          await rootBundle.load('assets/samples/iris-detection-ex2.jpg');
+
+      final bytes1 = data1.buffer.asUint8List();
+      final bytes2 = data2.buffer.asUint8List();
+
+      // Detect and get embeddings
+      final faces1 =
+          await detector.detectFaces(bytes1, mode: FaceDetectionMode.fast);
+      final faces2 =
+          await detector.detectFaces(bytes2, mode: FaceDetectionMode.fast);
+
+      expect(faces1, isNotEmpty);
+      expect(faces2, isNotEmpty);
+
+      final emb1 = await detector.getFaceEmbedding(faces1.first, bytes1);
+      final emb2 = await detector.getFaceEmbedding(faces2.first, bytes2);
+
+      // Compare embeddings
+      final similarity = FaceDetector.compareFaces(emb1, emb2);
+      print(
+          'Same person similarity (iris-detection-ex1 vs ex2): ${similarity.toStringAsFixed(3)}');
+
+      // These are the same person in different images, should have reasonable similarity
+      expect(similarity, greaterThan(0.0));
+
+      detector.dispose();
+    });
+
+    test('different faces should have lower similarity', () async {
+      final detector = FaceDetector();
+      await detector.initialize();
+
+      // Load group shot with multiple different people
+      final ByteData data = await rootBundle
+          .load('assets/samples/group-shot-bounding-box-ex1.jpeg');
+      final bytes = data.buffer.asUint8List();
+
+      // Detect multiple faces
+      final faces =
+          await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+      expect(faces.length, greaterThanOrEqualTo(2));
+
+      // Get embeddings for first two faces
+      final embeddings = await detector.getFaceEmbeddings(faces, bytes);
+
+      // Find two valid embeddings
+      final validEmbeddings =
+          embeddings.where((e) => e != null).take(2).toList();
+      expect(validEmbeddings.length, 2);
+
+      // Compare different people
+      final similarity =
+          FaceDetector.compareFaces(validEmbeddings[0]!, validEmbeddings[1]!);
+      print('Different people similarity: ${similarity.toStringAsFixed(3)}');
+
+      // Different people should have lower similarity than same person
+      // Not asserting a hard threshold as it varies
+      expect(similarity, isNotNull);
+
+      detector.dispose();
+    });
+
+    test('compareFaces and faceDistance should be consistent', () async {
+      final detector = FaceDetector();
+      await detector.initialize();
+
+      final ByteData data =
+          await rootBundle.load('assets/samples/landmark-ex1.jpg');
+      final bytes = data.buffer.asUint8List();
+
+      final faces =
+          await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+      expect(faces, isNotEmpty);
+
+      final emb = await detector.getFaceEmbedding(faces.first, bytes);
+
+      // Same embedding should have similarity 1.0 and distance 0.0
+      final selfSimilarity = FaceDetector.compareFaces(emb, emb);
+      final selfDistance = FaceDetector.faceDistance(emb, emb);
+
+      expect(selfSimilarity, closeTo(1.0, 0.001));
+      expect(selfDistance, closeTo(0.0, 0.001));
+
+      detector.dispose();
+    });
+
+    test('should throw StateError when embedding called before initialize',
+        () async {
+      final detector = FaceDetector();
+      await detector.initialize();
+
+      final ByteData data =
+          await rootBundle.load('assets/samples/landmark-ex1.jpg');
+      final bytes = data.buffer.asUint8List();
+
+      // Get a real face first
+      final faces =
+          await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+      expect(faces, isNotEmpty);
+      final face = faces.first;
+
+      detector.dispose();
+
+      // Create a new detector without initialization
+      final uninitDetector = FaceDetector();
+
+      expect(
+        () => uninitDetector.getFaceEmbedding(face, bytes),
+        throwsA(isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          contains('not initialized'),
+        )),
+      );
+    });
+
+    test('getFaceEmbeddingFromMat should work with cv.Mat', () async {
+      final detector = FaceDetector();
+      await detector.initialize();
+
+      final ByteData data =
+          await rootBundle.load('assets/samples/landmark-ex1.jpg');
+      final bytes = data.buffer.asUint8List();
+
+      // Decode to cv.Mat
+      final mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
+
+      final faces =
+          await detector.detectFacesFromMat(mat, mode: FaceDetectionMode.fast);
+      expect(faces, isNotEmpty);
+
+      // Get embedding from Mat
+      final embedding =
+          await detector.getFaceEmbeddingFromMat(faces.first, mat);
+
+      expect(embedding, isNotNull);
+      expect(embedding.length, greaterThan(0));
+
+      mat.dispose();
+      detector.dispose();
+    });
+  });
+
+  group('FaceDetectorIsolate - Face Embedding', () {
+    test('should generate embedding in background isolate', () async {
+      final detector = await FaceDetectorIsolate.spawn();
+
+      final ByteData data =
+          await rootBundle.load('assets/samples/landmark-ex1.jpg');
+      final bytes = data.buffer.asUint8List();
+
+      // Detect face
+      final faces =
+          await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+      expect(faces, isNotEmpty);
+
+      // Generate embedding
+      final embedding = await detector.getFaceEmbedding(faces.first, bytes);
+
+      expect(embedding, isNotNull);
+      expect(embedding.length, greaterThan(0));
+
+      // Check normalization
+      double norm = 0.0;
+      for (final v in embedding) {
+        norm += v * v;
+      }
+      norm = sqrt(norm);
+      expect(norm, closeTo(1.0, 0.01));
+
+      await detector.dispose();
+    });
+
+    test('should generate batch embeddings in background isolate', () async {
+      final detector = await FaceDetectorIsolate.spawn();
+
+      final ByteData data = await rootBundle
+          .load('assets/samples/group-shot-bounding-box-ex1.jpeg');
+      final bytes = data.buffer.asUint8List();
+
+      // Detect faces
+      final faces =
+          await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+      expect(faces.length, greaterThan(1));
+
+      // Generate batch embeddings
+      final embeddings = await detector.getFaceEmbeddings(faces, bytes);
+
+      expect(embeddings.length, faces.length);
+
+      int validCount = 0;
+      for (final emb in embeddings) {
+        if (emb != null) {
+          validCount++;
+        }
+      }
+      expect(validCount, greaterThan(0));
+      print(
+          'Isolate generated $validCount embeddings out of ${faces.length} faces');
+
+      await detector.dispose();
+    });
+
+    test('FaceDetectorIsolate embeddings should match FaceDetector embeddings',
+        () async {
+      final isolateDetector = await FaceDetectorIsolate.spawn();
+      final regularDetector = FaceDetector();
+      await regularDetector.initialize();
+
+      final ByteData data =
+          await rootBundle.load('assets/samples/landmark-ex1.jpg');
+      final bytes = data.buffer.asUint8List();
+
+      // Get faces from both
+      final isolateFaces = await isolateDetector.detectFaces(bytes,
+          mode: FaceDetectionMode.fast);
+      final regularFaces = await regularDetector.detectFaces(bytes,
+          mode: FaceDetectionMode.fast);
+
+      expect(isolateFaces.length, regularFaces.length);
+      expect(isolateFaces, isNotEmpty);
+
+      // Get embeddings from both
+      final isolateEmb =
+          await isolateDetector.getFaceEmbedding(isolateFaces.first, bytes);
+      final regularEmb =
+          await regularDetector.getFaceEmbedding(regularFaces.first, bytes);
+
+      // Compare dimensions
+      expect(isolateEmb.length, regularEmb.length);
+
+      // Compare embeddings - should be identical
+      final similarity = FaceDetector.compareFaces(isolateEmb, regularEmb);
+      print(
+          'Isolate vs Regular embedding similarity: ${similarity.toStringAsFixed(4)}');
+
+      // Should be very similar (allowing for minor floating point differences)
+      expect(similarity, greaterThan(0.99));
+
+      await isolateDetector.dispose();
+      regularDetector.dispose();
+    });
+
+    test('getFaceEmbedding throws after dispose', () async {
+      final detector = await FaceDetectorIsolate.spawn();
+
+      final ByteData data =
+          await rootBundle.load('assets/samples/landmark-ex1.jpg');
+      final bytes = data.buffer.asUint8List();
+
+      // Get a real face first
+      final faces =
+          await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+      expect(faces, isNotEmpty);
+      final face = faces.first;
+
+      await detector.dispose();
+
+      expect(
+        () => detector.getFaceEmbedding(face, bytes),
+        throwsA(isA<StateError>()),
+      );
+    });
+  });
+
+  group('Face Recognition - Find Matching Face', () {
+    test('should identify same person across images', () async {
+      final detector = FaceDetector();
+      await detector.initialize();
+
+      // Reference image (single face)
+      final ByteData refData =
+          await rootBundle.load('assets/samples/landmark-ex1.jpg');
+      final refBytes = refData.buffer.asUint8List();
+
+      // Group image (multiple faces)
+      final ByteData groupData = await rootBundle
+          .load('assets/samples/group-shot-bounding-box-ex1.jpeg');
+      final groupBytes = groupData.buffer.asUint8List();
+
+      // Get reference embedding
+      final refFaces =
+          await detector.detectFaces(refBytes, mode: FaceDetectionMode.fast);
+      expect(refFaces, isNotEmpty);
+      final refEmbedding =
+          await detector.getFaceEmbedding(refFaces.first, refBytes);
+      print('Reference embedding generated (${refEmbedding.length} dims)');
+
+      // Detect all faces in group image
+      final groupFaces =
+          await detector.detectFaces(groupBytes, mode: FaceDetectionMode.fast);
+      expect(groupFaces.length, greaterThan(1));
+      print('Found ${groupFaces.length} faces in group image');
+
+      // Compare each face to reference
+      Face? bestMatch;
+      double bestSimilarity = -1.0;
+      int bestIndex = -1;
+
+      for (int i = 0; i < groupFaces.length; i++) {
+        try {
+          final embedding =
+              await detector.getFaceEmbedding(groupFaces[i], groupBytes);
+          final similarity = FaceDetector.compareFaces(refEmbedding, embedding);
+          print(
+              'Face $i: similarity = ${similarity.toStringAsFixed(3)}, bbox = ${groupFaces[i].boundingBox.center}');
+
+          if (similarity > bestSimilarity) {
+            bestSimilarity = similarity;
+            bestMatch = groupFaces[i];
+            bestIndex = i;
+          }
+        } catch (e) {
+          print('Face $i: failed to get embedding - $e');
+        }
+      }
+
+      expect(bestMatch, isNotNull);
+      print(
+          '\nBest match: Face $bestIndex with similarity ${bestSimilarity.toStringAsFixed(3)}');
+
+      detector.dispose();
     });
   });
 

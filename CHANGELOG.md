@@ -1,3 +1,9 @@
+## 4.3.0
+- Face recognition via embeddings, enables comparing faces across images
+  - `getFaceEmbedding()` / `getFaceEmbeddings()` methods on `FaceDetector` and `FaceDetectorIsolate`
+  - `compareFaces()` for cosine similarity, `faceDistance()` for Euclidean distance
+  - Uses MobileFaceNet model (~5MB, ~18ms inference)
+
 ## 4.2.1
 - Fix crash on Windows platforms
 
