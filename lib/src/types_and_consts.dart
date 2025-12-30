@@ -197,8 +197,8 @@ class PerformanceConfig {
 /// Example usage:
 /// ```dart
 /// for (final connection in eyeLandmarkConnections) {
-///   final p1 = iris.eyeContour[connection[0]];
-///   final p2 = iris.eyeContour[connection[1]];
+///   final p1 = eye.contour[connection[0]];
+///   final p2 = eye.contour[connection[1]];
 ///   // Draw line from p1 to p2
 /// }
 /// ```
@@ -697,6 +697,9 @@ class Face {
   /// - 5 iris keypoints (1 center + 4 contour points)
   ///
   /// Total: 152 points (76 per eye × 2 eyes).
+  ///
+  /// The iris center is not guaranteed to be at a fixed index; use [eyes] to
+  /// access a parsed center derived from the 5 iris keypoints.
   ///
   /// Each point contains `x`, `y`, and `z` coordinates where:
   /// - `x` and `y` are absolute pixel positions in the original image

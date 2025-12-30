@@ -895,4 +895,60 @@ void main() {
       expect(restored.irisPoints, isEmpty);
     });
   });
+
+  group('PerformanceConfig constructors', () {
+    test('xnnpack constructor sets correct mode', () {
+      const config = PerformanceConfig.xnnpack(numThreads: 4);
+
+      expect(config.mode, PerformanceMode.xnnpack);
+      expect(config.numThreads, 4);
+    });
+
+    test('xnnpack constructor with default threads', () {
+      const config = PerformanceConfig.xnnpack();
+
+      expect(config.mode, PerformanceMode.xnnpack);
+      expect(config.numThreads, isNull);
+    });
+
+    test('gpu constructor sets correct mode', () {
+      const config = PerformanceConfig.gpu(numThreads: 2);
+
+      expect(config.mode, PerformanceMode.gpu);
+      expect(config.numThreads, 2);
+    });
+
+    test('gpu constructor with default threads', () {
+      const config = PerformanceConfig.gpu();
+
+      expect(config.mode, PerformanceMode.gpu);
+      expect(config.numThreads, isNull);
+    });
+
+    test('auto constructor sets correct mode', () {
+      const config = PerformanceConfig.auto(numThreads: 8);
+
+      expect(config.mode, PerformanceMode.auto);
+      expect(config.numThreads, 8);
+    });
+
+    test('auto constructor with default threads', () {
+      const config = PerformanceConfig.auto();
+
+      expect(config.mode, PerformanceMode.auto);
+      expect(config.numThreads, isNull);
+    });
+
+    test('disabled constant has correct mode', () {
+      expect(PerformanceConfig.disabled.mode, PerformanceMode.disabled);
+      expect(PerformanceConfig.disabled.numThreads, isNull);
+    });
+
+    test('default constructor sets correct mode', () {
+      const config = PerformanceConfig(mode: PerformanceMode.xnnpack);
+
+      expect(config.mode, PerformanceMode.xnnpack);
+      expect(config.numThreads, isNull);
+    });
+  });
 }

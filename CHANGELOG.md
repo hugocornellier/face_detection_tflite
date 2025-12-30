@@ -46,7 +46,7 @@
 
 ## 3.1.0
 - EyePair class and eye mesh landmarks (71 points per eye)
-- Add `eyeContour` getter for accessing visible eyelid outline (first 15 of 71 points)
+- Add `contour` getter for accessing visible eyelid outline (first 15 of 71 points)
 - Add `eyeLandmarkConnections` constant for rendering connected eyelid outline
 - Add `kMaxEyeLandmark` constant defining eyeball contour point count
 

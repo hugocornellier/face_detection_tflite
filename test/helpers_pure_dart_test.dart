@@ -168,6 +168,42 @@ void main() {
         }
       }
     });
+
+    test('should allocate 5D tensor (default case)', () {
+      final tensor = allocTensorShape([1, 2, 2, 2, 3]) as List;
+
+      expect(tensor.length, 1);
+      expect((tensor[0] as List).length, 2);
+      expect((tensor[0][0] as List).length, 2);
+      expect((tensor[0][0][0] as List).length, 2);
+      expect((tensor[0][0][0][0] as List).length, 3);
+      // Verify innermost values are doubles initialized to 0
+      expect(tensor[0][0][0][0][0], 0.0);
+      expect(tensor[0][1][1][1][2], 0.0);
+    });
+
+    test('should allocate 6D tensor (default case)', () {
+      final tensor = allocTensorShape([1, 2, 2, 2, 2, 2]) as List;
+
+      expect(tensor.length, 1);
+      expect((tensor[0] as List).length, 2);
+      expect((tensor[0][0] as List).length, 2);
+      expect((tensor[0][0][0] as List).length, 2);
+      expect((tensor[0][0][0][0] as List).length, 2);
+      expect((tensor[0][0][0][0][0] as List).length, 2);
+      // Verify innermost values
+      expect(tensor[0][0][0][0][0][0], 0.0);
+      expect(tensor[0][1][1][1][1][1], 0.0);
+    });
+
+    test('should allocate 7D tensor (deeply nested)', () {
+      final tensor = allocTensorShape([1, 1, 2, 2, 2, 2, 3]) as List;
+
+      expect(tensor.length, 1);
+      // Navigate to innermost
+      expect(tensor[0][0][0][0][0][0][0], 0.0);
+      expect(tensor[0][0][1][1][1][1][2], 0.0);
+    });
   });
 
   group('Tensor Flattening - flattenDynamicTensor', () {
@@ -243,6 +279,42 @@ void main() {
       final result = flattenDynamicTensor(input);
 
       expect(result, [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+    });
+
+    test('should throw StateError on map input', () {
+      final badInput = {'not': 'a list'};
+      expect(
+        () => flattenDynamicTensor(badInput),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test('should throw StateError on string in list', () {
+      final mixedInput = [1.0, 'string', 3.0];
+      expect(
+        () => flattenDynamicTensor(mixedInput),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test('should throw StateError on object in nested list', () {
+      final badNested = [
+        [1.0, 2.0],
+        [Object(), 4.0],
+      ];
+      expect(
+        () => flattenDynamicTensor(badNested),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test('should handle integer values by converting to double', () {
+      final intInput = [1, 2, 3, 4];
+      final result = flattenDynamicTensor(intInput);
+
+      expect(result.length, 4);
+      expect(result[0], 1.0);
+      expect(result[3], 4.0);
     });
   });
 

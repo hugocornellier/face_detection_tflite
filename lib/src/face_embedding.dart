@@ -6,7 +6,7 @@ const _embeddingModel = 'mobilefacenet.tflite';
 /// Default input size for MobileFaceNet (112x112).
 const int kEmbeddingInputSize = 112;
 
-/// Default embedding vector dimension (128-dim for MobileFaceNet).
+/// Default embedding vector dimension (192-dim for MobileFaceNet).
 const int kEmbeddingDimension = 192;
 
 /// Generates face embeddings (identity vectors) from aligned face crops.

@@ -498,7 +498,7 @@ await detector.dispose();
 
 ### Configuration
 
-`FaceDetectorIsolate.spawn()` accepts the same configuration options as `FaceDetector.initialize()`:
+`FaceDetectorIsolate.spawn()` accepts the same configuration options as `FaceDetector.initialize()`, except for `InterpreterOptions`:
 
 ```dart
 final detector = await FaceDetectorIsolate.spawn(
@@ -547,7 +547,7 @@ final faces = await detector.detectFaces(photo2Bytes, mode: FaceDetectionMode.fa
 for (final face in faces) {
   final embedding = await detector.getFaceEmbedding(face, photo2Bytes);
   final similarity = FaceDetector.compareFaces(refEmbedding, embedding);
-  print('Similarity: ${similarity.toStringAsFixed(2)}'); // 0.0 to 1.0
+  print('Similarity: ${similarity.toStringAsFixed(2)}'); // -1.0 to 1.0
 }
 
 detector.dispose();

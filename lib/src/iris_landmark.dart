@@ -213,9 +213,12 @@ class IrisLandmark {
   /// - `x` and `y` are normalized coordinates (0.0 to 1.0) relative to the eye crop
   /// - `z` represents relative depth
   ///
-  /// The returned points typically include:
-  /// - 5 iris keypoints (center and 4 contour points)
-  /// - Additional eye contour landmarks
+  /// The returned points include 76 landmarks in this order:
+  /// - First 71 points: Eye mesh landmarks (detailed eye region geometry)
+  /// - Last 5 points: Iris keypoints (center + 4 contour points)
+  ///
+  /// The iris center is not guaranteed to be at a fixed index; derive it from
+  /// the 5 iris keypoints if needed.
   ///
   /// **Input requirements:**
   /// - Eye should be roughly centered in the crop
@@ -228,7 +231,7 @@ class IrisLandmark {
   /// Example:
   /// ```dart
   /// final irisPoints = await irisLandmark(leftEyeCrop);
-  /// final irisCenter = irisPoints[0]; // First point is typically iris center
+  /// // The last 5 points are iris keypoints; derive a center if needed.
   /// ```
   ///
   /// See also:
@@ -293,9 +296,9 @@ class IrisLandmark {
   /// - `x` and `y` are pixel coordinates in the original image
   /// - `z` represents relative depth
   ///
-  /// The returned points typically include:
-  /// - 5 iris keypoints (center and 4 contour points)
-  /// - Additional eye contour landmarks
+  /// The returned points include 76 landmarks in this order:
+  /// - First 71 points: Eye mesh landmarks (detailed eye region geometry)
+  /// - Last 5 points: Iris keypoints (center + 4 contour points)
   ///
   /// Example:
   /// ```dart
@@ -429,9 +432,8 @@ class IrisLandmark {
   /// including the iris, pupil, and surrounding eye contours.
   ///
   /// Returns exactly 5 points in normalized coordinates (0.0 to 1.0) relative
-  /// to the eye crop, where each point is `[x, y, z]`:
-  /// - Point 0: Iris center (typically most stable)
-  /// - Points 1-4: Iris contour points
+  /// to the eye crop, where each point is `[x, y, z]`.
+  /// The points are in the model's output order; derive a center if needed.
   ///
   /// **Performance:** Faster than [call] since it skips extracting additional
   /// eye contour landmarks.
@@ -439,7 +441,7 @@ class IrisLandmark {
   /// Example:
   /// ```dart
   /// final irisPoints = await irisLandmark.callIrisOnly(leftEyeCrop);
-  /// final irisCenter = irisPoints[0]; // [x, y, z] normalized coordinates
+  /// // Derive a center from the 5 points if needed.
   /// ```
   ///
   /// See also:
@@ -546,8 +548,8 @@ class IrisLandmark {
   ///
   /// Returns iris and eye contour landmarks in absolute pixel coordinates, where
   /// each point is `[x, y, z]`:
-  /// - First 5 points: Iris landmarks (center + 4 contour points)
-  /// - Remaining points: Eye contour landmarks (eyelid outline)
+  /// - First 71 points: Eye mesh landmarks (detailed eye region geometry)
+  /// - Last 5 points: Iris landmarks (center + 4 contour points)
   ///
   /// **Note:** This is an internal method used by [FaceDetector]. Most users
   /// should use [FaceDetector.detectFaces] with [FaceDetectionMode.full] instead.

@@ -8,6 +8,8 @@ import 'package:opencv_dart/opencv_dart.dart' as cv;
 /// conversion utilities, and rotation-aware cropping for face detection.
 /// Uses native OpenCV operations for 10-50x better performance than pure Dart.
 class ImageUtils {
+  ImageUtils._();
+
   /// Keeps aspect ratio while resizing and centers with padding.
   ///
   /// This matches the letterbox preprocessing used by MediaPipe models.
@@ -44,7 +46,6 @@ class ImageUtils {
     final padLeft = (resizeWidth - newWidth) ~/ 2;
     final padRight = resizeWidth - newWidth - padLeft;
 
-    // Use copyMakeBorder for reliable padding (avoids ROI copy issues)
     final paddedImage = cv.copyMakeBorder(
       resizedImage,
       padTop,

@@ -92,7 +92,7 @@ class FaceDetectorIsolate {
   ///
   /// Parameters:
   /// - [model]: Face detection model variant (default: [FaceDetectionModel.backCamera])
-  /// - [performanceConfig]: Hardware acceleration settings (default: XNNPACK enabled)
+  /// - [performanceConfig]: Hardware acceleration settings (default: auto mode)
   /// - [meshPoolSize]: Number of mesh model instances for parallel face processing
   ///
   /// Example:

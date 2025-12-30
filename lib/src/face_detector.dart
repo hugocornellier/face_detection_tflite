@@ -16,11 +16,12 @@ class _DetectionFeatures {
 
 /// A complete face detection and analysis system using TensorFlow Lite models.
 ///
-/// This class orchestrates three TensorFlow Lite models to provide comprehensive
+/// This class orchestrates four TensorFlow Lite models to provide comprehensive
 /// facial analysis:
-/// - Face detection with 6 keypoints (eyes, nose, mouth corners)
+/// - Face detection with 6 keypoints (eyes, nose, mouth, tragions)
 /// - 468-point face mesh for detailed facial geometry
 /// - Iris landmark detection with 76 points per eye (71 eye mesh + 5 iris keypoints)
+/// - Face embedding for identity vectors (192-dimensional)
 ///
 /// ## Usage
 ///
@@ -133,7 +134,10 @@ class FaceDetector {
   /// such as the number of threads or delegate type.
   ///
   /// The [performanceConfig] parameter controls hardware acceleration delegates.
-  /// XNNPACK is enabled by default for 2-5x speedup on CPU across all models.
+  /// By default, auto mode selects the optimal delegate per platform:
+  /// - macOS/Linux: XNNPACK (2-5x CPU speedup)
+  /// - iOS: Metal GPU delegate
+  /// - Windows/Android: CPU-only (for stability)
   /// If both [options] and [performanceConfig] are provided, [options] takes precedence.
   ///
   /// Example:
