@@ -285,51 +285,10 @@ class FaceLandmark {
 
   /// Creates interpreter options with delegates based on performance configuration.
   ///
-  /// Returns a record containing the InterpreterOptions and an optional Delegate
-  /// that must be stored and cleaned up when the model is disposed.
+  /// Delegates to [FaceDetection._createInterpreterOptions] for consistent
+  /// platform-aware delegate selection across all model types.
   static (InterpreterOptions, Delegate?) _createInterpreterOptions(
       PerformanceConfig? config) {
-    final options = InterpreterOptions();
-
-    // If no config or disabled mode, return default options (backward compatible)
-    if (config == null || config.mode == PerformanceMode.disabled) {
-      return (options, null);
-    }
-
-    // XNNPACK crashes on Windows during delegate creation (native library issue)
-    // Auto-disable on Windows to prevent crashes
-    if (Platform.isWindows) {
-      final threadCount = config.numThreads?.clamp(0, 8) ??
-          math.min(4, Platform.numberOfProcessors);
-      options.threads = threadCount;
-      return (options, null);
-    }
-
-    // Get effective thread count
-    final threadCount = config.numThreads?.clamp(0, 8) ??
-        math.min(4, Platform.numberOfProcessors);
-
-    // Set CPU threads
-    options.threads = threadCount;
-
-    // Add XNNPACK delegate (for xnnpack or auto mode)
-    if (config.mode == PerformanceMode.xnnpack ||
-        config.mode == PerformanceMode.auto) {
-      try {
-        final xnnpackDelegate = XNNPackDelegate(
-          options: XNNPackDelegateOptions(numThreads: threadCount),
-        );
-        options.addDelegate(xnnpackDelegate);
-        return (options, xnnpackDelegate);
-      } catch (e) {
-        // Graceful fallback: if delegate creation fails, continue with CPU
-        // ignore: avoid_print
-        print('[FaceLandmark] Warning: Failed to create XNNPACK delegate: $e');
-        // ignore: avoid_print
-        print('[FaceLandmark] Falling back to default CPU execution');
-      }
-    }
-
-    return (options, null);
+    return FaceDetection._createInterpreterOptions(config);
   }
 }

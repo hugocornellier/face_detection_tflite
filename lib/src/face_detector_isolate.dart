@@ -97,19 +97,19 @@ class FaceDetectorIsolate {
   ///
   /// Example:
   /// ```dart
-  /// // Default configuration
+  /// // Default configuration (auto mode - optimal for each platform)
   /// final detector = await FaceDetectorIsolate.spawn();
   ///
   /// // Custom configuration
   /// final detector = await FaceDetectorIsolate.spawn(
   ///   model: FaceDetectionModel.frontCamera,
-  ///   performanceConfig: PerformanceConfig.xnnpack(numThreads: 2),
+  ///   performanceConfig: PerformanceConfig.auto(),
   ///   meshPoolSize: 2,
   /// );
   /// ```
   static Future<FaceDetectorIsolate> spawn({
     FaceDetectionModel model = FaceDetectionModel.backCamera,
-    PerformanceConfig performanceConfig = const PerformanceConfig.xnnpack(),
+    PerformanceConfig performanceConfig = const PerformanceConfig(),
     int meshPoolSize = 3,
   }) async {
     final instance = FaceDetectorIsolate._();

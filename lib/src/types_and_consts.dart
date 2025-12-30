@@ -38,30 +38,61 @@ enum FaceDetectionMode { fast, standard, full }
 /// Performance modes for TensorFlow Lite delegate selection.
 ///
 /// Determines which hardware acceleration delegates are used for inference.
+///
+/// ## Platform Support
+///
+/// | Mode | macOS | Linux | Windows | iOS | Android |
+/// |------|-------|-------|---------|-----|---------|
+/// | [disabled] | ✅ | ✅ | ✅ | ✅ | ✅ |
+/// | [xnnpack] | ✅ | ✅ | ❌ | ❌ | ❌ |
+/// | [gpu] | ❌ | ❌ | ❌ | ✅ | ⚠️ |
+/// | [auto] | ✅ | ✅ | ✅ | ✅ | ✅ |
+///
+/// ⚠️ = Experimental, may crash on some devices
 enum PerformanceMode {
   /// No acceleration delegates (CPU-only, backward compatible).
   ///
-  /// - Slowest performance
-  /// - No additional memory overhead
   /// - Most compatible (works on all platforms)
+  /// - No additional memory overhead
+  /// - Baseline performance
   disabled,
 
   /// XNNPACK delegate for CPU optimization.
   ///
-  /// - Works on all platforms (iOS, Android, macOS, Linux, Windows)
+  /// - **Desktop only**: macOS, Linux (crashes on Windows, Android, iOS)
   /// - 2-5x faster than disabled mode
+  /// - Uses SIMD vectorization (NEON on ARM, AVX on x86)
   /// - Minimal memory overhead (+2-3MB per interpreter)
-  /// - Recommended default for most use cases
   ///
-  /// Uses SIMD vectorization (NEON on ARM, AVX on x86) and multi-threading.
+  /// On unsupported platforms, automatically falls back to CPU-only execution.
   xnnpack,
+
+  /// GPU delegate for hardware acceleration.
+  ///
+  /// - **iOS**: Uses Metal (reliable, recommended)
+  /// - **Android**: Uses OpenGL/OpenCL (experimental, may crash on some devices)
+  /// - **Desktop**: Not supported (falls back to CPU)
+  ///
+  /// ## Android GPU Delegate Warning
+  ///
+  /// The Android GPU delegate has known compatibility issues:
+  /// - OpenCL unavailable on many devices (Pixel 6, Android 12+)
+  /// - OpenGL ES 3.1+ required for fallback
+  /// - Memory issues on some Samsung devices
+  /// - Partial op support can cause slower performance than CPU
+  ///
+  /// Only use on Android if you've tested on your target devices.
+  gpu,
 
   /// Automatically choose best delegate for current platform.
   ///
   /// Current behavior:
-  /// - All platforms: Uses XNNPACK with platform-optimal thread count
+  /// - **macOS/Linux**: XNNPACK (2-5x speedup)
+  /// - **Windows**: CPU-only (XNNPACK crashes)
+  /// - **iOS**: Metal GPU delegate
+  /// - **Android**: CPU-only (GPU/XNNPACK unreliable)
   ///
-  /// Future: May use GPU/Metal delegates when available.
+  /// This is the recommended default for cross-platform apps.
   auto,
 }
 
@@ -69,56 +100,87 @@ enum PerformanceMode {
 ///
 /// Controls delegate usage and threading for CPU/GPU acceleration.
 ///
-/// Example:
-/// ```dart
-/// // Default (XNNPACK enabled with auto thread detection)
-/// final detector = FaceDetector();
-/// await detector.initialize();
+/// ## Recommended Usage
 ///
-/// // XNNPACK with custom threads
+/// For cross-platform apps, use `PerformanceConfig.auto()` (the default):
+///
+/// ```dart
+/// // Auto mode - optimal settings per platform (recommended)
 /// final detector = FaceDetector();
+/// await detector.initialize(); // Uses PerformanceConfig.auto() by default
+/// ```
+///
+/// ## Platform-Specific Examples
+///
+/// ```dart
+/// // Desktop (macOS/Linux): XNNPACK for 2-5x speedup
 /// await detector.initialize(
-///   performanceConfig: PerformanceConfig.xnnpack(numThreads: 2),
+///   performanceConfig: PerformanceConfig.xnnpack(numThreads: 4),
 /// );
 ///
-/// // Disable XNNPACK (not recommended)
-/// final detector = FaceDetector();
+/// // iOS: GPU delegate via Metal (fast and reliable)
+/// await detector.initialize(
+///   performanceConfig: PerformanceConfig.gpu(),
+/// );
+///
+/// // Android: CPU-only recommended (GPU is experimental)
 /// await detector.initialize(
 ///   performanceConfig: PerformanceConfig.disabled,
+/// );
+///
+/// // Android: GPU delegate (experimental - test on target devices first!)
+/// await detector.initialize(
+///   performanceConfig: PerformanceConfig.gpu(),
 /// );
 /// ```
 class PerformanceConfig {
   /// Performance mode controlling delegate selection.
   final PerformanceMode mode;
 
-  /// Number of threads for XNNPACK delegate.
+  /// Number of threads for CPU execution.
   ///
   /// - null: Auto-detect optimal count (min(4, Platform.numberOfProcessors))
   /// - 0: No thread pool (single-threaded, good for tiny models)
   /// - 1-8: Explicit thread count
   ///
   /// Diminishing returns after 4 threads for typical models.
-  /// Only applies when mode is [PerformanceMode.xnnpack] or [PerformanceMode.auto].
+  /// Applies to XNNPACK delegate and CPU-only execution.
   final int? numThreads;
 
   /// Creates a performance configuration.
   ///
   /// Parameters:
-  /// - [mode]: Performance mode. Default: [PerformanceMode.xnnpack]
+  /// - [mode]: Performance mode. Default: [PerformanceMode.auto]
   /// - [numThreads]: Number of threads (null for auto-detection)
   const PerformanceConfig({
-    this.mode = PerformanceMode.xnnpack,
+    this.mode = PerformanceMode.auto,
     this.numThreads,
   });
 
-  /// Creates config with XNNPACK enabled and auto thread detection.
+  /// Creates config with XNNPACK enabled (desktop only).
+  ///
+  /// XNNPACK provides 2-5x speedup on macOS and Linux.
+  /// On unsupported platforms (Windows, Android, iOS), falls back to CPU-only.
   const PerformanceConfig.xnnpack({this.numThreads})
       : mode = PerformanceMode.xnnpack;
 
-  /// Creates config with auto mode (currently uses XNNPACK).
+  /// Creates config with GPU delegate enabled.
+  ///
+  /// - **iOS**: Uses Metal (reliable, recommended)
+  /// - **Android**: Uses OpenGL/OpenCL (experimental, may crash)
+  /// - **Desktop**: Falls back to CPU-only
+  const PerformanceConfig.gpu({this.numThreads}) : mode = PerformanceMode.gpu;
+
+  /// Creates config with auto mode (recommended for cross-platform apps).
+  ///
+  /// Automatically selects the best delegate for each platform:
+  /// - macOS/Linux: XNNPACK
+  /// - Windows: CPU-only
+  /// - iOS: Metal GPU
+  /// - Android: CPU-only
   const PerformanceConfig.auto({this.numThreads}) : mode = PerformanceMode.auto;
 
-  /// Default configuration (no delegates, backward compatible).
+  /// CPU-only configuration (no delegates, maximum compatibility).
   static const PerformanceConfig disabled = PerformanceConfig(
     mode: PerformanceMode.disabled,
   );

@@ -369,44 +369,12 @@ class FaceEmbedding {
   }
 
   /// Creates interpreter options with delegates based on performance configuration.
+  ///
+  /// Delegates to [FaceDetection._createInterpreterOptions] for consistent
+  /// platform-aware delegate selection across all model types.
   static (InterpreterOptions, Delegate?) _createInterpreterOptions(
       PerformanceConfig? config) {
-    final options = InterpreterOptions();
-
-    if (config == null || config.mode == PerformanceMode.disabled) {
-      return (options, null);
-    }
-
-    // XNNPACK crashes on Windows during delegate creation
-    if (Platform.isWindows) {
-      final threadCount = config.numThreads?.clamp(0, 8) ??
-          math.min(4, Platform.numberOfProcessors);
-      options.threads = threadCount;
-      return (options, null);
-    }
-
-    final threadCount = config.numThreads?.clamp(0, 8) ??
-        math.min(4, Platform.numberOfProcessors);
-
-    options.threads = threadCount;
-
-    if (config.mode == PerformanceMode.xnnpack ||
-        config.mode == PerformanceMode.auto) {
-      try {
-        final xnnpackDelegate = XNNPackDelegate(
-          options: XNNPackDelegateOptions(numThreads: threadCount),
-        );
-        options.addDelegate(xnnpackDelegate);
-        return (options, xnnpackDelegate);
-      } catch (e) {
-        // ignore: avoid_print
-        print('[FaceEmbedding] Warning: Failed to create XNNPACK delegate: $e');
-        // ignore: avoid_print
-        print('[FaceEmbedding] Falling back to default CPU execution');
-      }
-    }
-
-    return (options, null);
+    return FaceDetection._createInterpreterOptions(config);
   }
 }
 

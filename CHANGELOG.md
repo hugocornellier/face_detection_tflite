@@ -1,3 +1,6 @@
+## 4.4.0
+- Fixes #3: bug causing crash on non-XNNPack compatible Android devices
+
 ## 4.3.0
 - Face recognition via embeddings, enables comparing faces across images
   - `getFaceEmbedding()` / `getFaceEmbeddings()` methods on `FaceDetector` and `FaceDetectorIsolate`

@@ -74,7 +74,52 @@ Future main() async {
 
 Version 4.1 moved image preprocessing to native OpenCV (via `opencv_dart`) for ~2x faster performance with SIMD acceleration. The standard `detectFaces()` method now uses OpenCV internally, so all existing code automatically gets the performance boost.
 
-Additionally, XNNPACK is now enabled by default, providing 2-5x CPU speedup via SIMD vectorization (NEON on ARM, AVX on x86). No configuration needed - just call `initialize()` and you get the optimized performance automatically.
+### Hardware Acceleration
+
+The package automatically selects the best acceleration strategy for each platform:
+
+| Platform | Default Delegate | Speedup | Notes |
+|----------|-----------------|---------|-------|
+| **macOS** | XNNPACK | 2-5x | SIMD vectorization (NEON on ARM, AVX on x86) |
+| **Linux** | XNNPACK | 2-5x | SIMD vectorization |
+| **iOS** | Metal GPU | 2-4x | Hardware GPU acceleration |
+| **Android** | CPU | 1x | GPU delegate unreliable (see below) |
+| **Windows** | CPU | 1x | XNNPACK crashes on Windows |
+
+No configuration needed - just call `initialize()` and you get the optimal performance for your platform.
+
+### Android Performance Note
+
+The Android GPU delegate has known compatibility issues across different devices and Android versions:
+- OpenCL unavailable on many devices (Pixel 6+, Android 12+)
+- OpenGL ES 3.1+ required for fallback
+- Some devices crash during GPU delegate initialization
+
+For maximum compatibility, Android defaults to CPU-only execution. If you want to experiment with GPU acceleration on Android (at your own risk), see the [Advanced Configuration](#advanced-performance-configuration) section.
+
+### Advanced Performance Configuration
+
+```dart
+// Auto mode (default) - optimal for each platform
+await detector.initialize();
+// Equivalent to:
+await detector.initialize(performanceConfig: PerformanceConfig.auto());
+
+// Force XNNPACK (desktop only - macOS/Linux)
+await detector.initialize(
+  performanceConfig: PerformanceConfig.xnnpack(numThreads: 4),
+);
+
+// Force GPU delegate (iOS recommended, Android experimental)
+await detector.initialize(
+  performanceConfig: PerformanceConfig.gpu(),
+);
+
+// CPU-only (maximum compatibility)
+await detector.initialize(
+  performanceConfig: PerformanceConfig.disabled,
+);
+```
 
 ### Advanced: Direct Mat Input
 
@@ -458,7 +503,7 @@ await detector.dispose();
 ```dart
 final detector = await FaceDetectorIsolate.spawn(
   model: FaceDetectionModel.frontCamera,
-  performanceConfig: PerformanceConfig.xnnpack(numThreads: 2),
+  performanceConfig: PerformanceConfig.auto(), // Or .gpu() for iOS
   meshPoolSize: 2,
 );
 ```
@@ -485,7 +530,7 @@ final faces = await detector.detectFacesFromMatBytes(
 
 The Mat is reconstructed in the background isolate using zero-copy transfer, so there's no encoding/decoding overhead.
 
-## Face Recognition (Embeddings)
+## Face Recognition (Embeddings) 
 
 Generate 192-dimensional identity vectors to compare faces across images. Useful for identifying the same person in different photos.
 

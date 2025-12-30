@@ -74,37 +74,24 @@ class FaceDetection {
     InterpreterOptions? options,
     PerformanceConfig? performanceConfig,
   }) async {
-    // ignore: avoid_print
-    print('[FaceDetection] create() called for model: $model');
     final Map<String, Object> opts = _optsFor(model);
     final int inW = opts['input_size_width'] as int;
     final int inH = opts['input_size_height'] as int;
-    // ignore: avoid_print
-    print('[FaceDetection] Model input size: ${inW}x$inH');
 
     Delegate? delegate;
     final InterpreterOptions interpreterOptions;
     if (options != null) {
-      // ignore: avoid_print
-      print('[FaceDetection] Using custom InterpreterOptions');
       interpreterOptions = options;
     } else {
-      // ignore: avoid_print
-      print(
-          '[FaceDetection] Creating interpreter options with performanceConfig');
       final result = _createInterpreterOptions(performanceConfig);
       interpreterOptions = result.$1;
       delegate = result.$2;
     }
 
-    // ignore: avoid_print
-    print('[FaceDetection] Loading model from assets...');
     final Interpreter itp = await Interpreter.fromAsset(
       'packages/face_detection_tflite/assets/models/${_nameFor(model)}',
       options: interpreterOptions,
     );
-    // ignore: avoid_print
-    print('[FaceDetection] Model loaded successfully');
 
     final Float32List anchors = _ssdGenerateAnchors(opts);
     final FaceDetection obj = FaceDetection._(
@@ -115,11 +102,7 @@ class FaceDetection {
     );
     obj._delegate = delegate;
 
-    // ignore: avoid_print
-    print('[FaceDetection] Calling _initializeTensors...');
     await obj._initializeTensors();
-    // ignore: avoid_print
-    print('[FaceDetection] create() completed successfully');
     return obj;
   }
 
@@ -163,8 +146,6 @@ class FaceDetection {
 
   /// Shared tensor initialization logic.
   Future<void> _initializeTensors() async {
-    // ignore: avoid_print
-    print('[FaceDetection] _initializeTensors() started');
     int foundIdx = -1;
     for (int i = 0; i < 10; i++) {
       try {
@@ -184,24 +165,10 @@ class FaceDetection {
       );
     }
     _inputIdx = foundIdx;
-    // ignore: avoid_print
-    print('[FaceDetection] Found input tensor at index $_inputIdx');
 
-    // ignore: avoid_print
-    print('[FaceDetection] Calling resizeInputTensor([1, $_inH, $_inW, 3])...');
     _itp.resizeInputTensor(_inputIdx, [1, _inH, _inW, 3]);
-    // ignore: avoid_print
-    print('[FaceDetection] resizeInputTensor completed');
-
-    // ignore: avoid_print
-    print(
-        '[FaceDetection] Calling allocateTensors() - THIS IS WHERE XNNPACK CRASH MAY OCCUR...');
     _itp.allocateTensors();
-    // ignore: avoid_print
-    print('[FaceDetection] allocateTensors() completed successfully');
 
-    // ignore: avoid_print
-    print('[FaceDetection] Getting output tensor shapes...');
     _boxesShape = _itp.getOutputTensor(_boundingBoxIndex).shape;
     _scoresShape = _itp.getOutputTensor(_scoreIndex).shape;
     _inputTensor = _itp.getInputTensor(_inputIdx);
@@ -209,27 +176,14 @@ class FaceDetection {
     _scoresTensor = _itp.getOutputTensor(_scoreIndex);
     _boxesLen = _boxesShape.fold(1, (a, b) => a * b);
     _scoresLen = _scoresShape.fold(1, (a, b) => a * b);
-    // ignore: avoid_print
-    print(
-        '[FaceDetection] Output shapes: boxes=$_boxesShape, scores=$_scoresShape');
 
-    // ignore: avoid_print
-    print('[FaceDetection] Getting tensor data buffers...');
     _inputBuf = _inputTensor.data.buffer.asFloat32List();
     _boxesBuf = _boxesTensor.data.buffer.asFloat32List();
     _scoresBuf = _scoresTensor.data.buffer.asFloat32List();
-    // ignore: avoid_print
-    print('[FaceDetection] Tensor buffers acquired');
 
-    // ignore: avoid_print
-    print('[FaceDetection] Creating input 4D cache...');
     _input4dCache = createNHWCTensor4D(_inH, _inW);
 
-    // ignore: avoid_print
-    print('[FaceDetection] Creating IsolateInterpreter...');
     _iso = await IsolateInterpreter.create(address: _itp.address);
-    // ignore: avoid_print
-    print('[FaceDetection] _initializeTensors() completed successfully');
   }
 
   void _flatten3D(List<List<List<num>>> src, Float32List dst) {
@@ -561,70 +515,114 @@ class FaceDetection {
   ///
   /// Returns a record containing the InterpreterOptions and an optional Delegate
   /// that must be stored and cleaned up when the model is disposed.
+  ///
+  /// ## Platform Behavior
+  ///
+  /// | Mode | macOS/Linux | Windows | iOS | Android |
+  /// |------|-------------|---------|-----|---------|
+  /// | disabled | CPU | CPU | CPU | CPU |
+  /// | xnnpack | XNNPACK | CPU* | CPU* | CPU* |
+  /// | gpu | CPU | CPU | Metal | OpenGL/CL** |
+  /// | auto | XNNPACK | CPU | Metal | CPU |
+  ///
+  /// *Falls back to CPU (XNNPACK not supported on this platform)
+  /// **Experimental, may crash on some devices
   static (InterpreterOptions, Delegate?) _createInterpreterOptions(
       PerformanceConfig? config) {
-    // ignore: avoid_print
-    print('[FaceDetection] _createInterpreterOptions called');
     final options = InterpreterOptions();
+    final effectiveConfig = config ?? const PerformanceConfig();
 
-    // If no config or disabled mode, return default options (backward compatible)
-    if (config == null || config.mode == PerformanceMode.disabled) {
-      // ignore: avoid_print
-      print('[FaceDetection] XNNPACK disabled, using default CPU');
-      return (options, null);
-    }
+    // Get effective thread count for CPU execution
+    final threadCount = effectiveConfig.numThreads?.clamp(0, 8) ??
+        math.min(4, Platform.numberOfProcessors);
 
-    // XNNPACK crashes on Windows during delegate creation (native library issue)
-    // Auto-disable on Windows to prevent crashes
-    if (Platform.isWindows) {
-      // ignore: avoid_print
-      print(
-          '[FaceDetection] Windows detected - XNNPACK disabled (known crash issue)');
-      // ignore: avoid_print
-      print('[FaceDetection] Using CPU-only execution on Windows');
-      final threadCount = config.numThreads?.clamp(0, 8) ??
-          math.min(4, Platform.numberOfProcessors);
+    // If disabled mode, return CPU-only options
+    if (effectiveConfig.mode == PerformanceMode.disabled) {
       options.threads = threadCount;
       return (options, null);
     }
 
-    // Get effective thread count
-    final threadCount = config.numThreads?.clamp(0, 8) ??
-        math.min(4, Platform.numberOfProcessors);
-
-    // ignore: avoid_print
-    print(
-        '[FaceDetection] Thread count: $threadCount (processors: ${Platform.numberOfProcessors})');
-
-    // Set CPU threads
-    options.threads = threadCount;
-
-    // Add XNNPACK delegate (for xnnpack or auto mode)
-    if (config.mode == PerformanceMode.xnnpack ||
-        config.mode == PerformanceMode.auto) {
-      try {
-        // ignore: avoid_print
-        print('[FaceDetection] Creating XNNPackDelegate...');
-        final xnnpackDelegate = XNNPackDelegate(
-          options: XNNPackDelegateOptions(numThreads: threadCount),
-        );
-        // ignore: avoid_print
-        print('[FaceDetection] XNNPackDelegate created, adding to options...');
-        options.addDelegate(xnnpackDelegate);
-        // ignore: avoid_print
-        print('[FaceDetection] Delegate added to options successfully');
-        return (options, xnnpackDelegate);
-      } catch (e, st) {
-        // Graceful fallback: if delegate creation fails, continue with CPU
-        // ignore: avoid_print
-        print('[FaceDetection] Warning: Failed to create XNNPACK delegate: $e');
-        // ignore: avoid_print
-        print('[FaceDetection] Stack trace: $st');
-        // ignore: avoid_print
-        print('[FaceDetection] Falling back to default CPU execution');
-      }
+    // Handle auto mode - select best delegate per platform
+    if (effectiveConfig.mode == PerformanceMode.auto) {
+      return _createAutoModeOptions(options, threadCount);
     }
 
+    // Handle explicit xnnpack mode
+    if (effectiveConfig.mode == PerformanceMode.xnnpack) {
+      return _createXnnpackOptions(options, threadCount);
+    }
+
+    // Handle explicit gpu mode
+    if (effectiveConfig.mode == PerformanceMode.gpu) {
+      return _createGpuOptions(options, threadCount);
+    }
+
+    // Fallback to CPU
+    options.threads = threadCount;
     return (options, null);
+  }
+
+  /// Creates options for auto mode - selects best delegate per platform.
+  static (InterpreterOptions, Delegate?) _createAutoModeOptions(
+      InterpreterOptions options, int threadCount) {
+    // macOS/Linux: Use XNNPACK (proven stable, 2-5x speedup)
+    if (Platform.isMacOS || Platform.isLinux) {
+      return _createXnnpackOptions(options, threadCount);
+    }
+
+    // iOS: Use Metal GPU delegate (reliable)
+    if (Platform.isIOS) {
+      return _createGpuOptions(options, threadCount);
+    }
+
+    // Windows: CPU only (XNNPACK crashes)
+    // Android: CPU only (GPU delegate unreliable across devices)
+    options.threads = threadCount;
+    return (options, null);
+  }
+
+  /// Creates options with XNNPACK delegate (desktop only).
+  static (InterpreterOptions, Delegate?) _createXnnpackOptions(
+      InterpreterOptions options, int threadCount) {
+    options.threads = threadCount;
+
+    // XNNPACK only works reliably on macOS and Linux
+    // Crashes on Windows, Android, and iOS
+    if (!Platform.isMacOS && !Platform.isLinux) {
+      return (options, null);
+    }
+
+    try {
+      final xnnpackDelegate = XNNPackDelegate(
+        options: XNNPackDelegateOptions(numThreads: threadCount),
+      );
+      options.addDelegate(xnnpackDelegate);
+      return (options, xnnpackDelegate);
+    } catch (e) {
+      // Graceful fallback to CPU if delegate creation fails
+      return (options, null);
+    }
+  }
+
+  /// Creates options with GPU delegate.
+  static (InterpreterOptions, Delegate?) _createGpuOptions(
+      InterpreterOptions options, int threadCount) {
+    options.threads = threadCount;
+
+    // GPU delegate only available on iOS and Android
+    if (!Platform.isIOS && !Platform.isAndroid) {
+      return (options, null);
+    }
+
+    try {
+      // iOS uses Metal via GpuDelegate, Android uses OpenGL/OpenCL via GpuDelegateV2
+      final gpuDelegate =
+          Platform.isIOS ? GpuDelegate() : GpuDelegateV2() as Delegate;
+      options.addDelegate(gpuDelegate);
+      return (options, gpuDelegate);
+    } catch (e) {
+      // GPU delegate failed, fall back to CPU
+      return (options, null);
+    }
   }
 }

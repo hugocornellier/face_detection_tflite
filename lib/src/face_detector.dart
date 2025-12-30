@@ -138,11 +138,11 @@ class FaceDetector {
   ///
   /// Example:
   /// ```dart
-  /// // Default (XNNPACK enabled)
+  /// // Default (auto mode - optimal for each platform)
   /// final detector = FaceDetector();
   /// await detector.initialize();
   ///
-  /// // Disable XNNPACK (not recommended)
+  /// // Force CPU-only execution
   /// final detector = FaceDetector();
   /// await detector.initialize(
   ///   performanceConfig: PerformanceConfig.disabled,
@@ -151,7 +151,7 @@ class FaceDetector {
   Future<void> initialize({
     FaceDetectionModel model = FaceDetectionModel.backCamera,
     InterpreterOptions? options,
-    PerformanceConfig performanceConfig = const PerformanceConfig.xnnpack(),
+    PerformanceConfig performanceConfig = const PerformanceConfig(),
     int meshPoolSize = 3,
   }) async {
     await _ensureTFLiteLoaded();
@@ -230,7 +230,7 @@ class FaceDetector {
     required Uint8List irisLandmarkBytes,
     Uint8List? embeddingBytes,
     required FaceDetectionModel model,
-    PerformanceConfig performanceConfig = const PerformanceConfig.xnnpack(),
+    PerformanceConfig performanceConfig = const PerformanceConfig(),
     int meshPoolSize = 3,
   }) async {
     await _ensureTFLiteLoaded();

@@ -106,7 +106,6 @@ class _ExampleState extends State<Example> {
   bool _showIrises = true;
   bool _showEyeContours = true;
   bool _showEyeMesh = true;
-  bool _showSettings = true;
   bool _hasProcessedMesh = false;
   bool _hasProcessedIris = false;
 
@@ -396,57 +395,6 @@ class _ExampleState extends State<Example> {
     );
   }
 
-  Widget _buildFeatureStatus() {
-    if (_imageBytes == null) return const SizedBox.shrink();
-
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.info_outline, size: 20, color: Colors.blue),
-                const SizedBox(width: 8),
-                const Text(
-                  'Processing Status',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            _buildStatusRow('Detection', true, Colors.green),
-            _buildStatusRow('Mesh', _hasProcessedMesh,
-                _showMesh ? Colors.green : Colors.grey),
-            _buildStatusRow('Iris', _hasProcessedIris,
-                _showIrises ? Colors.green : Colors.grey),
-            if (_detectionTimeMs != null ||
-                _meshTimeMs != null ||
-                _irisTimeMs != null ||
-                _totalTimeMs != null) ...[
-              const Divider(height: 16),
-              if (_detectionTimeMs != null)
-                _buildTimingRow('Detection', _detectionTimeMs!, Colors.green),
-              if (_meshTimeMs != null)
-                _buildTimingRow('Mesh Refinement', _meshTimeMs!, Colors.pink),
-              if (_irisTimeMs != null)
-                _buildTimingRow(
-                    'Iris Refinement', _irisTimeMs!, Colors.blueAccent),
-              if (_totalTimeMs != null)
-                _buildTimingRow('Inference Time', _totalTimeMs!, Colors.blue,
-                    isBold: true),
-              const SizedBox(height: 8),
-              if (_totalTimeMs != null) _buildPerformanceIndicator(),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildStatusRow(String label, bool processed, Color color) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -476,304 +424,448 @@ class _ExampleState extends State<Example> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final bool hasImage = _imageBytes != null && _originalSize != null;
-    return Scaffold(
-      body: Stack(
-        children: [
-          Column(
+  void _showSettingsSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.3,
+        maxChildSize: 0.9,
+        builder: (context, scrollController) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          child: Column(
             children: [
-              if (_showSettings)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Top buttons row
-                      Row(
-                        children: [
-                          ElevatedButton.icon(
-                            onPressed: _pickAndRun,
-                            icon: const Icon(Icons.image, size: 18),
-                            label: const Text('Pick Image'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blue,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 8),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          ElevatedButton.icon(
-                            onPressed: () =>
-                                setState(() => _showSettings = false),
-                            icon: const Icon(Icons.visibility_off, size: 18),
-                            label: const Text('Hide'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.black,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 8),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 4),
-                              decoration: BoxDecoration(
-                                border: Border.all(color: Colors.grey.shade300),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.tune, size: 16),
-                                  const SizedBox(width: 6),
-                                  const Text('Model:',
-                                      style: TextStyle(fontSize: 13)),
-                                  const SizedBox(width: 4),
-                                  Expanded(
-                                    child: DropdownButton<FaceDetectionModel>(
-                                      value: _detectionModel,
-                                      underline: const SizedBox(),
-                                      isExpanded: true,
-                                      style: const TextStyle(
-                                          fontSize: 13, color: Colors.black),
-                                      items: const [
-                                        DropdownMenuItem(
-                                          value: FaceDetectionModel.frontCamera,
-                                          child: Text('Front'),
-                                        ),
-                                        DropdownMenuItem(
-                                          value: FaceDetectionModel.backCamera,
-                                          child: Text('Back'),
-                                        ),
-                                        DropdownMenuItem(
-                                          value: FaceDetectionModel.shortRange,
-                                          child: Text('Short'),
-                                        ),
-                                        DropdownMenuItem(
-                                          value: FaceDetectionModel.full,
-                                          child: Text('Full Range'),
-                                        ),
-                                        DropdownMenuItem(
-                                          value: FaceDetectionModel.fullSparse,
-                                          child: Text('Full Sparse'),
-                                        ),
-                                      ],
-                                      onChanged: (value) async {
-                                        if (value != null &&
-                                            value != _detectionModel) {
-                                          setState(
-                                              () => _detectionModel = value);
-                                          await _initFaceDetector();
-                                          if (_imageBytes != null) {
-                                            await _processImage(_imageBytes!);
-                                          }
-                                        }
-                                      },
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      // Checkboxes in a compact grid
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 4,
-                        children: [
-                          _buildCheckbox(
-                              'Bounding Boxes',
-                              _showBoundingBoxes,
-                              (value) => setState(
-                                  () => _showBoundingBoxes = value ?? false)),
-                          _buildCheckbox(
-                              'Mesh',
-                              _showMesh,
-                              (value) =>
-                                  _onFeatureToggle('mesh', value ?? false)),
-                          _buildCheckbox(
-                              'Landmarks',
-                              _showLandmarks,
-                              (value) => setState(
-                                  () => _showLandmarks = value ?? false)),
-                          _buildCheckbox(
-                              'Irises',
-                              _showIrises,
-                              (value) =>
-                                  _onFeatureToggle('iris', value ?? false)),
-                          _buildCheckbox(
-                              'Eye Contour',
-                              _showEyeContours,
-                              (value) => _onFeatureToggle(
-                                  'eyeContour', value ?? false)),
-                          _buildCheckbox(
-                              'Eye Mesh',
-                              _showEyeMesh,
-                              (value) =>
-                                  _onFeatureToggle('eyeMesh', value ?? false)),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      const Divider(height: 1),
-                      const SizedBox(height: 8),
-                      // Color pickers in a compact grid
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: [
-                          _buildColorButton(
-                              'BBox',
-                              _boundingBoxColor,
-                              (color) =>
-                                  setState(() => _boundingBoxColor = color)),
-                          _buildColorButton(
-                              'Landmarks',
-                              _landmarkColor,
-                              (color) =>
-                                  setState(() => _landmarkColor = color)),
-                          _buildColorButton('Mesh', _meshColor,
-                              (color) => setState(() => _meshColor = color)),
-                          _buildColorButton('Irises', _irisColor,
-                              (color) => setState(() => _irisColor = color)),
-                          _buildColorButton(
-                              'Eye Contour',
-                              _eyeContourColor,
-                              (color) =>
-                                  setState(() => _eyeContourColor = color)),
-                          _buildColorButton('Eye Mesh', _eyeMeshColor,
-                              (color) => setState(() => _eyeMeshColor = color)),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      const Divider(height: 1),
-                      const SizedBox(height: 4),
-                      // Sliders in a more compact layout
-                      _buildSlider(
-                          'BBox Thickness',
-                          _boundingBoxThickness,
-                          0.5,
-                          10.0,
-                          (value) =>
-                              setState(() => _boundingBoxThickness = value)),
-                      _buildSlider('Landmark Size', _landmarkSize, 0.5, 15.0,
-                          (value) => setState(() => _landmarkSize = value)),
-                      _buildSlider('Mesh Size', _meshSize, 0.1, 10.0,
-                          (value) => setState(() => _meshSize = value)),
-                      _buildSlider('Eye Mesh Size', _eyeMeshSize, 0.1, 10.0,
-                          (value) => setState(() => _eyeMeshSize = value)),
-                    ],
-                  ),
+              // Drag handle
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
                 ),
-              _buildFeatureStatus(),
+              ),
               Expanded(
-                child: Center(
-                  child: hasImage
-                      ? LayoutBuilder(
-                          builder: (context, constraints) {
-                            final fitted = applyBoxFit(
-                              BoxFit.contain,
-                              _originalSize!,
-                              Size(constraints.maxWidth, constraints.maxHeight),
-                            );
-                            final Size renderSize = fitted.destination;
-                            final Rect imageRect = Alignment.center.inscribe(
-                              renderSize,
-                              Offset.zero &
-                                  Size(constraints.maxWidth,
-                                      constraints.maxHeight),
-                            );
-
-                            return Stack(
-                              children: [
-                                Positioned.fromRect(
-                                  rect: imageRect,
-                                  child: SizedBox.fromSize(
-                                    size: renderSize,
-                                    child: Image.memory(
-                                      _imageBytes!,
-                                      fit: BoxFit.fill,
-                                    ),
-                                  ),
-                                ),
-                                Positioned(
-                                  left: imageRect.left,
-                                  top: imageRect.top,
-                                  width: imageRect.width,
-                                  height: imageRect.height,
-                                  child: CustomPaint(
-                                    size:
-                                        Size(imageRect.width, imageRect.height),
-                                    painter: _DetectionsPainter(
-                                      faces: _faces,
-                                      imageRectOnCanvas: Rect.fromLTWH(0, 0,
-                                          imageRect.width, imageRect.height),
-                                      originalImageSize: _originalSize!,
-                                      showBoundingBoxes: _showBoundingBoxes,
-                                      showMesh: _showMesh,
-                                      showLandmarks: _showLandmarks,
-                                      showIrises: _showIrises,
-                                      showEyeContours: _showEyeContours,
-                                      showEyeMesh: _showEyeMesh,
-                                      boundingBoxColor: _boundingBoxColor,
-                                      landmarkColor: _landmarkColor,
-                                      meshColor: _meshColor,
-                                      irisColor: _irisColor,
-                                      eyeContourColor: _eyeContourColor,
-                                      eyeMeshColor: _eyeMeshColor,
-                                      boundingBoxThickness:
-                                          _boundingBoxThickness,
-                                      landmarkSize: _landmarkSize,
-                                      meshSize: _meshSize,
-                                      eyeMeshSize: _eyeMeshSize,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            );
-                          },
-                        )
-                      : Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
+                child: ListView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  children: [
+                    // Display Options
+                    ExpansionTile(
+                      title: const Text('Display Options',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      initiallyExpanded: true,
+                      children: [
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
                           children: [
-                            Icon(Icons.image_outlined,
-                                size: 64, color: Colors.grey[400]),
-                            const SizedBox(height: 16),
-                            Text(
-                              'No image selected',
-                              style: TextStyle(
-                                  fontSize: 18, color: Colors.grey[600]),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Pick an image to start detection',
-                              style: TextStyle(
-                                  fontSize: 14, color: Colors.grey[500]),
-                            ),
+                            _buildCheckbox(
+                                'Bounding Boxes',
+                                _showBoundingBoxes,
+                                (value) => setState(
+                                    () => _showBoundingBoxes = value ?? false)),
+                            _buildCheckbox(
+                                'Mesh',
+                                _showMesh,
+                                (value) =>
+                                    _onFeatureToggle('mesh', value ?? false)),
+                            _buildCheckbox(
+                                'Landmarks',
+                                _showLandmarks,
+                                (value) => setState(
+                                    () => _showLandmarks = value ?? false)),
+                            _buildCheckbox(
+                                'Irises',
+                                _showIrises,
+                                (value) =>
+                                    _onFeatureToggle('iris', value ?? false)),
+                            _buildCheckbox(
+                                'Eye Contour',
+                                _showEyeContours,
+                                (value) => _onFeatureToggle(
+                                    'eyeContour', value ?? false)),
+                            _buildCheckbox(
+                                'Eye Mesh',
+                                _showEyeMesh,
+                                (value) => _onFeatureToggle(
+                                    'eyeMesh', value ?? false)),
                           ],
                         ),
+                        const SizedBox(height: 8),
+                      ],
+                    ),
+                    // Colors
+                    ExpansionTile(
+                      title: const Text('Colors',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      children: [
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            _buildColorButton(
+                                'BBox',
+                                _boundingBoxColor,
+                                (color) =>
+                                    setState(() => _boundingBoxColor = color)),
+                            _buildColorButton(
+                                'Landmarks',
+                                _landmarkColor,
+                                (color) =>
+                                    setState(() => _landmarkColor = color)),
+                            _buildColorButton('Mesh', _meshColor,
+                                (color) => setState(() => _meshColor = color)),
+                            _buildColorButton('Irises', _irisColor,
+                                (color) => setState(() => _irisColor = color)),
+                            _buildColorButton(
+                                'Eye Contour',
+                                _eyeContourColor,
+                                (color) =>
+                                    setState(() => _eyeContourColor = color)),
+                            _buildColorButton(
+                                'Eye Mesh',
+                                _eyeMeshColor,
+                                (color) =>
+                                    setState(() => _eyeMeshColor = color)),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                    ),
+                    // Sizes
+                    ExpansionTile(
+                      title: const Text('Sizes',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      children: [
+                        _buildCompactSlider(
+                            'BBox',
+                            _boundingBoxThickness,
+                            0.5,
+                            10.0,
+                            (value) =>
+                                setState(() => _boundingBoxThickness = value)),
+                        _buildCompactSlider(
+                            'Landmark',
+                            _landmarkSize,
+                            0.5,
+                            15.0,
+                            (value) => setState(() => _landmarkSize = value)),
+                        _buildCompactSlider('Mesh', _meshSize, 0.1, 10.0,
+                            (value) => setState(() => _meshSize = value)),
+                        _buildCompactSlider('Eye Mesh', _eyeMeshSize, 0.1, 10.0,
+                            (value) => setState(() => _eyeMeshSize = value)),
+                        const SizedBox(height: 8),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
-          if (!_showSettings && hasImage)
-            Positioned(
-              top: 50,
-              right: 16,
-              child: FloatingActionButton(
-                mini: true,
-                onPressed: () => setState(() => _showSettings = true),
-                backgroundColor: Colors.black.withAlpha(179),
-                child: const Icon(Icons.settings, color: Colors.white),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCompactSlider(String label, double value, double min, double max,
+      ValueChanged<double> onChanged) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2.0),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 70,
+            child: Text(label, style: const TextStyle(fontSize: 12)),
+          ),
+          Expanded(
+            child: SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                trackHeight: 2.0,
+                thumbShape:
+                    const RoundSliderThumbShape(enabledThumbRadius: 6.0),
+                overlayShape:
+                    const RoundSliderOverlayShape(overlayRadius: 12.0),
+              ),
+              child: Slider(
+                value: value,
+                min: min,
+                max: max,
+                divisions: ((max - min) * 10).round(),
+                label: value.toStringAsFixed(1),
+                onChanged: onChanged,
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompactPerformanceBadge() {
+    if (_totalTimeMs == null) return const SizedBox.shrink();
+
+    String performance;
+    Color color;
+    IconData icon;
+
+    if (_totalTimeMs! < 200) {
+      performance = 'Excellent';
+      color = Colors.green;
+      icon = Icons.speed;
+    } else if (_totalTimeMs! < 500) {
+      performance = 'Good';
+      color = Colors.lightGreen;
+      icon = Icons.thumb_up;
+    } else if (_totalTimeMs! < 1000) {
+      performance = 'Fair';
+      color = Colors.orange;
+      icon = Icons.warning_amber;
+    } else {
+      performance = 'Slow';
+      color = Colors.red;
+      icon = Icons.hourglass_bottom;
+    }
+
+    return Positioned(
+      top: 12,
+      left: 12,
+      child: GestureDetector(
+        onTap: _showTimingDetails,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.black.withAlpha(179),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: color),
+              const SizedBox(width: 6),
+              Text(
+                '${_totalTimeMs}ms',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                performance,
+                style: TextStyle(color: color, fontSize: 12),
+              ),
+              const SizedBox(width: 4),
+              const Icon(Icons.info_outline, size: 12, color: Colors.white54),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showTimingDetails() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.timer, color: Colors.blue),
+            const SizedBox(width: 8),
+            const Text('Processing Details'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildStatusRow('Detection', true, Colors.green),
+            _buildStatusRow('Mesh', _hasProcessedMesh,
+                _showMesh ? Colors.green : Colors.grey),
+            _buildStatusRow('Iris', _hasProcessedIris,
+                _showIrises ? Colors.green : Colors.grey),
+            const Divider(height: 16),
+            if (_detectionTimeMs != null)
+              _buildTimingRow('Detection', _detectionTimeMs!, Colors.green),
+            if (_meshTimeMs != null)
+              _buildTimingRow('Mesh Refinement', _meshTimeMs!, Colors.pink),
+            if (_irisTimeMs != null)
+              _buildTimingRow(
+                  'Iris Refinement', _irisTimeMs!, Colors.blueAccent),
+            if (_totalTimeMs != null)
+              _buildTimingRow('Total', _totalTimeMs!, Colors.blue,
+                  isBold: true),
+            const SizedBox(height: 12),
+            _buildPerformanceIndicator(),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool hasImage = _imageBytes != null && _originalSize != null;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Still Image Detection'),
+        backgroundColor: Colors.blue,
+        foregroundColor: Colors.white,
+        actions: [
+          // Pick Image button
+          IconButton(
+            onPressed: _pickAndRun,
+            icon: const Icon(Icons.add_photo_alternate),
+            tooltip: 'Pick Image',
+          ),
+          // Model dropdown
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4.0),
+            child: DropdownButton<FaceDetectionModel>(
+              value: _detectionModel,
+              dropdownColor: Colors.blue[800],
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+              underline: const SizedBox(),
+              icon: const Icon(Icons.arrow_drop_down, color: Colors.white),
+              items: const [
+                DropdownMenuItem(
+                  value: FaceDetectionModel.frontCamera,
+                  child: Text('Front'),
+                ),
+                DropdownMenuItem(
+                  value: FaceDetectionModel.backCamera,
+                  child: Text('Back'),
+                ),
+                DropdownMenuItem(
+                  value: FaceDetectionModel.shortRange,
+                  child: Text('Short'),
+                ),
+                DropdownMenuItem(
+                  value: FaceDetectionModel.full,
+                  child: Text('Full'),
+                ),
+                DropdownMenuItem(
+                  value: FaceDetectionModel.fullSparse,
+                  child: Text('Sparse'),
+                ),
+              ],
+              onChanged: (value) async {
+                if (value != null && value != _detectionModel) {
+                  setState(() => _detectionModel = value);
+                  await _initFaceDetector();
+                  if (_imageBytes != null) {
+                    await _processImage(_imageBytes!);
+                  }
+                }
+              },
+            ),
+          ),
+          // Settings button
+          IconButton(
+            onPressed: _showSettingsSheet,
+            icon: const Icon(Icons.tune),
+            tooltip: 'Settings',
+          ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          // Main image display area - takes full space
+          Center(
+            child: hasImage
+                ? LayoutBuilder(
+                    builder: (context, constraints) {
+                      final fitted = applyBoxFit(
+                        BoxFit.contain,
+                        _originalSize!,
+                        Size(constraints.maxWidth, constraints.maxHeight),
+                      );
+                      final Size renderSize = fitted.destination;
+                      final Rect imageRect = Alignment.center.inscribe(
+                        renderSize,
+                        Offset.zero &
+                            Size(constraints.maxWidth, constraints.maxHeight),
+                      );
+
+                      return Stack(
+                        children: [
+                          Positioned.fromRect(
+                            rect: imageRect,
+                            child: SizedBox.fromSize(
+                              size: renderSize,
+                              child: Image.memory(
+                                _imageBytes!,
+                                fit: BoxFit.fill,
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            left: imageRect.left,
+                            top: imageRect.top,
+                            width: imageRect.width,
+                            height: imageRect.height,
+                            child: CustomPaint(
+                              size: Size(imageRect.width, imageRect.height),
+                              painter: _DetectionsPainter(
+                                faces: _faces,
+                                imageRectOnCanvas: Rect.fromLTWH(
+                                    0, 0, imageRect.width, imageRect.height),
+                                originalImageSize: _originalSize!,
+                                showBoundingBoxes: _showBoundingBoxes,
+                                showMesh: _showMesh,
+                                showLandmarks: _showLandmarks,
+                                showIrises: _showIrises,
+                                showEyeContours: _showEyeContours,
+                                showEyeMesh: _showEyeMesh,
+                                boundingBoxColor: _boundingBoxColor,
+                                landmarkColor: _landmarkColor,
+                                meshColor: _meshColor,
+                                irisColor: _irisColor,
+                                eyeContourColor: _eyeContourColor,
+                                eyeMeshColor: _eyeMeshColor,
+                                boundingBoxThickness: _boundingBoxThickness,
+                                landmarkSize: _landmarkSize,
+                                meshSize: _meshSize,
+                                eyeMeshSize: _eyeMeshSize,
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  )
+                : Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.add_photo_alternate,
+                          size: 80, color: Colors.grey[300]),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No image selected',
+                        style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Tap the + icon to pick an image',
+                        style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                      ),
+                    ],
+                  ),
+          ),
+          // Floating performance badge
+          if (hasImage) _buildCompactPerformanceBadge(),
+          // Loading overlay
           if (_isLoading)
             Container(
               color: Colors.black54,
@@ -839,48 +931,6 @@ class _ExampleState extends State<Example> {
             const Icon(Icons.arrow_drop_down, size: 16),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildSlider(String label, double value, double min, double max,
-      ValueChanged<double> onChanged) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2.0),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(label, style: const TextStyle(fontSize: 12)),
-          ),
-          Expanded(
-            child: SliderTheme(
-              data: SliderTheme.of(context).copyWith(
-                trackHeight: 2.0,
-                thumbShape:
-                    const RoundSliderThumbShape(enabledThumbRadius: 6.0),
-                overlayShape:
-                    const RoundSliderOverlayShape(overlayRadius: 12.0),
-              ),
-              child: Slider(
-                value: value,
-                min: min,
-                max: max,
-                divisions: ((max - min) * 10).round(),
-                label: value.toStringAsFixed(1),
-                onChanged: onChanged,
-              ),
-            ),
-          ),
-          SizedBox(
-            width: 35,
-            child: Text(
-              value.toStringAsFixed(1),
-              style: const TextStyle(fontSize: 11),
-              textAlign: TextAlign.right,
-            ),
-          ),
-        ],
       ),
     );
   }
