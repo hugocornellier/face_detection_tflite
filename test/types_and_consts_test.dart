@@ -211,7 +211,6 @@ void main() {
 
       final eye = Eye(irisCenter: center, irisContour: irisContour, mesh: mesh);
 
-      // When mesh has < 15 points, contour returns the full mesh
       expect(eye.contour.length, 10);
       expect(eye.contour, equals(mesh));
     });
@@ -547,14 +546,12 @@ void main() {
       final rect = RectF(0.4, 0.4, 0.6, 0.6);
       final expanded = rect.expand(0.5);
 
-      // Center should remain at (0.5, 0.5)
       final centerX = (expanded.xmin + expanded.xmax) / 2;
       final centerY = (expanded.ymin + expanded.ymax) / 2;
 
       expect(centerX, closeTo(0.5, 0.0001));
       expect(centerY, closeTo(0.5, 0.0001));
 
-      // Size should increase by factor of 1.5 (1 + 0.5)
       expect(expanded.w, closeTo(0.3, 0.0001));
       expect(expanded.h, closeTo(0.3, 0.0001));
     });
@@ -563,14 +560,12 @@ void main() {
       final rect = RectF(0.3, 0.3, 0.7, 0.7);
       final shrunk = rect.expand(-0.25);
 
-      // Center should remain at (0.5, 0.5)
       final centerX = (shrunk.xmin + shrunk.xmax) / 2;
       final centerY = (shrunk.ymin + shrunk.ymax) / 2;
 
       expect(centerX, closeTo(0.5, 0.0001));
       expect(centerY, closeTo(0.5, 0.0001));
 
-      // Size should decrease by factor of 0.75 (1 - 0.25)
       expect(shrunk.w, closeTo(0.3, 0.0001));
       expect(shrunk.h, closeTo(0.3, 0.0001));
     });
@@ -629,12 +624,18 @@ void main() {
     test('should denormalize landmarks to pixel coordinates', () {
       final bbox = RectF(0.2, 0.3, 0.8, 0.7);
       final keypoints = [
-        0.5, 0.5, // Center point (normalized)
-        0.0, 0.0, // Top-left (normalized)
-        1.0, 1.0, // Bottom-right (normalized)
-        0.25, 0.75, // Some point
-        0.1, 0.2,
-        0.9, 0.8,
+        0.5,
+        0.5,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        0.25,
+        0.75,
+        0.1,
+        0.2,
+        0.9,
+        0.8,
       ];
 
       final detection = Detection(
@@ -646,13 +647,12 @@ void main() {
 
       final landmarks = detection.landmarks;
 
-      // Check denormalization
-      expect(landmarks[FaceLandmarkType.leftEye]!.x, 320.0); // 0.5 * 640
-      expect(landmarks[FaceLandmarkType.leftEye]!.y, 240.0); // 0.5 * 480
-      expect(landmarks[FaceLandmarkType.rightEye]!.x, 0.0); // 0.0 * 640
-      expect(landmarks[FaceLandmarkType.rightEye]!.y, 0.0); // 0.0 * 480
-      expect(landmarks[FaceLandmarkType.noseTip]!.x, 640.0); // 1.0 * 640
-      expect(landmarks[FaceLandmarkType.noseTip]!.y, 480.0); // 1.0 * 480
+      expect(landmarks[FaceLandmarkType.leftEye]!.x, 320.0);
+      expect(landmarks[FaceLandmarkType.leftEye]!.y, 240.0);
+      expect(landmarks[FaceLandmarkType.rightEye]!.x, 0.0);
+      expect(landmarks[FaceLandmarkType.rightEye]!.y, 0.0);
+      expect(landmarks[FaceLandmarkType.noseTip]!.x, 640.0);
+      expect(landmarks[FaceLandmarkType.noseTip]!.y, 480.0);
     });
 
     test('should throw when landmarks called without imageSize', () {
@@ -789,18 +789,17 @@ void main() {
         imageSize: const Size(100, 100),
       );
 
-      // Two eyes (5 points each) where index 2 is the iris center per _parseIris
       final leftEyePoints = [
         const Point(10.0, 10.0),
         const Point(20.0, 10.0),
-        const Point(15.0, 15.0), // center
+        const Point(15.0, 15.0),
         const Point(15.0, 8.0),
         const Point(15.0, 22.0),
       ];
       final rightEyePoints = [
         const Point(80.0, 10.0),
         const Point(90.0, 10.0),
-        const Point(85.0, 15.0), // center
+        const Point(85.0, 15.0),
         const Point(85.0, 8.0),
         const Point(85.0, 22.0),
       ];
@@ -816,7 +815,6 @@ void main() {
       expect(landmarks.leftEye, equals(const Point(15.0, 15.0)));
       expect(landmarks.rightEye, equals(const Point(85.0, 15.0)));
 
-      // Other landmarks should still be derived from detection keypoints
       expect(
         landmarks.noseTip,
         equals(const Point(50.0, 60.0)),
@@ -852,23 +850,19 @@ void main() {
       final map = face.toMap();
       final restored = Face.fromMap(map);
 
-      // Verify bounding box preserved
       expect(restored.boundingBox.topLeft.x,
           closeTo(face.boundingBox.topLeft.x, 0.01));
       expect(restored.boundingBox.topLeft.y,
           closeTo(face.boundingBox.topLeft.y, 0.01));
 
-      // Verify mesh preserved
       expect(restored.mesh, isNotNull);
       expect(restored.mesh!.length, 468);
       expect(restored.mesh![0].x, face.mesh![0].x);
       expect(restored.mesh![0].z, face.mesh![0].z);
 
-      // Verify iris points preserved
       expect(restored.irisPoints.length, 10);
       expect(restored.irisPoints[0].x, face.irisPoints[0].x);
 
-      // Verify original size preserved
       expect(restored.originalSize.width, 200);
       expect(restored.originalSize.height, 100);
     });
@@ -949,6 +943,118 @@ void main() {
 
       expect(config.mode, PerformanceMode.xnnpack);
       expect(config.numThreads, isNull);
+    });
+  });
+
+  group('Getter caching', () {
+    Face createFaceWithIrisPoints(List<Point> irisPoints) {
+      final detection = Detection(
+        boundingBox: RectF(0.2, 0.3, 0.8, 0.7),
+        score: 0.95,
+        keypointsXY: TestUtils.generateValidKeypoints(),
+        imageSize: TestConstants.mediumImage,
+      );
+
+      final mesh = FaceMesh(
+        List.generate(468, (i) => Point(i.toDouble(), i.toDouble())),
+      );
+
+      return Face(
+        detection: detection,
+        mesh: mesh,
+        irises: irisPoints,
+        originalSize: TestConstants.mediumImage,
+      );
+    }
+
+    List<Point> generate152Points() {
+      return List.generate(152, (i) => Point(i.toDouble(), i.toDouble()));
+    }
+
+    test('Face.eyes returns identical object on repeated access', () {
+      final face = createFaceWithIrisPoints(generate152Points());
+
+      final eyes1 = face.eyes;
+      final eyes2 = face.eyes;
+
+      expect(eyes1, isNotNull);
+      expect(identical(eyes1, eyes2), isTrue,
+          reason: 'Face.eyes should return cached object on repeated access');
+    });
+
+    test('Face.eyes caches null result for empty iris points', () {
+      final face = createFaceWithIrisPoints([]);
+
+      final eyes1 = face.eyes;
+      final eyes2 = face.eyes;
+
+      expect(eyes1, isNull);
+      expect(identical(eyes1, eyes2), isTrue);
+    });
+
+    test(
+        'Eye.contour returns identical object when using optimized constructor',
+        () {
+      final mesh = List.generate(71, (i) => Point(i.toDouble(), i.toDouble()));
+      final eye = Eye.optimized(
+        irisCenter: Point(100, 100),
+        irisContour: [Point(1, 1), Point(2, 2), Point(3, 3), Point(4, 4)],
+        mesh: mesh,
+      );
+
+      final contour1 = eye.contour;
+      final contour2 = eye.contour;
+
+      expect(contour1.length, kMaxEyeLandmark);
+      expect(identical(contour1, contour2), isTrue,
+          reason:
+              'Eye.contour should return cached object when using optimized constructor');
+    });
+
+    test('Eye.contour computes on access for const constructor', () {
+      const eye = Eye(
+        irisCenter: Point(100, 100, 0),
+        irisContour: [Point(1, 1, 0)],
+      );
+
+      expect(eye.contour, isEmpty);
+    });
+
+    test('Eye.fromMap uses optimized constructor with caching', () {
+      final mesh = List.generate(71, (i) => Point(i.toDouble(), i.toDouble()));
+      final originalEye = Eye.optimized(
+        irisCenter: Point(100, 100),
+        irisContour: [Point(1, 1), Point(2, 2), Point(3, 3), Point(4, 4)],
+        mesh: mesh,
+      );
+
+      final map = originalEye.toMap();
+      final restoredEye = Eye.fromMap(map);
+
+      final contour1 = restoredEye.contour;
+      final contour2 = restoredEye.contour;
+
+      expect(identical(contour1, contour2), isTrue,
+          reason: 'Eye.fromMap should use optimized constructor with caching');
+    });
+
+    test('Face serialization round-trip recomputes cache correctly', () {
+      final face = createFaceWithIrisPoints(generate152Points());
+      final originalEyes = face.eyes;
+
+      final map = face.toMap();
+      final restored = Face.fromMap(map);
+      final restoredEyes = restored.eyes;
+
+      expect(identical(originalEyes, restoredEyes), isFalse,
+          reason: 'Serialization creates new objects');
+      expect(restoredEyes?.leftEye?.irisCenter,
+          equals(originalEyes?.leftEye?.irisCenter));
+      expect(restoredEyes?.rightEye?.irisCenter,
+          equals(originalEyes?.rightEye?.irisCenter));
+
+      final restoredEyes2 = restored.eyes;
+      expect(identical(restoredEyes, restoredEyes2), isTrue);
     });
   });
 }

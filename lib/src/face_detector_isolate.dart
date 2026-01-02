@@ -127,7 +127,6 @@ class FaceDetectorIsolate {
     }
 
     try {
-      // Pre-load all model bytes in the main isolate (where rootBundle is available)
       final faceDetectionPath =
           'packages/face_detection_tflite/assets/models/${_nameFor(model)}';
       const faceLandmarkPath =
@@ -176,7 +175,6 @@ class FaceDetectorIsolate {
           if (message is SendPort) {
             initCompleter.complete(message);
           } else if (message is Map && message['error'] != null) {
-            // Handle initialization errors from the worker
             initCompleter.completeError(StateError(message['error'] as String));
           } else {
             initCompleter.completeError(
@@ -320,12 +318,10 @@ class FaceDetectorIsolate {
     cv.Mat image, {
     FaceDetectionMode mode = FaceDetectionMode.full,
   }) async {
-    // Extract Mat properties for reconstruction in isolate
     final int rows = image.rows;
     final int cols = image.cols;
     final int type = image.type.value;
 
-    // Get raw pixel data - this creates a copy
     final Uint8List data = image.data;
 
     return detectFacesFromMatBytes(
@@ -467,7 +463,6 @@ class FaceDetectorIsolate {
   /// After calling dispose, the instance cannot be reused. Create a new
   /// instance with [spawn] if needed.
   Future<void> dispose() async {
-    // Fail all pending requests
     for (final completer in _pending.values) {
       if (!completer.isCompleted) {
         completer.completeError(StateError('FaceDetectorIsolate disposed'));
@@ -475,16 +470,12 @@ class FaceDetectorIsolate {
     }
     _pending.clear();
 
-    // Tell the isolate to dispose its detector
     if (_initialized && _sendPort != null) {
       try {
         _sendPort!.send({'id': -1, 'op': 'dispose'});
-      } catch (_) {
-        // Isolate may already be dead
-      }
+      } catch (_) {}
     }
 
-    // Kill isolate and close ports
     _isolate?.kill(priority: Isolate.immediate);
     _receivePort.close();
 
@@ -502,7 +493,6 @@ class FaceDetectorIsolate {
     FaceDetector? detector;
 
     try {
-      // Materialize the model bytes from TransferableTypedData
       final faceDetectionBytes =
           data.faceDetectionBytes.materialize().asUint8List();
       final faceLandmarkBytes =
@@ -518,7 +508,6 @@ class FaceDetectorIsolate {
         (m) => m.name == data.performanceModeName,
       );
 
-      // Initialize FaceDetector with pre-loaded model bytes (including embedding)
       detector = FaceDetector();
       await detector.initializeFromBuffers(
         faceDetectionBytes: faceDetectionBytes,
@@ -533,7 +522,6 @@ class FaceDetectorIsolate {
         meshPoolSize: data.meshPoolSize,
       );
 
-      // Send the worker's send port to signal ready
       mainSendPort.send(workerReceivePort.sendPort);
     } catch (e, st) {
       mainSendPort.send({'error': 'Isolate initialization failed: $e\n$st'});
@@ -592,7 +580,6 @@ class FaceDetectorIsolate {
               (m) => m.name == modeName,
             );
 
-            // Reconstruct cv.Mat from raw bytes
             final matType = cv.MatType(matTypeValue);
             final mat = cv.Mat.fromList(height, width, matType, matBytes);
 
@@ -601,7 +588,6 @@ class FaceDetectorIsolate {
               final serialized = faces.map((f) => f.toMap()).toList();
               mainSendPort.send({'id': id, 'result': serialized});
             } finally {
-              // Always dispose the reconstructed Mat
               mat.dispose();
             }
 
@@ -651,7 +637,6 @@ class FaceDetectorIsolate {
             detector?.dispose();
             detector = null;
             workerReceivePort.close();
-          // Don't send response for dispose (id is -1)
         }
       } catch (e, st) {
         mainSendPort.send({'id': id, 'error': '$e\n$st'});

@@ -1,15 +1,5 @@
 // ignore_for_file: avoid_print
 
-// Integration tests for GPU delegate on Android.
-//
-// These tests verify that:
-// 1. GPU delegate can be safely attempted with fallback to CPU
-// 2. Detection results are valid regardless of delegate used
-// 3. No crashes occur during delegate initialization
-//
-// Run on Android device:
-//   flutter test integration_test/gpu_delegate_test.dart -d <device_id>
-
 import 'dart:io';
 
 import 'package:flutter/services.dart';
@@ -20,7 +10,6 @@ import 'package:face_detection_tflite/face_detection_tflite.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  // GPU initialization can be slow on Android - use longer timeout
   const gpuTimeout = Timeout(Duration(minutes: 3));
 
   group('GPU Delegate Safety Tests', () {
@@ -51,7 +40,6 @@ void main() {
         final detector = FaceDetector();
 
         try {
-          // Measure initialization time
           final initSw = Stopwatch()..start();
           await detector.initialize(performanceConfig: config);
           initSw.stop();
@@ -64,10 +52,8 @@ void main() {
             continue;
           }
 
-          // Warmup
           await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
 
-          // Benchmark detection
           const runs = 5;
           final detectionTimes = <int>[];
 
@@ -114,7 +100,6 @@ void main() {
         }
       }
 
-      // Print summary
       print('\n${'=' * 60}');
       print('SUMMARY');
       print('=' * 60);
@@ -140,7 +125,6 @@ void main() {
       }
       print('=' * 60);
 
-      // Analyze results
       if (results['CPU (disabled)'] != null &&
           !results['CPU (disabled)']!.containsKey('error')) {
         final cpuDetect =
@@ -193,7 +177,6 @@ void main() {
 
       print('=' * 60);
 
-      // Test passes if no crashes occurred
       expect(results.isNotEmpty, true);
     }, timeout: gpuTimeout);
 
@@ -206,7 +189,6 @@ void main() {
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
-      // CPU detector
       final cpuDetector = FaceDetector();
       await cpuDetector.initialize(
         performanceConfig: PerformanceConfig.disabled,
@@ -217,7 +199,6 @@ void main() {
       print('CPU detected ${cpuFaces.length} faces');
       expect(cpuFaces, isNotEmpty);
 
-      // Auto detector (what users will typically use)
       final autoDetector = FaceDetector();
       await autoDetector.initialize(
         performanceConfig: PerformanceConfig.auto(),
@@ -227,7 +208,6 @@ void main() {
 
       print('Auto detected ${autoFaces.length} faces');
 
-      // Compare results
       expect(autoFaces.length, cpuFaces.length,
           reason: 'Auto and CPU should detect same number of faces');
 
@@ -240,7 +220,6 @@ void main() {
 
         print('Face $i: bbox diff = ($xDiff, $yDiff) pixels');
 
-        // Results should be nearly identical
         expect(xDiff, lessThan(2));
         expect(yDiff, lessThan(2));
       }

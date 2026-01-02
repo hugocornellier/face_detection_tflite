@@ -1,15 +1,5 @@
 // ignore_for_file: avoid_print
 
-// Benchmark tests for FaceDetector.
-//
-// This test measures the performance of face detection across multiple iterations
-// and sample images. Results are printed to the console with special markers that
-// the runBenchmark.sh script extracts and saves to benchmark_results/*.json files.
-//
-// To run:
-// - Use the runBenchmark.sh script in the project root (recommended)
-// - Or run directly: flutter test integration_test/benchmark_test.dart -d macos
-
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,7 +7,6 @@ import 'package:integration_test/integration_test.dart';
 import 'package:face_detection_tflite/face_detection_tflite.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 
-// Benchmark configuration
 const int iterations = 20;
 const List<String> sampleImages = [
   'assets/samples/landmark-ex1.jpg',
@@ -147,8 +136,7 @@ void main() {
       () async {
         final detector = FaceDetector();
         await detector.initialize(
-          performanceConfig:
-              PerformanceConfig.xnnpack(), // Enable XNNPACK for 2-5x speedup
+          performanceConfig: PerformanceConfig.xnnpack(),
         );
 
         print('\n${'=' * 60}');
@@ -164,7 +152,6 @@ void main() {
           final List<int> timings = [];
           int detectionCount = 0;
 
-          // Run iterations using OpenCV-accelerated API
           for (int i = 0; i < iterations; i++) {
             final stopwatch = Stopwatch()..start();
             final results = await detector.detectFaces(
@@ -187,7 +174,6 @@ void main() {
           allStats.add(stats);
         }
 
-        // Print iris statistics
         print('\n${'=' * 60}');
         print('Iris Detection Statistics:');
         print('  Successful: ${detector.irisOkCount}');
@@ -201,7 +187,6 @@ void main() {
 
         detector.dispose();
 
-        // Write results to file
         final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
         final benchmarkResults = BenchmarkResults(
           timestamp: timestamp,
@@ -246,7 +231,6 @@ void main() {
           final List<int> timings = [];
           int detectionCount = 0;
 
-          // Run iterations - decode fresh Mat each time to avoid state issues
           for (int i = 0; i < iterations; i++) {
             final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
 
@@ -273,7 +257,6 @@ void main() {
           allStats.add(stats);
         }
 
-        // Print iris statistics
         print('\n${'=' * 60}');
         print('Iris Detection Statistics:');
         print('  Successful: ${detector.irisOkCount}');
@@ -287,7 +270,6 @@ void main() {
 
         detector.dispose();
 
-        // Write results to file
         final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
         final benchmarkResults = BenchmarkResults(
           timestamp: timestamp,
@@ -312,10 +294,6 @@ void main() {
     test(
       'Benchmark comparison: Pipeline only (excludes decode)',
       () async {
-        // This benchmark compares the actual detection pipeline performance
-        // by pre-decoding images, which simulates live camera scenarios
-        // where frames are already in memory.
-
         final detector = FaceDetector();
         await detector.initialize(
           performanceConfig: PerformanceConfig.xnnpack(),
@@ -330,14 +308,8 @@ void main() {
           final ByteData data = await rootBundle.load(imagePath);
           final Uint8List bytes = data.buffer.asUint8List();
 
-          // Pre-decode for both APIs
           final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
 
-          // Benchmark old API with pre-decoded (uses isolate worker)
-          // Note: detectFaces still decodes internally, so we measure detectFacesFromMat
-          // as the "pipeline only" metric
-
-          // Benchmark OpenCV pipeline (detectFacesFromMat)
           final List<int> opencvTimings = [];
           for (int i = 0; i < iterations; i++) {
             final stopwatch = Stopwatch()..start();
@@ -349,7 +321,6 @@ void main() {
 
           mat.dispose();
 
-          // Benchmark full API including decode (for reference)
           final List<int> fullTimings = [];
           for (int i = 0; i < iterations; i++) {
             final stopwatch = Stopwatch()..start();
@@ -384,7 +355,6 @@ void main() {
     test(
       'Benchmark: Live camera simulation (fresh Mat each frame)',
       () async {
-        // Simulates live camera where each frame is a fresh Mat
         final detector = FaceDetector();
         await detector.initialize(
           performanceConfig: PerformanceConfig.xnnpack(),
@@ -395,11 +365,9 @@ void main() {
         print('Fresh cv.Mat each frame (simulates camera frame processing)');
         print('=' * 60);
 
-        // Use a single image for sustained throughput test
         final ByteData data = await rootBundle.load(sampleImages[0]);
         final Uint8List bytes = data.buffer.asUint8List();
 
-        // Warm-up with fresh Mats
         for (int i = 0; i < 5; i++) {
           final warmupMat = cv.imdecode(bytes, cv.IMREAD_COLOR);
           await detector.detectFacesFromMat(warmupMat,
@@ -407,7 +375,6 @@ void main() {
           warmupMat.dispose();
         }
 
-        // Measure sustained throughput with fresh Mat each frame
         const int frames = 30;
         final stopwatch = Stopwatch()..start();
         for (int i = 0; i < frames; i++) {

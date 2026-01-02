@@ -24,15 +24,73 @@ class ImageGenerator {
   /// Creates a minimal 1x1 PNG image
   static Uint8List create1x1Png() {
     return Uint8List.fromList([
-      0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG signature
-      0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR chunk
-      0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, // Width: 1, Height: 1
-      0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, // Bit depth, color type
-      0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, // IDAT chunk
-      0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
-      0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, // Image data
-      0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, // IEND chunk
-      0x42, 0x60, 0x82
+      0x89,
+      0x50,
+      0x4E,
+      0x47,
+      0x0D,
+      0x0A,
+      0x1A,
+      0x0A,
+      0x00,
+      0x00,
+      0x00,
+      0x0D,
+      0x49,
+      0x48,
+      0x44,
+      0x52,
+      0x00,
+      0x00,
+      0x00,
+      0x01,
+      0x00,
+      0x00,
+      0x00,
+      0x01,
+      0x08,
+      0x06,
+      0x00,
+      0x00,
+      0x00,
+      0x1F,
+      0x15,
+      0xC4,
+      0x89,
+      0x00,
+      0x00,
+      0x00,
+      0x0A,
+      0x49,
+      0x44,
+      0x41,
+      0x54,
+      0x78,
+      0x9C,
+      0x63,
+      0x00,
+      0x01,
+      0x00,
+      0x00,
+      0x05,
+      0x00,
+      0x01,
+      0x0D,
+      0x0A,
+      0x2D,
+      0xB4,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x49,
+      0x45,
+      0x4E,
+      0x44,
+      0xAE,
+      0x42,
+      0x60,
+      0x82
     ]);
   }
 
@@ -77,7 +135,6 @@ void main() {
       final faces =
           await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
 
-      // Should not crash, should return empty
       expect(faces, isEmpty);
     });
 
@@ -119,7 +176,6 @@ void main() {
       final faces =
           await detector.detectFacesFromMat(mat, mode: FaceDetectionMode.fast);
 
-      // No faces in solid color image
       expect(faces, isEmpty);
       mat.dispose();
     });
@@ -127,7 +183,6 @@ void main() {
     test('should handle 4K resolution (3840x2160)', () async {
       final mat = ImageGenerator.createLargeMat(3840, 2160);
 
-      // Should not crash or timeout
       final faces =
           await detector.detectFacesFromMat(mat, mode: FaceDetectionMode.fast);
 
@@ -160,13 +215,11 @@ void main() {
     test('should handle empty byte array', () async {
       final bytes = Uint8List(0);
 
-      // Should throw or return empty, not crash
       try {
         final faces =
             await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
         expect(faces, isEmpty);
       } catch (e) {
-        // Exception is acceptable for truly invalid input
         expect(e, isNotNull);
       }
     });
@@ -200,14 +253,12 @@ void main() {
     test('should recover after invalid input', () async {
       final invalidBytes = Uint8List.fromList([1, 2, 3, 4, 5]);
 
-      // Process invalid input
       try {
         await detector.detectFaces(invalidBytes, mode: FaceDetectionMode.fast);
       } catch (e) {
-        // Expected
+        // Expected - invalid bytes should fail; testing recovery
       }
 
-      // Should still work with valid input
       final faces = await detector.detectFaces(validFaceImage,
           mode: FaceDetectionMode.fast);
       expect(faces, isNotEmpty, reason: 'Should recover after invalid input');
@@ -228,7 +279,6 @@ void main() {
     test('should return empty for gradient image', () async {
       final mat = cv.Mat.zeros(256, 256, cv.MatType.CV_8UC3);
 
-      // Create gradient
       for (int y = 0; y < 256; y++) {
         for (int x = 0; x < 256; x++) {
           mat.set(y, x, cv.Vec3b(x, y, 128));
@@ -249,7 +299,6 @@ void main() {
       final faces =
           await detector.detectFacesFromMat(mat, mode: FaceDetectionMode.fast);
 
-      // May or may not detect false positives in noise
       expect(faces, isNotNull);
       mat.dispose();
     });
@@ -314,13 +363,11 @@ void main() {
       final imgWidth = face.originalSize.width.toDouble();
       final imgHeight = face.originalSize.height.toDouble();
 
-      // All corners should be within image
       expect(bbox.topLeft.x, greaterThanOrEqualTo(0));
       expect(bbox.topLeft.y, greaterThanOrEqualTo(0));
       expect(bbox.bottomRight.x, lessThanOrEqualTo(imgWidth));
       expect(bbox.bottomRight.y, lessThanOrEqualTo(imgHeight));
 
-      // Width and height should be positive
       expect(bbox.width, greaterThan(0));
       expect(bbox.height, greaterThan(0));
     });
@@ -359,7 +406,6 @@ void main() {
       final imgHeight = face.originalSize.height.toDouble();
 
       for (final point in face.mesh!.points) {
-        // Mesh points should be within image (with some tolerance)
         expect(point.x, greaterThanOrEqualTo(-imgWidth * 0.1));
         expect(point.y, greaterThanOrEqualTo(-imgHeight * 0.1));
         expect(point.x, lessThanOrEqualTo(imgWidth * 1.1));
@@ -411,7 +457,6 @@ void main() {
 
       if (faces.length < 2) return;
 
-      // Check that faces have distinct bounding boxes
       for (int i = 0; i < faces.length; i++) {
         for (int j = i + 1; j < faces.length; j++) {
           final bbox1 = faces[i].boundingBox;
@@ -453,20 +498,16 @@ void main() {
       final map = original.toMap();
       final restored = Face.fromMap(map);
 
-      // Compare bounding boxes
       expect(restored.boundingBox.topLeft.x, original.boundingBox.topLeft.x);
       expect(restored.boundingBox.topLeft.y, original.boundingBox.topLeft.y);
       expect(restored.boundingBox.width, original.boundingBox.width);
       expect(restored.boundingBox.height, original.boundingBox.height);
 
-      // Compare mesh
       expect(restored.mesh, isNotNull);
       expect(restored.mesh!.points.length, original.mesh!.points.length);
 
-      // Compare iris points
       expect(restored.irisPoints.length, original.irisPoints.length);
 
-      // Compare original size
       expect(restored.originalSize.width, original.originalSize.width);
       expect(restored.originalSize.height, original.originalSize.height);
     });
@@ -498,7 +539,6 @@ void main() {
 
       expect(faces.length, greaterThan(1));
 
-      // Generate embedding for each face
       for (int i = 0; i < faces.length; i++) {
         try {
           final embedding =
@@ -506,7 +546,6 @@ void main() {
           expect(embedding.length, greaterThan(0),
               reason: 'Face $i should have valid embedding');
         } catch (e) {
-          // Some faces may fail due to alignment issues
           print('Face $i embedding failed: $e');
         }
       }
@@ -529,13 +568,11 @@ void main() {
 
       if (validEmbeddings.length < 2) return;
 
-      // Compare first two embeddings
       final similarity = FaceDetector.compareFaces(
         validEmbeddings[0],
         validEmbeddings[1],
       );
 
-      // Different people should have lower similarity
       print('Different faces similarity: ${similarity.toStringAsFixed(3)}');
       expect(similarity, lessThan(1.0),
           reason: 'Different faces should have < 1.0 similarity');

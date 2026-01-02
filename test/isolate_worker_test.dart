@@ -52,7 +52,6 @@ void main() {
       expect(w, 1);
       expect(h, 1);
 
-      // Verify frame is usable by cropping
       final crop = await worker.cropFromRoiWithFrameId(
         frameId,
         RectF(0, 0, 1, 1),

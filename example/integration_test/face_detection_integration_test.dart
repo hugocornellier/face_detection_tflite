@@ -1,28 +1,5 @@
 // ignore_for_file: avoid_print
 
-// Comprehensive integration tests for FaceDetector.
-//
-// These tests cover:
-// - Initialization and disposal
-// - Error handling (works in standard test environment)
-// - Detection with real sample images (requires device/platform-specific testing)
-// - detectFaces() method
-// - Different detection modes (fast, standard, full)
-// - Landmark, mesh, and iris access
-// - Configuration parameters
-// - Edge cases
-//
-// NOTE: Most tests require TensorFlow Lite native libraries which are not
-// available in the standard `flutter test` environment. To run all tests:
-//
-// - macOS: flutter test integration_test/face_detection_integration_test.dart --platform=macos
-// - Device: Run as integration tests on a physical device or emulator
-//
-// Tests that work in standard environment (no TFLite required):
-// - StateError when not initialized
-// - Parameter validation
-//
-
 import 'dart:math' show sqrt;
 
 import 'package:flutter/services.dart';
@@ -35,15 +12,73 @@ import 'package:opencv_dart/opencv_dart.dart' as cv;
 class TestUtils {
   static Uint8List createDummyImageBytes() {
     return Uint8List.fromList([
-      0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG signature
-      0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR chunk
-      0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, // Width: 1, Height: 1
-      0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, // Bit depth, color type
-      0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, // IDAT chunk
-      0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
-      0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, // Image data
-      0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, // IEND chunk
-      0x42, 0x60, 0x82
+      0x89,
+      0x50,
+      0x4E,
+      0x47,
+      0x0D,
+      0x0A,
+      0x1A,
+      0x0A,
+      0x00,
+      0x00,
+      0x00,
+      0x0D,
+      0x49,
+      0x48,
+      0x44,
+      0x52,
+      0x00,
+      0x00,
+      0x00,
+      0x01,
+      0x00,
+      0x00,
+      0x00,
+      0x01,
+      0x08,
+      0x06,
+      0x00,
+      0x00,
+      0x00,
+      0x1F,
+      0x15,
+      0xC4,
+      0x89,
+      0x00,
+      0x00,
+      0x00,
+      0x0A,
+      0x49,
+      0x44,
+      0x41,
+      0x54,
+      0x78,
+      0x9C,
+      0x63,
+      0x00,
+      0x01,
+      0x00,
+      0x00,
+      0x05,
+      0x00,
+      0x01,
+      0x0D,
+      0x0A,
+      0x2D,
+      0xB4,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x49,
+      0x45,
+      0x4E,
+      0x44,
+      0xAE,
+      0x42,
+      0x60,
+      0x82
     ]);
   }
 }
@@ -60,7 +95,6 @@ void main() {
       expect(detector.isReady, true);
 
       detector.dispose();
-      // Note: isReady may still be true after dispose in current implementation
     });
 
     test('should allow re-initialization', () async {
@@ -68,7 +102,6 @@ void main() {
       await detector.initialize();
       expect(detector.isReady, true);
 
-      // Re-initialize should work
       await detector.initialize();
       expect(detector.isReady, true);
 
@@ -80,11 +113,9 @@ void main() {
       await detector.initialize();
       detector.dispose();
 
-      // Second dispose may throw - that's acceptable
       try {
         detector.dispose();
       } catch (e) {
-        // Disposing twice may throw, which is acceptable behavior
         expect(e, isA<StateError>());
       }
     });
@@ -112,12 +143,10 @@ void main() {
 
       final invalidBytes = Uint8List.fromList([1, 2, 3, 4, 5]);
 
-      // Invalid bytes may throw or return empty - either is acceptable
       try {
         final results = await detector.detectFaces(invalidBytes);
         expect(results, isEmpty);
       } catch (e) {
-        // Error is also acceptable for invalid input
         expect(e, isNotNull);
       }
 
@@ -141,14 +170,12 @@ void main() {
       expect(results, isNotEmpty);
 
       for (final face in results) {
-        // Verify bounding box
         expect(face.boundingBox, isNotNull);
         expect(face.boundingBox.topLeft.x, greaterThanOrEqualTo(0));
         expect(face.boundingBox.topLeft.y, greaterThanOrEqualTo(0));
         expect(face.boundingBox.width, greaterThan(0));
         expect(face.boundingBox.height, greaterThan(0));
 
-        // Verify landmarks (6 keypoints)
         expect(face.landmarks.leftEye, isNotNull);
         expect(face.landmarks.rightEye, isNotNull);
         expect(face.landmarks.noseTip, isNotNull);
@@ -156,14 +183,11 @@ void main() {
         expect(face.landmarks.leftEyeTragion, isNotNull);
         expect(face.landmarks.rightEyeTragion, isNotNull);
 
-        // Verify mesh (468 points)
         expect(face.mesh, isNotNull);
         expect(face.mesh!.points.length, 468);
 
-        // Verify iris points (152 points for 2 eyes)
         expect(face.irisPoints, isNotEmpty);
 
-        // Check image dimensions
         expect(face.originalSize.width, greaterThan(0));
         expect(face.originalSize.height, greaterThan(0));
       }
@@ -216,7 +240,6 @@ void main() {
         mode: FaceDetectionMode.full,
       );
 
-      // Group shot should detect 4 faces
       expect(results.length, 4,
           reason: 'group-shot-bounding-box-ex1.jpeg should have 4 faces');
 
@@ -278,12 +301,10 @@ void main() {
       expect(results, isNotEmpty);
 
       for (final face in results) {
-        // Should have bounding box and 6 keypoints
         expect(face.boundingBox, isNotNull);
         expect(face.landmarks, isNotNull);
         expect(face.boundingBox.width, greaterThan(0));
 
-        // Should NOT have mesh or iris in fast mode
         expect(face.mesh, isNull);
         expect(face.irisPoints, isEmpty);
       }
@@ -307,14 +328,12 @@ void main() {
       expect(results, isNotEmpty);
 
       for (final face in results) {
-        // Should have bounding box, keypoints, and mesh
         expect(face.boundingBox, isNotNull);
         expect(face.landmarks, isNotNull);
         expect(face.boundingBox.width, greaterThan(0));
         expect(face.mesh, isNotNull);
         expect(face.mesh!.points.length, 468);
 
-        // Should NOT have iris in standard mode
         expect(face.irisPoints, isEmpty);
       }
 
@@ -336,7 +355,6 @@ void main() {
       expect(results, isNotEmpty);
 
       for (final face in results) {
-        // Should have everything
         expect(face.boundingBox, isNotNull);
         expect(face.landmarks, isNotNull);
         expect(face.boundingBox.width, greaterThan(0));
@@ -371,7 +389,6 @@ void main() {
       expect(faces, isNotEmpty);
       final face = faces.first;
 
-      // Test accessing different landmark types
       final leftEye = face.landmarks.leftEye;
       expect(leftEye, isNotNull);
       expect(leftEye!.x, greaterThanOrEqualTo(0));
@@ -407,13 +424,11 @@ void main() {
       expect(mesh!.points.length, 468);
 
       for (final point in mesh.points) {
-        // Coordinates should be within image bounds
         expect(point.x, greaterThanOrEqualTo(0));
         expect(point.x, lessThanOrEqualTo(face.originalSize.width.toDouble()));
         expect(point.y, greaterThanOrEqualTo(0));
         expect(point.y, lessThanOrEqualTo(face.originalSize.height.toDouble()));
 
-        // Check if 3D data is present
         if (point.is3D) {
           expect(point.z, isNotNull);
         }
@@ -425,7 +440,6 @@ void main() {
       final eyes = face.eyes;
 
       if (face.irisPoints.isNotEmpty && eyes != null) {
-        // Check left eye
         final leftEye = eyes.leftEye;
         if (leftEye != null) {
           expect(leftEye.irisCenter, isNotNull);
@@ -433,7 +447,6 @@ void main() {
           expect(leftEye.mesh.length, 71);
         }
 
-        // Check right eye
         final rightEye = eyes.rightEye;
         if (rightEye != null) {
           expect(rightEye.irisCenter, isNotNull);
@@ -452,7 +465,6 @@ void main() {
       expect(bbox.width, greaterThan(0));
       expect(bbox.height, greaterThan(0));
 
-      // Bounding box should be within image
       expect(bbox.topLeft.x,
           lessThanOrEqualTo(face.originalSize.width.toDouble()));
       expect(bbox.topLeft.y,
@@ -501,7 +513,6 @@ void main() {
         final Uint8List bytes = data.buffer.asUint8List();
         final List<Face> results = await detector.detectFaces(bytes);
 
-        // Should work regardless of image size
         if (results.isNotEmpty) {
           for (final face in results) {
             expect(face.originalSize.width, greaterThan(0));
@@ -522,7 +533,6 @@ void main() {
       final bytes = TestUtils.createDummyImageBytes();
       final List<Face> results = await detector.detectFaces(bytes);
 
-      // Should not crash, but probably won't detect anything
       expect(results, isNotNull);
 
       detector.dispose();
@@ -539,7 +549,6 @@ void main() {
 
       expect(results, isNotEmpty);
 
-      // toString() should not crash - content may vary
       final faceString = results.first.toString();
       expect(faceString, isNotEmpty);
       expect(faceString, contains('Face'));
@@ -551,12 +560,10 @@ void main() {
       final detector = FaceDetector();
       await detector.initialize();
 
-      // Load image bytes
       final ByteData data =
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
-      // Use detectFaces
       final List<Face> results = await detector.detectFaces(bytes);
 
       expect(results, isNotEmpty);
@@ -576,12 +583,10 @@ void main() {
           await rootBundle.load('assets/samples/iris-detection-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
-      // Run detection multiple times
       for (int i = 0; i < 3; i++) {
         await detector.detectFaces(bytes, mode: FaceDetectionMode.full);
       }
 
-      // Check that iris statistics are being tracked
       final totalIrisAttempts = detector.irisOkCount + detector.irisFailCount;
       expect(totalIrisAttempts, greaterThan(0));
 
@@ -598,11 +603,9 @@ void main() {
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
-      // Decode to cv.Mat
       final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
       expect(mat.isEmpty, false);
 
-      // Run detection with cv.Mat
       final List<Face> results = await detector.detectFacesFromMat(
         mat,
         mode: FaceDetectionMode.full,
@@ -631,7 +634,6 @@ void main() {
           await rootBundle.load('assets/samples/iris-detection-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
-      // Run detection with OpenCV-accelerated API
       final List<Face> results = await detector.detectFaces(
         bytes,
         mode: FaceDetectionMode.full,
@@ -657,13 +659,11 @@ void main() {
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
-      // Run with old API
       final List<Face> oldResults = await detector.detectFaces(
         bytes,
         mode: FaceDetectionMode.full,
       );
 
-      // Run with new OpenCV API
       final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
       final List<Face> newResults = await detector.detectFacesFromMat(
         mat,
@@ -671,17 +671,94 @@ void main() {
       );
       mat.dispose();
 
-      // Both should detect same number of faces
       expect(newResults.length, oldResults.length);
 
-      // Compare bounding boxes (allow small differences due to rounding)
       for (int i = 0; i < oldResults.length; i++) {
         final oldBbox = oldResults[i].boundingBox;
         final newBbox = newResults[i].boundingBox;
 
-        // Bounding boxes should be very close (within 5 pixels)
         expect((oldBbox.topLeft.x - newBbox.topLeft.x).abs(), lessThan(5));
         expect((oldBbox.topLeft.y - newBbox.topLeft.y).abs(), lessThan(5));
+      }
+
+      detector.dispose();
+    });
+
+    test(
+        'detectFacesFromMat should produce consistent eye keypoints and iris centers',
+        () async {
+      final detector = FaceDetector();
+      await detector.initialize();
+
+      final ByteData data =
+          await rootBundle.load('assets/samples/landmark-ex1.jpg');
+      final Uint8List bytes = data.buffer.asUint8List();
+
+      final List<Face> bytesResults = await detector.detectFaces(
+        bytes,
+        mode: FaceDetectionMode.full,
+      );
+
+      final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
+      final List<Face> matResults = await detector.detectFacesFromMat(
+        mat,
+        mode: FaceDetectionMode.full,
+      );
+      mat.dispose();
+
+      expect(matResults.length, bytesResults.length);
+      expect(bytesResults, isNotEmpty,
+          reason: 'Should detect at least one face');
+
+      for (int i = 0; i < bytesResults.length; i++) {
+        final bytesLandmarks = bytesResults[i].landmarks;
+        final matLandmarks = matResults[i].landmarks;
+
+        final bytesLeftEye = bytesLandmarks.leftEye;
+        final matLeftEye = matLandmarks.leftEye;
+        expect(bytesLeftEye, isNotNull,
+            reason: 'Bytes API should have left eye');
+        expect(matLeftEye, isNotNull, reason: 'Mat API should have left eye');
+
+        const double tolerance = 5.0;
+        expect(
+          (bytesLeftEye!.x - matLeftEye!.x).abs(),
+          lessThan(tolerance),
+          reason: 'Left eye X should match within $tolerance pixels',
+        );
+        expect(
+          (bytesLeftEye.y - matLeftEye.y).abs(),
+          lessThan(tolerance),
+          reason: 'Left eye Y should match within $tolerance pixels',
+        );
+
+        final bytesRightEye = bytesLandmarks.rightEye;
+        final matRightEye = matLandmarks.rightEye;
+        expect(bytesRightEye, isNotNull,
+            reason: 'Bytes API should have right eye');
+        expect(matRightEye, isNotNull, reason: 'Mat API should have right eye');
+
+        expect(
+          (bytesRightEye!.x - matRightEye!.x).abs(),
+          lessThan(tolerance),
+          reason: 'Right eye X should match within $tolerance pixels',
+        );
+        expect(
+          (bytesRightEye.y - matRightEye.y).abs(),
+          lessThan(tolerance),
+          reason: 'Right eye Y should match within $tolerance pixels',
+        );
+
+        expect(
+          bytesResults[i].irisPoints,
+          isNotEmpty,
+          reason: 'Bytes API should have iris points in full mode',
+        );
+        expect(
+          matResults[i].irisPoints,
+          isNotEmpty,
+          reason: 'Mat API should have iris points in full mode',
+        );
       }
 
       detector.dispose();
@@ -712,14 +789,12 @@ void main() {
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
-      // Create mat and run detection multiple times
       for (int i = 0; i < 5; i++) {
         final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
         await detector.detectFacesFromMat(mat, mode: FaceDetectionMode.fast);
         mat.dispose();
       }
 
-      // If we get here without crash, memory is being managed correctly
       expect(true, isTrue);
 
       detector.dispose();
@@ -734,7 +809,6 @@ void main() {
       final Uint8List bytes = data.buffer.asUint8List();
       final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
 
-      // Fast mode
       final fastResults = await detector.detectFacesFromMat(
         mat,
         mode: FaceDetectionMode.fast,
@@ -742,7 +816,6 @@ void main() {
       expect(fastResults, isNotEmpty);
       expect(fastResults.first.mesh, isNull);
 
-      // Standard mode
       final standardResults = await detector.detectFacesFromMat(
         mat,
         mode: FaceDetectionMode.standard,
@@ -751,7 +824,6 @@ void main() {
       expect(standardResults.first.mesh, isNotNull);
       expect(standardResults.first.irisPoints, isEmpty);
 
-      // Full mode
       final fullResults = await detector.detectFacesFromMat(
         mat,
         mode: FaceDetectionMode.full,
@@ -786,7 +858,6 @@ void main() {
     test('detectFaces returns empty list for image with no faces', () async {
       final detector = await FaceDetectorIsolate.spawn();
 
-      // Use dummy image bytes (1x1 pixel - no face)
       final bytes = TestUtils.createDummyImageBytes();
       final faces = await detector.detectFaces(bytes);
 
@@ -811,7 +882,7 @@ void main() {
       final detector = await FaceDetectorIsolate.spawn();
 
       await detector.dispose();
-      await detector.dispose(); // Should not throw
+      await detector.dispose();
 
       expect(detector.isReady, false);
     });
@@ -841,21 +912,17 @@ void main() {
       expect(faces, isNotEmpty);
 
       for (final face in faces) {
-        // Verify bounding box
         expect(face.boundingBox, isNotNull);
         expect(face.boundingBox.width, greaterThan(0));
         expect(face.boundingBox.height, greaterThan(0));
 
-        // Verify landmarks
         expect(face.landmarks.leftEye, isNotNull);
         expect(face.landmarks.rightEye, isNotNull);
         expect(face.landmarks.noseTip, isNotNull);
 
-        // Verify mesh (full mode)
         expect(face.mesh, isNotNull);
         expect(face.mesh!.points.length, 468);
 
-        // Verify iris points (full mode)
         expect(face.irisPoints, isNotEmpty);
       }
 
@@ -869,21 +936,18 @@ void main() {
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
-      // Fast mode - no mesh or iris
       final fastFaces =
           await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
       expect(fastFaces, isNotEmpty);
       expect(fastFaces.first.mesh, isNull);
       expect(fastFaces.first.irisPoints, isEmpty);
 
-      // Standard mode - mesh but no iris
       final standardFaces =
           await detector.detectFaces(bytes, mode: FaceDetectionMode.standard);
       expect(standardFaces, isNotEmpty);
       expect(standardFaces.first.mesh, isNotNull);
       expect(standardFaces.first.irisPoints, isEmpty);
 
-      // Full mode - mesh and iris
       final fullFaces =
           await detector.detectFaces(bytes, mode: FaceDetectionMode.full);
       expect(fullFaces, isNotEmpty);
@@ -900,11 +964,6 @@ void main() {
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
-      // Fire multiple requests concurrently
-      // Note: Due to internal TFLite race conditions with concurrent inference,
-      // some concurrent calls may return empty results. We verify that:
-      // 1. All calls complete without throwing
-      // 2. At least one call succeeds (proving the detector works)
       final futures = [
         detector.detectFaces(bytes, mode: FaceDetectionMode.fast),
         detector.detectFaces(bytes, mode: FaceDetectionMode.fast),
@@ -917,7 +976,6 @@ void main() {
       for (final result in results) {
         expect(result, isA<List<Face>>());
       }
-      // At least one concurrent call should detect a face
       final nonEmptyCount = results.where((r) => r.isNotEmpty).length;
       expect(nonEmptyCount, greaterThan(0),
           reason: 'At least one concurrent call should detect faces');
@@ -926,7 +984,6 @@ void main() {
     });
 
     test('FaceDetectorIsolate produces same results as FaceDetector', () async {
-      // Initialize both detectors
       final isolateDetector = await FaceDetectorIsolate.spawn();
       final regularDetector = FaceDetector();
       await regularDetector.initialize();
@@ -935,16 +992,13 @@ void main() {
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
-      // Run detection with both
       final isolateFaces = await isolateDetector.detectFaces(bytes,
           mode: FaceDetectionMode.full);
       final regularFaces = await regularDetector.detectFaces(bytes,
           mode: FaceDetectionMode.full);
 
-      // Should detect same number of faces
       expect(isolateFaces.length, regularFaces.length);
 
-      // Compare bounding boxes (allow small differences)
       for (int i = 0; i < isolateFaces.length; i++) {
         final isolateBbox = isolateFaces[i].boundingBox;
         final regularBbox = regularFaces[i].boundingBox;
@@ -968,7 +1022,6 @@ void main() {
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
-      // Decode to cv.Mat
       final mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
 
       final faces =
@@ -994,19 +1047,15 @@ void main() {
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
-      // Decode to cv.Mat
       final mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
 
-      // Run detection with both
       final isolateFaces = await isolateDetector.detectFacesFromMat(mat,
           mode: FaceDetectionMode.full);
       final regularFaces = await regularDetector.detectFacesFromMat(mat,
           mode: FaceDetectionMode.full);
 
-      // Should detect same number of faces
       expect(isolateFaces.length, regularFaces.length);
 
-      // Compare bounding boxes
       for (int i = 0; i < isolateFaces.length; i++) {
         final isolateBbox = isolateFaces[i].boundingBox;
         final regularBbox = regularFaces[i].boundingBox;
@@ -1029,7 +1078,6 @@ void main() {
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
-      // Decode to cv.Mat to get BGR bytes
       final mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
       final bgrBytes = mat.data;
       final width = mat.cols;
@@ -1058,21 +1106,18 @@ void main() {
       final Uint8List bytes = data.buffer.asUint8List();
       final mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
 
-      // Fast mode - no mesh or iris
       final fastFaces =
           await detector.detectFacesFromMat(mat, mode: FaceDetectionMode.fast);
       expect(fastFaces, isNotEmpty);
       expect(fastFaces.first.mesh, isNull);
       expect(fastFaces.first.irisPoints, isEmpty);
 
-      // Standard mode - mesh but no iris
       final standardFaces = await detector.detectFacesFromMat(mat,
           mode: FaceDetectionMode.standard);
       expect(standardFaces, isNotEmpty);
       expect(standardFaces.first.mesh, isNotNull);
       expect(standardFaces.first.irisPoints, isEmpty);
 
-      // Full mode - mesh and iris
       final fullFaces =
           await detector.detectFacesFromMat(mat, mode: FaceDetectionMode.full);
       expect(fullFaces, isNotEmpty);
@@ -1109,20 +1154,16 @@ void main() {
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
-      // Detect face first
       final faces =
           await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
       expect(faces, isNotEmpty);
 
-      // Generate embedding
       final embedding = await detector.getFaceEmbedding(faces.first, bytes);
 
-      // Check embedding properties
       expect(embedding, isNotNull);
       expect(embedding.length, greaterThan(0));
       print('Embedding dimension: ${embedding.length}');
 
-      // Check L2 norm is approximately 1 (normalized)
       double norm = 0.0;
       for (final v in embedding) {
         norm += v * v;
@@ -1142,13 +1183,11 @@ void main() {
           .load('assets/samples/group-shot-bounding-box-ex1.jpeg');
       final Uint8List bytes = data.buffer.asUint8List();
 
-      // Detect multiple faces
       final faces =
           await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
       expect(faces.length, greaterThan(1));
       print('Detected ${faces.length} faces in group photo');
 
-      // Generate embeddings for all faces
       final embeddings = await detector.getFaceEmbeddings(faces, bytes);
 
       expect(embeddings.length, faces.length);
@@ -1170,7 +1209,6 @@ void main() {
       final detector = FaceDetector();
       await detector.initialize();
 
-      // Load two images - same person
       final ByteData data1 =
           await rootBundle.load('assets/samples/iris-detection-ex1.jpg');
       final ByteData data2 =
@@ -1179,7 +1217,6 @@ void main() {
       final bytes1 = data1.buffer.asUint8List();
       final bytes2 = data2.buffer.asUint8List();
 
-      // Detect and get embeddings
       final faces1 =
           await detector.detectFaces(bytes1, mode: FaceDetectionMode.fast);
       final faces2 =
@@ -1191,12 +1228,10 @@ void main() {
       final emb1 = await detector.getFaceEmbedding(faces1.first, bytes1);
       final emb2 = await detector.getFaceEmbedding(faces2.first, bytes2);
 
-      // Compare embeddings
       final similarity = FaceDetector.compareFaces(emb1, emb2);
       print(
           'Same person similarity (iris-detection-ex1 vs ex2): ${similarity.toStringAsFixed(3)}');
 
-      // These are the same person in different images, should have reasonable similarity
       expect(similarity, greaterThan(0.0));
 
       detector.dispose();
@@ -1206,31 +1241,24 @@ void main() {
       final detector = FaceDetector();
       await detector.initialize();
 
-      // Load group shot with multiple different people
       final ByteData data = await rootBundle
           .load('assets/samples/group-shot-bounding-box-ex1.jpeg');
       final bytes = data.buffer.asUint8List();
 
-      // Detect multiple faces
       final faces =
           await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
       expect(faces.length, greaterThanOrEqualTo(2));
 
-      // Get embeddings for first two faces
       final embeddings = await detector.getFaceEmbeddings(faces, bytes);
 
-      // Find two valid embeddings
       final validEmbeddings =
           embeddings.where((e) => e != null).take(2).toList();
       expect(validEmbeddings.length, 2);
 
-      // Compare different people
       final similarity =
           FaceDetector.compareFaces(validEmbeddings[0]!, validEmbeddings[1]!);
       print('Different people similarity: ${similarity.toStringAsFixed(3)}');
 
-      // Different people should have lower similarity than same person
-      // Not asserting a hard threshold as it varies
       expect(similarity, isNotNull);
 
       detector.dispose();
@@ -1250,7 +1278,6 @@ void main() {
 
       final emb = await detector.getFaceEmbedding(faces.first, bytes);
 
-      // Same embedding should have similarity 1.0 and distance 0.0
       final selfSimilarity = FaceDetector.compareFaces(emb, emb);
       final selfDistance = FaceDetector.faceDistance(emb, emb);
 
@@ -1269,7 +1296,6 @@ void main() {
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final bytes = data.buffer.asUint8List();
 
-      // Get a real face first
       final faces =
           await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
       expect(faces, isNotEmpty);
@@ -1277,7 +1303,6 @@ void main() {
 
       detector.dispose();
 
-      // Create a new detector without initialization
       final uninitDetector = FaceDetector();
 
       expect(
@@ -1298,14 +1323,12 @@ void main() {
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final bytes = data.buffer.asUint8List();
 
-      // Decode to cv.Mat
       final mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
 
       final faces =
           await detector.detectFacesFromMat(mat, mode: FaceDetectionMode.fast);
       expect(faces, isNotEmpty);
 
-      // Get embedding from Mat
       final embedding =
           await detector.getFaceEmbeddingFromMat(faces.first, mat);
 
@@ -1325,18 +1348,15 @@ void main() {
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final bytes = data.buffer.asUint8List();
 
-      // Detect face
       final faces =
           await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
       expect(faces, isNotEmpty);
 
-      // Generate embedding
       final embedding = await detector.getFaceEmbedding(faces.first, bytes);
 
       expect(embedding, isNotNull);
       expect(embedding.length, greaterThan(0));
 
-      // Check normalization
       double norm = 0.0;
       for (final v in embedding) {
         norm += v * v;
@@ -1354,12 +1374,10 @@ void main() {
           .load('assets/samples/group-shot-bounding-box-ex1.jpeg');
       final bytes = data.buffer.asUint8List();
 
-      // Detect faces
       final faces =
           await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
       expect(faces.length, greaterThan(1));
 
-      // Generate batch embeddings
       final embeddings = await detector.getFaceEmbeddings(faces, bytes);
 
       expect(embeddings.length, faces.length);
@@ -1387,7 +1405,6 @@ void main() {
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final bytes = data.buffer.asUint8List();
 
-      // Get faces from both
       final isolateFaces = await isolateDetector.detectFaces(bytes,
           mode: FaceDetectionMode.fast);
       final regularFaces = await regularDetector.detectFaces(bytes,
@@ -1396,21 +1413,17 @@ void main() {
       expect(isolateFaces.length, regularFaces.length);
       expect(isolateFaces, isNotEmpty);
 
-      // Get embeddings from both
       final isolateEmb =
           await isolateDetector.getFaceEmbedding(isolateFaces.first, bytes);
       final regularEmb =
           await regularDetector.getFaceEmbedding(regularFaces.first, bytes);
 
-      // Compare dimensions
       expect(isolateEmb.length, regularEmb.length);
 
-      // Compare embeddings - should be identical
       final similarity = FaceDetector.compareFaces(isolateEmb, regularEmb);
       print(
           'Isolate vs Regular embedding similarity: ${similarity.toStringAsFixed(4)}');
 
-      // Should be very similar (allowing for minor floating point differences)
       expect(similarity, greaterThan(0.99));
 
       await isolateDetector.dispose();
@@ -1424,7 +1437,6 @@ void main() {
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final bytes = data.buffer.asUint8List();
 
-      // Get a real face first
       final faces =
           await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
       expect(faces, isNotEmpty);
@@ -1444,17 +1456,14 @@ void main() {
       final detector = FaceDetector();
       await detector.initialize();
 
-      // Reference image (single face)
       final ByteData refData =
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final refBytes = refData.buffer.asUint8List();
 
-      // Group image (multiple faces)
       final ByteData groupData = await rootBundle
           .load('assets/samples/group-shot-bounding-box-ex1.jpeg');
       final groupBytes = groupData.buffer.asUint8List();
 
-      // Get reference embedding
       final refFaces =
           await detector.detectFaces(refBytes, mode: FaceDetectionMode.fast);
       expect(refFaces, isNotEmpty);
@@ -1462,13 +1471,11 @@ void main() {
           await detector.getFaceEmbedding(refFaces.first, refBytes);
       print('Reference embedding generated (${refEmbedding.length} dims)');
 
-      // Detect all faces in group image
       final groupFaces =
           await detector.detectFaces(groupBytes, mode: FaceDetectionMode.fast);
       expect(groupFaces.length, greaterThan(1));
       print('Found ${groupFaces.length} faces in group image');
 
-      // Compare each face to reference
       Face? bestMatch;
       double bestSimilarity = -1.0;
       int bestIndex = -1;
@@ -1515,13 +1522,11 @@ void main() {
       final results = <String, Map<String, double>>{};
 
       for (final mode in FaceDetectionMode.values) {
-        // Warmup - exclude from timing
         for (int i = 0; i < warmupRuns; i++) {
           await regularDetector.detectFaces(bytes, mode: mode);
           await isolateDetector.detectFaces(bytes, mode: mode);
         }
 
-        // Benchmark regular detector
         final regularTimes = <int>[];
         for (int i = 0; i < benchmarkRuns; i++) {
           final sw = Stopwatch()..start();
@@ -1530,7 +1535,6 @@ void main() {
           regularTimes.add(sw.elapsedMicroseconds);
         }
 
-        // Benchmark isolate detector
         final isolateTimes = <int>[];
         for (int i = 0; i < benchmarkRuns; i++) {
           final sw = Stopwatch()..start();
@@ -1554,7 +1558,6 @@ void main() {
         };
       }
 
-      // Print results
       print('\n${'=' * 70}');
       print('BENCHMARK: FaceDetector vs FaceDetectorIsolate');
       print('=' * 70);
@@ -1577,7 +1580,6 @@ void main() {
       }
       print('=' * 70);
 
-      // Verify both produce valid results
       for (final mode in FaceDetectionMode.values) {
         final regularFaces =
             await regularDetector.detectFaces(bytes, mode: mode);
@@ -1605,13 +1607,11 @@ void main() {
       const int benchmarkRuns = 10;
       const mode = FaceDetectionMode.full;
 
-      // Warmup
       for (int i = 0; i < warmupRuns; i++) {
         await regularDetector.detectFacesFromMat(mat, mode: mode);
         await isolateDetector.detectFacesFromMat(mat, mode: mode);
       }
 
-      // Benchmark regular detector
       final regularTimes = <int>[];
       for (int i = 0; i < benchmarkRuns; i++) {
         final sw = Stopwatch()..start();
@@ -1620,7 +1620,6 @@ void main() {
         regularTimes.add(sw.elapsedMicroseconds);
       }
 
-      // Benchmark isolate detector
       final isolateTimes = <int>[];
       for (int i = 0; i < benchmarkRuns; i++) {
         final sw = Stopwatch()..start();
@@ -1658,14 +1657,12 @@ void main() {
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
-      // First, get a face to measure serialization
       final faces = await isolateDetector.detectFaces(bytes,
           mode: FaceDetectionMode.full);
       expect(faces, isNotEmpty);
 
       final face = faces.first;
 
-      // Measure toMap serialization
       const int runs = 1000;
       final toMapSw = Stopwatch()..start();
       for (int i = 0; i < runs; i++) {
@@ -1673,7 +1670,6 @@ void main() {
       }
       toMapSw.stop();
 
-      // Measure fromMap deserialization
       final map = face.toMap();
       final fromMapSw = Stopwatch()..start();
       for (int i = 0; i < runs; i++) {

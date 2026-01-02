@@ -570,6 +570,38 @@ The [sample code](https://pub.dev/packages/face_detection_tflite/example) from t
 Flutter app that paints detections onto an image: bounding boxes, landmarks, mesh, and comprehensive eye tracking. The
 example code provides inference time, and demonstrates when to use `FaceDetectionMode.standard` or `FaceDetectionMode.fast`.
 
+## Running Tests
+
+Integration tests are located in `example/integration_test/`. Due to a Flutter macOS test runner limitation, tests must be run **one file at a time** on macOS (running all together causes app launch failures between files).
+
+### iOS
+```bash
+cd example
+flutter test integration_test/ -d <ios-device-id>
+```
+
+### macOS (run each file separately)
+```bash
+cd example
+
+# Kill any existing instances, then run a single test file
+pkill -9 -f "face_detection_tflite_example"; sleep 2
+flutter test integration_test/face_detection_integration_test.dart -d macos
+
+# Repeat for each test file:
+# - opencv_helpers_test.dart (20 tests)
+# - performance_config_test.dart (17 tests)
+# - face_detection_integration_test.dart (97 tests)
+# - embedding_match_test.dart (1 test)
+# - gpu_delegate_test.dart (2 tests)
+# - benchmark_test.dart (4 tests)
+# - error_recovery_test.dart (27 tests)
+# - edge_cases_test.dart (33 tests)
+# - all_model_variants_test.dart (18 tests)
+# - image_utils_test.dart (31 tests)
+# - concurrency_stress_test.dart (18 tests)
+```
+
 ## Inspiration
 
 At the time of development, there was no open-source solution for cross-platform, on-device face and landmark detection.

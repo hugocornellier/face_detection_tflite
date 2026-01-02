@@ -20,7 +20,6 @@ import 'package:face_detection_tflite/face_detection_tflite.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  // Some configurations may be slow to initialize
   const configTimeout = Timeout(Duration(minutes: 2));
 
   late Uint8List testImageBytes;
@@ -58,10 +57,8 @@ void main() {
         performanceConfig: PerformanceConfig.disabled,
       );
 
-      // Warmup
       await detector.detectFaces(testImageBytes, mode: FaceDetectionMode.fast);
 
-      // Benchmark
       final times = <int>[];
       for (int i = 0; i < 5; i++) {
         final sw = Stopwatch()..start();
@@ -135,8 +132,6 @@ void main() {
         mode: FaceDetectionMode.full,
       );
 
-      // On supported platforms, should work
-      // On unsupported platforms (Windows/iOS/Android), falls back to CPU
       expect(faces, isNotEmpty);
 
       print(
@@ -172,13 +167,11 @@ void main() {
         return;
       }
 
-      // Baseline with disabled
       final cpuDetector = FaceDetector();
       await cpuDetector.initialize(
         performanceConfig: PerformanceConfig.disabled,
       );
 
-      // Warmup
       await cpuDetector.detectFaces(testImageBytes,
           mode: FaceDetectionMode.fast);
 
@@ -192,13 +185,11 @@ void main() {
       }
       cpuDetector.dispose();
 
-      // XNNPACK
       final xnnDetector = FaceDetector();
       await xnnDetector.initialize(
         performanceConfig: PerformanceConfig.xnnpack(numThreads: 4),
       );
 
-      // Warmup
       await xnnDetector.detectFaces(testImageBytes,
           mode: FaceDetectionMode.fast);
 
@@ -220,7 +211,6 @@ void main() {
       print('XNNPACK avg: ${xnnAvg.toStringAsFixed(1)}ms');
       print('Speedup: ${speedup.toStringAsFixed(2)}x');
 
-      // XNNPACK should be at least as fast as CPU on supported platforms
       expect(xnnAvg, lessThanOrEqualTo(cpuAvg * 1.2),
           reason: 'XNNPACK should not be slower than CPU');
     }, timeout: configTimeout);
@@ -230,7 +220,6 @@ void main() {
     test('should initialize without crashing', () async {
       final detector = FaceDetector();
 
-      // GPU delegate may fail on some platforms/devices, but shouldn't crash
       try {
         await detector.initialize(
           performanceConfig: PerformanceConfig.gpu(),
@@ -249,13 +238,11 @@ void main() {
 
         detector.dispose();
       } catch (e) {
-        // GPU delegate failure is acceptable on some platforms
         print('GPU delegate failed (expected on some platforms): $e');
       }
     }, timeout: configTimeout);
 
     test('should fall back gracefully on unsupported platforms', () async {
-      // On desktop platforms without GPU support, should fall back to CPU
       if (Platform.isMacOS || Platform.isLinux || Platform.isWindows) {
         final detector = FaceDetector();
         await detector.initialize(
@@ -269,7 +256,6 @@ void main() {
           mode: FaceDetectionMode.fast,
         );
 
-        // Should still work even if GPU delegate is not available
         expect(faces, isNotEmpty);
 
         detector.dispose();
@@ -292,7 +278,6 @@ void main() {
         final detector = FaceDetector();
         await detector.initialize(performanceConfig: config);
 
-        // Warmup
         await detector.detectFaces(testImageBytes,
             mode: FaceDetectionMode.fast);
 
@@ -412,12 +397,10 @@ void main() {
         detector.dispose();
       }
 
-      // All configs should detect same number of faces
       final counts = faceCounts.values.toSet();
       expect(counts.length, 1,
           reason: 'All configs should detect same number of faces');
 
-      // Bounding boxes should be nearly identical
       if (bboxes.length > 1) {
         final reference = bboxes.values.first;
         for (final bbox in bboxes.values.skip(1)) {
@@ -442,7 +425,6 @@ void main() {
         final detector = FaceDetector();
         await detector.initialize(meshPoolSize: poolSize);
 
-        // Detect faces in group photo to test mesh pool
         final ByteData data = await rootBundle
             .load('assets/samples/group-shot-bounding-box-ex1.jpeg');
         final bytes = data.buffer.asUint8List();
@@ -467,9 +449,8 @@ void main() {
 
     test('mesh pool should handle more faces than pool size', () async {
       final detector = FaceDetector();
-      await detector.initialize(meshPoolSize: 1); // Only 1 mesh interpreter
+      await detector.initialize(meshPoolSize: 1);
 
-      // Group photo has 4 faces
       final ByteData data = await rootBundle
           .load('assets/samples/group-shot-bounding-box-ex1.jpeg');
       final bytes = data.buffer.asUint8List();
@@ -479,7 +460,6 @@ void main() {
         mode: FaceDetectionMode.full,
       );
 
-      // Should still process all faces, just sequentially
       expect(faces.length, greaterThanOrEqualTo(2));
 
       for (final face in faces) {

@@ -74,12 +74,9 @@ void main() {
     });
 
     test('should detect faces in close-up images', () async {
-      // frontCamera is optimized for selfies/close-up faces
-      // It may not work well on group photos with smaller faces
       final detector = FaceDetector();
       await detector.initialize(model: FaceDetectionModel.frontCamera);
 
-      // Use close-up face image instead of group photo
       final ByteData data =
           await rootBundle.load('assets/samples/iris-detection-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
@@ -192,7 +189,6 @@ void main() {
       final detector = FaceDetector();
       await detector.initialize(model: FaceDetectionModel.shortRange);
 
-      // Close-up iris detection images should work well with shortRange
       final testCases = [
         'assets/samples/iris-detection-ex1.jpg',
         'assets/samples/iris-detection-ex2.jpg',
@@ -347,17 +343,13 @@ void main() {
         print('  ${entry.key}: ${entry.value} face(s)');
       }
 
-      // frontCamera and shortRange are optimized for close-up faces
-      // They may not detect multiple faces in group photos
       final closeUpModels = {'frontCamera', 'shortRange'};
 
       for (final entry in results.entries) {
         if (closeUpModels.contains(entry.key)) {
-          // Just verify they don't crash and return valid result
           expect(entry.value, greaterThanOrEqualTo(0),
               reason: '${entry.key} should not crash on group photo');
         } else {
-          // backCamera, full, fullSparse should detect multiple faces
           expect(entry.value, greaterThanOrEqualTo(2),
               reason: '${entry.key} should detect at least 2 faces in group');
         }
@@ -380,7 +372,6 @@ void main() {
         counts.add(faces.length);
       }
 
-      // All runs should produce the same count
       expect(counts.toSet().length, 1,
           reason: 'Detection count should be consistent');
 

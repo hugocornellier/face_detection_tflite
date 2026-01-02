@@ -394,12 +394,47 @@ class Eye {
   /// - [eyeLandmarkConnections] for connecting the eyelid points
   final List<Point> mesh;
 
+  /// Pre-computed eyelid contour for O(1) repeated access.
+  final List<Point> _contourCache;
+
   /// Creates an eye with iris center point, iris contour, and eye mesh landmarks.
+  ///
+  /// This const constructor is preserved for backward compatibility.
+  /// For optimized construction with pre-computed contour, use [Eye.optimized].
   const Eye({
     required this.irisCenter,
     required this.irisContour,
     this.mesh = const <Point>[],
-  });
+  }) : _contourCache = const <Point>[];
+
+  /// Internal constructor with pre-computed contour cache.
+  Eye._withContour({
+    required this.irisCenter,
+    required this.irisContour,
+    required this.mesh,
+    required List<Point> contour,
+  }) : _contourCache = contour;
+
+  /// Creates an eye with pre-computed contour for optimal repeated access.
+  ///
+  /// This factory pre-computes the [contour] during construction, avoiding
+  /// repeated sublist allocation on each access. Use this constructor when
+  /// creating Eyes programmatically (e.g., from model output).
+  factory Eye.optimized({
+    required Point irisCenter,
+    required List<Point> irisContour,
+    List<Point> mesh = const <Point>[],
+  }) {
+    final contour = mesh.length >= kMaxEyeLandmark
+        ? mesh.sublist(0, kMaxEyeLandmark)
+        : mesh;
+    return Eye._withContour(
+      irisCenter: irisCenter,
+      irisContour: irisContour,
+      mesh: mesh,
+      contour: contour,
+    );
+  }
 
   /// The visible eyelid contour (first 15 points of the mesh).
   ///
@@ -419,8 +454,11 @@ class Eye {
   ///   canvas.drawLine(p1, p2, paint);
   /// }
   /// ```
-  List<Point> get contour =>
-      mesh.length >= kMaxEyeLandmark ? mesh.sublist(0, kMaxEyeLandmark) : mesh;
+  List<Point> get contour => _contourCache.isNotEmpty
+      ? _contourCache
+      : (mesh.length >= kMaxEyeLandmark
+          ? mesh.sublist(0, kMaxEyeLandmark)
+          : mesh);
 
   /// Converts this eye to a map for isolate serialization.
   Map<String, dynamic> toMap() => {
@@ -430,7 +468,9 @@ class Eye {
       };
 
   /// Creates an eye from a map (isolate deserialization).
-  factory Eye.fromMap(Map<String, dynamic> map) => Eye(
+  ///
+  /// Uses [Eye.optimized] to pre-compute the contour cache.
+  factory Eye.fromMap(Map<String, dynamic> map) => Eye.optimized(
         irisCenter: Point.fromMap(map['irisCenter']),
         irisContour:
             (map['irisContour'] as List).map((p) => Point.fromMap(p)).toList(),
@@ -740,6 +780,9 @@ class Face {
   /// custom coordinate transformations.
   final Size originalSize;
 
+  /// Cached eye pair computation for O(1) repeated access.
+  late final EyePair? _cachedEyes = _computeEyes();
+
   /// Creates a face detection result with bounding box, landmarks, and optional mesh/eye data.
   ///
   /// This constructor is typically called internally by [FaceDetector.detectFaces].
@@ -786,19 +829,22 @@ class Face {
       eyeMesh = const <Point>[];
       irisPoints = points;
     }
-    int centerIdx = 0;
-    double minDistSum = double.infinity;
-
+    double cx = 0, cy = 0;
     for (int i = 0; i < 5; i++) {
-      double distSum = 0;
-      for (int j = 0; j < 5; j++) {
-        if (i == j) continue;
-        final dx = irisPoints[j].x - irisPoints[i].x;
-        final dy = irisPoints[j].y - irisPoints[i].y;
-        distSum += dx * dx + dy * dy;
-      }
-      if (distSum < minDistSum) {
-        minDistSum = distSum;
+      cx += irisPoints[i].x;
+      cy += irisPoints[i].y;
+    }
+    cx /= 5;
+    cy /= 5;
+
+    int centerIdx = 0;
+    double minDist = double.infinity;
+    for (int i = 0; i < 5; i++) {
+      final dx = irisPoints[i].x - cx;
+      final dy = irisPoints[i].y - cy;
+      final dist = dx * dx + dy * dy;
+      if (dist < minDist) {
+        minDist = dist;
         centerIdx = i;
       }
     }
@@ -809,7 +855,8 @@ class Face {
       if (i != centerIdx) contour.add(irisPoints[i]);
     }
 
-    return Eye(irisCenter: center, irisContour: contour, mesh: eyeMesh);
+    return Eye.optimized(
+        irisCenter: center, irisContour: contour, mesh: eyeMesh);
   }
 
   /// Comprehensive eye tracking data for both eyes.
@@ -835,7 +882,10 @@ class Face {
   /// final leftContour = eyes?.leftEye?.contour;
   /// final rightIrisCenter = eyes?.rightEye?.irisCenter;
   /// ```
-  EyePair? get eyes {
+  EyePair? get eyes => _cachedEyes;
+
+  /// Internal computation for eyes getter, called once via lazy initialization.
+  EyePair? _computeEyes() {
     if (irisPoints.isEmpty) return null;
 
     Eye? leftEye;

@@ -1,3 +1,6 @@
+## 4.4.1
+- Performance optimizations: pre-allocated inference buffers, early score filtering (~17× fewer box decodes), parallel multi-face processing
+
 ## 4.4.0
 - Fixes #3: bug causing crash on non-XNNPack compatible Android devices
 

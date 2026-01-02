@@ -1,6 +1,4 @@
 // ignore_for_file: avoid_print
-//
-// Test face embedding matching with Day 13 (one face) and Day 14 (two faces) images.
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,7 +18,6 @@ void main() {
     await detector.initialize();
     print('Ready!\n');
 
-    // Load images
     final ByteData data1 =
         await rootBundle.load('assets/samples/embedding_test/one_face.jpg');
     final ByteData data2 =
@@ -28,7 +25,6 @@ void main() {
     final image1Bytes = data1.buffer.asUint8List();
     final image2Bytes = data2.buffer.asUint8List();
 
-    // === Reference Image (Day 13 - single face) ===
     print('=== Reference Image (Day 13 - one_face.jpg) ===');
     final refFaces =
         await detector.detectFaces(image1Bytes, mode: FaceDetectionMode.fast);
@@ -42,14 +38,12 @@ void main() {
     final refCenter = refFaces.first.boundingBox.center;
     print('Face location: (${refCenter.x.toInt()}, ${refCenter.y.toInt()})\n');
 
-    // === Comparison Image (Day 14 - two faces) ===
     print('=== Comparison Image (Day 14 - two_faces.jpg) ===');
     final faces =
         await detector.detectFaces(image2Bytes, mode: FaceDetectionMode.fast);
     print('Detected ${faces.length} face(s)');
     expect(faces.length, 2, reason: 'Should detect exactly 2 faces in Day 14');
 
-    // === Compare each face ===
     print('\n=== Similarity Scores ===');
     int bestIndex = -1;
     double bestSimilarity = -1.0;
@@ -71,7 +65,6 @@ void main() {
       }
     }
 
-    // === Result ===
     print('\n=== RESULT ===');
     print('Best match: Face $bestIndex');
     print('Similarity: ${bestSimilarity.toStringAsFixed(4)}');
@@ -91,7 +84,6 @@ void main() {
     print('Confidence: $confidence');
     print('=' * 60);
 
-    // The best match should have higher similarity than the other face
     final otherIndex = bestIndex == 0 ? 1 : 0;
     final otherEmbedding =
         await detector.getFaceEmbedding(faces[otherIndex], image2Bytes);

@@ -19,7 +19,6 @@ import 'package:tflite_flutter_custom/tflite_flutter.dart';
 export 'src/dart_registration.dart';
 export 'src/image_utils.dart';
 
-// Re-export opencv_dart types for users who want to use detectFacesFromMat directly
 export 'package:opencv_dart/opencv_dart.dart' show Mat, imdecode, IMREAD_COLOR;
 
 part 'src/types_and_consts.dart';

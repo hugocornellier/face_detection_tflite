@@ -36,11 +36,9 @@ class ImageUtils {
       newHeight = (imageHeight * ash).toInt();
     }
 
-    // Resize with bilinear interpolation (INTER_LINEAR)
     final resizedImage =
         cv.resize(image, (newWidth, newHeight), interpolation: cv.INTER_LINEAR);
 
-    // Calculate padding for each side
     final padTop = (resizeHeight - newHeight) ~/ 2;
     final padBottom = resizeHeight - newHeight - padTop;
     final padLeft = (resizeWidth - newWidth) ~/ 2;
@@ -83,25 +81,18 @@ class ImageUtils {
     final sizeInt = size.round();
     if (sizeInt <= 0) return null;
 
-    // Rotation angle (negated for correct direction, converted to degrees)
     final angleDegrees = -theta * 180.0 / math.pi;
 
-    // Get rotation matrix centered at the face center
     final rotMat =
         cv.getRotationMatrix2D(cv.Point2f(cx, cy), angleDegrees, 1.0);
 
-    // Adjust translation to crop around the output center
     final outCenter = sizeInt / 2.0;
 
-    // Modify the translation in the rotation matrix:
-    // M[0,2] += outCenter - cx
-    // M[1,2] += outCenter - cy
     final tx = rotMat.at<double>(0, 2) + outCenter - cx;
     final ty = rotMat.at<double>(1, 2) + outCenter - cy;
     rotMat.set<double>(0, 2, tx);
     rotMat.set<double>(1, 2, ty);
 
-    // Apply affine transform with SIMD-optimized warpAffine
     final output = cv.warpAffine(
       image,
       rotMat,
@@ -131,7 +122,6 @@ class ImageUtils {
     int x2,
     int y2,
   ) {
-    // Clamp to image bounds
     final clampedX1 = x1.clamp(0, image.cols - 1);
     final clampedY1 = y1.clamp(0, image.rows - 1);
     final clampedX2 = x2.clamp(clampedX1 + 1, image.cols);
@@ -186,7 +176,6 @@ class ImageUtils {
     final size = totalPixels * 3;
     final tensor = buffer ?? Float32List(size);
 
-    // OpenCV uses BGR, convert to RGB and normalize to [-1, 1]
     for (int i = 0, j = 0; i < totalPixels * 3 && j < size; i += 3, j += 3) {
       tensor[j] = (data[i + 2] / 127.5) - 1.0; // B -> R
       tensor[j + 1] = (data[i + 1] / 127.5) - 1.0; // G -> G
@@ -212,7 +201,6 @@ class ImageUtils {
     final tensor = buffer ?? Float32List(size);
     const scale = 1.0 / 255.0;
 
-    // OpenCV uses BGR, convert to RGB and normalize
     for (int i = 0, j = 0; i < totalPixels * 3 && j < size; i += 3, j += 3) {
       tensor[j] = data[i + 2] * scale; // B -> R
       tensor[j + 1] = data[i + 1] * scale; // G -> G
@@ -251,11 +239,9 @@ class ImageUtils {
 
     final resized = cv.resize(src, (nw, nh), interpolation: cv.INTER_LINEAR);
 
-    // Calculate padding for right/bottom to ensure exact target dimensions
     final padRight = tw - nw - padLeft;
     final padBottom = th - nh - padTop;
 
-    // Use copyMakeBorder for reliable padding with black fill
     final padded = cv.copyMakeBorder(
       resized,
       padTop,
@@ -307,7 +293,6 @@ class ImageUtils {
     final bytes = mat.data;
     int byteIndex = 0;
 
-    // OpenCV uses BGR, convert to RGB and normalize to [-1, 1]
     for (int y = 0; y < height; y++) {
       final List<List<double>> row = out[0][y];
       for (int x = 0; x < width; x++) {
