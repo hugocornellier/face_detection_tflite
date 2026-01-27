@@ -278,14 +278,12 @@ ImageTensor convertImageToTensor(
   final int inW = src.width;
   final int inH = src.height;
 
-  // Calculate letterbox scaling
   final double s1 = outW / inW;
   final double s2 = outH / inH;
   final double scale = s1 < s2 ? s1 : s2;
   final int newW = (inW * scale).round();
   final int newH = (inH * scale).round();
 
-  // Resize with letterboxing
   final img.Image resized = img.copyResize(
     src,
     width: newW,
@@ -293,15 +291,12 @@ ImageTensor convertImageToTensor(
     interpolation: img.Interpolation.linear,
   );
 
-  // Calculate padding offsets
   final int dx = (outW - newW) ~/ 2;
   final int dy = (outH - newH) ~/ 2;
 
-  // Allocate tensor with black padding (-1.0)
   final Float32List tensor = Float32List(outW * outH * 3);
   tensor.fillRange(0, tensor.length, -1.0);
 
-  // Normalize pixels to [-1, 1] range
   final Uint8List resizedRgb = resized.getBytes(order: img.ChannelOrder.rgb);
   int srcIdx = 0;
   for (int y = 0; y < resized.height; y++) {
@@ -316,7 +311,6 @@ ImageTensor convertImageToTensor(
     }
   }
 
-  // Calculate normalized padding fractions
   final double padTop = dy / outH;
   final double padBottom = (outH - dy - newH) / outH;
   final double padLeft = dx / outW;
@@ -414,18 +408,20 @@ double _iou(RectF a, RectF b) {
   return uni <= 0 ? 0.0 : inter / uni;
 }
 
-/// Optimized NMS using sorted list with index-based removal.
+/// Optimized NMS using spatial indexing to reduce IoU comparisons.
 ///
-/// Uses a sorted list by score (descending) and processes candidates
-/// using index tracking instead of list mutations for better performance.
-/// Early termination via spatial filtering reduces IoU computations.
+/// Uses a grid-based spatial index to skip comparisons between boxes that
+/// cannot possibly overlap, reducing complexity from O(M²) to O(M × k) where
+/// k is the average number of candidates per overlapping cell region.
+///
+/// For small candidate counts (≤8), falls back to simple O(M²) approach
+/// since grid construction overhead exceeds the savings.
 List<Detection> _nms(
   List<Detection> dets,
   double iouThresh,
   double scoreThresh, {
   bool weighted = true,
 }) {
-  // Pre-filter by score threshold
   final List<Detection> sorted = <Detection>[];
   for (final d in dets) {
     if (d.score >= scoreThresh) {
@@ -434,11 +430,51 @@ List<Detection> _nms(
   }
   if (sorted.isEmpty) return const <Detection>[];
 
-  // Sort by score descending (highest first)
   sorted.sort((a, b) => b.score.compareTo(a.score));
 
   final int n = sorted.length;
-  // Track which detections are still active (not suppressed)
+
+  if (n <= 8) {
+    return _nmsCore(sorted, iouThresh, weighted, null);
+  }
+
+  const int gridSize = 10;
+  const double cellSize = 1.0 / gridSize;
+
+  final Map<int, List<int>> cellToIndices = <int, List<int>>{};
+
+  for (int i = 0; i < n; i++) {
+    final RectF box = sorted[i].boundingBox;
+    final int minCol = (box.xmin / cellSize).floor().clamp(0, gridSize - 1);
+    final int maxCol = (box.xmax / cellSize).floor().clamp(0, gridSize - 1);
+    final int minRow = (box.ymin / cellSize).floor().clamp(0, gridSize - 1);
+    final int maxRow = (box.ymax / cellSize).floor().clamp(0, gridSize - 1);
+
+    for (int row = minRow; row <= maxRow; row++) {
+      for (int col = minCol; col <= maxCol; col++) {
+        final int cellKey = row * gridSize + col;
+        (cellToIndices[cellKey] ??= <int>[]).add(i);
+      }
+    }
+  }
+
+  return _nmsCore(sorted, iouThresh, weighted, cellToIndices);
+}
+
+/// Core NMS logic shared between spatial and non-spatial paths.
+///
+/// When [cellToIndices] is null, performs O(M²) pairwise comparison.
+/// When provided, uses spatial index to reduce comparisons.
+List<Detection> _nmsCore(
+  List<Detection> sorted,
+  double iouThresh,
+  bool weighted,
+  Map<int, List<int>>? cellToIndices,
+) {
+  const int gridSize = 10;
+  const double cellSize = 1.0 / gridSize;
+
+  final int n = sorted.length;
   final List<bool> active = List<bool>.filled(n, true);
   final List<Detection> kept = <Detection>[];
 
@@ -448,24 +484,49 @@ List<Detection> _nms(
     final Detection base = sorted[i];
     final RectF baseBox = base.boundingBox;
 
+    Iterable<int> candidateIndices;
+    if (cellToIndices == null) {
+      candidateIndices = Iterable<int>.generate(n - i - 1, (k) => i + 1 + k);
+    } else {
+      final int minCol =
+          (baseBox.xmin / cellSize).floor().clamp(0, gridSize - 1);
+      final int maxCol =
+          (baseBox.xmax / cellSize).floor().clamp(0, gridSize - 1);
+      final int minRow =
+          (baseBox.ymin / cellSize).floor().clamp(0, gridSize - 1);
+      final int maxRow =
+          (baseBox.ymax / cellSize).floor().clamp(0, gridSize - 1);
+
+      final Set<int> candidates = <int>{};
+      for (int row = minRow; row <= maxRow; row++) {
+        for (int col = minCol; col <= maxCol; col++) {
+          final int cellKey = row * gridSize + col;
+          final List<int>? indices = cellToIndices[cellKey];
+          if (indices != null) {
+            for (final int idx in indices) {
+              if (idx > i) candidates.add(idx);
+            }
+          }
+        }
+      }
+      candidateIndices = candidates;
+    }
+
     if (!weighted) {
-      // Simple NMS: just add the base and suppress overlapping
       kept.add(base);
-      // Suppress all overlapping candidates with lower scores
-      for (int j = i + 1; j < n; j++) {
+      for (final int j in candidateIndices) {
         if (active[j] && _iou(baseBox, sorted[j].boundingBox) >= iouThresh) {
           active[j] = false;
         }
       }
     } else {
-      // Weighted NMS: collect overlapping detections for weighted merge
       double sw = base.score;
       double xmin = baseBox.xmin * base.score;
       double ymin = baseBox.ymin * base.score;
       double xmax = baseBox.xmax * base.score;
       double ymax = baseBox.ymax * base.score;
 
-      for (int j = i + 1; j < n; j++) {
+      for (final int j in candidateIndices) {
         if (!active[j]) continue;
         final Detection d = sorted[j];
         if (_iou(baseBox, d.boundingBox) >= iouThresh) {
@@ -478,7 +539,6 @@ List<Detection> _nms(
         }
       }
 
-      // Add weighted result (or original if no merging occurred)
       if (sw == base.score) {
         kept.add(base);
       } else {
@@ -760,25 +820,21 @@ void _bilinearSampleToBuffer(
   final double ax = fx - x0;
   final double ay = fy - y0;
 
-  // Clamp coordinates
   final int cx0 = x0 < 0 ? 0 : (x0 >= srcW ? srcW - 1 : x0);
   final int cx1 = x0 + 1 < 0 ? 0 : (x0 + 1 >= srcW ? srcW - 1 : x0 + 1);
   final int cy0 = y0 < 0 ? 0 : (y0 >= srcH ? srcH - 1 : y0);
   final int cy1 = y0 + 1 < 0 ? 0 : (y0 + 1 >= srcH ? srcH - 1 : y0 + 1);
 
-  // Direct buffer indices (RGB = 3 bytes per pixel)
   final int i00 = (cy0 * srcW + cx0) * 3;
   final int i10 = (cy0 * srcW + cx1) * 3;
   final int i01 = (cy1 * srcW + cx0) * 3;
   final int i11 = (cy1 * srcW + cx1) * 3;
 
-  // Read source pixels directly from buffer
   final int r00 = srcRgb[i00], g00 = srcRgb[i00 + 1], b00 = srcRgb[i00 + 2];
   final int r10 = srcRgb[i10], g10 = srcRgb[i10 + 1], b10 = srcRgb[i10 + 2];
   final int r01 = srcRgb[i01], g01 = srcRgb[i01 + 1], b01 = srcRgb[i01 + 2];
   final int r11 = srcRgb[i11], g11 = srcRgb[i11 + 1], b11 = srcRgb[i11 + 2];
 
-  // Bilinear interpolation
   final double oneMinusAx = 1.0 - ax;
   final double oneMinusAy = 1.0 - ay;
 
@@ -789,7 +845,6 @@ void _bilinearSampleToBuffer(
   final double g1 = g01 * oneMinusAx + g11 * ax;
   final double b1 = b01 * oneMinusAx + b11 * ax;
 
-  // Write directly to output buffer
   int r = (r0 * oneMinusAy + r1 * ay).round();
   int g = (g0 * oneMinusAy + g1 * ay).round();
   int b = (b0 * oneMinusAy + b1 * ay).round();
@@ -927,14 +982,12 @@ Future<void> _imageTransformIsolate(Map<String, dynamic> params) async {
       final double ct = math.cos(theta);
       final double st = math.sin(theta);
 
-      // Use direct buffer access instead of setPixel for better performance
       final Uint8List outRgbBuf = Uint8List(side * side * 3);
       final double invSide = 1.0 / side;
 
       int outIdx = 0;
       for (int y = 0; y < side; y++) {
         final double vy = ((y + 0.5) * invSide - 0.5) * size;
-        // Pre-compute partial rotation for this row
         final double vyct = vy * ct;
         final double vyst = vy * st;
         for (int x = 0; x < side; x++) {
@@ -953,7 +1006,6 @@ Future<void> _imageTransformIsolate(Map<String, dynamic> params) async {
         order: img.ChannelOrder.rgb,
       );
     } else if (op == 'flipH') {
-      // Use direct buffer access for horizontal flip
       final Uint8List outRgbBuf = Uint8List(w * h * 3);
       for (int y = 0; y < h; y++) {
         final int rowStart = y * w * 3;
@@ -1074,10 +1126,6 @@ Future<img.Image> extractAlignedSquareWithWorker(
   }
 }
 
-//
-// Test-only helpers to exercise private utilities.
-//
-
 /// Test-only access to [_clip] for verifying value clamping behavior.
 ///
 /// This function exposes the private [_clip] for unit testing.
@@ -1115,13 +1163,6 @@ List<Detection> testNms(
 }) =>
     _nms(dets, iouThresh, scoreThresh, weighted: weighted);
 
-//
-// OpenCV-based image processing functions
-//
-// These functions use opencv_dart for SIMD-accelerated image operations,
-// providing 10-50x better performance than pure Dart implementations.
-//
-
 /// Converts a cv.Mat image to a normalized tensor with letterboxing.
 ///
 /// This function performs aspect-preserving resize with black padding
@@ -1146,26 +1187,21 @@ ImageTensor convertImageToTensorFromMat(
   final int inW = src.cols;
   final int inH = src.rows;
 
-  // Calculate letterbox scaling
   final double s1 = outW / inW;
   final double s2 = outH / inH;
   final double scale = s1 < s2 ? s1 : s2;
   final int newW = (inW * scale).round();
   final int newH = (inH * scale).round();
 
-  // Resize with letterboxing using OpenCV
   final cv.Mat resized =
       cv.resize(src, (newW, newH), interpolation: cv.INTER_LINEAR);
 
-  // Calculate padding offsets
   final int dx = (outW - newW) ~/ 2;
   final int dy = (outH - newH) ~/ 2;
 
-  // Calculate padding for right/bottom
   final int padRight = outW - newW - dx;
   final int padBottom = outH - newH - dy;
 
-  // Add black padding using copyMakeBorder
   final cv.Mat padded = cv.copyMakeBorder(
     resized,
     dy,
@@ -1177,10 +1213,8 @@ ImageTensor convertImageToTensorFromMat(
   );
   resized.dispose();
 
-  // Allocate or reuse tensor buffer
   final Float32List tensor = buffer ?? Float32List(outW * outH * 3);
 
-  // Convert BGR to RGB and normalize to [-1, 1]
   final Uint8List data = padded.data;
   final int totalPixels = outW * outH;
   for (int i = 0, j = 0;
@@ -1192,7 +1226,6 @@ ImageTensor convertImageToTensorFromMat(
   }
   padded.dispose();
 
-  // Calculate normalized padding fractions
   final double padTop = dy / outH;
   final double padBottomNorm = (outH - dy - newH) / outH;
   final double padLeft = dx / outW;
@@ -1230,26 +1263,21 @@ cv.Mat? extractAlignedSquareFromMat(
   final int sizeInt = size.round();
   if (sizeInt <= 0) return null;
 
-  // Rotation angle (negated for correct direction, converted to degrees)
   final double angleDegrees = -theta * 180.0 / math.pi;
 
-  // Get rotation matrix centered at the face center
   final cv.Mat rotMat = cv.getRotationMatrix2D(
     cv.Point2f(cx, cy),
     angleDegrees,
     1.0,
   );
 
-  // Adjust translation to crop around the output center
   final double outCenter = sizeInt / 2.0;
 
-  // Modify the translation in the rotation matrix
   final double tx = rotMat.at<double>(0, 2) + outCenter - cx;
   final double ty = rotMat.at<double>(1, 2) + outCenter - cy;
   rotMat.set<double>(0, 2, tx);
   rotMat.set<double>(1, 2, ty);
 
-  // Apply affine transform with SIMD-optimized warpAffine
   final cv.Mat output = cv.warpAffine(
     src,
     rotMat,
@@ -1273,7 +1301,6 @@ cv.Mat cropFromRoiMat(cv.Mat src, RectF roi) {
   final int w = src.cols;
   final int h = src.rows;
 
-  // Convert normalized to pixel coordinates
   final int x1 = (roi.xmin * w).round().clamp(0, w - 1);
   final int y1 = (roi.ymin * h).round().clamp(0, h - 1);
   final int x2 = (roi.xmax * w).round().clamp(x1 + 1, w);

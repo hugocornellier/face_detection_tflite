@@ -37,10 +37,10 @@ packages:
     dependency: transitive
     description:
       name: characters
-      sha256: f71061c654a3380576a52b451dd5532377954cf9dbd272a78fc8479606670803
+      sha256: faf38497bda5ead2a8c7615f4f7939df04333478bf32e4173fcb06d428b5716b
       url: "https://pub.dev"
     source: hosted
-    version: "1.4.0"
+    version: "1.4.1"
   clock:
     dependency: transitive
     description:
@@ -340,10 +340,10 @@ packages:
     dependency: "direct main"
     description:
       name: tflite_flutter_custom
-      sha256: "9645b8a9e0fb776abd4d1711d37f99548c4e1de2c9322328bcd9e0f2fe4fa300"
+      sha256: "9723824fa47b75aee483ea1c4025a25befcc0a04c4fc503f3ba0005f2b9ab9d0"
       url: "https://pub.dev"
     source: hosted
-    version: "1.1.0"
+    version: "1.2.0"
   typed_data:
     dependency: transitive
     description:

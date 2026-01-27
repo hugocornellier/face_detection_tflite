@@ -199,7 +199,6 @@ class FaceEmbedding {
       fillNHWC4D(pack.tensorNHWC, _input4dCache, _inH, _inW);
       final List<List<List<List<List<double>>>>> inputs = [_input4dCache];
 
-      // Allocate output based on output tensor shape
       final List<int> outShape = _outputTensor.shape;
       final Map<int, Object> outputs = <int, Object>{
         0: allocTensorShape(outShape),
@@ -248,7 +247,6 @@ class FaceEmbedding {
       fillNHWC4D(pack.tensorNHWC, _input4dCache, _inH, _inW);
       final List<List<List<List<List<double>>>>> inputs = [_input4dCache];
 
-      // Allocate output based on output tensor shape
       final List<int> outShape = _outputTensor.shape;
       final Map<int, Object> outputs = <int, Object>{
         0: allocTensorShape(outShape),
@@ -420,25 +418,17 @@ AlignedFaceForEmbedding computeEmbeddingAlignment({
   required Point leftEye,
   required Point rightEye,
 }) {
-  // Compute angle between eyes
   final double dx = rightEye.x - leftEye.x;
   final double dy = rightEye.y - leftEye.y;
   final double theta = math.atan2(dy, dx);
 
-  // Eye distance determines face size
   final double eyeDist = math.sqrt(dx * dx + dy * dy);
 
-  // For MobileFaceNet, eyes should be at ~35% from top and ~30% from sides
-  // This means eye distance is about 40% of the crop width
-  // So crop size = eye distance / 0.4 = eye distance * 2.5
   final double size = eyeDist * 2.5;
 
-  // Center point between eyes
   final double eyeCx = (leftEye.x + rightEye.x) * 0.5;
   final double eyeCy = (leftEye.y + rightEye.y) * 0.5;
 
-  // Move center down slightly since eyes should be in upper third
-  // Eyes at 35% from top means center should be ~15% below eye center
   final double ct = math.cos(theta);
   final double st = math.sin(theta);
   final double offsetY = size * 0.15;

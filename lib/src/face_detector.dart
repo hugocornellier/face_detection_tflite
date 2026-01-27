@@ -78,13 +78,13 @@ class FaceDetector {
   IrisLandmark? _irisLeft;
   IrisLandmark? _irisRight;
   FaceEmbedding? _embedding;
+  SelfieSegmentation? _segmenter;
 
-  // Serialization chains to prevent concurrent model inference (race conditions)
-  // Mesh pool uses multiple locks for parallel inference across multiple faces
   final List<Future<void>> _meshInferenceLocks = [];
   Future<void> _irisLeftInferenceLock = Future.value();
   Future<void> _irisRightInferenceLock = Future.value();
   Future<void> _embeddingInferenceLock = Future.value();
+  Future<void> _segmentationInferenceLock = Future.value();
 
   /// Counts successful iris landmark detections since initialization.
   ///
@@ -169,8 +169,6 @@ class FaceDetector {
         performanceConfig: performanceConfig,
       );
 
-      // Create pool of mesh models for parallel multi-face inference
-      // Each model has its own buffers to prevent race conditions
       _meshPool.clear();
       _meshInferenceLocks.clear();
       for (int i = 0; i < meshPoolSize; i++) {
@@ -181,8 +179,6 @@ class FaceDetector {
         _meshInferenceLocks.add(Future.value());
       }
 
-      // Create separate iris models for parallel left/right eye inference
-      // Each model has its own buffers to prevent race conditions
       _irisLeft = await IrisLandmark.create(
         options: options,
         performanceConfig: performanceConfig,
@@ -192,7 +188,6 @@ class FaceDetector {
         performanceConfig: performanceConfig,
       );
 
-      // Create face embedding model for identity vectors
       _embedding = await FaceEmbedding.create(
         options: options,
         performanceConfig: performanceConfig,
@@ -248,7 +243,6 @@ class FaceDetector {
         performanceConfig: performanceConfig,
       );
 
-      // Create pool of mesh models for parallel multi-face inference
       _meshPool.clear();
       _meshInferenceLocks.clear();
       for (int i = 0; i < meshPoolSize; i++) {
@@ -259,7 +253,6 @@ class FaceDetector {
         _meshInferenceLocks.add(Future.value());
       }
 
-      // Create separate iris models for parallel left/right eye inference
       _irisLeft = await IrisLandmark.createFromBuffer(
         irisLandmarkBytes,
         performanceConfig: performanceConfig,
@@ -269,7 +262,6 @@ class FaceDetector {
         performanceConfig: performanceConfig,
       );
 
-      // Create face embedding model if bytes provided
       if (embeddingBytes != null) {
         _embedding = await FaceEmbedding.createFromBuffer(
           embeddingBytes,
@@ -368,7 +360,6 @@ class FaceDetector {
       throw StateError('Mesh pool is empty. Call initialize() first.');
     }
 
-    // Round-robin selection to distribute load
     final int poolIndex = _meshPoolCounter % _meshPool.length;
     _meshPoolCounter = (_meshPoolCounter + 1) % _meshPool.length;
 
@@ -477,29 +468,30 @@ class FaceDetector {
 
     Offset pickCenter(List<List<double>> lm, Offset? fallback) {
       if (lm.isEmpty) return fallback ?? const Offset(0, 0);
-      final List<Offset> pts =
-          lm.map((p) => Offset(p[0].toDouble(), p[1].toDouble())).toList();
+
+      double cx = 0, cy = 0;
+      for (final p in lm) {
+        cx += p[0];
+        cy += p[1];
+      }
+      cx /= lm.length;
+      cy /= lm.length;
+
       int bestIdx = 0;
-      double bestScore = double.infinity;
-      for (int k = 0; k < pts.length; k++) {
-        double s = 0;
-        for (int j = 0; j < pts.length; j++) {
-          if (j == k) continue;
-          final double dx = pts[j].dx - pts[k].dx;
-          final double dy = pts[j].dy - pts[k].dy;
-          s += dx * dx + dy * dy;
-        }
-        if (s < bestScore) {
-          bestScore = s;
-          bestIdx = k;
+      double bestDist = double.infinity;
+      for (int i = 0; i < lm.length; i++) {
+        final double dx = lm[i][0] - cx;
+        final double dy = lm[i][1] - cy;
+        final double dist = dx * dx + dy * dy;
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestIdx = i;
         }
       }
-      return pts[bestIdx];
+      return Offset(lm[bestIdx][0], lm[bestIdx][1]);
     }
 
-    // Run left and right eye iris detection in parallel using separate models
     final results = await Future.wait([
-      // Left eye (index 0)
       if (rois.isNotEmpty && rois[0].size > 0)
         _withIrisLeftLock(() => irisLeft.runOnImageAlignedIris(
               decoded,
@@ -509,7 +501,6 @@ class FaceDetector {
             ))
       else
         Future.value(<List<double>>[]),
-      // Right eye (index 1)
       if (rois.length > 1 && rois[1].size > 0)
         _withIrisRightLock(() => irisRight.runOnImageAlignedIris(
               decoded,
@@ -524,11 +515,9 @@ class FaceDetector {
     final List<List<double>> leftLm = results[0];
     final List<List<double>> rightLm = results[1];
 
-    // Build centers list and allLandmarks
     final List<Offset> centers = <Offset>[];
     bool usedFallback = false;
 
-    // Process left eye
     if (rois.isEmpty || rois[0].size <= 0) {
       centers.add(leftFallback ?? const Offset(0, 0));
       usedFallback = true;
@@ -546,7 +535,6 @@ class FaceDetector {
       centers.add(pickCenter(leftLm, leftFallback));
     }
 
-    // Process right eye
     if (rois.length <= 1 || rois[1].size <= 0) {
       centers.add(rightFallback ?? const Offset(0, 0));
       usedFallback = true;
@@ -804,26 +792,19 @@ class FaceDetector {
     if (_meshPool.isEmpty) {
       return const <Point>[];
     }
-    // Use pool to allow parallel mesh inference for multiple faces
     final lmNorm =
         await _withMeshLock((fl) => fl.call(faceCrop, worker: _worker));
 
-    // Pre-compute rotation matrix components once (avoid repeated trig calls)
     final double ct = math.cos(aligned.theta);
     final double st = math.sin(aligned.theta);
     final double s = aligned.size;
     final double cx = aligned.cx;
     final double cy = aligned.cy;
 
-    // Pre-compute combined scale*rotation matrix elements
-    // Transform: [x'] = cx + s*ct*(nx-0.5) - s*st*(ny-0.5)
-    //            [y'] = cy + s*st*(nx-0.5) + s*ct*(ny-0.5)
-    // Simplify:  [x'] = cx - 0.5*s*ct + 0.5*s*st + s*ct*nx - s*st*ny
-    //            [y'] = cy - 0.5*s*st - 0.5*s*ct + s*st*nx + s*ct*ny
     final double sct = s * ct;
     final double sst = s * st;
-    final double tx = cx - 0.5 * sct + 0.5 * sst; // translation x
-    final double ty = cy - 0.5 * sst - 0.5 * sct; // translation y
+    final double tx = cx - 0.5 * sct + 0.5 * sst;
+    final double ty = cy - 0.5 * sst - 0.5 * sct;
 
     final int n = lmNorm.length;
     final List<Point> mesh = List<Point>.filled(n, const Point(0, 0, 0));
@@ -833,7 +814,6 @@ class FaceDetector {
       final double nx = p[0];
       final double ny = p[1];
       final double nz = p[2];
-      // Apply combined transform: rotation + scale + translation
       mesh[i] = Point(
         tx + sct * nx - sst * ny,
         ty + sst * nx + sct * ny,
@@ -922,16 +902,13 @@ class FaceDetector {
     final IrisLandmark irisLeft = _irisLeft!;
     final IrisLandmark irisRight = _irisRight!;
 
-    // Run left and right eye iris detection in parallel using separate models
     final results = await Future.wait([
-      // Left eye (index 0)
       _withIrisLeftLock(() => irisLeft.runOnImageAlignedIris(
             decoded,
             rois[0],
             isRight: false,
             worker: _worker,
           )),
-      // Right eye (index 1)
       _withIrisRightLock(() => irisRight.runOnImageAlignedIris(
             decoded,
             rois[1],
@@ -1073,15 +1050,15 @@ class FaceDetector {
     if (dets.isEmpty) return const <List<Point>>[];
     final DecodedRgb d = await decodeImageWithWorker(imageBytes, _worker);
     final img.Image decoded = _imageFromDecodedRgb(d);
-    final List<List<Point>> out = <List<Point>>[];
-    for (final Detection det in dets) {
-      final AlignedFace aligned = await estimateAlignedFace(decoded, det);
-      final List<Point> mesh = await meshFromAlignedFace(
-        aligned.faceCrop,
-        aligned,
-      );
-      out.add(mesh);
-    }
+    final List<List<Point>> out = await Future.wait(
+      dets.map((Detection det) async {
+        final AlignedFace aligned = await estimateAlignedFace(decoded, det);
+        return meshFromAlignedFace(
+          aligned.faceCrop,
+          aligned,
+        );
+      }),
+    );
     return out;
   }
 
@@ -1143,7 +1120,6 @@ class FaceDetector {
     Uint8List imageBytes, {
     FaceDetectionMode mode = FaceDetectionMode.full,
   }) async {
-    // Use OpenCV for 2x faster image decoding with SIMD acceleration
     final cv.Mat image = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
     if (image.isEmpty) {
       throw FormatException('Could not decode image bytes');
@@ -1256,16 +1232,13 @@ class FaceDetector {
     final IrisLandmark irisLeft = _irisLeft!;
     final IrisLandmark irisRight = _irisRight!;
 
-    // Run left and right eye iris detection in parallel using separate models
     final results = await Future.wait([
-      // Left eye (index 0)
       _withIrisLeftLock(() => irisLeft.runOnImageAlignedIrisWithFrameId(
             frameId,
             rois[0],
             isRight: false,
             worker: _worker,
           )),
-      // Right eye (index 1)
       _withIrisRightLock(() => irisRight.runOnImageAlignedIrisWithFrameId(
             frameId,
             rois[1],
@@ -1327,72 +1300,101 @@ class FaceDetector {
     final bool computeMesh =
         mode == FaceDetectionMode.standard || mode == FaceDetectionMode.full;
 
-    // Get initial detections using OpenCV-based tensor conversion
     final List<Detection> dets = await _detectDetectionsFromMat(image);
     if (dets.isEmpty) return <Face>[];
 
-    final List<Face> faces = <Face>[];
-
+    final List<(Detection, AlignedFaceFromMat)?> alignedFaces =
+        <(Detection, AlignedFaceFromMat)?>[];
     for (final Detection det in dets) {
-      AlignedFaceFromMat? alignedData;
       try {
-        // Estimate aligned face using OpenCV warpAffine
-        alignedData = await _estimateAlignedFaceFromMat(image, det);
-
-        // Get mesh if needed
-        List<Point> meshPx = <Point>[];
-        if (computeMesh) {
-          meshPx = await _meshFromAlignedFaceFromMat(
-            alignedData.faceCrop,
-            alignedData.cx,
-            alignedData.cy,
-            alignedData.size,
-            alignedData.theta,
-          );
-        }
-
-        // Get iris if needed
-        List<Point> irisPx = <Point>[];
-        if (computeIris && meshPx.isNotEmpty) {
-          irisPx = await _irisFromMeshFromMat(image, meshPx);
-        }
-
-        // Refine eye keypoints with iris centers if available
-        List<double> kp = det.keypointsXY;
-        if (computeIris && irisPx.isNotEmpty) {
-          kp = List<double>.from(det.keypointsXY);
-          // Use first iris point from each eye as center (index 0 for left, 76 for right)
-          if (irisPx.isNotEmpty) {
-            kp[FaceLandmarkType.leftEye.index * 2] = irisPx[0].x / width;
-            kp[FaceLandmarkType.leftEye.index * 2 + 1] = irisPx[0].y / height;
-          }
-          if (irisPx.length >= 77) {
-            kp[FaceLandmarkType.rightEye.index * 2] = irisPx[76].x / width;
-            kp[FaceLandmarkType.rightEye.index * 2 + 1] = irisPx[76].y / height;
-          }
-        }
-
-        final Detection refinedDet = Detection(
-          boundingBox: det.boundingBox,
-          score: det.score,
-          keypointsXY: kp,
-          imageSize: imgSize,
-        );
-
-        final FaceMesh? faceMesh = meshPx.isNotEmpty ? FaceMesh(meshPx) : null;
-
-        faces.add(Face(
-          detection: refinedDet,
-          mesh: faceMesh,
-          irises: irisPx,
-          originalSize: imgSize,
-        ));
+        final aligned = await _estimateAlignedFaceFromMat(image, det);
+        alignedFaces.add((det, aligned));
       } catch (e) {
-        // Skip failed face - Mat cleanup handled in finally block
-      } finally {
-        // Always dispose the face crop Mat if it was allocated
-        alignedData?.faceCrop.dispose();
+        alignedFaces.add(null); // Mark failed extraction
       }
+    }
+
+    final List<List<Point>?> meshResults;
+    if (computeMesh) {
+      meshResults = await Future.wait(
+        alignedFaces.map((data) async {
+          if (data == null) return null;
+          try {
+            return await _meshFromAlignedFaceFromMat(
+              data.$2.faceCrop,
+              data.$2.cx,
+              data.$2.cy,
+              data.$2.size,
+              data.$2.theta,
+            );
+          } catch (e) {
+            return null;
+          }
+        }),
+      );
+    } else {
+      meshResults = List<List<Point>?>.filled(alignedFaces.length, null);
+    }
+
+    for (final data in alignedFaces) {
+      data?.$2.faceCrop.dispose();
+    }
+
+    final List<List<Point>?> irisResults =
+        List<List<Point>?>.filled(dets.length, null);
+    if (computeIris) {
+      for (int i = 0; i < meshResults.length; i++) {
+        final meshPx = meshResults[i];
+        if (meshPx == null || meshPx.isEmpty) continue;
+        try {
+          irisResults[i] = await _irisFromMeshFromMat(image, meshPx);
+        } catch (e) {
+          // Iris detection failure shouldn't block face detection
+        }
+      }
+    }
+
+    final List<Face> faces = <Face>[];
+    for (int i = 0; i < dets.length; i++) {
+      final aligned = alignedFaces[i];
+      if (aligned == null) continue;
+
+      final Detection det = aligned.$1;
+      final List<Point> meshPx = meshResults[i] ?? <Point>[];
+      final List<Point> irisPx = irisResults[i] ?? <Point>[];
+
+      List<double> kp = det.keypointsXY;
+      if (computeIris && irisPx.isNotEmpty) {
+        kp = List<double>.from(det.keypointsXY);
+        if (irisPx.length >= 76) {
+          final leftIrisPoints = irisPx.sublist(71, 76);
+          final leftCenter = _findIrisCenterFromPoints(leftIrisPoints);
+          kp[FaceLandmarkType.leftEye.index * 2] = leftCenter.x / width;
+          kp[FaceLandmarkType.leftEye.index * 2 + 1] = leftCenter.y / height;
+        }
+        if (irisPx.length >= 152) {
+          final rightIrisPoints = irisPx.sublist(147, 152);
+          final rightCenter = _findIrisCenterFromPoints(rightIrisPoints);
+          kp[FaceLandmarkType.rightEye.index * 2] = rightCenter.x / width;
+          kp[FaceLandmarkType.rightEye.index * 2 + 1] = rightCenter.y / height;
+        }
+      }
+
+      final Detection refinedDet = Detection(
+        boundingBox: det.boundingBox,
+        score: det.score,
+        keypointsXY: kp,
+        imageSize: imgSize,
+      );
+
+      final FaceMesh? faceMesh = meshPx.isNotEmpty ? FaceMesh(meshPx) : null;
+
+      faces.add(Face(
+        detection: refinedDet,
+        mesh: faceMesh,
+        irises: irisPx,
+        originalSize: imgSize,
+      ));
     }
 
     return faces;
@@ -1405,14 +1407,12 @@ class FaceDetector {
       throw StateError('FaceDetector not initialized.');
     }
 
-    // Convert Mat to tensor using OpenCV-based function
     final ImageTensor tensor = convertImageToTensorFromMat(
       image,
       outW: d.inputWidth,
       outH: d.inputHeight,
     );
 
-    // Run detection
     return await d.callWithTensor(tensor);
   }
 
@@ -1446,7 +1446,6 @@ class FaceDetector {
     final cx = eyeCx + vMx * 0.1;
     final cy = eyeCy + vMy * 0.1;
 
-    // Use OpenCV warpAffine for SIMD-accelerated rotation crop
     final cv.Mat? faceCrop = extractAlignedSquareFromMat(
       image,
       cx,
@@ -1478,10 +1477,8 @@ class FaceDetector {
   ) async {
     if (_meshPool.isEmpty) return <Point>[];
 
-    // Use pool to allow parallel mesh inference
     final lmNorm = await _withMeshLock((fl) => fl.callFromMat(faceCrop));
 
-    // Transform landmarks back to original image coordinates
     final double ct = math.cos(theta);
     final double st = math.sin(theta);
     final double sct = size * ct;
@@ -1517,8 +1514,6 @@ class FaceDetector {
     final List<AlignedRoi> rois = eyeRoisFromMesh(meshAbs);
     if (rois.length < 2) return <Point>[];
 
-    // Extract eye crops SERIALLY to avoid opencv_dart freeze when multiple
-    // warpAffine operations access the same source Mat concurrently.
     final cv.Mat? leftCrop = extractAlignedSquareFromMat(
       image,
       rois[0].cx,
@@ -1541,12 +1536,9 @@ class FaceDetector {
       return <Point>[];
     }
 
-    // Flip right eye horizontally to normalize orientation
     final cv.Mat rightCrop = cv.flip(rightCropRaw, 1);
     rightCropRaw.dispose();
 
-    // Run TFLite inference IN PARALLEL - crops are independent Mats
-    // Use try-finally to ensure Mats are disposed even if inference throws
     final List<List<List<double>>> results;
     try {
       results = await Future.wait([
@@ -1554,7 +1546,6 @@ class FaceDetector {
         _withIrisRightLock(() => _irisRight!.callFromMat(rightCrop)),
       ]);
     } finally {
-      // Always dispose crops after inference attempt
       leftCrop.dispose();
       rightCrop.dispose();
     }
@@ -1562,7 +1553,6 @@ class FaceDetector {
     final List<List<double>> leftLmNorm = results[0];
     final List<List<double>> rightLmNorm = results[1];
 
-    // Transform left eye landmarks back to original image coordinates
     final double ctL = math.cos(rois[0].theta);
     final double stL = math.sin(rois[0].theta);
     final double sL = rois[0].size;
@@ -1576,13 +1566,12 @@ class FaceDetector {
       pts.add(Point(x, y, p.length > 2 ? p[2] : 0.0));
     }
 
-    // Transform right eye landmarks (with flip correction)
     final double ctR = math.cos(rois[1].theta);
     final double stR = math.sin(rois[1].theta);
     final double sR = rois[1].size;
 
     for (final List<double> p in rightLmNorm) {
-      final double px = 1.0 - p[0]; // Undo horizontal flip
+      final double px = 1.0 - p[0];
       final double py = p[1];
       final double lx2 = (px - 0.5) * sR;
       final double ly2 = (py - 0.5) * sR;
@@ -1591,7 +1580,6 @@ class FaceDetector {
       pts.add(Point(x, y, p.length > 2 ? p[2] : 0.0));
     }
 
-    // Update iris counters
     if (pts.isNotEmpty) {
       irisOkCount++;
     } else {
@@ -1599,6 +1587,40 @@ class FaceDetector {
     }
 
     return pts;
+  }
+
+  /// Finds the iris center from a list of iris contour points.
+  ///
+  /// Uses the same algorithm as [_computeIrisCentersWithDecoded]: finds the
+  /// point with minimum sum of squared distances to all other points, which
+  /// geometrically identifies the center of the iris contour.
+  ///
+  /// This is equivalent to finding the point closest to the centroid, which
+  /// can be computed in O(n) instead of O(n²).
+  Point _findIrisCenterFromPoints(List<Point> irisPoints) {
+    if (irisPoints.isEmpty) return const Point(0, 0, 0);
+    if (irisPoints.length == 1) return irisPoints[0];
+
+    double cx = 0, cy = 0;
+    for (final Point p in irisPoints) {
+      cx += p.x;
+      cy += p.y;
+    }
+    cx /= irisPoints.length;
+    cy /= irisPoints.length;
+
+    int bestIdx = 0;
+    double bestDist = double.infinity;
+    for (int i = 0; i < irisPoints.length; i++) {
+      final double dx = irisPoints[i].x - cx;
+      final double dy = irisPoints[i].y - cy;
+      final double dist = dx * dx + dy * dy;
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestIdx = i;
+      }
+    }
+    return irisPoints[bestIdx];
   }
 
   /// Serializes embedding inference calls to prevent buffer race conditions.
@@ -1659,7 +1681,6 @@ class FaceDetector {
       );
     }
 
-    // Decode image using OpenCV for better performance
     final cv.Mat image = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
     if (image.isEmpty) {
       throw FormatException('Could not decode image bytes');
@@ -1693,7 +1714,6 @@ class FaceDetector {
       );
     }
 
-    // Get eye positions from face landmarks
     final landmarks = face.landmarks;
     final leftEye = landmarks.leftEye;
     final rightEye = landmarks.rightEye;
@@ -1702,13 +1722,11 @@ class FaceDetector {
       throw StateError('Face must have left and right eye landmarks');
     }
 
-    // Compute alignment for embedding model (112x112)
     final alignment = computeEmbeddingAlignment(
       leftEye: leftEye,
       rightEye: rightEye,
     );
 
-    // Extract aligned face crop using OpenCV warpAffine
     final cv.Mat? faceCrop = extractAlignedSquareFromMat(
       image,
       alignment.cx,
@@ -1722,7 +1740,6 @@ class FaceDetector {
     }
 
     try {
-      // Resize to embedding input size if needed
       final cv.Mat resized;
       if (faceCrop.cols != _embedding!.inputWidth ||
           faceCrop.rows != _embedding!.inputHeight) {
@@ -1737,7 +1754,6 @@ class FaceDetector {
       }
 
       try {
-        // Run embedding inference with lock to prevent race conditions
         return await _withEmbeddingLock(() => _embedding!.callFromMat(resized));
       } finally {
         resized.dispose();
@@ -1786,7 +1802,6 @@ class FaceDetector {
       return <Float32List?>[];
     }
 
-    // Decode image once
     final cv.Mat image = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
     if (image.isEmpty) {
       throw FormatException('Could not decode image bytes');
@@ -1799,7 +1814,6 @@ class FaceDetector {
           final embedding = await getFaceEmbeddingFromMat(face, image);
           embeddings.add(embedding);
         } catch (e) {
-          // Skip faces that fail, add null placeholder
           embeddings.add(null);
         }
       }
@@ -1854,6 +1868,101 @@ class FaceDetector {
     return FaceEmbedding.euclideanDistance(a, b);
   }
 
+  // ============================================================================
+  // Selfie Segmentation
+  // ============================================================================
+
+  /// Whether the segmentation model is loaded and ready.
+  ///
+  /// Returns true only after [initializeSegmentation] has been called successfully.
+  bool get isSegmentationReady => _segmenter != null;
+
+  /// Initializes the optional segmentation model.
+  ///
+  /// Call this after [initialize] to enable segmentation features.
+  /// Does nothing if segmentation is already initialized.
+  ///
+  /// [config]: Segmentation configuration. If null, uses [SegmentationConfig.safe].
+  ///
+  /// Throws [SegmentationException] on model load failure.
+  ///
+  /// Example:
+  /// ```dart
+  /// final detector = FaceDetector();
+  /// await detector.initialize();
+  /// await detector.initializeSegmentation();
+  ///
+  /// // Now segmentation is available
+  /// final mask = await detector.getSegmentationMask(imageBytes);
+  /// ```
+  Future<void> initializeSegmentation({
+    SegmentationConfig? config,
+  }) async {
+    if (_segmenter != null) return;
+    _segmenter = await SelfieSegmentation.create(
+      config: config ?? SegmentationConfig.safe,
+    );
+  }
+
+  /// Segments an image to separate foreground (people) from background.
+  ///
+  /// Returns a [SegmentationMask] with per-pixel probabilities indicating
+  /// foreground vs background.
+  ///
+  /// [imageBytes]: Encoded image (JPEG, PNG, etc.)
+  ///
+  /// Throws [StateError] if [initializeSegmentation] hasn't been called.
+  /// Throws [SegmentationException] on inference failure.
+  ///
+  /// Example:
+  /// ```dart
+  /// await detector.initializeSegmentation();
+  ///
+  /// final mask = await detector.getSegmentationMask(imageBytes);
+  /// final binary = mask.toBinary(threshold: 0.5);
+  /// ```
+  Future<SegmentationMask> getSegmentationMask(Uint8List imageBytes) async {
+    if (_segmenter == null) {
+      throw StateError(
+        'Segmentation not initialized. Call initializeSegmentation() first.',
+      );
+    }
+    return _withSegmentationLock(() => _segmenter!.call(imageBytes));
+  }
+
+  /// Segments a cv.Mat image.
+  ///
+  /// This is the OpenCV-based variant of [getSegmentationMask] that accepts
+  /// a cv.Mat directly, providing better performance when you already have
+  /// the image in Mat format.
+  ///
+  /// The [image] parameter should contain the source image as cv.Mat.
+  /// The Mat is NOT disposed by this method - caller is responsible for disposal.
+  ///
+  /// Throws [StateError] if [initializeSegmentation] hasn't been called.
+  /// Throws [SegmentationException] on inference failure.
+  Future<SegmentationMask> getSegmentationMaskFromMat(cv.Mat image) async {
+    if (_segmenter == null) {
+      throw StateError(
+        'Segmentation not initialized. Call initializeSegmentation() first.',
+      );
+    }
+    return _withSegmentationLock(() => _segmenter!.callFromMat(image));
+  }
+
+  /// Concurrency lock for segmentation - only one at a time to prevent memory thrashing.
+  Future<T> _withSegmentationLock<T>(Future<T> Function() fn) async {
+    final previous = _segmentationInferenceLock;
+    final completer = Completer<void>();
+    _segmentationInferenceLock = completer.future;
+    try {
+      await previous;
+      return await fn();
+    } finally {
+      completer.complete();
+    }
+  }
+
   /// Releases all resources held by the detector.
   ///
   /// Call this when you're done using the detector to free up memory.
@@ -1870,6 +1979,8 @@ class FaceDetector {
     _irisLeft?.dispose();
     _irisRight?.dispose();
     _embedding?.dispose();
+    _segmenter?.dispose();
+    _segmenter = null;
   }
 
   @pragma('vm:entry-point')
@@ -1899,7 +2010,6 @@ class FaceDetector {
           (m['size'] as num).toDouble(),
           (m['theta'] as num).toDouble(),
         );
-        // No locking needed here - this is in a separate isolate with its own model instance
         final List<List<double>> lm = await iris.runOnImageAlignedIris(
           decoded,
           roi,

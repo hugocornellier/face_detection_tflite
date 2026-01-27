@@ -16,8 +16,8 @@ void main() {
     test('testSigmoidClipped respects limit', () {
       final high = testSigmoidClipped(1000, limit: 2);
       final low = testSigmoidClipped(-1000, limit: 2);
-      expect(high, closeTo(0.8808, 1e-4)); // sigmoid(2)
-      expect(low, closeTo(0.1192, 1e-4)); // sigmoid(-2)
+      expect(high, closeTo(0.8808, 1e-4));
+      expect(low, closeTo(0.1192, 1e-4));
     });
 
     test('testDetectionLetterboxRemoval unpads boxes and keypoints', () {
@@ -37,7 +37,6 @@ void main() {
     });
 
     test('testUnpackLandmarks converts to normalized list', () {
-      // Two points: (10, 20, 1) and (30, 40, 2) with padding
       final flat = Float32List.fromList([10, 20, 1, 30, 40, 2]);
       final padding = [0.1, 0.1, 0.1, 0.1];
 

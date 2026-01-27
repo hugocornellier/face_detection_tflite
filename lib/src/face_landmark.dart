@@ -14,6 +14,7 @@ class FaceLandmark {
   late final Float32List _bestOutBuf;
   late final List<List<int>> _outShapes;
   late final List<List<List<List<double>>>> _input4dCache;
+  late final Map<int, Object> _outputsCache;
 
   FaceLandmark._(this._itp, this._inW, this._inH);
 
@@ -139,6 +140,15 @@ class FaceLandmark {
     );
 
     _input4dCache = createNHWCTensor4D(_inH, _inW);
+
+    _outputsCache = <int, Object>{};
+    for (int i = 0; i < _outShapes.length; i++) {
+      final List<int> s = _outShapes[i];
+      if (s.isNotEmpty) {
+        _outputsCache[i] = allocTensorShape(s);
+      }
+    }
+
     _iso = await IsolateInterpreter.create(address: _itp.address);
   }
 
@@ -191,16 +201,9 @@ class FaceLandmark {
     } else {
       fillNHWC4D(pack.tensorNHWC, _input4dCache, _inH, _inW);
       final List<List<List<List<List<double>>>>> inputs = [_input4dCache];
-      final Map<int, Object> outputs = <int, Object>{};
-      for (int i = 0; i < _outShapes.length; i++) {
-        final List<int> s = _outShapes[i];
-        if (s.isNotEmpty) {
-          outputs[i] = allocTensorShape(s);
-        }
-      }
-      await _iso!.runForMultipleInputs(inputs, outputs);
+      await _iso!.runForMultipleInputs(inputs, _outputsCache);
 
-      final dynamic best = outputs[_bestIdx];
+      final dynamic best = _outputsCache[_bestIdx];
 
       final Float32List bestFlat = flattenDynamicTensor(best);
       return _unpackLandmarks(bestFlat, _inW, _inH, pack.padding, clamp: true);
@@ -250,16 +253,9 @@ class FaceLandmark {
     } else {
       fillNHWC4D(pack.tensorNHWC, _input4dCache, _inH, _inW);
       final List<List<List<List<List<double>>>>> inputs = [_input4dCache];
-      final Map<int, Object> outputs = <int, Object>{};
-      for (int i = 0; i < _outShapes.length; i++) {
-        final List<int> s = _outShapes[i];
-        if (s.isNotEmpty) {
-          outputs[i] = allocTensorShape(s);
-        }
-      }
-      await _iso!.runForMultipleInputs(inputs, outputs);
+      await _iso!.runForMultipleInputs(inputs, _outputsCache);
 
-      final dynamic best = outputs[_bestIdx];
+      final dynamic best = _outputsCache[_bestIdx];
 
       final Float32List bestFlat = flattenDynamicTensor(best);
       return _unpackLandmarks(bestFlat, _inW, _inH, pack.padding, clamp: true);

@@ -13,10 +13,10 @@ void main() {
     test('should create 4D tensor with correct dimensions', () {
       final tensor = createNHWCTensor4D(128, 128);
 
-      expect(tensor.length, 1); // Batch dimension
-      expect(tensor[0].length, 128); // Height
-      expect(tensor[0][0].length, 128); // Width
-      expect(tensor[0][0][0].length, 3); // Channels (RGB)
+      expect(tensor.length, 1);
+      expect(tensor[0].length, 128);
+      expect(tensor[0][0].length, 128);
+      expect(tensor[0][0][0].length, 3);
     });
 
     test('should initialize all values to zero', () {
@@ -44,64 +44,79 @@ void main() {
     test('should create non-square tensors', () {
       final tensor = createNHWCTensor4D(100, 200);
 
-      expect(tensor[0].length, 100); // Height
-      expect(tensor[0][0].length, 200); // Width
+      expect(tensor[0].length, 100);
+      expect(tensor[0][0].length, 200);
     });
   });
 
   group('Tensor Filling - fillNHWC4D', () {
     test('should fill tensor from flat array correctly', () {
       final flat = Float32List.fromList([
-        1.0, 2.0, 3.0, // Pixel (0, 0)
-        4.0, 5.0, 6.0, // Pixel (0, 1)
-        7.0, 8.0, 9.0, // Pixel (1, 0)
-        10.0, 11.0, 12.0, // Pixel (1, 1)
+        1.0,
+        2.0,
+        3.0,
+        4.0,
+        5.0,
+        6.0,
+        7.0,
+        8.0,
+        9.0,
+        10.0,
+        11.0,
+        12.0,
       ]);
 
       final tensor = createNHWCTensor4D(2, 2);
       fillNHWC4D(flat, tensor, 2, 2);
 
-      // Check pixel (0, 0)
       expect(tensor[0][0][0][0], 1.0);
       expect(tensor[0][0][0][1], 2.0);
       expect(tensor[0][0][0][2], 3.0);
 
-      // Check pixel (0, 1)
       expect(tensor[0][0][1][0], 4.0);
       expect(tensor[0][0][1][1], 5.0);
       expect(tensor[0][0][1][2], 6.0);
 
-      // Check pixel (1, 0)
       expect(tensor[0][1][0][0], 7.0);
       expect(tensor[0][1][0][1], 8.0);
       expect(tensor[0][1][0][2], 9.0);
 
-      // Check pixel (1, 1)
       expect(tensor[0][1][1][0], 10.0);
       expect(tensor[0][1][1][1], 11.0);
       expect(tensor[0][1][1][2], 12.0);
     });
 
     test('should handle row-major order correctly', () {
-      // Create 3x2 image (3 rows, 2 columns)
       final flat = Float32List.fromList([
-        1.0, 1.0, 1.0, 2.0, 2.0, 2.0, // Row 0
-        3.0, 3.0, 3.0, 4.0, 4.0, 4.0, // Row 1
-        5.0, 5.0, 5.0, 6.0, 6.0, 6.0, // Row 2
+        1.0,
+        1.0,
+        1.0,
+        2.0,
+        2.0,
+        2.0,
+        3.0,
+        3.0,
+        3.0,
+        4.0,
+        4.0,
+        4.0,
+        5.0,
+        5.0,
+        5.0,
+        6.0,
+        6.0,
+        6.0,
       ]);
 
       final tensor = createNHWCTensor4D(3, 2);
       fillNHWC4D(flat, tensor, 3, 2);
 
-      // Verify row 0
       expect(tensor[0][0][0][0], 1.0);
       expect(tensor[0][0][1][0], 2.0);
 
-      // Verify row 1
       expect(tensor[0][1][0][0], 3.0);
       expect(tensor[0][1][1][0], 4.0);
 
-      // Verify row 2
       expect(tensor[0][2][0][0], 5.0);
       expect(tensor[0][2][1][0], 6.0);
     });
@@ -177,7 +192,6 @@ void main() {
       expect((tensor[0][0] as List).length, 2);
       expect((tensor[0][0][0] as List).length, 2);
       expect((tensor[0][0][0][0] as List).length, 3);
-      // Verify innermost values are doubles initialized to 0
       expect(tensor[0][0][0][0][0], 0.0);
       expect(tensor[0][1][1][1][2], 0.0);
     });
@@ -191,7 +205,6 @@ void main() {
       expect((tensor[0][0][0] as List).length, 2);
       expect((tensor[0][0][0][0] as List).length, 2);
       expect((tensor[0][0][0][0][0] as List).length, 2);
-      // Verify innermost values
       expect(tensor[0][0][0][0][0][0], 0.0);
       expect(tensor[0][1][1][1][1][1], 0.0);
     });
@@ -200,7 +213,6 @@ void main() {
       final tensor = allocTensorShape([1, 1, 2, 2, 2, 2, 3]) as List;
 
       expect(tensor.length, 1);
-      // Navigate to innermost
       expect(tensor[0][0][0][0][0][0][0], 0.0);
       expect(tensor[0][0][1][1][1][1][2], 0.0);
     });
@@ -339,12 +351,9 @@ void main() {
       final rect = RectF(0.4, 0.4, 0.6, 0.6);
       final expanded = rect.expand(0.5);
 
-      // Original size: 0.2 x 0.2
-      // Expanded size: 0.3 x 0.3 (1.5x)
       expect(expanded.w, closeTo(0.3, 0.0001));
       expect(expanded.h, closeTo(0.3, 0.0001));
 
-      // Center should stay at (0.5, 0.5)
       final cx = (expanded.xmin + expanded.xmax) / 2;
       final cy = (expanded.ymin + expanded.ymax) / 2;
       expect(cx, closeTo(0.5, 0.0001));
@@ -413,7 +422,7 @@ void main() {
     });
 
     test('should handle negative rotation', () {
-      final roi = AlignedRoi(50.0, 50.0, 30.0, -1.57); // ~-90 degrees
+      final roi = AlignedRoi(50.0, 50.0, 30.0, -1.57);
 
       expect(roi.theta, -1.57);
     });
@@ -520,7 +529,6 @@ void main() {
     });
 
     test('should handle rotated bounding box', () {
-      // Diamond shape
       final bbox = BoundingBox(
         topLeft: Point(50.0, 0.0),
         topRight: Point(100.0, 50.0),
@@ -528,9 +536,8 @@ void main() {
         bottomLeft: Point(0.0, 50.0),
       );
 
-      // Width/height calculated from differences
-      expect(bbox.width, 50.0); // topRight.x - topLeft.x
-      expect(bbox.height, 50.0); // bottomLeft.y - topLeft.y
+      expect(bbox.width, 50.0);
+      expect(bbox.height, 50.0);
       expect(bbox.center.x, 50.0);
       expect(bbox.center.y, 50.0);
     });
@@ -630,8 +637,8 @@ void main() {
     test('should generate valid keypoints', () {
       final keypoints = TestUtils.generateValidKeypoints();
 
-      expect(keypoints.length, 12); // 6 landmarks * 2 (x,y)
-      expect(keypoints[0], inRange(0.0, 1.0)); // All normalized
+      expect(keypoints.length, 12);
+      expect(keypoints[0], inRange(0.0, 1.0));
       expect(keypoints[1], inRange(0.0, 1.0));
     });
 
@@ -641,18 +648,18 @@ void main() {
         rightEye: Point(0.75, 0.35),
       );
 
-      expect(keypoints[0], 0.25); // leftEye.x
-      expect(keypoints[1], 0.35); // leftEye.y
-      expect(keypoints[2], 0.75); // rightEye.x
-      expect(keypoints[3], 0.35); // rightEye.y
+      expect(keypoints[0], 0.25);
+      expect(keypoints[1], 0.35);
+      expect(keypoints[2], 0.75);
+      expect(keypoints[3], 0.35);
     });
 
     test('should create dummy image bytes', () {
       final bytes = TestUtils.createDummyImageBytes();
 
       expect(bytes, isNotEmpty);
-      expect(bytes.length, greaterThan(40)); // Minimal PNG is ~50 bytes
-      expect(bytes[0], 0x89); // PNG signature
+      expect(bytes.length, greaterThan(40));
+      expect(bytes[0], 0x89);
       expect(bytes[1], 0x50);
       expect(bytes[2], 0x4E);
       expect(bytes[3], 0x47);

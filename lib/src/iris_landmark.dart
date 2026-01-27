@@ -12,6 +12,7 @@ class IrisLandmark {
   late final Map<int, List<int>> _outShapes;
   late final Map<int, Float32List> _outBuffers;
   late final List<List<List<List<double>>>> _input4dCache;
+  late final Map<int, Object> _outputsCache;
 
   IrisLandmark._(this._itp, this._inW, this._inH);
 
@@ -121,6 +122,11 @@ class IrisLandmark {
         outputInfo.map((int k, OutputTensorInfo v) => MapEntry(k, v.buffer));
     _input4dCache = createNHWCTensor4D(_inH, _inW);
 
+    _outputsCache = <int, Object>{};
+    _outShapes.forEach((i, shape) {
+      _outputsCache[i] = allocTensorShape(shape);
+    });
+
     _iso = await IsolateInterpreter.create(address: _itp.address);
   }
 
@@ -198,6 +204,11 @@ class IrisLandmark {
         outputInfo.map((int k, OutputTensorInfo v) => MapEntry(k, v.buffer));
     obj._input4dCache = createNHWCTensor4D(inH, inW);
 
+    obj._outputsCache = <int, Object>{};
+    obj._outShapes.forEach((i, shape) {
+      obj._outputsCache[i] = allocTensorShape(shape);
+    });
+
     obj._iso = await IsolateInterpreter.create(address: itp.address);
 
     return obj;
@@ -262,16 +273,11 @@ class IrisLandmark {
     } else {
       fillNHWC4D(pack.tensorNHWC, _input4dCache, _inH, _inW);
       final List<List<List<List<List<double>>>>> inputs = [_input4dCache];
-      final Map<int, Object> outputs = <int, Object>{};
-      _outShapes.forEach((i, shape) {
-        outputs[i] = allocTensorShape(shape);
-      });
-
-      await _iso!.runForMultipleInputs(inputs, outputs);
+      await _iso!.runForMultipleInputs(inputs, _outputsCache);
 
       final List<List<double>> lm = <List<double>>[];
       _outShapes.forEach((i, _) {
-        final Float32List flat = flattenDynamicTensor(outputs[i]);
+        final Float32List flat = flattenDynamicTensor(_outputsCache[i]);
         lm.addAll(
           _unpackLandmarks(flat, _inW, _inH, pack.padding, clamp: false),
         );
@@ -493,12 +499,7 @@ class IrisLandmark {
     } else {
       fillNHWC4D(pack.tensorNHWC, _input4dCache, _inH, _inW);
       final List<List<List<List<List<double>>>>> inputs = [_input4dCache];
-      final Map<int, Object> outputs = <int, Object>{};
-      _outShapes.forEach((i, shape) {
-        outputs[i] = allocTensorShape(shape);
-      });
-
-      await _iso!.runForMultipleInputs(inputs, outputs);
+      await _iso!.runForMultipleInputs(inputs, _outputsCache);
 
       final double pt = pack.padding[0],
           pb = pack.padding[1],
@@ -509,7 +510,7 @@ class IrisLandmark {
 
       Float32List? irisFlat;
       _outShapes.forEach((i, shape) {
-        final Float32List flat = flattenDynamicTensor(outputs[i]);
+        final Float32List flat = flattenDynamicTensor(_outputsCache[i]);
         if (flat.length == 15) {
           irisFlat = flat;
         }
@@ -672,16 +673,11 @@ class IrisLandmark {
     } else {
       fillNHWC4D(pack.tensorNHWC, _input4dCache, _inH, _inW);
       final List<List<List<List<List<double>>>>> inputs = [_input4dCache];
-      final Map<int, Object> outputs = <int, Object>{};
-      _outShapes.forEach((i, shape) {
-        outputs[i] = allocTensorShape(shape);
-      });
-
-      await _iso!.runForMultipleInputs(inputs, outputs);
+      await _iso!.runForMultipleInputs(inputs, _outputsCache);
 
       final List<List<double>> lm = <List<double>>[];
       _outShapes.forEach((i, _) {
-        final Float32List flat = flattenDynamicTensor(outputs[i]);
+        final Float32List flat = flattenDynamicTensor(_outputsCache[i]);
         lm.addAll(
           _unpackLandmarks(flat, _inW, _inH, pack.padding, clamp: false),
         );

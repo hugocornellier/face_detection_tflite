@@ -44,10 +44,9 @@ void main() {
     });
 
     test('should handle normalized vectors correctly', () {
-      // Pre-normalized unit vectors
       final a = Float32List.fromList([1.0, 0.0]);
-      final b = Float32List.fromList(
-          [math.cos(math.pi / 4), math.sin(math.pi / 4)]); // 45 degrees
+      final b =
+          Float32List.fromList([math.cos(math.pi / 4), math.sin(math.pi / 4)]);
 
       final similarity = FaceEmbedding.cosineSimilarity(a, b);
       expect(similarity, closeTo(math.cos(math.pi / 4), 0.0001));
@@ -84,7 +83,6 @@ void main() {
     });
 
     test('should handle typical face embedding dimension (192)', () {
-      // Create two random 192-dimensional embeddings
       final random = math.Random(42);
       final a = Float32List.fromList(
         List.generate(192, (_) => random.nextDouble()),
@@ -95,7 +93,6 @@ void main() {
 
       final similarity = FaceEmbedding.cosineSimilarity(a, b);
 
-      // Should be in valid range [-1, 1]
       expect(similarity, greaterThanOrEqualTo(-1.0));
       expect(similarity, lessThanOrEqualTo(1.0));
     });
@@ -113,7 +110,7 @@ void main() {
       final b = Float32List.fromList([3.0, 4.0, 0.0]);
 
       final distance = FaceEmbedding.euclideanDistance(a, b);
-      expect(distance, closeTo(5.0, 0.0001)); // 3-4-5 triangle
+      expect(distance, closeTo(5.0, 0.0001));
     });
 
     test('should calculate correct distance for unit vectors', () {
@@ -139,9 +136,8 @@ void main() {
     });
 
     test('should handle normalized embeddings correctly', () {
-      // For unit vectors at angle theta, distance = 2*sin(theta/2)
       final a = Float32List.fromList([1.0, 0.0]);
-      final angle = math.pi / 3; // 60 degrees
+      final angle = math.pi / 3;
       final b = Float32List.fromList([math.cos(angle), math.sin(angle)]);
 
       final distance = FaceEmbedding.euclideanDistance(a, b);
@@ -160,7 +156,6 @@ void main() {
     });
 
     test('should handle typical face embedding dimension (192)', () {
-      // Create two random 192-dimensional normalized embeddings
       final random = math.Random(42);
       List<double> randomUnit(int dim) {
         final v = List.generate(dim, (_) => random.nextDouble() - 0.5);
@@ -173,7 +168,6 @@ void main() {
 
       final distance = FaceEmbedding.euclideanDistance(a, b);
 
-      // For normalized vectors, max distance is 2.0 (opposite directions)
       expect(distance, greaterThanOrEqualTo(0.0));
       expect(distance, lessThanOrEqualTo(2.0));
     });
@@ -205,11 +199,6 @@ void main() {
     test(
         'similarity and distance should be inversely related for normalized vectors',
         () {
-      // For normalized vectors:
-      // similarity = cos(theta)
-      // distance = 2*sin(theta/2)
-      // These are inversely related: high similarity = low distance
-
       final angles = [0.0, math.pi / 6, math.pi / 4, math.pi / 3, math.pi / 2];
 
       for (final angle in angles) {
@@ -219,7 +208,6 @@ void main() {
         final similarity = FaceDetector.compareFaces(a, b);
         final distance = FaceDetector.faceDistance(a, b);
 
-        // As similarity decreases, distance should increase
         expect(similarity, closeTo(math.cos(angle), 0.001));
         expect(distance, closeTo(2 * math.sin(angle / 2), 0.001));
       }
@@ -231,7 +219,6 @@ void main() {
         List.generate(192, (i) => math.sin(i.toDouble())),
       );
 
-      // Normalize
       double norm = 0.0;
       for (final v in embedding) {
         norm += v * v;
@@ -256,21 +243,13 @@ void main() {
         rightEye: Point(200.0, 100.0),
       );
 
-      // Eyes are horizontal, so theta should be 0
       expect(alignment.theta, closeTo(0.0, 0.0001));
-
-      // Eye distance is 100, so size should be 100 * 2.5 = 250
       expect(alignment.size, closeTo(250.0, 0.1));
-
-      // Center x should be between eyes: (100 + 200) / 2 = 150
       expect(alignment.cx, closeTo(150.0, 1.0));
-
-      // Center y should be slightly below eye center
       expect(alignment.cy, greaterThan(100.0));
     });
 
     test('should compute correct alignment for rotated eyes', () {
-      // Eyes at 45 degree angle
       final eyeDist = 100.0;
       final dx = eyeDist * math.cos(math.pi / 4);
       final dy = eyeDist * math.sin(math.pi / 4);
@@ -280,10 +259,7 @@ void main() {
         rightEye: Point(100.0 + dx, 100.0 + dy),
       );
 
-      // Theta should be 45 degrees
       expect(alignment.theta, closeTo(math.pi / 4, 0.01));
-
-      // Size should be eyeDist * 2.5
       expect(alignment.size, closeTo(eyeDist * 2.5, 0.1));
     });
 
@@ -293,17 +269,15 @@ void main() {
         rightEye: Point(100.0, 200.0),
       );
 
-      // Theta should be 90 degrees
       expect(alignment.theta, closeTo(math.pi / 2, 0.01));
     });
 
     test('should handle inverted eyes (negative angle)', () {
       final alignment = computeEmbeddingAlignment(
         leftEye: Point(100.0, 100.0),
-        rightEye: Point(200.0, 50.0), // right eye is above left eye
+        rightEye: Point(200.0, 50.0),
       );
 
-      // Theta should be negative
       expect(alignment.theta, lessThan(0.0));
     });
 
@@ -329,7 +303,6 @@ void main() {
         rightEye: Point(101.0, 100.0),
       );
 
-      // Should not crash, size should be proportional
       expect(alignment.size, closeTo(2.5, 0.1));
       expect(alignment.theta, closeTo(0.0, 0.01));
     });

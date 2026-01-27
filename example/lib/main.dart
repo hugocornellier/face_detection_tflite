@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:camera/camera.dart';
@@ -74,6 +75,26 @@ class HomeScreen extends StatelessWidget {
                   style: TextStyle(fontSize: 18)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+                minimumSize: const Size(300, 70),
+              ),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => const SegmentationDemoScreen()),
+                );
+              },
+              icon: const Icon(Icons.person_outline, size: 32),
+              label: const Text('Selfie Segmentation',
+                  style: TextStyle(fontSize: 18)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.purple,
                 foregroundColor: Colors.white,
                 padding:
                     const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
@@ -1184,17 +1205,39 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   FaceDetectionMode _detectionMode = FaceDetectionMode.fast;
   FaceDetectionModel _detectionModel = FaceDetectionModel.frontCamera;
 
+  // Segmentation settings
+  bool _showSegmentation = false;
+  SegmentationMask? _segmentationMask;
+  final Color _segmentationColor = const Color(0x8800FF00);
+
+  // Virtual background settings
+  bool _showVirtualBackground = false;
+  ui.Image? _beachBackground;
+
   @override
   void initState() {
     super.initState();
     _initCamera();
+    _loadBeachBackground();
+  }
+
+  Future<void> _loadBeachBackground() async {
+    final data = await rootBundle.load('assets/beach_background.jpg');
+    final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
+    final frame = await codec.getNextFrame();
+    if (mounted) {
+      setState(() {
+        _beachBackground = frame.image;
+      });
+    }
   }
 
   Future<void> _initCamera() async {
     try {
-      // Initialize face detector isolate with selected model
+      // Initialize face detector isolate with selected model and segmentation
       _faceDetectorIsolate = await FaceDetectorIsolate.spawn(
         model: _detectionModel,
+        withSegmentation: true,
       );
 
       if (_isMacOS) {
@@ -1297,6 +1340,13 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         mode: _detectionMode,
       );
 
+      // Run segmentation if enabled
+      SegmentationMask? segMask;
+      if ((_showSegmentation || _showVirtualBackground) &&
+          _faceDetectorIsolate!.isSegmentationReady) {
+        segMask = await _faceDetectorIsolate!.getSegmentationMaskFromMat(mat);
+      }
+
       // Dispose the Mat after detection
       mat.dispose();
 
@@ -1316,6 +1366,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
           _faces = faces;
           _imageSize = processedSize;
           _detectionTimeMs = detectionTime;
+          _segmentationMask = segMask;
         });
       }
     } catch (e) {
@@ -1599,7 +1650,36 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
+                  // Virtual background: draw beach first, then camera, then beach on background areas
+                  if (_showVirtualBackground && _beachBackground != null)
+                    Positioned.fill(
+                      child: CustomPaint(
+                        painter:
+                            _BackgroundImagePainter(image: _beachBackground!),
+                      ),
+                    ),
+                  // Camera preview (always shown)
                   CameraPreview(_cameraController!),
+                  // Virtual background: overlay beach on non-person areas
+                  if (_showVirtualBackground &&
+                      _beachBackground != null &&
+                      _segmentationMask != null)
+                    CustomPaint(
+                      painter: _VirtualBackgroundOverlayPainter(
+                        background: _beachBackground!,
+                        mask: _segmentationMask!,
+                      ),
+                    ),
+                  // Segmentation mask overlay (only when not using virtual background)
+                  if (_showSegmentation &&
+                      !_showVirtualBackground &&
+                      _segmentationMask != null)
+                    CustomPaint(
+                      painter: _LiveSegmentationPainter(
+                        mask: _segmentationMask!,
+                        maskColor: _segmentationColor,
+                      ),
+                    ),
                   if (_imageSize != null)
                     CustomPaint(
                       painter: _CameraDetectionPainter(
@@ -1665,6 +1745,41 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                                 _processEveryNFrames = value;
                               });
                             }
+                          },
+                        ),
+                        const SizedBox(width: 16),
+                        const Text(
+                          'Segmentation: ',
+                          style: TextStyle(color: Colors.white70, fontSize: 14),
+                        ),
+                        Switch(
+                          value: _showSegmentation,
+                          activeTrackColor: Colors.green,
+                          onChanged: (value) {
+                            setState(() {
+                              _showSegmentation = value;
+                              if (!value) _segmentationMask = null;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'Virtual Background: ',
+                          style: TextStyle(color: Colors.white70, fontSize: 14),
+                        ),
+                        Switch(
+                          value: _showVirtualBackground,
+                          activeTrackColor: Colors.blue,
+                          onChanged: (value) {
+                            setState(() {
+                              _showVirtualBackground = value;
+                              if (!value) _segmentationMask = null;
+                            });
                           },
                         ),
                       ],
@@ -1797,6 +1912,15 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
+                  // Virtual background: draw beach first
+                  if (_showVirtualBackground && _beachBackground != null)
+                    Positioned.fill(
+                      child: CustomPaint(
+                        painter:
+                            _BackgroundImagePainter(image: _beachBackground!),
+                      ),
+                    ),
+                  // Camera view
                   CameraMacOSView(
                     cameraMode: CameraMacOSMode.photo,
                     fit: BoxFit.contain,
@@ -1804,6 +1928,26 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                     onCameraLoading: (_) =>
                         const Center(child: CircularProgressIndicator()),
                   ),
+                  // Virtual background: overlay beach on non-person areas
+                  if (_showVirtualBackground &&
+                      _beachBackground != null &&
+                      _segmentationMask != null)
+                    CustomPaint(
+                      painter: _VirtualBackgroundOverlayPainter(
+                        background: _beachBackground!,
+                        mask: _segmentationMask!,
+                      ),
+                    ),
+                  // Segmentation mask overlay (only when not using virtual background)
+                  if (_showSegmentation &&
+                      !_showVirtualBackground &&
+                      _segmentationMask != null)
+                    CustomPaint(
+                      painter: _LiveSegmentationPainter(
+                        mask: _segmentationMask!,
+                        maskColor: _segmentationColor,
+                      ),
+                    ),
                   if (_imageSize != null)
                     CustomPaint(
                       painter: _CameraDetectionPainter(
@@ -1871,6 +2015,41 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                             }
                           },
                         ),
+                        const SizedBox(width: 16),
+                        const Text(
+                          'Segmentation: ',
+                          style: TextStyle(color: Colors.white70, fontSize: 14),
+                        ),
+                        Switch(
+                          value: _showSegmentation,
+                          activeTrackColor: Colors.green,
+                          onChanged: (value) {
+                            setState(() {
+                              _showSegmentation = value;
+                              if (!value) _segmentationMask = null;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'Virtual Background: ',
+                          style: TextStyle(color: Colors.white70, fontSize: 14),
+                        ),
+                        Switch(
+                          value: _showVirtualBackground,
+                          activeTrackColor: Colors.blue,
+                          onChanged: (value) {
+                            setState(() {
+                              _showVirtualBackground = value;
+                              if (!value) _segmentationMask = null;
+                            });
+                          },
+                        ),
                       ],
                     ),
                   ],
@@ -1934,6 +2113,13 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
           mode: _detectionMode,
         );
 
+        // Run segmentation if enabled
+        SegmentationMask? segMask;
+        if ((_showSegmentation || _showVirtualBackground) &&
+            _faceDetectorIsolate!.isSegmentationReady) {
+          segMask = await _faceDetectorIsolate!.getSegmentationMaskFromMat(mat);
+        }
+
         // Dispose the Mat after detection
         mat.dispose();
 
@@ -1947,6 +2133,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
             _macPreviewSize ??=
                 Size(image.width.toDouble(), image.height.toDouble());
             _detectionTimeMs = detectionTime;
+            _segmentationMask = segMask;
           });
         }
       } catch (_) {
@@ -2173,5 +2360,650 @@ class _CameraDetectionPainter extends CustomPainter {
         old.sensorOrientation != sensorOrientation ||
         old.deviceOrientation != deviceOrientation ||
         old.isFrontCamera != isFrontCamera;
+  }
+}
+
+/// Painter for rendering segmentation mask overlay on live camera feed.
+class _LiveSegmentationPainter extends CustomPainter {
+  final SegmentationMask mask;
+  final Color maskColor;
+
+  _LiveSegmentationPainter({
+    required this.mask,
+    required this.maskColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Same logic as the working static _SegmentationMaskPainter
+    final pt = mask.padding[0];
+    final pb = mask.padding[1];
+    final pl = mask.padding[2];
+    final pr = mask.padding[3];
+
+    final validX0 = (pl * mask.width).round();
+    final validY0 = (pt * mask.height).round();
+    final validX1 = ((1.0 - pr) * mask.width).round();
+    final validY1 = ((1.0 - pb) * mask.height).round();
+    final validW = validX1 - validX0;
+    final validH = validY1 - validY0;
+
+    final scaleX = validW > 0 ? size.width / validW : 1.0;
+    final scaleY = validH > 0 ? size.height / validH : 1.0;
+
+    final paint = Paint();
+    const double threshold = 0.5;
+
+    for (int y = validY0; y < validY1; y++) {
+      for (int x = validX0; x < validX1; x++) {
+        final prob = mask.at(x, y);
+        final alpha = prob >= threshold ? maskColor.a : 0.0;
+
+        if (alpha > 0.01) {
+          paint.color = maskColor.withAlpha((alpha * 255).round());
+          final renderX = (x - validX0) * scaleX;
+          final renderY = (y - validY0) * scaleY;
+          canvas.drawRect(
+            Rect.fromLTWH(renderX, renderY, scaleX + 0.5, scaleY + 0.5),
+            paint,
+          );
+        }
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _LiveSegmentationPainter old) {
+    return old.mask != mask || old.maskColor != maskColor;
+  }
+}
+
+/// Painter that draws a background image scaled to fill the canvas.
+class _BackgroundImagePainter extends CustomPainter {
+  final ui.Image image;
+
+  _BackgroundImagePainter({required this.image});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final src =
+        Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
+    final dst = Rect.fromLTWH(0, 0, size.width, size.height);
+    canvas.drawImageRect(image, src, dst, Paint());
+  }
+
+  @override
+  bool shouldRepaint(covariant _BackgroundImagePainter old) {
+    return old.image != image;
+  }
+}
+
+/// Painter that draws background image only on non-person (background) areas.
+/// This creates the "virtual background" effect by covering the camera's
+/// background with the beach image while leaving the person visible.
+/// Uses soft alpha blending at edges for smooth transitions.
+class _VirtualBackgroundOverlayPainter extends CustomPainter {
+  final ui.Image background;
+  final SegmentationMask mask;
+
+  _VirtualBackgroundOverlayPainter({
+    required this.background,
+    required this.mask,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Account for letterbox padding
+    final pt = mask.padding[0];
+    final pb = mask.padding[1];
+    final pl = mask.padding[2];
+    final pr = mask.padding[3];
+
+    final validX0 = (pl * mask.width).round();
+    final validY0 = (pt * mask.height).round();
+    final validX1 = ((1.0 - pr) * mask.width).round();
+    final validY1 = ((1.0 - pb) * mask.height).round();
+    final validW = validX1 - validX0;
+    final validH = validY1 - validY0;
+
+    if (validW <= 0 || validH <= 0) return;
+
+    final scaleX = size.width / validW;
+    final scaleY = size.height / validH;
+
+    // Scale factors for sampling from background image
+    final bgScaleX = background.width / size.width;
+    final bgScaleY = background.height / size.height;
+
+    final paint = Paint();
+
+    // Draw background with soft alpha blending based on mask probability
+    // prob = 1.0 means person (don't draw background)
+    // prob = 0.0 means background (draw background fully)
+    // Values in between create smooth edge blending
+    for (int y = validY0; y < validY1; y++) {
+      for (int x = validX0; x < validX1; x++) {
+        final prob = mask.at(x, y).clamp(0.0, 1.0);
+
+        // Calculate background opacity (inverse of person probability)
+        // Apply a slight contrast boost for cleaner edges
+        final bgAlpha = (1.0 - prob);
+
+        // Skip fully transparent pixels for performance
+        if (bgAlpha < 0.01) continue;
+
+        final renderX = (x - validX0) * scaleX;
+        final renderY = (y - validY0) * scaleY;
+
+        // Sample from background image
+        final bgX =
+            (renderX * bgScaleX).clamp(0, background.width - 1).toDouble();
+        final bgY =
+            (renderY * bgScaleY).clamp(0, background.height - 1).toDouble();
+
+        // Draw background with alpha based on inverse mask probability
+        paint.color = Color.fromRGBO(255, 255, 255, bgAlpha);
+        final src =
+            Rect.fromLTWH(bgX, bgY, bgScaleX * scaleX, bgScaleY * scaleY);
+        final dst = Rect.fromLTWH(renderX, renderY, scaleX + 0.5, scaleY + 0.5);
+        canvas.drawImageRect(background, src, dst, paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _VirtualBackgroundOverlayPainter old) {
+    return old.background != background || old.mask != mask;
+  }
+}
+
+// ============================================================================
+// Selfie Segmentation Demo Screen
+// ============================================================================
+
+class SegmentationDemoScreen extends StatefulWidget {
+  const SegmentationDemoScreen({super.key});
+
+  @override
+  State<SegmentationDemoScreen> createState() => _SegmentationDemoScreenState();
+}
+
+class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
+  SelfieSegmentation? _segmenter;
+  Uint8List? _imageBytes;
+  SegmentationMask? _mask;
+  Size? _originalSize;
+  bool _isLoading = false;
+  bool _isInitializing = true;
+  int? _inferenceTimeMs;
+  String? _error;
+
+  double _threshold = 0.5;
+  bool _showMaskOnly = false;
+  bool _showBinaryMask = true;
+  Color _maskColor = const Color(0x8800FF00);
+
+  @override
+  void initState() {
+    super.initState();
+    _initSegmenter();
+  }
+
+  Future<void> _initSegmenter() async {
+    setState(() {
+      _isInitializing = true;
+      _error = null;
+    });
+
+    try {
+      _segmenter?.dispose();
+      _segmenter = await SelfieSegmentation.create();
+    } catch (e) {
+      _error = 'Failed to initialize: $e';
+    }
+
+    if (mounted) {
+      setState(() => _isInitializing = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _segmenter?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickAndSegment() async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? picked =
+        await picker.pickImage(source: ImageSource.gallery, imageQuality: 100);
+    if (picked == null) return;
+
+    setState(() {
+      _imageBytes = null;
+      _mask = null;
+      _originalSize = null;
+      _isLoading = true;
+      _inferenceTimeMs = null;
+      _error = null;
+    });
+
+    final Uint8List bytes = await picked.readAsBytes();
+
+    if (_segmenter == null) {
+      setState(() {
+        _isLoading = false;
+        _error = 'Segmenter not initialized';
+      });
+      return;
+    }
+
+    try {
+      final stopwatch = Stopwatch()..start();
+      final mask = await _segmenter!.call(bytes);
+      stopwatch.stop();
+
+      // Get image size from mask
+      final Size originalSize =
+          Size(mask.originalWidth.toDouble(), mask.originalHeight.toDouble());
+
+      if (mounted) {
+        setState(() {
+          _imageBytes = bytes;
+          _mask = mask;
+          _originalSize = originalSize;
+          _inferenceTimeMs = stopwatch.elapsedMilliseconds;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _error = 'Segmentation failed: $e';
+        });
+      }
+    }
+  }
+
+  void _showSettings() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.5,
+        minChildSize: 0.3,
+        maxChildSize: 0.8,
+        builder: (context, scrollController) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          child: Column(
+            children: [
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Expanded(
+                child: ListView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  children: [
+                    const Text('Display Options',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16)),
+                    const SizedBox(height: 8),
+                    SwitchListTile(
+                      title: const Text('Show mask only'),
+                      subtitle: const Text('Hide original image'),
+                      value: _showMaskOnly,
+                      onChanged: (value) {
+                        setState(() => _showMaskOnly = value);
+                        Navigator.pop(context);
+                      },
+                    ),
+                    SwitchListTile(
+                      title: const Text('Binary mask'),
+                      subtitle: const Text('Sharp edges vs soft blend'),
+                      value: _showBinaryMask,
+                      onChanged: (value) {
+                        setState(() => _showBinaryMask = value);
+                        Navigator.pop(context);
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    Text('Threshold: ${_threshold.toStringAsFixed(2)}'),
+                    Slider(
+                      value: _threshold,
+                      min: 0.0,
+                      max: 1.0,
+                      divisions: 20,
+                      label: _threshold.toStringAsFixed(2),
+                      onChanged: (value) {
+                        setState(() => _threshold = value);
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    const Text('Mask Color',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        _colorOption(const Color(0x8800FF00), 'Green'),
+                        _colorOption(const Color(0x88FF0000), 'Red'),
+                        _colorOption(const Color(0x880000FF), 'Blue'),
+                        _colorOption(const Color(0x88FFFF00), 'Yellow'),
+                        _colorOption(const Color(0x88FF00FF), 'Magenta'),
+                        _colorOption(const Color(0x8800FFFF), 'Cyan'),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _colorOption(Color color, String label) {
+    final isSelected = _maskColor == color;
+    return GestureDetector(
+      onTap: () {
+        setState(() => _maskColor = color);
+        Navigator.pop(context);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected ? Colors.black : Colors.grey,
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Text(label, style: const TextStyle(color: Colors.white)),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool hasImage = _imageBytes != null && _originalSize != null;
+    final bool hasMask = _mask != null;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Selfie Segmentation'),
+        backgroundColor: Colors.purple,
+        foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            onPressed: _pickAndSegment,
+            icon: const Icon(Icons.add_photo_alternate),
+            tooltip: 'Pick Image',
+          ),
+          IconButton(
+            onPressed: _showSettings,
+            icon: const Icon(Icons.tune),
+            tooltip: 'Settings',
+          ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          Center(
+            child: _isInitializing
+                ? const Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(color: Colors.purple),
+                      SizedBox(height: 16),
+                      Text('Initializing segmentation model...'),
+                    ],
+                  )
+                : hasImage
+                    ? LayoutBuilder(
+                        builder: (context, constraints) {
+                          final fitted = applyBoxFit(
+                            BoxFit.contain,
+                            _originalSize!,
+                            Size(constraints.maxWidth, constraints.maxHeight),
+                          );
+                          final Size renderSize = fitted.destination;
+
+                          return Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              // Original image (or gray background for mask-only)
+                              if (!_showMaskOnly)
+                                Image.memory(
+                                  _imageBytes!,
+                                  width: renderSize.width,
+                                  height: renderSize.height,
+                                  fit: BoxFit.contain,
+                                )
+                              else
+                                Container(
+                                  width: renderSize.width,
+                                  height: renderSize.height,
+                                  color: Colors.grey[900],
+                                ),
+                              // Mask overlay
+                              if (hasMask)
+                                CustomPaint(
+                                  size: renderSize,
+                                  painter: _SegmentationMaskPainter(
+                                    mask: _mask!,
+                                    originalSize: _originalSize!,
+                                    threshold: _threshold,
+                                    binary: _showBinaryMask,
+                                    maskColor: _maskColor,
+                                  ),
+                                ),
+                            ],
+                          );
+                        },
+                      )
+                    : Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.person_outline,
+                              size: 100, color: Colors.purple[200]),
+                          const SizedBox(height: 24),
+                          const Text(
+                            'Pick an image to segment',
+                            style: TextStyle(fontSize: 18, color: Colors.grey),
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton.icon(
+                            onPressed: _pickAndSegment,
+                            icon: const Icon(Icons.add_photo_alternate),
+                            label: const Text('Select Image'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.purple,
+                              foregroundColor: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+          ),
+          // Loading overlay
+          if (_isLoading)
+            Container(
+              color: Colors.black54,
+              child: const Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(color: Colors.purple),
+                    SizedBox(height: 16),
+                    Text('Segmenting...',
+                        style: TextStyle(color: Colors.white)),
+                  ],
+                ),
+              ),
+            ),
+          // Performance badge
+          if (_inferenceTimeMs != null && !_isLoading)
+            Positioned(
+              top: 12,
+              left: 12,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withAlpha(179),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      _inferenceTimeMs! < 100 ? Icons.speed : Icons.timer,
+                      size: 16,
+                      color: _inferenceTimeMs! < 100
+                          ? Colors.green
+                          : _inferenceTimeMs! < 300
+                              ? Colors.lightGreen
+                              : Colors.orange,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${_inferenceTimeMs}ms',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          // Model info badge
+          if (hasMask && !_isLoading)
+            Positioned(
+              top: 12,
+              right: 12,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withAlpha(179),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Text(
+                  'Multiclass (256x256)',
+                  style: TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+              ),
+            ),
+          // Error display
+          if (_error != null)
+            Positioned(
+              bottom: 20,
+              left: 20,
+              right: 20,
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red[800],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _error!,
+                  style: const TextStyle(color: Colors.white),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SegmentationMaskPainter extends CustomPainter {
+  final SegmentationMask mask;
+  final Size originalSize;
+  final double threshold;
+  final bool binary;
+  final Color maskColor;
+
+  _SegmentationMaskPainter({
+    required this.mask,
+    required this.originalSize,
+    required this.threshold,
+    required this.binary,
+    required this.maskColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Account for letterbox padding - the mask includes padded regions
+    // that need to be mapped correctly to the original image
+    final pt = mask.padding[0]; // top padding (normalized 0-1)
+    final pb = mask.padding[1]; // bottom padding (normalized 0-1)
+    final pl = mask.padding[2]; // left padding (normalized 0-1)
+    final pr = mask.padding[3]; // right padding (normalized 0-1)
+
+    // Calculate the valid (non-padded) region in mask coordinates
+    final validX0 = (pl * mask.width).round();
+    final validY0 = (pt * mask.height).round();
+    final validX1 = ((1.0 - pr) * mask.width).round();
+    final validY1 = ((1.0 - pb) * mask.height).round();
+    final validW = validX1 - validX0;
+    final validH = validY1 - validY0;
+
+    // Scale from the valid mask region to render size
+    final scaleX = validW > 0 ? size.width / validW : 1.0;
+    final scaleY = validH > 0 ? size.height / validH : 1.0;
+
+    final paint = Paint();
+
+    for (int y = validY0; y < validY1; y++) {
+      for (int x = validX0; x < validX1; x++) {
+        final prob = mask.at(x, y);
+        final double alpha;
+
+        if (binary) {
+          alpha = prob >= threshold ? maskColor.a : 0.0;
+        } else {
+          alpha = prob * maskColor.a;
+        }
+
+        if (alpha > 0.01) {
+          paint.color = maskColor.withAlpha((alpha * 255).round());
+          // Map mask coordinates (minus padding offset) to render coordinates
+          final renderX = (x - validX0) * scaleX;
+          final renderY = (y - validY0) * scaleY;
+          canvas.drawRect(
+            Rect.fromLTWH(renderX, renderY, scaleX + 0.5, scaleY + 0.5),
+            paint,
+          );
+        }
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SegmentationMaskPainter old) {
+    return old.mask != mask ||
+        old.threshold != threshold ||
+        old.binary != binary ||
+        old.maskColor != maskColor;
   }
 }

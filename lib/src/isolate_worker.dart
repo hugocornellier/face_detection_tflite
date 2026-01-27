@@ -623,7 +623,6 @@ class IsolateWorker {
       throw FormatException('Failed to decode image format');
     }
 
-    // Extract RGB once and store directly in frames map
     final Uint8List rgb = decoded.getBytes(order: img.ChannelOrder.rgb);
     final img.Image image = img.Image.fromBytes(
       width: decoded.width,
@@ -742,7 +741,6 @@ class IsolateWorker {
     final int cy0 = y0.clamp(0, srcHeight - 1);
     final int cy1 = y1.clamp(0, srcHeight - 1);
 
-    // Direct buffer access: offset = (y * width + x) * 3 for RGB
     final int offset00 = (cy0 * srcWidth + cx0) * 3;
     final int offset10 = (cy0 * srcWidth + cx1) * 3;
     final int offset01 = (cy1 * srcWidth + cx0) * 3;
@@ -753,7 +751,6 @@ class IsolateWorker {
     final double ax1 = 1 - ax;
     final double ay1 = 1 - ay;
 
-    // Interpolate each channel directly from buffer
     final double r0 = srcBuffer[offset00] * ax1 + srcBuffer[offset10] * ax;
     final double g0 =
         srcBuffer[offset00 + 1] * ax1 + srcBuffer[offset10 + 1] * ax;
@@ -765,7 +762,6 @@ class IsolateWorker {
     final double b1 =
         srcBuffer[offset01 + 2] * ax1 + srcBuffer[offset11 + 2] * ax;
 
-    // Write directly to output buffer
     outBuffer[outOffset] = (r0 * ay1 + r1 * ay).round().clamp(0, 255);
     outBuffer[outOffset + 1] = (g0 * ay1 + g1 * ay).round().clamp(0, 255);
     outBuffer[outOffset + 2] = (b0 * ay1 + b1 * ay).round().clamp(0, 255);
@@ -818,7 +814,6 @@ class IsolateWorker {
     final double ct = math.cos(theta);
     final double st = math.sin(theta);
 
-    // Create output image and get direct buffer access
     final img.Image out = img.Image(width: side, height: side);
     final Uint8List srcBuffer = src.buffer.asUint8List();
     final Uint8List outBuffer = out.buffer.asUint8List();
@@ -833,7 +828,6 @@ class IsolateWorker {
         final double sx = cx + vx * ct - vy * st;
         final double sy = cy + vx * st + vy * ct;
 
-        // Direct buffer-based bilinear sampling
         _bilinearSampleRgb8ToBuffer(
           srcBuffer,
           srcWidth,

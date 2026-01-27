@@ -186,6 +186,547 @@ class PerformanceConfig {
   );
 }
 
+// ============================================================================
+// Selfie Segmentation Types
+// ============================================================================
+
+/// Pixel format for RGBA output from segmentation masks.
+///
+/// Use this to match the expected format of your rendering pipeline.
+enum PixelFormat {
+  /// Red-Green-Blue-Alpha (most common, Flutter default).
+  rgba,
+
+  /// Blue-Green-Red-Alpha (OpenCV default on some platforms).
+  bgra,
+
+  /// Alpha-Red-Green-Blue (legacy format).
+  argb,
+}
+
+/// Strategy for handling aspect ratio mismatch during segmentation.
+///
+/// When the input image aspect ratio doesn't match the model's expected
+/// input ratio, one of these strategies is applied.
+enum ResizeStrategy {
+  /// Letterbox with black padding, preserve aspect ratio.
+  /// Mask is unletterboxed before return.
+  letterbox,
+
+  /// Stretch to fit model input (may distort).
+  stretch,
+}
+
+/// Output format options for isolate-based segmentation to reduce transfer overhead.
+///
+/// Larger formats provide more precision, smaller formats reduce memory and
+/// transfer time when using [FaceDetectorIsolate].
+enum IsolateOutputFormat {
+  /// Full float32 mask (largest, highest precision).
+  float32,
+
+  /// Uint8 grayscale 0-255 (4x smaller than float32).
+  uint8,
+
+  /// Binary mask only (smallest, requires threshold).
+  binary,
+}
+
+/// Error codes for segmentation operations.
+///
+/// These codes help identify the specific cause of segmentation failures
+/// for debugging and error handling.
+enum SegmentationError {
+  /// Model file not found in assets.
+  modelNotFound,
+
+  /// Failed to create TFLite interpreter.
+  interpreterCreationFailed,
+
+  /// GPU delegate failed, fell back to CPU.
+  delegateFallback,
+
+  /// Image decoding failed.
+  imageDecodeFailed,
+
+  /// Image too small (minimum 16x16).
+  imageTooSmall,
+
+  /// Unexpected tensor shape from model.
+  unexpectedTensorShape,
+
+  /// Inference failed.
+  inferenceFailed,
+
+  /// Out of memory during upsampling.
+  outOfMemory,
+}
+
+/// Exception thrown by segmentation operations.
+///
+/// Contains a [code] identifying the error type, a human-readable [message],
+/// and optionally the underlying [cause] for debugging.
+///
+/// Example:
+/// ```dart
+/// try {
+///   final mask = await segmenter(imageBytes);
+/// } on SegmentationException catch (e) {
+///   print('Error ${e.code}: ${e.message}');
+///   if (e.cause != null) print('Caused by: ${e.cause}');
+/// }
+/// ```
+class SegmentationException implements Exception {
+  /// Error code identifying the type of failure.
+  final SegmentationError code;
+
+  /// Human-readable description of the error.
+  final String message;
+
+  /// Underlying cause of the error, if available.
+  final Object? cause;
+
+  /// Creates a segmentation exception with the given [code], [message], and optional [cause].
+  const SegmentationException(this.code, this.message, [this.cause]);
+
+  @override
+  String toString() => 'SegmentationException($code): $message';
+}
+
+/// Configuration for segmentation operations.
+///
+/// Controls delegate selection, output format, and memory limits.
+///
+/// ## Presets
+///
+/// - [SegmentationConfig.safe]: CPU-only, 1024 max output (recommended for Android)
+/// - [SegmentationConfig.performance]: Auto delegate, 2048 max output
+///
+/// ## Example
+///
+/// ```dart
+/// final config = SegmentationConfig(
+///   performanceConfig: PerformanceConfig.auto(),
+///   maxOutputSize: 1920,
+///   resizeStrategy: ResizeStrategy.letterbox,
+/// );
+/// final segmenter = await SelfieSegmentation.create(config: config);
+/// ```
+class SegmentationConfig {
+  /// Performance configuration for TFLite delegate.
+  final PerformanceConfig performanceConfig;
+
+  /// Maximum output dimension for upsampled masks.
+  ///
+  /// If original image exceeds this, upsampled mask is capped to prevent OOM.
+  /// Default 2048. Set to 0 for unlimited (use with caution on mobile).
+  final int maxOutputSize;
+
+  /// Resize strategy for non-matching aspect ratios.
+  final ResizeStrategy resizeStrategy;
+
+  /// Whether to validate model metadata on load.
+  ///
+  /// When true, checks that the loaded model has expected input/output shapes.
+  /// Disable only if using custom models with known-different shapes.
+  final bool validateModel;
+
+  /// Creates a segmentation configuration.
+  ///
+  /// Parameters:
+  /// - [performanceConfig]: TFLite delegate settings. Default: auto.
+  /// - [maxOutputSize]: Maximum dimension for upsampled output. Default: 2048.
+  /// - [resizeStrategy]: How to handle aspect ratio mismatch. Default: letterbox.
+  /// - [validateModel]: Whether to validate model on load. Default: true.
+  const SegmentationConfig({
+    this.performanceConfig = const PerformanceConfig.auto(),
+    this.maxOutputSize = 2048,
+    this.resizeStrategy = ResizeStrategy.letterbox,
+    this.validateModel = true,
+  });
+
+  /// Safe defaults: CPU-only, limited output size.
+  ///
+  /// Recommended for Android where GPU delegates may be unstable.
+  static const SegmentationConfig safe = SegmentationConfig(
+    performanceConfig: PerformanceConfig.disabled,
+    maxOutputSize: 1024,
+  );
+
+  /// Performance defaults: auto delegate, larger output.
+  ///
+  /// Good for iOS (Metal) and desktop (XNNPACK).
+  static const SegmentationConfig performance = SegmentationConfig(
+    performanceConfig: PerformanceConfig.auto(),
+    maxOutputSize: 2048,
+  );
+}
+
+/// A segmentation probability mask indicating foreground vs background.
+///
+/// Contains per-pixel probabilities (0.0-1.0) where higher values indicate
+/// greater likelihood that the pixel belongs to a person/foreground.
+///
+/// ## Memory Management
+///
+/// Mask data is stored as Float32List. For large images, prefer:
+/// - Use [toBinary] or [toUint8] to reduce memory by 4x
+/// - Use [upsample] with maxSize parameter to limit output
+/// - Process masks promptly and let GC collect
+///
+/// ## Thread Safety
+///
+/// SegmentationMask is immutable. The underlying data buffer is
+/// exposed as an unmodifiable view.
+///
+/// ## Example
+///
+/// ```dart
+/// final mask = await segmenter(imageBytes);
+///
+/// // Get model-resolution mask values
+/// final probability = mask.at(128, 128);
+///
+/// // Upsample to original image size (capped at 1080)
+/// final fullMask = mask.upsample(maxSize: 1080);
+///
+/// // Convert to binary for compositing
+/// final binary = fullMask.toBinary(threshold: 0.5);
+/// ```
+class SegmentationMask {
+  final Float32List _data;
+
+  /// Mask width in pixels.
+  final int width;
+
+  /// Mask height in pixels.
+  final int height;
+
+  /// Original source image width.
+  final int originalWidth;
+
+  /// Original source image height.
+  final int originalHeight;
+
+  /// Padding applied during letterboxing [top, bottom, left, right].
+  /// All zeros if no letterboxing was used.
+  final List<double> padding;
+
+  const SegmentationMask._({
+    required Float32List data,
+    required this.width,
+    required this.height,
+    required this.originalWidth,
+    required this.originalHeight,
+    required this.padding,
+  }) : _data = data;
+
+  /// Creates a segmentation mask with validation.
+  ///
+  /// Throws [ArgumentError] if data length doesn't match width*height.
+  factory SegmentationMask({
+    required Float32List data,
+    required int width,
+    required int height,
+    required int originalWidth,
+    required int originalHeight,
+    List<double> padding = const [0.0, 0.0, 0.0, 0.0],
+  }) {
+    if (data.length != width * height) {
+      throw ArgumentError(
+          'Data length ${data.length} != width*height ${width * height}');
+    }
+    return SegmentationMask._(
+      data: Float32List.fromList(data), // Defensive copy
+      width: width,
+      height: height,
+      originalWidth: originalWidth,
+      originalHeight: originalHeight,
+      padding: List.unmodifiable(padding),
+    );
+  }
+
+  /// Returns a copy of the raw probability data (row-major order).
+  ///
+  /// Values are in the range [0.0, 1.0] where higher values indicate
+  /// greater foreground probability.
+  ///
+  /// Note: This returns a defensive copy to maintain immutability.
+  /// For performance-critical code that needs direct access without copying,
+  /// use [at] for individual pixel access.
+  Float32List get data => Float32List.fromList(_data);
+
+  /// Returns probability at (x, y) in mask coordinates.
+  ///
+  /// Returns 0.0 for out-of-bounds coordinates (safe access).
+  double at(int x, int y) {
+    if (x < 0 || x >= width || y < 0 || y >= height) return 0.0;
+    return _data[y * width + x];
+  }
+
+  /// Upsamples mask to target dimensions using bilinear interpolation.
+  ///
+  /// [targetWidth], [targetHeight]: Target dimensions. If null, uses original image size.
+  /// [maxSize]: Maximum dimension (width or height). Caps output to prevent OOM.
+  ///
+  /// Handles unletterboxing automatically if padding was applied during inference.
+  ///
+  /// Example:
+  /// ```dart
+  /// // Upsample to original size, capped at 1080px
+  /// final fullMask = mask.upsample(maxSize: 1080);
+  /// ```
+  SegmentationMask upsample({
+    int? targetWidth,
+    int? targetHeight,
+    int maxSize = 2048,
+  }) {
+    final tw = targetWidth ?? originalWidth;
+    final th = targetHeight ?? originalHeight;
+
+    // Apply maxSize cap
+    final maxDim = math.max(tw, th);
+    final scale = maxSize > 0 && maxDim > maxSize ? maxSize / maxDim : 1.0;
+    final finalW = (tw * scale).round();
+    final finalH = (th * scale).round();
+
+    // First, unletterbox if padding was applied
+    Float32List sourceData = _data;
+    int sourceW = width;
+    int sourceH = height;
+
+    final pt = padding[0], pb = padding[1], pl = padding[2], pr = padding[3];
+    if (pt > 0 || pb > 0 || pl > 0 || pr > 0) {
+      // Calculate the valid region (without padding)
+      final validX0 = (pl * width).round();
+      final validY0 = (pt * height).round();
+      final validX1 = ((1.0 - pr) * width).round();
+      final validY1 = ((1.0 - pb) * height).round();
+      final validW = validX1 - validX0;
+      final validH = validY1 - validY0;
+
+      if (validW > 0 && validH > 0) {
+        sourceData = Float32List(validW * validH);
+        for (int y = 0; y < validH; y++) {
+          for (int x = 0; x < validW; x++) {
+            sourceData[y * validW + x] =
+                _data[(y + validY0) * width + (x + validX0)];
+          }
+        }
+        sourceW = validW;
+        sourceH = validH;
+      }
+    }
+
+    // Bilinear interpolation to target size
+    final result = Float32List(finalW * finalH);
+    final scaleX = sourceW / finalW;
+    final scaleY = sourceH / finalH;
+
+    for (int y = 0; y < finalH; y++) {
+      final srcY = y * scaleY;
+      final y0 = srcY.floor().clamp(0, sourceH - 1);
+      final y1 = (y0 + 1).clamp(0, sourceH - 1);
+      final yFrac = srcY - y0;
+
+      for (int x = 0; x < finalW; x++) {
+        final srcX = x * scaleX;
+        final x0 = srcX.floor().clamp(0, sourceW - 1);
+        final x1 = (x0 + 1).clamp(0, sourceW - 1);
+        final xFrac = srcX - x0;
+
+        // Bilinear interpolation
+        final v00 = sourceData[y0 * sourceW + x0];
+        final v10 = sourceData[y0 * sourceW + x1];
+        final v01 = sourceData[y1 * sourceW + x0];
+        final v11 = sourceData[y1 * sourceW + x1];
+
+        final v0 = v00 * (1 - xFrac) + v10 * xFrac;
+        final v1 = v01 * (1 - xFrac) + v11 * xFrac;
+        result[y * finalW + x] = v0 * (1 - yFrac) + v1 * yFrac;
+      }
+    }
+
+    return SegmentationMask._(
+      data: result,
+      width: finalW,
+      height: finalH,
+      originalWidth: originalWidth,
+      originalHeight: originalHeight,
+      padding: const [0.0, 0.0, 0.0, 0.0], // Padding removed
+    );
+  }
+
+  /// Converts to 8-bit grayscale mask (0-255).
+  ///
+  /// More memory efficient than float32 for storage/transfer.
+  /// Values are scaled linearly: 0.0 → 0, 1.0 → 255.
+  Uint8List toUint8() {
+    final result = Uint8List(width * height);
+    for (int i = 0; i < _data.length; i++) {
+      result[i] = (_data[i].clamp(0.0, 1.0) * 255).round();
+    }
+    return result;
+  }
+
+  /// Converts to binary mask (0 or 255) using threshold.
+  ///
+  /// [threshold]: Probability threshold (default 0.5).
+  /// Values >= threshold become 255, others become 0.
+  ///
+  /// Example:
+  /// ```dart
+  /// final binary = mask.toBinary(threshold: 0.6);
+  /// // binary[i] is 255 if probability >= 0.6, else 0
+  /// ```
+  Uint8List toBinary({double threshold = 0.5}) {
+    final result = Uint8List(width * height);
+    for (int i = 0; i < _data.length; i++) {
+      result[i] = _data[i] >= threshold ? 255 : 0;
+    }
+    return result;
+  }
+
+  /// Converts to RGBA image with configurable colors.
+  ///
+  /// [foreground]: Color for person pixels (default white opaque).
+  /// [background]: Color for background pixels (default transparent).
+  /// [format]: Pixel format (default RGBA).
+  /// [threshold]: Binary threshold (default 0.5). Use negative for soft alpha blending.
+  ///
+  /// Example:
+  /// ```dart
+  /// // Binary mask with red foreground, transparent background
+  /// final rgba = mask.toRgba(
+  ///   foreground: 0xFFFF0000,
+  ///   background: 0x00000000,
+  ///   threshold: 0.5,
+  /// );
+  ///
+  /// // Soft alpha mask (smooth edges)
+  /// final softRgba = mask.toRgba(threshold: -1);
+  /// ```
+  Uint8List toRgba({
+    int foreground = 0xFFFFFFFF,
+    int background = 0x00000000,
+    PixelFormat format = PixelFormat.rgba,
+    double threshold = 0.5,
+  }) {
+    final result = Uint8List(width * height * 4);
+    final fg = _unpackColor(foreground, format);
+    final bg = _unpackColor(background, format);
+
+    for (int i = 0; i < _data.length; i++) {
+      final prob = _data[i].clamp(0.0, 1.0);
+      final offset = i * 4;
+
+      if (threshold < 0) {
+        // Soft blend based on probability
+        for (int c = 0; c < 4; c++) {
+          result[offset + c] = (fg[c] * prob + bg[c] * (1 - prob)).round();
+        }
+      } else {
+        // Binary threshold
+        final color = prob >= threshold ? fg : bg;
+        for (int c = 0; c < 4; c++) {
+          result[offset + c] = color[c];
+        }
+      }
+    }
+    return result;
+  }
+
+  /// Unpacks a color integer to [R, G, B, A] based on format.
+  List<int> _unpackColor(int color, PixelFormat format) {
+    switch (format) {
+      case PixelFormat.rgba:
+        return [
+          (color >> 24) & 0xFF, // R
+          (color >> 16) & 0xFF, // G
+          (color >> 8) & 0xFF, // B
+          color & 0xFF, // A
+        ];
+      case PixelFormat.bgra:
+        return [
+          (color >> 8) & 0xFF, // B
+          (color >> 16) & 0xFF, // G
+          (color >> 24) & 0xFF, // R
+          color & 0xFF, // A
+        ];
+      case PixelFormat.argb:
+        return [
+          (color >> 16) & 0xFF, // R
+          (color >> 8) & 0xFF, // G
+          color & 0xFF, // B
+          (color >> 24) & 0xFF, // A
+        ];
+    }
+  }
+
+  /// Serialization for isolate transfer.
+  Map<String, dynamic> toMap() => {
+        'data': _data.toList(),
+        'width': width,
+        'height': height,
+        'originalWidth': originalWidth,
+        'originalHeight': originalHeight,
+        'padding': padding,
+      };
+
+  /// Creates a mask from a serialized map (isolate deserialization).
+  /// Creates a SegmentationMask from a serialized map.
+  ///
+  /// Handles different data formats from isolate transfer:
+  /// - 'float32': Direct float32 data (default)
+  /// - 'uint8': 8-bit grayscale (converted to float32)
+  /// - 'binary': Binary mask (converted to float32)
+  factory SegmentationMask.fromMap(Map<String, dynamic> map) {
+    final width = map['width'] as int;
+    final height = map['height'] as int;
+    final dataFormat = map['dataFormat'] as String? ?? 'float32';
+    final rawData = map['data'] as List;
+
+    Float32List data;
+    switch (dataFormat) {
+      case 'float32':
+        data = Float32List.fromList(rawData.cast<double>());
+        break;
+      case 'uint8':
+        // Convert uint8 (0-255) back to float32 (0.0-1.0)
+        final uint8List = rawData.cast<int>();
+        data = Float32List(uint8List.length);
+        for (int i = 0; i < uint8List.length; i++) {
+          data[i] = uint8List[i] / 255.0;
+        }
+        break;
+      case 'binary':
+        // Convert binary (0 or 255) back to float32 (0.0 or 1.0)
+        final binaryList = rawData.cast<int>();
+        data = Float32List(binaryList.length);
+        for (int i = 0; i < binaryList.length; i++) {
+          data[i] = binaryList[i] == 255 ? 1.0 : 0.0;
+        }
+        break;
+      default:
+        throw ArgumentError('Unknown data format: $dataFormat');
+    }
+
+    return SegmentationMask(
+      data: data,
+      width: width,
+      height: height,
+      originalWidth: map['originalWidth'] as int,
+      originalHeight: map['originalHeight'] as int,
+      padding:
+          (map['padding'] as List?)?.cast<double>() ?? [0.0, 0.0, 0.0, 0.0],
+    );
+  }
+
+  @override
+  String toString() =>
+      'SegmentationMask(${width}x$height, original: ${originalWidth}x$originalHeight)';
+}
+
 /// Connections between eye contour landmarks for rendering the visible eyeball outline.
 ///
 /// These define which of the 71 eye contour points should be connected with lines
@@ -394,12 +935,47 @@ class Eye {
   /// - [eyeLandmarkConnections] for connecting the eyelid points
   final List<Point> mesh;
 
+  /// Pre-computed eyelid contour for O(1) repeated access.
+  final List<Point> _contourCache;
+
   /// Creates an eye with iris center point, iris contour, and eye mesh landmarks.
+  ///
+  /// This const constructor is preserved for backward compatibility.
+  /// For optimized construction with pre-computed contour, use [Eye.optimized].
   const Eye({
     required this.irisCenter,
     required this.irisContour,
     this.mesh = const <Point>[],
-  });
+  }) : _contourCache = const <Point>[];
+
+  /// Internal constructor with pre-computed contour cache.
+  Eye._withContour({
+    required this.irisCenter,
+    required this.irisContour,
+    required this.mesh,
+    required List<Point> contour,
+  }) : _contourCache = contour;
+
+  /// Creates an eye with pre-computed contour for optimal repeated access.
+  ///
+  /// This factory pre-computes the [contour] during construction, avoiding
+  /// repeated sublist allocation on each access. Use this constructor when
+  /// creating Eyes programmatically (e.g., from model output).
+  factory Eye.optimized({
+    required Point irisCenter,
+    required List<Point> irisContour,
+    List<Point> mesh = const <Point>[],
+  }) {
+    final contour = mesh.length >= kMaxEyeLandmark
+        ? mesh.sublist(0, kMaxEyeLandmark)
+        : mesh;
+    return Eye._withContour(
+      irisCenter: irisCenter,
+      irisContour: irisContour,
+      mesh: mesh,
+      contour: contour,
+    );
+  }
 
   /// The visible eyelid contour (first 15 points of the mesh).
   ///
@@ -419,8 +995,11 @@ class Eye {
   ///   canvas.drawLine(p1, p2, paint);
   /// }
   /// ```
-  List<Point> get contour =>
-      mesh.length >= kMaxEyeLandmark ? mesh.sublist(0, kMaxEyeLandmark) : mesh;
+  List<Point> get contour => _contourCache.isNotEmpty
+      ? _contourCache
+      : (mesh.length >= kMaxEyeLandmark
+          ? mesh.sublist(0, kMaxEyeLandmark)
+          : mesh);
 
   /// Converts this eye to a map for isolate serialization.
   Map<String, dynamic> toMap() => {
@@ -430,7 +1009,9 @@ class Eye {
       };
 
   /// Creates an eye from a map (isolate deserialization).
-  factory Eye.fromMap(Map<String, dynamic> map) => Eye(
+  ///
+  /// Uses [Eye.optimized] to pre-compute the contour cache.
+  factory Eye.fromMap(Map<String, dynamic> map) => Eye.optimized(
         irisCenter: Point.fromMap(map['irisCenter']),
         irisContour:
             (map['irisContour'] as List).map((p) => Point.fromMap(p)).toList(),
@@ -740,6 +1321,9 @@ class Face {
   /// custom coordinate transformations.
   final Size originalSize;
 
+  /// Cached eye pair computation for O(1) repeated access.
+  late final EyePair? _cachedEyes = _computeEyes();
+
   /// Creates a face detection result with bounding box, landmarks, and optional mesh/eye data.
   ///
   /// This constructor is typically called internally by [FaceDetector.detectFaces].
@@ -786,19 +1370,22 @@ class Face {
       eyeMesh = const <Point>[];
       irisPoints = points;
     }
-    int centerIdx = 0;
-    double minDistSum = double.infinity;
-
+    double cx = 0, cy = 0;
     for (int i = 0; i < 5; i++) {
-      double distSum = 0;
-      for (int j = 0; j < 5; j++) {
-        if (i == j) continue;
-        final dx = irisPoints[j].x - irisPoints[i].x;
-        final dy = irisPoints[j].y - irisPoints[i].y;
-        distSum += dx * dx + dy * dy;
-      }
-      if (distSum < minDistSum) {
-        minDistSum = distSum;
+      cx += irisPoints[i].x;
+      cy += irisPoints[i].y;
+    }
+    cx /= 5;
+    cy /= 5;
+
+    int centerIdx = 0;
+    double minDist = double.infinity;
+    for (int i = 0; i < 5; i++) {
+      final dx = irisPoints[i].x - cx;
+      final dy = irisPoints[i].y - cy;
+      final dist = dx * dx + dy * dy;
+      if (dist < minDist) {
+        minDist = dist;
         centerIdx = i;
       }
     }
@@ -809,7 +1396,8 @@ class Face {
       if (i != centerIdx) contour.add(irisPoints[i]);
     }
 
-    return Eye(irisCenter: center, irisContour: contour, mesh: eyeMesh);
+    return Eye.optimized(
+        irisCenter: center, irisContour: contour, mesh: eyeMesh);
   }
 
   /// Comprehensive eye tracking data for both eyes.
@@ -835,7 +1423,10 @@ class Face {
   /// final leftContour = eyes?.leftEye?.contour;
   /// final rightIrisCenter = eyes?.rightEye?.irisCenter;
   /// ```
-  EyePair? get eyes {
+  EyePair? get eyes => _cachedEyes;
+
+  /// Internal computation for eyes getter, called once via lazy initialization.
+  EyePair? _computeEyes() {
     if (irisPoints.isEmpty) return null;
 
     Eye? leftEye;

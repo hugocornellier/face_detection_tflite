@@ -12,6 +12,12 @@ class _IsolateStartupData {
   final int? numThreads;
   final int meshPoolSize;
 
+  /// Optional segmentation model bytes.
+  final TransferableTypedData? segmentationBytes;
+
+  /// Segmentation configuration (if segmentation enabled).
+  final Map<String, dynamic>? segmentationConfigMap;
+
   _IsolateStartupData({
     required this.sendPort,
     required this.faceDetectionBytes,
@@ -22,6 +28,8 @@ class _IsolateStartupData {
     required this.performanceModeName,
     required this.numThreads,
     required this.meshPoolSize,
+    this.segmentationBytes,
+    this.segmentationConfigMap,
   });
 }
 
@@ -81,9 +89,13 @@ class FaceDetectorIsolate {
   final Map<int, Completer<dynamic>> _pending = {};
   int _nextId = 0;
   bool _initialized = false;
+  bool _segmentationInitialized = false;
 
   /// Returns true if the isolate is initialized and ready for detection.
   bool get isReady => _initialized;
+
+  /// Returns true if segmentation model is loaded and ready.
+  bool get isSegmentationReady => _segmentationInitialized;
 
   /// Spawns a new isolate with an initialized [FaceDetector].
   ///
@@ -94,26 +106,37 @@ class FaceDetectorIsolate {
   /// - [model]: Face detection model variant (default: [FaceDetectionModel.backCamera])
   /// - [performanceConfig]: Hardware acceleration settings (default: auto mode)
   /// - [meshPoolSize]: Number of mesh model instances for parallel face processing
+  /// - [withSegmentation]: Whether to initialize segmentation model (default: false)
+  /// - [segmentationConfig]: Configuration for segmentation (uses safe defaults if null)
   ///
   /// Example:
   /// ```dart
   /// // Default configuration (auto mode - optimal for each platform)
   /// final detector = await FaceDetectorIsolate.spawn();
   ///
-  /// // Custom configuration
+  /// // With segmentation enabled
   /// final detector = await FaceDetectorIsolate.spawn(
   ///   model: FaceDetectionModel.frontCamera,
   ///   performanceConfig: PerformanceConfig.auto(),
   ///   meshPoolSize: 2,
+  ///   withSegmentation: true,
   /// );
   /// ```
   static Future<FaceDetectorIsolate> spawn({
     FaceDetectionModel model = FaceDetectionModel.backCamera,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
     int meshPoolSize = 3,
+    bool withSegmentation = false,
+    SegmentationConfig? segmentationConfig,
   }) async {
     final instance = FaceDetectorIsolate._();
-    await instance._initialize(model, performanceConfig, meshPoolSize);
+    await instance._initialize(
+      model,
+      performanceConfig,
+      meshPoolSize,
+      withSegmentation,
+      segmentationConfig,
+    );
     return instance;
   }
 
@@ -121,13 +144,14 @@ class FaceDetectorIsolate {
     FaceDetectionModel model,
     PerformanceConfig performanceConfig,
     int meshPoolSize,
+    bool withSegmentation,
+    SegmentationConfig? segmentationConfig,
   ) async {
     if (_initialized) {
       throw StateError('FaceDetectorIsolate already initialized');
     }
 
     try {
-      // Pre-load all model bytes in the main isolate (where rootBundle is available)
       final faceDetectionPath =
           'packages/face_detection_tflite/assets/models/${_nameFor(model)}';
       const faceLandmarkPath =
@@ -137,17 +161,46 @@ class FaceDetectorIsolate {
       const embeddingPath =
           'packages/face_detection_tflite/assets/models/$_embeddingModel';
 
-      final results = await Future.wait([
+      // Build list of asset loads
+      final assetFutures = [
         rootBundle.load(faceDetectionPath),
         rootBundle.load(faceLandmarkPath),
         rootBundle.load(irisLandmarkPath),
         rootBundle.load(embeddingPath),
-      ]);
+      ];
+
+      // Optionally load segmentation model
+      if (withSegmentation) {
+        const segmentationModelPath =
+            'packages/face_detection_tflite/assets/models/$_segmentationModel';
+        assetFutures.add(rootBundle.load(segmentationModelPath));
+      }
+
+      final results = await Future.wait(assetFutures);
 
       final faceDetectionBytes = results[0].buffer.asUint8List();
       final faceLandmarkBytes = results[1].buffer.asUint8List();
       final irisLandmarkBytes = results[2].buffer.asUint8List();
       final embeddingBytes = results[3].buffer.asUint8List();
+
+      TransferableTypedData? segmentationBytesTransfer;
+      if (withSegmentation && results.length > 4) {
+        final segBytes = results[4].buffer.asUint8List();
+        segmentationBytesTransfer = TransferableTypedData.fromList([segBytes]);
+      }
+
+      // Build segmentation config map for transfer
+      Map<String, dynamic>? segConfigMap;
+      if (withSegmentation) {
+        final config = segmentationConfig ?? SegmentationConfig.safe;
+        segConfigMap = {
+          'performanceModeName': config.performanceConfig.mode.name,
+          'numThreads': config.performanceConfig.numThreads,
+          'maxOutputSize': config.maxOutputSize,
+          'resizeStrategyName': config.resizeStrategy.name,
+          'validateModel': config.validateModel,
+        };
+      }
 
       _isolate = await Isolate.spawn(
         _isolateEntry,
@@ -164,9 +217,13 @@ class FaceDetectorIsolate {
           performanceModeName: performanceConfig.mode.name,
           numThreads: performanceConfig.numThreads,
           meshPoolSize: meshPoolSize,
+          segmentationBytes: segmentationBytesTransfer,
+          segmentationConfigMap: segConfigMap,
         ),
         debugName: 'FaceDetectorIsolate',
       );
+
+      _segmentationInitialized = withSegmentation;
 
       final Completer<SendPort> initCompleter = Completer<SendPort>();
       late final StreamSubscription<dynamic> subscription;
@@ -176,7 +233,6 @@ class FaceDetectorIsolate {
           if (message is SendPort) {
             initCompleter.complete(message);
           } else if (message is Map && message['error'] != null) {
-            // Handle initialization errors from the worker
             initCompleter.completeError(StateError(message['error'] as String));
           } else {
             initCompleter.completeError(
@@ -320,12 +376,10 @@ class FaceDetectorIsolate {
     cv.Mat image, {
     FaceDetectionMode mode = FaceDetectionMode.full,
   }) async {
-    // Extract Mat properties for reconstruction in isolate
     final int rows = image.rows;
     final int cols = image.cols;
     final int type = image.type.value;
 
-    // Get raw pixel data - this creates a copy
     final Uint8List data = image.data;
 
     return detectFacesFromMatBytes(
@@ -456,6 +510,99 @@ class FaceDetectorIsolate {
     }).toList();
   }
 
+  /// Segments an image to separate foreground (person) from background.
+  ///
+  /// This method runs the segmentation pipeline entirely in the background
+  /// isolate, ensuring the UI thread is never blocked.
+  ///
+  /// Parameters:
+  /// - [imageBytes]: Encoded image data (JPEG, PNG, etc.)
+  /// - [outputFormat]: Controls the output format for transfer efficiency
+  ///   - [IsolateOutputFormat.float32]: Full precision mask (largest transfer)
+  ///   - [IsolateOutputFormat.uint8]: 8-bit grayscale (4x smaller)
+  ///   - [IsolateOutputFormat.binary]: Binary mask at threshold (smallest)
+  /// - [binaryThreshold]: Threshold for binary output (default 0.5)
+  ///
+  /// Returns a [SegmentationMask] containing per-pixel foreground probabilities.
+  ///
+  /// Throws [StateError] if segmentation was not initialized during [spawn].
+  /// Throws [SegmentationException] on inference failure.
+  ///
+  /// Example:
+  /// ```dart
+  /// final detector = await FaceDetectorIsolate.spawn(withSegmentation: true);
+  /// final mask = await detector.getSegmentationMask(imageBytes);
+  /// final binary = mask.toBinary(threshold: 0.5);
+  /// ```
+  Future<SegmentationMask> getSegmentationMask(
+    Uint8List imageBytes, {
+    IsolateOutputFormat outputFormat = IsolateOutputFormat.float32,
+    double binaryThreshold = 0.5,
+  }) async {
+    if (!_segmentationInitialized) {
+      throw StateError(
+        'Segmentation not initialized. Use FaceDetectorIsolate.spawn(withSegmentation: true).',
+      );
+    }
+
+    final Map<String, dynamic> result =
+        await _sendRequest<Map<String, dynamic>>('segment', {
+      'bytes': TransferableTypedData.fromList([imageBytes]),
+      'outputFormat': outputFormat.index,
+      'binaryThreshold': binaryThreshold,
+    });
+
+    return SegmentationMask.fromMap(result);
+  }
+
+  /// Segments an OpenCV [cv.Mat] image in the background isolate.
+  ///
+  /// This method extracts the raw pixel data from the Mat, transfers it to the
+  /// background isolate using zero-copy [TransferableTypedData], reconstructs
+  /// the Mat in the isolate, and runs the segmentation pipeline.
+  ///
+  /// Parameters:
+  /// - [image]: An OpenCV Mat containing the image (typically BGR format)
+  /// - [outputFormat]: Controls the output format for transfer efficiency
+  /// - [binaryThreshold]: Threshold for binary output (default 0.5)
+  ///
+  /// Returns a [SegmentationMask] containing per-pixel foreground probabilities.
+  ///
+  /// Example:
+  /// ```dart
+  /// final mat = cv.Mat.fromList(height, width, cv.MatType.CV_8UC3, bgrBytes);
+  /// final mask = await detector.getSegmentationMaskFromMat(mat);
+  /// mat.dispose();
+  /// ```
+  Future<SegmentationMask> getSegmentationMaskFromMat(
+    cv.Mat image, {
+    IsolateOutputFormat outputFormat = IsolateOutputFormat.float32,
+    double binaryThreshold = 0.5,
+  }) async {
+    if (!_segmentationInitialized) {
+      throw StateError(
+        'Segmentation not initialized. Use FaceDetectorIsolate.spawn(withSegmentation: true).',
+      );
+    }
+
+    final int rows = image.rows;
+    final int cols = image.cols;
+    final int type = image.type.value;
+    final Uint8List data = image.data;
+
+    final Map<String, dynamic> result =
+        await _sendRequest<Map<String, dynamic>>('segmentMat', {
+      'bytes': TransferableTypedData.fromList([data]),
+      'width': cols,
+      'height': rows,
+      'matType': type,
+      'outputFormat': outputFormat.index,
+      'binaryThreshold': binaryThreshold,
+    });
+
+    return SegmentationMask.fromMap(result);
+  }
+
   /// Disposes the background isolate and releases all resources.
   ///
   /// This method:
@@ -467,7 +614,6 @@ class FaceDetectorIsolate {
   /// After calling dispose, the instance cannot be reused. Create a new
   /// instance with [spawn] if needed.
   Future<void> dispose() async {
-    // Fail all pending requests
     for (final completer in _pending.values) {
       if (!completer.isCompleted) {
         completer.completeError(StateError('FaceDetectorIsolate disposed'));
@@ -475,22 +621,19 @@ class FaceDetectorIsolate {
     }
     _pending.clear();
 
-    // Tell the isolate to dispose its detector
     if (_initialized && _sendPort != null) {
       try {
         _sendPort!.send({'id': -1, 'op': 'dispose'});
-      } catch (_) {
-        // Isolate may already be dead
-      }
+      } catch (_) {}
     }
 
-    // Kill isolate and close ports
     _isolate?.kill(priority: Isolate.immediate);
     _receivePort.close();
 
     _isolate = null;
     _sendPort = null;
     _initialized = false;
+    _segmentationInitialized = false;
   }
 
   /// Isolate entry point - handles initialization and message processing.
@@ -500,9 +643,9 @@ class FaceDetectorIsolate {
     final ReceivePort workerReceivePort = ReceivePort();
 
     FaceDetector? detector;
+    SelfieSegmentation? segmenter;
 
     try {
-      // Materialize the model bytes from TransferableTypedData
       final faceDetectionBytes =
           data.faceDetectionBytes.materialize().asUint8List();
       final faceLandmarkBytes =
@@ -518,7 +661,6 @@ class FaceDetectorIsolate {
         (m) => m.name == data.performanceModeName,
       );
 
-      // Initialize FaceDetector with pre-loaded model bytes (including embedding)
       detector = FaceDetector();
       await detector.initializeFromBuffers(
         faceDetectionBytes: faceDetectionBytes,
@@ -533,7 +675,37 @@ class FaceDetectorIsolate {
         meshPoolSize: data.meshPoolSize,
       );
 
-      // Send the worker's send port to signal ready
+      // Initialize segmentation if enabled
+      if (data.segmentationBytes != null) {
+        final segBytes = data.segmentationBytes!.materialize().asUint8List();
+
+        // Reconstruct SegmentationConfig from map
+        SegmentationConfig segConfig = SegmentationConfig.safe;
+        if (data.segmentationConfigMap != null) {
+          final cfgMap = data.segmentationConfigMap!;
+          final perfMode = PerformanceMode.values.firstWhere(
+            (m) => m.name == cfgMap['performanceModeName'],
+          );
+          final resizeStrategy = ResizeStrategy.values.firstWhere(
+            (s) => s.name == cfgMap['resizeStrategyName'],
+          );
+          segConfig = SegmentationConfig(
+            performanceConfig: PerformanceConfig(
+              mode: perfMode,
+              numThreads: cfgMap['numThreads'] as int?,
+            ),
+            maxOutputSize: cfgMap['maxOutputSize'] as int,
+            resizeStrategy: resizeStrategy,
+            validateModel: cfgMap['validateModel'] as bool,
+          );
+        }
+
+        segmenter = await SelfieSegmentation.createFromBuffer(
+          segBytes,
+          config: segConfig,
+        );
+      }
+
       mainSendPort.send(workerReceivePort.sendPort);
     } catch (e, st) {
       mainSendPort.send({'error': 'Isolate initialization failed: $e\n$st'});
@@ -592,7 +764,6 @@ class FaceDetectorIsolate {
               (m) => m.name == modeName,
             );
 
-            // Reconstruct cv.Mat from raw bytes
             final matType = cv.MatType(matTypeValue);
             final mat = cv.Mat.fromList(height, width, matType, matBytes);
 
@@ -601,7 +772,6 @@ class FaceDetectorIsolate {
               final serialized = faces.map((f) => f.toMap()).toList();
               mainSendPort.send({'id': id, 'result': serialized});
             } finally {
-              // Always dispose the reconstructed Mat
               mat.dispose();
             }
 
@@ -647,15 +817,127 @@ class FaceDetectorIsolate {
             final serialized = embeddings.map((e) => e?.toList()).toList();
             mainSendPort.send({'id': id, 'result': serialized});
 
+          case 'segment':
+            if (segmenter == null) {
+              mainSendPort.send({
+                'id': id,
+                'error': 'Segmentation not initialized in isolate',
+              });
+              return;
+            }
+
+            final ByteBuffer bb =
+                (message['bytes'] as TransferableTypedData).materialize();
+            final Uint8List imageBytes = bb.asUint8List();
+            final int outputFormatIndex = message['outputFormat'] as int;
+            final double binaryThreshold = message['binaryThreshold'] as double;
+
+            try {
+              final mask = await segmenter!.call(imageBytes);
+              final serialized = _serializeMask(
+                mask,
+                IsolateOutputFormat.values[outputFormatIndex],
+                binaryThreshold,
+              );
+              mainSendPort.send({'id': id, 'result': serialized});
+            } on SegmentationException catch (e) {
+              mainSendPort.send({
+                'id': id,
+                'error': 'SegmentationException(${e.code}): ${e.message}',
+              });
+            }
+
+          case 'segmentMat':
+            if (segmenter == null) {
+              mainSendPort.send({
+                'id': id,
+                'error': 'Segmentation not initialized in isolate',
+              });
+              return;
+            }
+
+            final ByteBuffer bb =
+                (message['bytes'] as TransferableTypedData).materialize();
+            final Uint8List matBytes = bb.asUint8List();
+            final int width = message['width'] as int;
+            final int height = message['height'] as int;
+            final int matTypeValue = message['matType'] as int;
+            final int outputFormatIndex = message['outputFormat'] as int;
+            final double binaryThreshold = message['binaryThreshold'] as double;
+
+            final matType = cv.MatType(matTypeValue);
+            final mat = cv.Mat.fromList(height, width, matType, matBytes);
+
+            try {
+              final mask = await segmenter!.callFromMat(mat);
+              final serialized = _serializeMask(
+                mask,
+                IsolateOutputFormat.values[outputFormatIndex],
+                binaryThreshold,
+              );
+              mainSendPort.send({'id': id, 'result': serialized});
+            } on SegmentationException catch (e) {
+              mainSendPort.send({
+                'id': id,
+                'error': 'SegmentationException(${e.code}): ${e.message}',
+              });
+            } finally {
+              mat.dispose();
+            }
+
           case 'dispose':
             detector?.dispose();
             detector = null;
+            segmenter?.dispose();
+            segmenter = null;
             workerReceivePort.close();
-          // Don't send response for dispose (id is -1)
         }
       } catch (e, st) {
         mainSendPort.send({'id': id, 'error': '$e\n$st'});
       }
     });
+  }
+
+  /// Serializes a segmentation mask for isolate transfer.
+  ///
+  /// Converts the mask to the requested output format to reduce transfer overhead.
+  static Map<String, dynamic> _serializeMask(
+    SegmentationMask mask,
+    IsolateOutputFormat format,
+    double binaryThreshold,
+  ) {
+    // Base metadata always included
+    final result = <String, dynamic>{
+      'width': mask.width,
+      'height': mask.height,
+      'originalWidth': mask.originalWidth,
+      'originalHeight': mask.originalHeight,
+      'padding': mask.padding,
+    };
+
+    switch (format) {
+      case IsolateOutputFormat.float32:
+        // Full precision - use toMap() data directly
+        result['data'] = mask.data.toList();
+        result['dataFormat'] = 'float32';
+        break;
+
+      case IsolateOutputFormat.uint8:
+        // 8-bit grayscale - 4x smaller than float32
+        final uint8Data = mask.toUint8();
+        result['data'] = uint8Data.toList();
+        result['dataFormat'] = 'uint8';
+        break;
+
+      case IsolateOutputFormat.binary:
+        // Binary at threshold - smallest transfer
+        final binaryData = mask.toBinary(threshold: binaryThreshold);
+        result['data'] = binaryData.toList();
+        result['dataFormat'] = 'binary';
+        result['binaryThreshold'] = binaryThreshold;
+        break;
+    }
+
+    return result;
   }
 }

@@ -18,11 +18,18 @@ cd example
 
 # Run each integration test file separately to avoid debug connection issues
 # when the macOS app restarts between test files
-flutter test integration_test/face_detection_integration_test.dart -d macos
+shopt -s nullglob
+integration_tests=(integration_test/*.dart)
+if [ ${#integration_tests[@]} -eq 0 ]; then
+  echo "No integration tests found in example/integration_test."
+  exit 1
+fi
 
-echo ""
-echo "Running benchmark tests..."
-flutter test integration_test/benchmark_test.dart -d macos
+for test_file in "${integration_tests[@]}"; do
+  echo ""
+  echo "Running ${test_file}..."
+  flutter test "${test_file}" -d macos
+done
 
 echo ""
 echo "================================================"

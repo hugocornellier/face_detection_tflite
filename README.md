@@ -38,6 +38,7 @@ Note: The Facial mesh and eye area mesh are separate.
 
 - On-device face detection, runs fully offline
 - **Face recognition**: 192-dim embeddings to identify/compare faces across images
+- **Selfie segmentation**: separate person from background for virtual backgrounds
 - 468 point mesh with **3D depth information** (x, y, z coordinates)
 - Face landmarks, comprehensive eye tracking (iris + 71-point eye mesh), and bounding boxes
 - All coordinates are in absolute pixel coordinates
@@ -560,6 +561,76 @@ detector.dispose();
 
 Also available: `FaceDetector.faceDistance()` for Euclidean distance, and batch processing with `getFaceEmbeddings()`.
 
+## Selfie Segmentation
+
+Separate people from backgrounds using MediaPipe Selfie Segmentation. Useful for virtual backgrounds, portrait effects, and background blur.
+
+### Standalone Usage
+
+```dart
+import 'package:face_detection_tflite/face_detection_tflite.dart';
+
+final segmenter = await SelfieSegmentation.create();
+
+final mask = await segmenter(imageBytes);
+
+// mask.width, mask.height - mask dimensions (model resolution)
+// mask.at(x, y) - probability (0.0-1.0) that pixel is a person
+
+// Convert to binary mask (0 or 255)
+final binary = mask.toBinary(threshold: 0.5);
+
+// Convert to grayscale (0-255)
+final grayscale = mask.toUint8();
+
+// Upsample to original image size
+final fullSize = mask.upsample();
+
+segmenter.dispose();
+```
+
+### With FaceDetector
+
+```dart
+final detector = FaceDetector();
+await detector.initialize();
+await detector.initializeSegmentation();
+
+final mask = await detector.getSegmentationMask(imageBytes);
+// Use mask for background replacement...
+
+detector.dispose();
+```
+
+### With FaceDetectorIsolate
+
+```dart
+final detector = await FaceDetectorIsolate.spawn(
+  withSegmentation: true,
+  segmentationModel: SegmentationModel.general,
+);
+
+final mask = await detector.getSegmentationMask(imageBytes);
+// Or from cv.Mat for camera streams:
+final mask = await detector.getSegmentationMaskFromMat(mat);
+
+await detector.dispose();
+```
+
+### Model Variants
+
+| Model | Input Size | Best For |
+|-------|------------|----------|
+| **general** (default) | 256×256 | Portraits, square images |
+| **landscape** | 144×256 | Wide images, slightly faster |
+
+```dart
+// Use landscape model
+final segmenter = await SelfieSegmentation.create(
+  model: SegmentationModel.landscape,
+);
+```
+
 ### Memory Considerations
 
 The background isolate holds all TFLite models (~26-40MB for full pipeline). Always call `dispose()` when finished to release these resources. Image data is transferred using zero-copy `TransferableTypedData`, minimizing memory overhead.
@@ -569,6 +640,38 @@ The background isolate holds all TFLite models (~26-40MB for full pipeline). Alw
 The [sample code](https://pub.dev/packages/face_detection_tflite/example) from the pub.dev example tab includes a
 Flutter app that paints detections onto an image: bounding boxes, landmarks, mesh, and comprehensive eye tracking. The
 example code provides inference time, and demonstrates when to use `FaceDetectionMode.standard` or `FaceDetectionMode.fast`.
+
+## Running Tests
+
+Integration tests are located in `example/integration_test/`. Due to a Flutter macOS test runner limitation, tests must be run **one file at a time** on macOS (running all together causes app launch failures between files).
+
+### iOS
+```bash
+cd example
+flutter test integration_test/ -d <ios-device-id>
+```
+
+### macOS (run each file separately)
+```bash
+cd example
+
+# Kill any existing instances, then run a single test file
+pkill -9 -f "face_detection_tflite_example"; sleep 2
+flutter test integration_test/face_detection_integration_test.dart -d macos
+
+# Repeat for each test file:
+# - opencv_helpers_test.dart (20 tests)
+# - performance_config_test.dart (17 tests)
+# - face_detection_integration_test.dart (97 tests)
+# - embedding_match_test.dart (1 test)
+# - gpu_delegate_test.dart (2 tests)
+# - benchmark_test.dart (4 tests)
+# - error_recovery_test.dart (27 tests)
+# - edge_cases_test.dart (33 tests)
+# - all_model_variants_test.dart (18 tests)
+# - image_utils_test.dart (31 tests)
+# - concurrency_stress_test.dart (18 tests)
+```
 
 ## Inspiration
 

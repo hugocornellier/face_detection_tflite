@@ -1,3 +1,12 @@
+## 4.5.0
+- Selfie segmentation for background removal and virtual backgrounds
+  - `SelfieSegmentation` class for standalone segmentation
+  - `getSegmentationMask()` / `getSegmentationMaskFromMat()` on `FaceDetector` and `FaceDetectorIsolate`
+  - Uses MediaPipe Selfie Segmentation models (general 256×256, landscape 144×256)
+
+## 4.4.1
+- Performance optimizations: pre-allocated inference buffers, early score filtering (~17× fewer box decodes), parallel multi-face processing
+
 ## 4.4.0
 - Fixes #3: bug causing crash on non-XNNPack compatible Android devices
 

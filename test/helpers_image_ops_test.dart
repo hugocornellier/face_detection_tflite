@@ -29,19 +29,16 @@ void main() {
 
       expect(tensor.padding, [0.0, 0.0, 0.0, 0.0]);
       expect(tensor.tensorNHWC.length, 12);
-      // First pixel (red)
       expect(tensor.tensorNHWC[0], closeTo(1.0, 1e-6));
       expect(tensor.tensorNHWC[1], closeTo(-1.0, 1e-6));
       expect(tensor.tensorNHWC[2], closeTo(-1.0, 1e-6));
-      // Last pixel (white)
       expect(tensor.tensorNHWC[9], closeTo(1.0, 1e-6));
       expect(tensor.tensorNHWC[10], closeTo(1.0, 1e-6));
       expect(tensor.tensorNHWC[11], closeTo(1.0, 1e-6));
     });
 
     test('applies letterbox padding and normalization', () {
-      final image =
-          _solidImage(2, 1, img.ColorRgb8(10, 20, 30)); // Top/bottom padding
+      final image = _solidImage(2, 1, img.ColorRgb8(10, 20, 30));
 
       final tensor = convertImageToTensor(image, outW: 4, outH: 4);
 
@@ -50,10 +47,8 @@ void main() {
       expect(tensor.padding[2], closeTo(0.0, 1e-6));
       expect(tensor.padding[3], closeTo(0.0, 1e-6));
 
-      // Top-left pixel is padding (-1)
       expect(tensor.tensorNHWC[0], closeTo(-1.0, 1e-6));
 
-      // First non-padded pixel at (0,1)
       final int idx = ((1 * 4) + 0) * 3;
       expect(tensor.tensorNHWC[idx], closeTo((10 / 127.5) - 1.0, 1e-6));
       expect(tensor.tensorNHWC[idx + 1], closeTo((20 / 127.5) - 1.0, 1e-6));
@@ -63,7 +58,7 @@ void main() {
 
   group('faceDetectionToRoi', () {
     test('expands and centers bounding box to square ROI', () {
-      final bbox = RectF(0.2, 0.3, 0.6, 0.7); // Square box
+      final bbox = RectF(0.2, 0.3, 0.6, 0.7);
 
       final roi = faceDetectionToRoi(bbox, expandFraction: 0.6);
 
@@ -85,12 +80,11 @@ void main() {
         }
       }
 
-      final roi = RectF(0.25, 0.25, 0.75, 0.75); // Central 2x2
+      final roi = RectF(0.25, 0.25, 0.75, 0.75);
       final cropped = await cropFromRoi(image, roi);
 
       expect(cropped.width, 2);
       expect(cropped.height, 2);
-      // Should start from original pixel (1,1)
       final pixel = cropped.getPixel(0, 0);
       expect(pixel.r, 10);
       expect(pixel.g, 20);
@@ -112,7 +106,6 @@ void main() {
 
       expect(extracted.width, 2);
       expect(extracted.height, 2);
-      // Solid input should remain solid after extraction
       final px = extracted.getPixel(0, 0);
       expect(px.r, 50);
       expect(px.g, 100);
@@ -154,7 +147,6 @@ void main() {
       expect(tensor.width, 2);
       expect(tensor.height, 2);
       expect(tensor.padding, [0.0, 0.0, 0.0, 0.0]);
-      // Blue channel normalized to 1, others to -1
       expect(tensor.tensorNHWC[0], closeTo(-1.0, 1e-6));
       expect(tensor.tensorNHWC[1], closeTo(-1.0, 1e-6));
       expect(tensor.tensorNHWC[2], closeTo(1.0, 1e-6));

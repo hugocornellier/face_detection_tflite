@@ -49,17 +49,74 @@ class TestUtils {
   /// Returns a minimal valid image in memory (1x1 pixel)
   /// For actual image processing tests, use real test fixtures
   static Uint8List createDummyImageBytes() {
-    // Minimal PNG: 1x1 transparent pixel
     return Uint8List.fromList([
-      0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG signature
-      0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR chunk
-      0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, // Width: 1, Height: 1
-      0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, // Bit depth, color type
-      0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, // IDAT chunk
-      0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
-      0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, // Image data
-      0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, // IEND chunk
-      0x42, 0x60, 0x82,
+      0x89,
+      0x50,
+      0x4E,
+      0x47,
+      0x0D,
+      0x0A,
+      0x1A,
+      0x0A,
+      0x00,
+      0x00,
+      0x00,
+      0x0D,
+      0x49,
+      0x48,
+      0x44,
+      0x52,
+      0x00,
+      0x00,
+      0x00,
+      0x01,
+      0x00,
+      0x00,
+      0x00,
+      0x01,
+      0x08,
+      0x06,
+      0x00,
+      0x00,
+      0x00,
+      0x1F,
+      0x15,
+      0xC4,
+      0x89,
+      0x00,
+      0x00,
+      0x00,
+      0x0A,
+      0x49,
+      0x44,
+      0x41,
+      0x54,
+      0x78,
+      0x9C,
+      0x63,
+      0x00,
+      0x01,
+      0x00,
+      0x00,
+      0x05,
+      0x00,
+      0x01,
+      0x0D,
+      0x0A,
+      0x2D,
+      0xB4,
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x49,
+      0x45,
+      0x4E,
+      0x44,
+      0xAE,
+      0x42,
+      0x60,
+      0x82,
     ]);
   }
 
@@ -278,29 +335,24 @@ class _WithinImageBoundsMatcher extends Matcher {
 
 /// Test constants for consistent test data
 class TestConstants {
-  // Standard test image sizes
   static const Size smallImage = Size(100, 100);
   static const Size mediumImage = Size(640, 480);
   static const Size largeImage = Size(1920, 1080);
   static const Size veryLargeImage = Size(4096, 4096);
 
-  // Common test scores
   static const double highConfidence = 0.95;
   static const double mediumConfidence = 0.7;
   static const double lowConfidence = 0.51;
   static const double veryLowConfidence = 0.3;
 
-  // Standard test bounding boxes (normalized)
   static const double bboxXmin = 0.2;
   static const double bboxYmin = 0.3;
   static const double bboxXmax = 0.8;
   static const double bboxYmax = 0.7;
 
-  // Epsilon values for floating point comparisons
   static const double defaultEpsilon = 0.0001;
   static const double relaxedEpsilon = 0.01;
 
-  // Test keypoint positions (normalized)
   static const double leftEyeX = 0.35;
   static const double leftEyeY = 0.4;
   static const double rightEyeX = 0.65;
