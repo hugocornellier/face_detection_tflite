@@ -1296,6 +1296,41 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     }
   }
 
+  DeviceOrientation _effectiveDeviceOrientation(BuildContext context) {
+    final controller = _cameraController;
+    if (controller != null) {
+      return controller.value.deviceOrientation;
+    }
+
+    return MediaQuery.of(context).orientation == Orientation.portrait
+        ? DeviceOrientation.portraitUp
+        : DeviceOrientation.landscapeLeft;
+  }
+
+  int? _rotationFlagForFrame({
+    required int width,
+    required int height,
+  }) {
+    final DeviceOrientation orientation = _effectiveDeviceOrientation(context);
+    final bool isPortrait = orientation == DeviceOrientation.portraitUp ||
+        orientation == DeviceOrientation.portraitDown;
+
+    if (!isPortrait) return null;
+
+    // If the incoming buffer is already portrait, don't rotate it.
+    if (height >= width) return null;
+
+    final int? sensor = _sensorOrientation;
+    if (sensor == 90) {
+      return cv.ROTATE_90_COUNTERCLOCKWISE;
+    }
+    if (sensor == 270) {
+      return cv.ROTATE_90_CLOCKWISE;
+    }
+
+    return null;
+  }
+
   Future<void> _processCameraImage(CameraImage image) async {
     _frameCounter++;
 
@@ -1355,10 +1390,13 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
 
       if (mounted) {
         // Image size is the size after rotation (if any)
-        final bool needsRotation = _sensorOrientation == 90 &&
-            MediaQuery.of(context).orientation == Orientation.portrait;
-        // When rotated -90°, width and height swap
-        final Size processedSize = needsRotation
+        final rotationFlag = _rotationFlagForFrame(
+          width: image.width,
+          height: image.height,
+        );
+        final bool isRotated = rotationFlag != null;
+        // When rotated 90°, width and height swap
+        final Size processedSize = isRotated
             ? Size(image.height.toDouble(), image.width.toDouble())
             : Size(image.width.toDouble(), image.height.toDouble());
 
@@ -1454,13 +1492,10 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       // Create cv.Mat from BGR bytes
       cv.Mat mat = cv.Mat.fromList(height, width, cv.MatType.CV_8UC3, bgrBytes);
 
-      // Rotate image for portrait mode so face detector sees upright faces
-      final bool needsRotation = _sensorOrientation == 90 &&
-          MediaQuery.of(context).orientation == Orientation.portrait;
-
-      if (needsRotation) {
-        // Rotate 90° counter-clockwise
-        final rotated = cv.rotate(mat, cv.ROTATE_90_COUNTERCLOCKWISE);
+      // Rotate image for portrait mode so face detector sees upright faces.
+      final rotationFlag = _rotationFlagForFrame(width: width, height: height);
+      if (rotationFlag != null) {
+        final rotated = cv.rotate(mat, rotationFlag);
         mat.dispose();
         return rotated;
       }
@@ -1541,13 +1576,13 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
 
     final cameraAspectRatio = _cameraController!.value.aspectRatio;
     final deviceOrientation = MediaQuery.of(context).orientation;
+    final effectiveOrientation = _effectiveDeviceOrientation(context);
+    final bool isPortrait =
+        effectiveOrientation == DeviceOrientation.portraitUp ||
+            effectiveOrientation == DeviceOrientation.portraitDown;
 
-    // Determine if we need to swap aspect ratio for portrait mode
-    // On iOS with sensor orientation 90, the camera is landscape but device may be portrait
-    final bool needsAspectSwap =
-        _sensorOrientation == 90 && deviceOrientation == Orientation.portrait;
     final double displayAspectRatio =
-        needsAspectSwap ? 1.0 / cameraAspectRatio : cameraAspectRatio;
+        isPortrait ? 1.0 / cameraAspectRatio : cameraAspectRatio;
 
     return Scaffold(
       appBar: AppBar(
@@ -2201,45 +2236,15 @@ class _CameraDetectionPainter extends CustomPainter {
     // CameraPreview rotates the display based on sensor orientation
     // We need to transform detection coords to match CameraPreview's display
 
-    // Check if CameraPreview is showing a rotated view
-    final bool isPortraitMode =
-        sensorOrientation == 90 && deviceOrientation == Orientation.portrait;
-
-    // After CameraPreview rotation, the displayed image dimensions are:
-    // - Portrait: height x width (swapped)
-    // - Landscape: width x height (same)
-    final double sourceWidth =
-        isPortraitMode ? imageSize.height : imageSize.width;
-    final double sourceHeight =
-        isPortraitMode ? imageSize.width : imageSize.height;
+    final double sourceWidth = imageSize.width;
+    final double sourceHeight = imageSize.height;
 
     final double scaleX = displayWidth / sourceWidth;
     final double scaleY = displayHeight / sourceHeight;
 
     // Transform a detection coordinate to canvas coordinate
-    //
-    // In portrait mode:
-    // - Camera frame is landscape (e.g., 480x640 where 480 is width)
-    // - We rotated image -90° (CCW) before detection, so detection image is 640x480
-    // - imageSize = (640, 480) = rotated dimensions
-    // - Detection coords are in this rotated (640x480) space
-    // - CameraPreview displays upright (as if rotated from camera's landscape)
-    // - We need to rotate detection coords +90° (CW) to match CameraPreview
-    // - Rotate CW: (x, y) -> (height - y, x) where height = imageSize.height
     Offset transformPoint(double x, double y) {
-      double tx, ty;
-
-      if (isPortraitMode) {
-        // Rotate +90° (CW) to undo the -90° we applied before detection
-        // (x, y) -> (imageSize.height - y, x)
-        tx = imageSize.height - y;
-        ty = x;
-      } else {
-        tx = x;
-        ty = y;
-      }
-
-      return Offset(tx * scaleX, ty * scaleY);
+      return Offset(x * scaleX, y * scaleY);
     }
 
     // Draw bounding boxes and features for each face
