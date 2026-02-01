@@ -130,6 +130,396 @@ class BenchmarkResults {
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
+  group('SelfieSegmentation - Performance Benchmarks', () {
+    test(
+      'Benchmark segmentation with OpenCV decode (optimized path)',
+      () async {
+        final segmenter = await SelfieSegmentation.create(
+          config: SegmentationConfig(
+            performanceConfig: PerformanceConfig.xnnpack(),
+          ),
+        );
+
+        print('\n${'=' * 60}');
+        print('BENCHMARK: Segmentation with OpenCV decode (call) + XNNPACK');
+        print('=' * 60);
+
+        final allStats = <BenchmarkStats>[];
+
+        for (final imagePath in sampleImages) {
+          final ByteData data = await rootBundle.load(imagePath);
+          final Uint8List bytes = data.buffer.asUint8List();
+
+          final List<int> timings = [];
+
+          for (int i = 0; i < iterations; i++) {
+            final stopwatch = Stopwatch()..start();
+            await segmenter.call(bytes);
+            stopwatch.stop();
+            timings.add(stopwatch.elapsedMilliseconds);
+          }
+
+          final stats = BenchmarkStats(
+            imagePath: imagePath,
+            timings: timings,
+            imageSize: bytes.length,
+            detectionCount: 1, // Segmentation always produces 1 mask
+          );
+          stats.printResults(imagePath);
+          allStats.add(stats);
+        }
+
+        segmenter.dispose();
+
+        final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+        final benchmarkResults = BenchmarkResults(
+          timestamp: timestamp,
+          testName: 'Segmentation with OpenCV decode (call) + XNNPACK',
+          configuration: {
+            'performance_config': 'xnnpack',
+            'api': 'call (OpenCV decode)',
+            'iterations': iterations,
+            'sample_images': sampleImages.length,
+          },
+          results: allStats,
+        );
+        benchmarkResults.printSummary();
+        benchmarkResults
+            .printJson('benchmark_segmentation_opencv_$timestamp.json');
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
+
+    test(
+      'Benchmark segmentation FAST mode (no isolate overhead)',
+      () async {
+        final segmenter = await SelfieSegmentation.create(
+          config: SegmentationConfig.fast, // useIsolate: false
+        );
+
+        print('\n${'=' * 60}');
+        print(
+            'BENCHMARK: Segmentation FAST mode (useIsolate: false) + XNNPACK');
+        print('Direct interpreter invoke - no isolate serialization overhead');
+        print('=' * 60);
+
+        final allStats = <BenchmarkStats>[];
+
+        for (final imagePath in sampleImages) {
+          final ByteData data = await rootBundle.load(imagePath);
+          final Uint8List bytes = data.buffer.asUint8List();
+
+          final List<int> timings = [];
+
+          for (int i = 0; i < iterations; i++) {
+            final stopwatch = Stopwatch()..start();
+            await segmenter.call(bytes);
+            stopwatch.stop();
+            timings.add(stopwatch.elapsedMilliseconds);
+          }
+
+          final stats = BenchmarkStats(
+            imagePath: imagePath,
+            timings: timings,
+            imageSize: bytes.length,
+            detectionCount: 1,
+          );
+          stats.printResults('$imagePath (FAST)');
+          allStats.add(stats);
+        }
+
+        segmenter.dispose();
+
+        final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+        final benchmarkResults = BenchmarkResults(
+          timestamp: timestamp,
+          testName: 'Segmentation FAST mode (useIsolate: false) + XNNPACK',
+          configuration: {
+            'performance_config': 'xnnpack',
+            'api': 'call (OpenCV decode)',
+            'useIsolate': false,
+            'iterations': iterations,
+            'sample_images': sampleImages.length,
+          },
+          results: allStats,
+        );
+        benchmarkResults.printSummary();
+        benchmarkResults
+            .printJson('benchmark_segmentation_fast_$timestamp.json');
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
+
+    test(
+      'Benchmark SegmentationWorker (background isolate, non-blocking)',
+      () async {
+        final worker = SegmentationWorker();
+        await worker.initialize(
+          performanceConfig: PerformanceConfig.xnnpack(),
+        );
+
+        print('\n${'=' * 60}');
+        print('BENCHMARK: SegmentationWorker (background isolate)');
+        print('Non-blocking inference with TransferableTypedData transfer');
+        print('=' * 60);
+
+        final allStats = <BenchmarkStats>[];
+
+        for (final imagePath in sampleImages) {
+          final ByteData data = await rootBundle.load(imagePath);
+          final Uint8List bytes = data.buffer.asUint8List();
+
+          final List<int> timings = [];
+
+          for (int i = 0; i < iterations; i++) {
+            final stopwatch = Stopwatch()..start();
+            await worker.segment(bytes);
+            stopwatch.stop();
+            timings.add(stopwatch.elapsedMilliseconds);
+          }
+
+          final stats = BenchmarkStats(
+            imagePath: imagePath,
+            timings: timings,
+            imageSize: bytes.length,
+            detectionCount: 1,
+          );
+          stats.printResults('$imagePath (Worker)');
+          allStats.add(stats);
+        }
+
+        worker.dispose();
+
+        final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+        final benchmarkResults = BenchmarkResults(
+          timestamp: timestamp,
+          testName: 'SegmentationWorker (background isolate)',
+          configuration: {
+            'performance_config': 'xnnpack',
+            'api': 'SegmentationWorker.segment',
+            'blocking': false,
+            'iterations': iterations,
+            'sample_images': sampleImages.length,
+          },
+          results: allStats,
+        );
+        benchmarkResults.printSummary();
+        benchmarkResults
+            .printJson('benchmark_segmentation_worker_$timestamp.json');
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
+
+    test(
+      'Benchmark segmentation with cv.Mat input (callFromMat)',
+      () async {
+        final segmenter = await SelfieSegmentation.create(
+          config: SegmentationConfig(
+            performanceConfig: PerformanceConfig.xnnpack(),
+          ),
+        );
+
+        print('\n${'=' * 60}');
+        print('BENCHMARK: Segmentation with cv.Mat (callFromMat) + XNNPACK');
+        print('Note: Each iteration decodes fresh Mat');
+        print('=' * 60);
+
+        final allStats = <BenchmarkStats>[];
+
+        for (final imagePath in sampleImages) {
+          final ByteData data = await rootBundle.load(imagePath);
+          final Uint8List bytes = data.buffer.asUint8List();
+
+          final List<int> timings = [];
+
+          for (int i = 0; i < iterations; i++) {
+            final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
+
+            final stopwatch = Stopwatch()..start();
+            await segmenter.callFromMat(mat);
+            stopwatch.stop();
+
+            mat.dispose();
+            timings.add(stopwatch.elapsedMilliseconds);
+          }
+
+          final stats = BenchmarkStats(
+            imagePath: imagePath,
+            timings: timings,
+            imageSize: bytes.length,
+            detectionCount: 1,
+          );
+          stats.printResults('$imagePath (cv.Mat)');
+          allStats.add(stats);
+        }
+
+        segmenter.dispose();
+
+        final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+        final benchmarkResults = BenchmarkResults(
+          timestamp: timestamp,
+          testName: 'Segmentation with cv.Mat (callFromMat) + XNNPACK',
+          configuration: {
+            'performance_config': 'xnnpack',
+            'api': 'callFromMat',
+            'note': 'Excludes cv.imdecode time',
+            'iterations': iterations,
+            'sample_images': sampleImages.length,
+          },
+          results: allStats,
+        );
+        benchmarkResults.printSummary();
+        benchmarkResults
+            .printJson('benchmark_segmentation_mat_$timestamp.json');
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
+
+    test(
+      'Benchmark segmentation with pure Dart decode (callWithImagePackage)',
+      () async {
+        final segmenter = await SelfieSegmentation.create(
+          config: SegmentationConfig(
+            performanceConfig: PerformanceConfig.xnnpack(),
+          ),
+        );
+
+        print('\n${'=' * 60}');
+        print(
+            'BENCHMARK: Segmentation with pure Dart decode (callWithImagePackage)');
+        print('This is the SLOW path for comparison');
+        print('=' * 60);
+
+        final allStats = <BenchmarkStats>[];
+
+        for (final imagePath in sampleImages) {
+          final ByteData data = await rootBundle.load(imagePath);
+          final Uint8List bytes = data.buffer.asUint8List();
+
+          final List<int> timings = [];
+
+          for (int i = 0; i < iterations; i++) {
+            final stopwatch = Stopwatch()..start();
+            await segmenter.callWithImagePackage(bytes);
+            stopwatch.stop();
+            timings.add(stopwatch.elapsedMilliseconds);
+          }
+
+          final stats = BenchmarkStats(
+            imagePath: imagePath,
+            timings: timings,
+            imageSize: bytes.length,
+            detectionCount: 1,
+          );
+          stats.printResults('$imagePath (Dart decode)');
+          allStats.add(stats);
+        }
+
+        segmenter.dispose();
+
+        final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+        final benchmarkResults = BenchmarkResults(
+          timestamp: timestamp,
+          testName: 'Segmentation with pure Dart decode (callWithImagePackage)',
+          configuration: {
+            'performance_config': 'xnnpack',
+            'api': 'callWithImagePackage (pure Dart)',
+            'note': 'SLOW path - uses img.decodeImage()',
+            'iterations': iterations,
+            'sample_images': sampleImages.length,
+          },
+          results: allStats,
+        );
+        benchmarkResults.printSummary();
+        benchmarkResults
+            .printJson('benchmark_segmentation_dart_$timestamp.json');
+      },
+      timeout: const Timeout(Duration(minutes: 5)),
+    );
+
+    test(
+      'Benchmark comparison: Segmentation decode overhead',
+      () async {
+        final segmenter = await SelfieSegmentation.create(
+          config: SegmentationConfig(
+            performanceConfig: PerformanceConfig.xnnpack(),
+          ),
+        );
+
+        print('\n${'=' * 60}');
+        print('BENCHMARK: Segmentation Decode Overhead Comparison');
+        print(
+            'Compares: callFromMat (no decode) vs call (OpenCV) vs callWithImagePackage (Dart)');
+        print('=' * 60);
+
+        for (final imagePath in sampleImages) {
+          final ByteData data = await rootBundle.load(imagePath);
+          final Uint8List bytes = data.buffer.asUint8List();
+
+          // Warmup
+          final warmupMat = cv.imdecode(bytes, cv.IMREAD_COLOR);
+          await segmenter.callFromMat(warmupMat);
+          warmupMat.dispose();
+
+          // 1. callFromMat (pipeline only, no decode)
+          final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
+          final List<int> matTimings = [];
+          for (int i = 0; i < iterations; i++) {
+            final stopwatch = Stopwatch()..start();
+            await segmenter.callFromMat(mat);
+            stopwatch.stop();
+            matTimings.add(stopwatch.elapsedMilliseconds);
+          }
+          mat.dispose();
+
+          // 2. call (OpenCV decode)
+          final List<int> opencvTimings = [];
+          for (int i = 0; i < iterations; i++) {
+            final stopwatch = Stopwatch()..start();
+            await segmenter.call(bytes);
+            stopwatch.stop();
+            opencvTimings.add(stopwatch.elapsedMilliseconds);
+          }
+
+          // 3. callWithImagePackage (Dart decode)
+          final List<int> dartTimings = [];
+          for (int i = 0; i < iterations; i++) {
+            final stopwatch = Stopwatch()..start();
+            await segmenter.callWithImagePackage(bytes);
+            stopwatch.stop();
+            dartTimings.add(stopwatch.elapsedMilliseconds);
+          }
+
+          final matMean =
+              matTimings.reduce((a, b) => a + b) / matTimings.length;
+          final opencvMean =
+              opencvTimings.reduce((a, b) => a + b) / opencvTimings.length;
+          final dartMean =
+              dartTimings.reduce((a, b) => a + b) / dartTimings.length;
+
+          print('\n$imagePath:');
+          print(
+              '  callFromMat (no decode):      ${matMean.toStringAsFixed(1)} ms');
+          print(
+              '  call (OpenCV decode):         ${opencvMean.toStringAsFixed(1)} ms');
+          print(
+              '  callWithImagePackage (Dart):  ${dartMean.toStringAsFixed(1)} ms');
+          print('  ---');
+          print(
+              '  OpenCV decode overhead:       ${(opencvMean - matMean).toStringAsFixed(1)} ms');
+          print(
+              '  Dart decode overhead:         ${(dartMean - matMean).toStringAsFixed(1)} ms');
+          print(
+              '  OpenCV vs Dart speedup:       ${(dartMean / opencvMean).toStringAsFixed(2)}x');
+        }
+
+        segmenter.dispose();
+        print('\n${'=' * 60}');
+      },
+      timeout: const Timeout(Duration(minutes: 5)),
+    );
+  });
+
   group('FaceDetector - Performance Benchmarks', () {
     test(
       'Benchmark full mode with OpenCV (native SIMD)',

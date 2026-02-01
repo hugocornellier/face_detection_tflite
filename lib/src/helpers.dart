@@ -1290,13 +1290,30 @@ cv.Mat? extractAlignedSquareFromMat(
   return output;
 }
 
-/// Crops a rectangular region from a cv.Mat using normalized coordinates.
+/// Crops a rectangular region from a [cv.Mat] using normalized coordinates.
 ///
-/// Parameters:
-/// - [src]: Source cv.Mat image
-/// - [roi]: Region of interest with normalized coordinates (0.0 to 1.0)
+/// This is the OpenCV-based equivalent of [cropFromRoi], operating directly
+/// on [cv.Mat] objects for better performance when working with OpenCV
+/// pipelines.
 ///
-/// Returns the cropped cv.Mat. Caller must dispose.
+/// The [src] parameter is the source image to crop from.
+///
+/// The [roi] parameter defines the crop region with normalized coordinates
+/// where (0, 0) is the top-left corner and (1, 1) is the bottom-right corner
+/// of the source image. Coordinates are clamped to valid image bounds.
+///
+/// Returns a cropped [cv.Mat] containing the specified region. The returned
+/// Mat shares memory with [src] via [cv.Mat.region], so [src] must remain
+/// valid while the result is in use. **Caller is responsible for disposing
+/// the returned Mat.**
+///
+/// Example:
+/// ```dart
+/// final roi = RectF(0.2, 0.3, 0.8, 0.7);
+/// final cropped = cropFromRoiMat(sourceMat, roi);
+/// // Use cropped...
+/// cropped.dispose();
+/// ```
 cv.Mat cropFromRoiMat(cv.Mat src, RectF roi) {
   final int w = src.cols;
   final int h = src.rows;

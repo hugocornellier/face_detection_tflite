@@ -331,6 +331,25 @@ class SegmentationConfig {
   /// Disable only if using custom models with known-different shapes.
   final bool validateModel;
 
+  /// Whether to use IsolateInterpreter for inference.
+  ///
+  /// When true (default), inference runs via IsolateInterpreter which avoids
+  /// blocking the main thread but adds ~2-5ms overhead per call due to:
+  /// - Nested list structure creation for isolate boundary crossing
+  /// - Serialization/deserialization overhead
+  /// - Output tensor flattening
+  ///
+  /// When false, uses direct interpreter invoke which is faster but blocks
+  /// the calling thread during inference (~90-100ms). Best for:
+  /// - Background isolate processing (already off main thread)
+  /// - Maximum throughput when latency is acceptable
+  /// - Real-time video processing where every ms counts
+  ///
+  /// **Benchmark results (macOS, XNNPACK):**
+  /// - With isolate: ~99ms mean
+  /// - Without isolate: ~95ms mean (4-5% faster)
+  final bool useIsolate;
+
   /// Creates a segmentation configuration.
   ///
   /// Parameters:
@@ -338,11 +357,13 @@ class SegmentationConfig {
   /// - [maxOutputSize]: Maximum dimension for upsampled output. Default: 2048.
   /// - [resizeStrategy]: How to handle aspect ratio mismatch. Default: letterbox.
   /// - [validateModel]: Whether to validate model on load. Default: true.
+  /// - [useIsolate]: Whether to use IsolateInterpreter. Default: true.
   const SegmentationConfig({
     this.performanceConfig = const PerformanceConfig.auto(),
     this.maxOutputSize = 2048,
     this.resizeStrategy = ResizeStrategy.letterbox,
     this.validateModel = true,
+    this.useIsolate = true,
   });
 
   /// Safe defaults: CPU-only, limited output size.
@@ -359,6 +380,16 @@ class SegmentationConfig {
   static const SegmentationConfig performance = SegmentationConfig(
     performanceConfig: PerformanceConfig.auto(),
     maxOutputSize: 2048,
+  );
+
+  /// Maximum speed: auto delegate, no isolate overhead.
+  ///
+  /// Best for real-time video processing or background isolate usage.
+  /// Blocks calling thread during inference (~90-100ms).
+  static const SegmentationConfig fast = SegmentationConfig(
+    performanceConfig: PerformanceConfig.auto(),
+    maxOutputSize: 2048,
+    useIsolate: false,
   );
 }
 
@@ -725,6 +756,93 @@ class SegmentationMask {
   @override
   String toString() =>
       'SegmentationMask(${width}x$height, original: ${originalWidth}x$originalHeight)';
+}
+
+/// Result combining face detection and segmentation from parallel processing.
+///
+/// This class bundles the results of running face detection and selfie
+/// segmentation simultaneously in separate isolates. Use with
+/// [FaceDetectorIsolate.detectFacesWithSegmentationFromMat] for optimal
+/// performance when both features are needed.
+///
+/// ## Example
+///
+/// ```dart
+/// final detector = await FaceDetectorIsolate.spawn(withSegmentation: true);
+/// final result = await detector.detectFacesWithSegmentationFromMat(mat);
+///
+/// print('Found ${result.faces.length} faces');
+/// print('Mask: ${result.segmentationMask?.width}x${result.segmentationMask?.height}');
+/// print('Total time: ${result.totalTimeMs}ms (parallel processing)');
+/// ```
+///
+/// ## Performance
+///
+/// When using parallel processing, [totalTimeMs] represents the maximum of
+/// [detectionTimeMs] and [segmentationTimeMs], rather than their sum. This
+/// typically results in 40-50% faster processing compared to sequential calls.
+class DetectionWithSegmentationResult {
+  /// Detected faces with landmarks, mesh, and iris data.
+  final List<Face> faces;
+
+  /// Segmentation mask separating foreground (person) from background.
+  ///
+  /// Null if segmentation was disabled or failed during processing.
+  final SegmentationMask? segmentationMask;
+
+  /// Time taken for face detection in milliseconds.
+  final int detectionTimeMs;
+
+  /// Time taken for segmentation in milliseconds.
+  ///
+  /// Zero if segmentation was not run.
+  final int segmentationTimeMs;
+
+  /// Creates a result combining detection and segmentation outputs.
+  const DetectionWithSegmentationResult({
+    required this.faces,
+    this.segmentationMask,
+    required this.detectionTimeMs,
+    required this.segmentationTimeMs,
+  });
+
+  /// Total processing time in milliseconds.
+  ///
+  /// For parallel processing, this is the maximum of [detectionTimeMs] and
+  /// [segmentationTimeMs], representing the wall-clock time for the operation.
+  int get totalTimeMs => detectionTimeMs > segmentationTimeMs
+      ? detectionTimeMs
+      : segmentationTimeMs;
+
+  /// Serializes this result to a map for isolate transfer.
+  Map<String, dynamic> toMap() => {
+        'faces': faces.map((f) => f.toMap()).toList(),
+        if (segmentationMask != null)
+          'segmentationMask': segmentationMask!.toMap(),
+        'detectionTimeMs': detectionTimeMs,
+        'segmentationTimeMs': segmentationTimeMs,
+      };
+
+  /// Creates a result from a serialized map.
+  factory DetectionWithSegmentationResult.fromMap(Map<String, dynamic> map) {
+    return DetectionWithSegmentationResult(
+      faces: (map['faces'] as List)
+          .map((m) => Face.fromMap(Map<String, dynamic>.from(m as Map)))
+          .toList(),
+      segmentationMask: map['segmentationMask'] != null
+          ? SegmentationMask.fromMap(
+              Map<String, dynamic>.from(map['segmentationMask'] as Map))
+          : null,
+      detectionTimeMs: map['detectionTimeMs'] as int,
+      segmentationTimeMs: map['segmentationTimeMs'] as int,
+    );
+  }
+
+  @override
+  String toString() =>
+      'DetectionWithSegmentationResult(faces: ${faces.length}, '
+      'mask: ${segmentationMask != null ? "${segmentationMask!.width}x${segmentationMask!.height}" : "null"}, '
+      'time: ${totalTimeMs}ms)';
 }
 
 /// Connections between eye contour landmarks for rendering the visible eyeball outline.

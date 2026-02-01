@@ -1202,7 +1202,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   int _framesSinceLastUpdate = 0;
 
   // Detection settings
-  FaceDetectionMode _detectionMode = FaceDetectionMode.fast;
+  FaceDetectionMode _detectionMode = FaceDetectionMode.full;
   FaceDetectionModel _detectionModel = FaceDetectionModel.frontCamera;
 
   // Segmentation settings
@@ -1234,7 +1234,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
 
   Future<void> _initCamera() async {
     try {
-      // Initialize face detector isolate with selected model and segmentation
+      // Initialize face detector isolate with segmentation enabled
+      // Parallel processing happens automatically via dual internal isolates
       _faceDetectorIsolate = await FaceDetectorIsolate.spawn(
         model: _detectionModel,
         withSegmentation: true,
@@ -1369,17 +1370,23 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         return;
       }
 
-      // Run face detection in background isolate
-      final faces = await _faceDetectorIsolate!.detectFacesFromMat(
-        mat,
-        mode: _detectionMode,
-      );
-
-      // Run segmentation if enabled
+      // Run face detection and segmentation
+      final List<Face> faces;
       SegmentationMask? segMask;
+
       if ((_showSegmentation || _showVirtualBackground) &&
           _faceDetectorIsolate!.isSegmentationReady) {
-        segMask = await _faceDetectorIsolate!.getSegmentationMaskFromMat(mat);
+        // Parallel execution via dual internal isolates
+        final result = await _faceDetectorIsolate!
+            .detectFacesWithSegmentationFromMat(mat, mode: _detectionMode);
+        faces = result.faces;
+        segMask = result.segmentationMask;
+      } else {
+        // Detection only (no segmentation)
+        faces = await _faceDetectorIsolate!.detectFacesFromMat(
+          mat,
+          mode: _detectionMode,
+        );
       }
 
       // Dispose the Mat after detection
@@ -2142,17 +2149,23 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
           return;
         }
 
-        // Run face detection in background isolate
-        final faces = await _faceDetectorIsolate!.detectFacesFromMat(
-          mat,
-          mode: _detectionMode,
-        );
-
-        // Run segmentation if enabled
+        // Run face detection and segmentation
+        final List<Face> faces;
         SegmentationMask? segMask;
+
         if ((_showSegmentation || _showVirtualBackground) &&
             _faceDetectorIsolate!.isSegmentationReady) {
-          segMask = await _faceDetectorIsolate!.getSegmentationMaskFromMat(mat);
+          // Parallel execution via dual internal isolates
+          final result = await _faceDetectorIsolate!
+              .detectFacesWithSegmentationFromMat(mat, mode: _detectionMode);
+          faces = result.faces;
+          segMask = result.segmentationMask;
+        } else {
+          // Detection only (no segmentation)
+          faces = await _faceDetectorIsolate!.detectFacesFromMat(
+            mat,
+            mode: _detectionMode,
+          );
         }
 
         // Dispose the Mat after detection

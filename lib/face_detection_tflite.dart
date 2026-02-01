@@ -31,3 +31,4 @@ part 'src/face_landmark.dart';
 part 'src/iris_landmark.dart';
 part 'src/face_embedding.dart';
 part 'src/selfie_segmentation.dart';
+part 'src/segmentation_worker.dart';
