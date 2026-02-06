@@ -10,8 +10,20 @@ import 'package:image/image.dart' as img;
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:tflite_flutter_custom/tflite_flutter.dart';
 
-/// Helper to check if segmentation models are available
+/// Helper to check if the default segmentation model is available
 Future<bool> _areModelsAvailable() async {
+  try {
+    await rootBundle.load(
+      'packages/face_detection_tflite/assets/models/selfie_segmenter.tflite',
+    );
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+/// Helper to check if the multiclass segmentation model is available
+Future<bool> _isMulticlassModelAvailable() async {
   try {
     await rootBundle.load(
       'packages/face_detection_tflite/assets/models/selfie_multiclass.tflite',
@@ -70,34 +82,28 @@ void main() {
   test('DIAGNOSTIC: Load model directly with interpreter', () async {
     print('\n--- DIAGNOSTIC: Direct interpreter test ---');
 
-    // Try loading both a working model and the segmentation model
-    final workingModelPath =
-        'packages/face_detection_tflite/assets/models/face_detection_back.tflite';
-    final segModelPath =
-        'packages/face_detection_tflite/assets/models/selfie_multiclass.tflite';
+    final modelPaths = {
+      'face_detection_back':
+          'packages/face_detection_tflite/assets/models/face_detection_back.tflite',
+      'selfie_segmenter (default)':
+          'packages/face_detection_tflite/assets/models/selfie_segmenter.tflite',
+      'selfie_segmenter_landscape':
+          'packages/face_detection_tflite/assets/models/selfie_segmenter_landscape.tflite',
+      'selfie_multiclass':
+          'packages/face_detection_tflite/assets/models/selfie_multiclass.tflite',
+    };
 
-    // Load face detection model (should work)
-    try {
-      print('Loading face detection model...');
-      final faceInterpreter = await Interpreter.fromAsset(workingModelPath);
-      print('Face detection model loaded successfully!');
-      print('  Input shape: ${faceInterpreter.getInputTensor(0).shape}');
-      print('  Output shape: ${faceInterpreter.getOutputTensor(0).shape}');
-      faceInterpreter.close();
-    } catch (e) {
-      print('Face detection model FAILED: $e');
-    }
-
-    // Load segmentation model
-    try {
-      print('Loading segmentation model...');
-      final segInterpreter = await Interpreter.fromAsset(segModelPath);
-      print('Segmentation model loaded successfully!');
-      print('  Input shape: ${segInterpreter.getInputTensor(0).shape}');
-      print('  Output shape: ${segInterpreter.getOutputTensor(0).shape}');
-      segInterpreter.close();
-    } catch (e) {
-      print('Segmentation model FAILED: $e');
+    for (final entry in modelPaths.entries) {
+      try {
+        print('Loading ${entry.key}...');
+        final interpreter = await Interpreter.fromAsset(entry.value);
+        print('  Loaded successfully!');
+        print('  Input shape: ${interpreter.getInputTensor(0).shape}');
+        print('  Output shape: ${interpreter.getOutputTensor(0).shape}');
+        interpreter.close();
+      } catch (e) {
+        print('  FAILED: $e');
+      }
     }
 
     print('--- DIAGNOSTIC complete ---');
@@ -119,7 +125,7 @@ void main() {
       expect(segmenter.inputWidth, 256);
       expect(segmenter.inputHeight, 256);
       expect(segmenter.outputChannels,
-          6); // Multiclass model has 6 output channels
+          1); // Default general model has 1 output channel (binary sigmoid)
       print('Input size: ${segmenter.inputWidth}x${segmenter.inputHeight}');
       print('Output channels: ${segmenter.outputChannels}');
 
@@ -1613,8 +1619,9 @@ void main() {
     });
 
     test('multiclass model inference', () async {
-      if (!modelsAvailable) {
-        print('Skipping: models not available');
+      final multiclassAvailable = await _isMulticlassModelAvailable();
+      if (!multiclassAvailable) {
+        print('Skipping: multiclass model not available');
         return;
       }
 
@@ -1624,11 +1631,20 @@ void main() {
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final imageBytes = data.buffer.asUint8List();
 
-      final segmenter = await SelfieSegmentation.create();
+      final segmenter = await SelfieSegmentation.create(
+        config: SegmentationConfig(model: SegmentationModel.multiclass),
+      );
       try {
+        expect(segmenter.outputChannels, 6);
+
         final sw = Stopwatch()..start();
         final mask = await segmenter.call(imageBytes);
         sw.stop();
+
+        // Multiclass model should return MulticlassSegmentationMask
+        expect(mask, isA<MulticlassSegmentationMask>());
+        final mcMask = mask as MulticlassSegmentationMask;
+
         final foreground = mask.data.where((v) => v >= 0.5).length;
 
         print('Multiclass model:');
@@ -1637,6 +1653,34 @@ void main() {
         print('  Time: ${sw.elapsedMilliseconds}ms');
         print(
             '  Foreground: ${(foreground / mask.data.length * 100).toStringAsFixed(1)}%');
+
+        // Verify per-class masks are available
+        final hairMask = mcMask.hairMask;
+        final faceMask = mcMask.faceSkinMask;
+        final bodyMask = mcMask.bodySkinMask;
+        final clothesMask = mcMask.clothesMask;
+        final bgMask = mcMask.backgroundMask;
+        final otherMask = mcMask.otherMask;
+
+        final numPixels = mask.width * mask.height;
+        expect(hairMask.length, numPixels);
+        expect(faceMask.length, numPixels);
+        expect(bodyMask.length, numPixels);
+        expect(clothesMask.length, numPixels);
+        expect(bgMask.length, numPixels);
+        expect(otherMask.length, numPixels);
+
+        // All class probabilities at each pixel should sum to ~1.0
+        for (int i = 0; i < 100 && i < numPixels; i++) {
+          final sum = bgMask[i] +
+              hairMask[i] +
+              bodyMask[i] +
+              faceMask[i] +
+              clothesMask[i] +
+              otherMask[i];
+          expect(sum, closeTo(1.0, 0.01),
+              reason: 'Class probabilities at pixel $i should sum to 1.0');
+        }
 
         expect(foreground, greaterThan(0), reason: 'Multiclass model failed');
       } finally {
@@ -1690,6 +1734,427 @@ void main() {
         segmenter.dispose();
       }
 
+      print('Test passed');
+    });
+  });
+
+  // ===========================================================================
+  // Model Selection Tests
+  // ===========================================================================
+  group('Model Selection', () {
+    test('general model (default) produces binary mask', () async {
+      if (!modelsAvailable) {
+        print('Skipping: models not available');
+        return;
+      }
+
+      print('\n--- Testing general model (default) ---');
+      final segmenter = await SelfieSegmentation.create();
+
+      expect(segmenter.inputWidth, 256);
+      expect(segmenter.inputHeight, 256);
+      expect(segmenter.outputChannels, 1);
+
+      final imageBytes = _createTestImage(256, 256);
+      final mask = await segmenter.call(imageBytes);
+
+      expect(mask, isNot(isA<MulticlassSegmentationMask>()));
+      expect(mask.width, greaterThan(0));
+      expect(mask.height, greaterThan(0));
+      print('General model: ${mask.width}x${mask.height}');
+
+      segmenter.dispose();
+      print('Test passed');
+    });
+
+    test('general model explicit selection', () async {
+      if (!modelsAvailable) {
+        print('Skipping: models not available');
+        return;
+      }
+
+      print('\n--- Testing explicit general model selection ---');
+      final segmenter = await SelfieSegmentation.create(
+        config: SegmentationConfig(model: SegmentationModel.general),
+      );
+
+      expect(segmenter.outputChannels, 1);
+
+      final imageBytes = _createTestImage(256, 256);
+      final mask = await segmenter.call(imageBytes);
+      expect(mask, isNot(isA<MulticlassSegmentationMask>()));
+
+      segmenter.dispose();
+      print('Test passed');
+    });
+
+    test('landscape model uses 144x256 input', () async {
+      if (!modelsAvailable) {
+        print('Skipping: models not available');
+        return;
+      }
+
+      print('\n--- Testing landscape model ---');
+      final segmenter = await SelfieSegmentation.create(
+        config: SegmentationConfig(model: SegmentationModel.landscape),
+      );
+
+      expect(segmenter.inputWidth, 256);
+      expect(segmenter.inputHeight, 144);
+      expect(segmenter.outputChannels, 1);
+
+      final imageBytes = _createTestImage(640, 360); // 16:9
+      final mask = await segmenter.call(imageBytes);
+
+      expect(mask, isNot(isA<MulticlassSegmentationMask>()));
+      expect(mask.width, greaterThan(0));
+      expect(mask.height, greaterThan(0));
+      print('Landscape model: ${mask.width}x${mask.height}');
+
+      segmenter.dispose();
+      print('Test passed');
+    });
+
+    test('multiclass model produces MulticlassSegmentationMask', () async {
+      final multiclassAvailable = await _isMulticlassModelAvailable();
+      if (!multiclassAvailable) {
+        print('Skipping: multiclass model not available');
+        return;
+      }
+
+      print('\n--- Testing multiclass model selection ---');
+      final segmenter = await SelfieSegmentation.create(
+        config: SegmentationConfig(model: SegmentationModel.multiclass),
+      );
+
+      expect(segmenter.inputWidth, 256);
+      expect(segmenter.inputHeight, 256);
+      expect(segmenter.outputChannels, 6);
+
+      final imageBytes = _createTestImage(256, 256);
+      final mask = await segmenter.call(imageBytes);
+
+      expect(mask, isA<MulticlassSegmentationMask>());
+      print('Multiclass model: ${mask.width}x${mask.height}');
+
+      segmenter.dispose();
+      print('Test passed');
+    });
+
+    test('switching between models works', () async {
+      final multiclassAvailable = await _isMulticlassModelAvailable();
+      if (!modelsAvailable) {
+        print('Skipping: models not available');
+        return;
+      }
+
+      print('\n--- Testing model switching ---');
+      final imageBytes = _createTestImage(256, 256);
+
+      // General model
+      final general = await SelfieSegmentation.create();
+      final gMask = await general.call(imageBytes);
+      expect(gMask, isNot(isA<MulticlassSegmentationMask>()));
+      general.dispose();
+      print('General: OK');
+
+      // Landscape model
+      final landscape = await SelfieSegmentation.create(
+        config: SegmentationConfig(model: SegmentationModel.landscape),
+      );
+      final lMask = await landscape.call(imageBytes);
+      expect(lMask, isNot(isA<MulticlassSegmentationMask>()));
+      landscape.dispose();
+      print('Landscape: OK');
+
+      // Multiclass model (if available)
+      if (multiclassAvailable) {
+        final multiclass = await SelfieSegmentation.create(
+          config: SegmentationConfig(model: SegmentationModel.multiclass),
+        );
+        final mMask = await multiclass.call(imageBytes);
+        expect(mMask, isA<MulticlassSegmentationMask>());
+        multiclass.dispose();
+        print('Multiclass: OK');
+      }
+
+      print('Test passed');
+    });
+  });
+
+  // ===========================================================================
+  // MulticlassSegmentationMask API Tests
+  // ===========================================================================
+  group('MulticlassSegmentationMask API', () {
+    test('classMask returns correct length for each class', () async {
+      final multiclassAvailable = await _isMulticlassModelAvailable();
+      if (!multiclassAvailable) {
+        print('Skipping: multiclass model not available');
+        return;
+      }
+
+      print('\n--- Testing classMask for each class index ---');
+      final segmenter = await SelfieSegmentation.create(
+        config: SegmentationConfig(model: SegmentationModel.multiclass),
+      );
+      final imageBytes = _createTestImage(128, 128);
+      final mask =
+          await segmenter.call(imageBytes) as MulticlassSegmentationMask;
+
+      final numPixels = mask.width * mask.height;
+      for (int c = 0; c < 6; c++) {
+        final cm = mask.classMask(c);
+        expect(cm.length, numPixels, reason: 'Class $c mask length mismatch');
+        for (int i = 0; i < cm.length; i++) {
+          expect(cm[i], inInclusiveRange(0.0, 1.0),
+              reason: 'Class $c pixel $i out of range');
+        }
+      }
+      print('All 6 class masks valid ($numPixels pixels each)');
+
+      segmenter.dispose();
+      print('Test passed');
+    });
+
+    test('named accessors match classMask indices', () async {
+      final multiclassAvailable = await _isMulticlassModelAvailable();
+      if (!multiclassAvailable) {
+        print('Skipping: multiclass model not available');
+        return;
+      }
+
+      print('\n--- Testing named accessors ---');
+      final segmenter = await SelfieSegmentation.create(
+        config: SegmentationConfig(model: SegmentationModel.multiclass),
+      );
+      final imageBytes = _createTestImage(64, 64);
+      final mask =
+          await segmenter.call(imageBytes) as MulticlassSegmentationMask;
+
+      // Verify named accessors return the same data as classMask(index)
+      expect(mask.backgroundMask, mask.classMask(0));
+      expect(mask.hairMask, mask.classMask(1));
+      expect(mask.bodySkinMask, mask.classMask(2));
+      expect(mask.faceSkinMask, mask.classMask(3));
+      expect(mask.clothesMask, mask.classMask(4));
+      expect(mask.otherMask, mask.classMask(5));
+
+      print('All named accessors match class indices');
+      segmenter.dispose();
+      print('Test passed');
+    });
+
+    test('classMask out of bounds throws RangeError', () async {
+      final multiclassAvailable = await _isMulticlassModelAvailable();
+      if (!multiclassAvailable) {
+        print('Skipping: multiclass model not available');
+        return;
+      }
+
+      print('\n--- Testing classMask bounds checking ---');
+      final segmenter = await SelfieSegmentation.create(
+        config: SegmentationConfig(model: SegmentationModel.multiclass),
+      );
+      final imageBytes = _createTestImage(64, 64);
+      final mask =
+          await segmenter.call(imageBytes) as MulticlassSegmentationMask;
+
+      expect(() => mask.classMask(-1), throwsRangeError);
+      expect(() => mask.classMask(6), throwsRangeError);
+
+      segmenter.dispose();
+      print('Test passed');
+    });
+
+    test('multiclass mask toBinary/toUint8/toRgba work correctly', () async {
+      final multiclassAvailable = await _isMulticlassModelAvailable();
+      if (!multiclassAvailable) {
+        print('Skipping: multiclass model not available');
+        return;
+      }
+
+      print('\n--- Testing multiclass mask utility methods ---');
+      final segmenter = await SelfieSegmentation.create(
+        config: SegmentationConfig(model: SegmentationModel.multiclass),
+      );
+      final imageBytes = _createTestImage(128, 128);
+      final mask =
+          await segmenter.call(imageBytes) as MulticlassSegmentationMask;
+
+      // toBinary
+      final binary = mask.toBinary(threshold: 0.5);
+      for (final v in binary) {
+        expect(v, anyOf(0, 255));
+      }
+
+      // toUint8
+      final uint8 = mask.toUint8();
+      for (final v in uint8) {
+        expect(v, inInclusiveRange(0, 255));
+      }
+
+      // toRgba
+      final rgba = mask.toRgba(
+        foreground: 0xFF0000FF,
+        background: 0x00000000,
+        threshold: 0.5,
+      );
+      expect(rgba.length, mask.width * mask.height * 4);
+
+      segmenter.dispose();
+      print('Test passed');
+    });
+  });
+
+  // ===========================================================================
+  // SegmentationWorker Model Selection
+  // ===========================================================================
+  group('SegmentationWorker Model Selection', () {
+    test('worker with default (general) model', () async {
+      if (!modelsAvailable) {
+        print('Skipping: models not available');
+        return;
+      }
+
+      print('\n--- Testing SegmentationWorker with default model ---');
+      final worker = SegmentationWorker();
+      await worker.initialize();
+
+      final imageBytes = _createTestImage(256, 256);
+      final mask = await worker.segment(imageBytes);
+
+      expect(mask.width, greaterThan(0));
+      expect(mask, isNot(isA<MulticlassSegmentationMask>()));
+      print('Worker (general): ${mask.width}x${mask.height}');
+
+      worker.dispose();
+      print('Test passed');
+    });
+
+    test('worker with multiclass model', () async {
+      final multiclassAvailable = await _isMulticlassModelAvailable();
+      if (!multiclassAvailable) {
+        print('Skipping: multiclass model not available');
+        return;
+      }
+
+      print('\n--- Testing SegmentationWorker with multiclass model ---');
+      final worker = SegmentationWorker();
+      await worker.initialize(
+        config: SegmentationConfig(model: SegmentationModel.multiclass),
+      );
+
+      final imageBytes = _createTestImage(256, 256);
+      final mask = await worker.segment(imageBytes);
+
+      expect(mask.width, greaterThan(0));
+      expect(mask, isA<MulticlassSegmentationMask>());
+
+      final mcMask = mask as MulticlassSegmentationMask;
+      final numPixels = mask.width * mask.height;
+      expect(mcMask.hairMask.length, numPixels);
+
+      print('Worker (multiclass): ${mask.width}x${mask.height}');
+      worker.dispose();
+      print('Test passed');
+    });
+
+    test('worker with landscape model', () async {
+      if (!modelsAvailable) {
+        print('Skipping: models not available');
+        return;
+      }
+
+      print('\n--- Testing SegmentationWorker with landscape model ---');
+      final worker = SegmentationWorker();
+      await worker.initialize(
+        config: SegmentationConfig(model: SegmentationModel.landscape),
+      );
+
+      final imageBytes = _createTestImage(640, 360);
+      final mask = await worker.segment(imageBytes);
+
+      expect(mask.width, greaterThan(0));
+      expect(mask, isNot(isA<MulticlassSegmentationMask>()));
+      print('Worker (landscape): ${mask.width}x${mask.height}');
+
+      worker.dispose();
+      print('Test passed');
+    });
+  });
+
+  // ===========================================================================
+  // FaceDetectorIsolate Model Selection
+  // ===========================================================================
+  group('FaceDetectorIsolate Model Selection', () {
+    test('isolate with default (general) model', () async {
+      if (!modelsAvailable) {
+        print('Skipping: models not available');
+        return;
+      }
+
+      print('\n--- Testing FaceDetectorIsolate with default model ---');
+      final detector = await FaceDetectorIsolate.spawn(
+        withSegmentation: true,
+      );
+
+      final imageBytes = _createTestImage(256, 256);
+      final mask = await detector.getSegmentationMask(imageBytes);
+
+      expect(mask.width, greaterThan(0));
+      print('Isolate (general): ${mask.width}x${mask.height}');
+
+      await detector.dispose();
+      print('Test passed');
+    });
+
+    test('isolate with multiclass model', () async {
+      final multiclassAvailable = await _isMulticlassModelAvailable();
+      if (!multiclassAvailable) {
+        print('Skipping: multiclass model not available');
+        return;
+      }
+
+      print('\n--- Testing FaceDetectorIsolate with multiclass model ---');
+      final detector = await FaceDetectorIsolate.spawn(
+        withSegmentation: true,
+        segmentationConfig: SegmentationConfig(
+          model: SegmentationModel.multiclass,
+        ),
+      );
+
+      final imageBytes = _createTestImage(256, 256);
+      final mask = await detector.getSegmentationMask(imageBytes);
+
+      expect(mask.width, greaterThan(0));
+      expect(mask, isA<MulticlassSegmentationMask>());
+      print('Isolate (multiclass): ${mask.width}x${mask.height}');
+
+      await detector.dispose();
+      print('Test passed');
+    });
+
+    test('isolate with landscape model', () async {
+      if (!modelsAvailable) {
+        print('Skipping: models not available');
+        return;
+      }
+
+      print('\n--- Testing FaceDetectorIsolate with landscape model ---');
+      final detector = await FaceDetectorIsolate.spawn(
+        withSegmentation: true,
+        segmentationConfig: SegmentationConfig(
+          model: SegmentationModel.landscape,
+        ),
+      );
+
+      final imageBytes = _createTestImage(640, 360);
+      final mask = await detector.getSegmentationMask(imageBytes);
+
+      expect(mask.width, greaterThan(0));
+      print('Isolate (landscape): ${mask.width}x${mask.height}');
+
+      await detector.dispose();
       print('Test passed');
     });
   });

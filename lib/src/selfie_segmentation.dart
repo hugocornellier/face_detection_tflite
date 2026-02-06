@@ -1,14 +1,36 @@
 part of '../face_detection_tflite.dart';
 
-/// Model file name for selfie segmentation (multiclass model).
-const _segmentationModel = 'selfie_multiclass.tflite';
-
 /// Minimum input image size (smaller images rejected).
 const int kMinSegmentationInputSize = 16;
 
-/// Model input/output dimensions for the multiclass model.
-const int _segmentationInputSize = 256;
-const int _segmentationOutputChannels = 6;
+/// Returns the effective model to use.
+///
+/// All platforms now support all models with custom ops.
+SegmentationModel _effectiveModel(SegmentationModel requested) {
+  return requested;
+}
+
+/// Returns the model filename for a given [SegmentationModel] variant.
+String _modelFileFor(SegmentationModel model) => switch (model) {
+      SegmentationModel.general => 'selfie_segmenter.tflite',
+      SegmentationModel.landscape => 'selfie_segmenter_landscape.tflite',
+      SegmentationModel.multiclass => 'selfie_multiclass.tflite',
+    };
+
+/// Returns the model input width for a given [SegmentationModel] variant.
+int _inputWidthFor(SegmentationModel model) => 256;
+
+/// Returns the model input height for a given [SegmentationModel] variant.
+int _inputHeightFor(SegmentationModel model) => switch (model) {
+      SegmentationModel.landscape => 144,
+      _ => 256,
+    };
+
+/// Returns the expected output channels for a given [SegmentationModel] variant.
+int _expectedOutputChannels(SegmentationModel model) => switch (model) {
+      SegmentationModel.multiclass => 6,
+      _ => 1,
+    };
 
 /// Segmentation class indices in the multiclass model output.
 /// The model outputs 6 channels representing probabilities for each class.
@@ -35,42 +57,60 @@ class SegmentationClass {
   static const List<int> allPerson = [hair, bodySkin, faceSkin, clothes, other];
 }
 
-/// Performs selfie/person segmentation using MediaPipe's multiclass model.
+/// Performs selfie/person segmentation using MediaPipe TFLite models.
 ///
 /// Generates a per-pixel probability mask separating foreground (person)
 /// from background. Works on full images - no face detection required.
 ///
-/// The multiclass model outputs 6 classes: background, hair, body skin,
-/// face skin, clothes, and other. By default, all non-background classes
-/// are combined into a single "person" mask.
+/// ## Model Variants
+///
+/// Three model variants are available via [SegmentationConfig.model]:
+///
+/// - **[SegmentationModel.general]** (default): Binary person/background,
+///   ~244KB, 256x256 input, single-channel sigmoid output.
+/// - **[SegmentationModel.landscape]**: Binary person/background optimized
+///   for 16:9 video, ~244KB, 144x256 input.
+/// - **[SegmentationModel.multiclass]**: 6-class body part segmentation,
+///   ~16MB, 256x256 input. Returns [MulticlassSegmentationMask] with
+///   per-class accessors (hair, face, body, clothes, etc.).
 ///
 /// ## Platform Support
 ///
-/// Uses only standard TFLite ops - works on all platforms without custom ops.
+/// All model variants work on all platforms. Binary models (general/landscape)
+/// use the `Convolution2DTransposeBias` custom op which is bundled for each platform.
 ///
 /// | Platform | Delegate | Notes |
 /// |----------|----------|-------|
-/// | iOS | Metal GPU | Reliable, recommended |
-/// | Android | GPU/CPU | Works with both delegates |
-/// | macOS | CPU | Stable |
-/// | Linux | CPU | Stable |
-/// | Windows | CPU | Stable |
+/// | iOS | Metal GPU | Custom ops statically linked via CocoaPods |
+/// | Android | GPU/CPU | Custom ops built via CMake, loaded at runtime |
+/// | macOS | CPU | Custom ops bundled as dylib |
+/// | Linux | CPU | Custom ops bundled as .so |
+/// | Windows | CPU | Custom ops bundled as dll |
 ///
 /// ## Example
 ///
 /// ```dart
+/// // Default: fast binary segmentation (~244KB model)
 /// final segmenter = await SelfieSegmentation.create();
 /// final mask = await segmenter(imageBytes);
 /// final binary = mask.toBinary(threshold: 0.5);
 /// segmenter.dispose();
+///
+/// // Multiclass: per-class body part segmentation (~16MB model)
+/// final multiSeg = await SelfieSegmentation.create(
+///   config: SegmentationConfig(model: SegmentationModel.multiclass),
+/// );
+/// final multiMask = await multiSeg(imageBytes);
+/// if (multiMask is MulticlassSegmentationMask) {
+///   final hair = multiMask.hairMask;
+/// }
+/// multiSeg.dispose();
 /// ```
 ///
-/// ## Memory Considerations
+/// ## Memory Considerations (varies by model)
 ///
-/// - Model memory: ~16MB
-/// - Input buffer: ~768KB (256x256x3 float32)
-/// - Output buffer: ~1.5MB (256x256x6 float32)
-/// - Combined person mask: ~256KB (256x256 float32)
+/// - **General/Landscape**: ~244KB model + ~768KB buffers
+/// - **Multiclass**: ~16MB model + ~2.3MB buffers
 ///
 /// ## Integration with FaceDetector
 ///
@@ -91,6 +131,7 @@ class SelfieSegmentation {
   final int _inH;
   final int _outChannels;
   final SegmentationConfig _config;
+  final SegmentationModel _model;
   Delegate? _delegate;
   bool _delegateFailed = false;
   bool _disposed = false;
@@ -107,14 +148,21 @@ class SelfieSegmentation {
   late final int _outH;
 
   SelfieSegmentation._(
-      this._itp, this._inW, this._inH, this._outChannels, this._config);
+    this._itp,
+    this._inW,
+    this._inH,
+    this._outChannels,
+    this._config,
+    this._model,
+  );
 
   /// Creates and initializes a selfie segmentation model instance.
   ///
-  /// This factory method loads the MediaPipe multiclass segmentation TensorFlow
-  /// Lite model from package assets and prepares it for inference.
+  /// This factory method loads the selected segmentation TensorFlow Lite model
+  /// from package assets and prepares it for inference.
   ///
-  /// [config]: Configuration for delegates and output limits.
+  /// [config]: Configuration for model selection, delegates, and output limits.
+  /// The [SegmentationConfig.model] field selects which model variant to load.
   ///
   /// Returns a fully initialized [SelfieSegmentation] instance.
   ///
@@ -125,24 +173,32 @@ class SelfieSegmentation {
   ///
   /// Example:
   /// ```dart
-  /// // Default configuration
+  /// // Default: fast binary model (~244KB)
   /// final segmenter = await SelfieSegmentation.create();
   ///
-  /// // With custom configuration
+  /// // Multiclass model with per-class masks (~16MB)
   /// final segmenter = await SelfieSegmentation.create(
-  ///   config: SegmentationConfig.performance,
+  ///   config: SegmentationConfig(model: SegmentationModel.multiclass),
   /// );
   /// ```
   static Future<SelfieSegmentation> create({
     SegmentationConfig config = const SegmentationConfig(),
   }) async {
+    // Resolve the effective model (all platforms now support all models)
+    final effectiveModel = _effectiveModel(config.model);
+    final modelFile = _modelFileFor(effectiveModel);
+    final inW = _inputWidthFor(effectiveModel);
+    final inH = _inputHeightFor(effectiveModel);
+    final outChannels = _expectedOutputChannels(effectiveModel);
+
     Delegate? delegate;
     InterpreterOptions options;
     bool delegateFailed = false;
 
     try {
-      final result =
-          _createSegmentationInterpreterOptions(config.performanceConfig);
+      final result = _createSegmentationInterpreterOptions(
+        config.performanceConfig,
+      );
       options = result.$1;
       delegate = result.$2;
     } catch (e) {
@@ -156,7 +212,7 @@ class SelfieSegmentation {
     Interpreter itp;
     try {
       itp = await Interpreter.fromAsset(
-        'packages/face_detection_tflite/assets/models/$_segmentationModel',
+        'packages/face_detection_tflite/assets/models/$modelFile',
         options: options,
       );
     } catch (e) {
@@ -168,24 +224,25 @@ class SelfieSegmentation {
 
         // Retry with CPU-only options
         options = InterpreterOptions();
+        options.addMediaPipeCustomOps();
         options.threads = config.performanceConfig.numThreads ?? 4;
 
         try {
           itp = await Interpreter.fromAsset(
-            'packages/face_detection_tflite/assets/models/$_segmentationModel',
+            'packages/face_detection_tflite/assets/models/$modelFile',
             options: options,
           );
         } catch (retryError) {
           throw SegmentationException(
             SegmentationError.modelNotFound,
-            'Failed to load model $_segmentationModel (even after delegate fallback): $retryError',
+            'Failed to load model $modelFile (even after delegate fallback): $retryError',
             retryError,
           );
         }
       } else {
         throw SegmentationException(
           SegmentationError.modelNotFound,
-          'Failed to load model $_segmentationModel: $e',
+          'Failed to load model $modelFile: $e',
           e,
         );
       }
@@ -193,15 +250,20 @@ class SelfieSegmentation {
 
     // Validate model if configured
     if (config.validateModel) {
-      _validateModel(itp);
+      _validateModel(itp, effectiveModel);
     }
 
-    itp.resizeInputTensor(
-        0, [1, _segmentationInputSize, _segmentationInputSize, 3]);
+    itp.resizeInputTensor(0, [1, inH, inW, 3]);
     itp.allocateTensors();
 
-    final obj = SelfieSegmentation._(itp, _segmentationInputSize,
-        _segmentationInputSize, _segmentationOutputChannels, config);
+    final obj = SelfieSegmentation._(
+      itp,
+      inW,
+      inH,
+      outChannels,
+      config,
+      effectiveModel,
+    );
     obj._delegate = delegate;
     obj._delegateFailed = delegateFailed;
     await obj._initializeTensors();
@@ -214,11 +276,12 @@ class SelfieSegmentation {
   /// in a background isolate where asset loading is not available.
   ///
   /// [modelBytes]: Raw TFLite model file contents.
-  /// [config]: Configuration for delegates and output limits.
+  /// [config]: Configuration for model selection, delegates, and output limits.
+  /// The [SegmentationConfig.model] field must match the model contained in [modelBytes].
   ///
   /// Example:
   /// ```dart
-  /// final bytes = await rootBundle.load('assets/models/selfie_multiclass.tflite');
+  /// final bytes = await rootBundle.load('assets/models/selfie_segmenter.tflite');
   /// final segmenter = await SelfieSegmentation.createFromBuffer(
   ///   bytes.buffer.asUint8List(),
   /// );
@@ -227,13 +290,20 @@ class SelfieSegmentation {
     Uint8List modelBytes, {
     SegmentationConfig config = const SegmentationConfig(),
   }) async {
+    // Resolve the effective model (all platforms now support all models)
+    final effectiveModel = _effectiveModel(config.model);
+    final inW = _inputWidthFor(effectiveModel);
+    final inH = _inputHeightFor(effectiveModel);
+    final outChannels = _expectedOutputChannels(effectiveModel);
+
     Delegate? delegate;
     InterpreterOptions options;
     bool delegateFailed = false;
 
     try {
-      final result =
-          _createSegmentationInterpreterOptions(config.performanceConfig);
+      final result = _createSegmentationInterpreterOptions(
+        config.performanceConfig,
+      );
       options = result.$1;
       delegate = result.$2;
     } catch (e) {
@@ -255,6 +325,7 @@ class SelfieSegmentation {
         delegateFailed = true;
 
         options = InterpreterOptions();
+        options.addMediaPipeCustomOps();
         options.threads = config.performanceConfig.numThreads ?? 4;
 
         try {
@@ -276,15 +347,20 @@ class SelfieSegmentation {
     }
 
     if (config.validateModel) {
-      _validateModel(itp);
+      _validateModel(itp, effectiveModel);
     }
 
-    itp.resizeInputTensor(
-        0, [1, _segmentationInputSize, _segmentationInputSize, 3]);
+    itp.resizeInputTensor(0, [1, inH, inW, 3]);
     itp.allocateTensors();
 
-    final obj = SelfieSegmentation._(itp, _segmentationInputSize,
-        _segmentationInputSize, _segmentationOutputChannels, config);
+    final obj = SelfieSegmentation._(
+      itp,
+      inW,
+      inH,
+      outChannels,
+      config,
+      effectiveModel,
+    );
     obj._delegate = delegate;
     obj._delegateFailed = delegateFailed;
     await obj._initializeTensors();
@@ -298,7 +374,7 @@ class SelfieSegmentation {
     _inputBuf = _inputTensor.data.buffer.asFloat32List();
     _outputBuf = _outputTensor.data.buffer.asFloat32List();
 
-    // Output shape is [1, H, W, 6] for multiclass segmentation
+    // Output shape: [1, H, W, C] where C=1 (binary) or C=6 (multiclass)
     final outShape = _outputTensor.shape;
     _outH = outShape.length >= 2 ? outShape[1] : _inH;
     _outW = outShape.length >= 3 ? outShape[2] : _inW;
@@ -318,31 +394,34 @@ class SelfieSegmentation {
     }
   }
 
-  /// Validates model tensor shapes match expected multiclass model.
-  static void _validateModel(Interpreter itp) {
+  /// Validates model tensor shapes match expected shapes for the given model variant.
+  static void _validateModel(Interpreter itp, SegmentationModel model) {
     final inputShape = itp.getInputTensor(0).shape;
     final outputShape = itp.getOutputTensor(0).shape;
+    final expectedChannels = _expectedOutputChannels(model);
 
-    // Validate input shape [1, 256, 256, 3]
+    // Validate input shape [1, H, W, 3]
     if (inputShape.length != 4 || inputShape[3] != 3) {
       throw SegmentationException(
         SegmentationError.unexpectedTensorShape,
-        'Expected input shape [1, 256, 256, 3], got $inputShape',
+        'Expected input shape [1, H, W, 3] for ${model.name} model, got $inputShape',
       );
     }
 
-    // Validate output shape [1, 256, 256, 6]
-    if (outputShape.length != 4 ||
-        outputShape[3] != _segmentationOutputChannels) {
+    // Validate output channels match model type
+    if (outputShape.length != 4 || outputShape[3] != expectedChannels) {
       throw SegmentationException(
         SegmentationError.unexpectedTensorShape,
-        'Expected output shape [1, 256, 256, $_segmentationOutputChannels], got $outputShape',
+        'Expected output channels=$expectedChannels for ${model.name} model, got $outputShape',
       );
     }
   }
 
-  /// Number of output channels (6 for multiclass model).
+  /// Number of output channels (1 for binary models, 6 for multiclass).
   int get outputChannels => _outChannels;
+
+  /// The segmentation model variant in use.
+  SegmentationModel get model => _model;
 
   /// Model input width in pixels.
   int get inputWidth => _inW;
@@ -501,9 +580,7 @@ class SelfieSegmentation {
         final List<List<List<List<List<double>>>>> inputs = [_input4dCache];
 
         // Use pre-allocated output cache to avoid per-call allocation
-        final Map<int, Object> outputs = <int, Object>{
-          0: _output4dCache,
-        };
+        final Map<int, Object> outputs = <int, Object>{0: _output4dCache};
 
         await _iso!.runForMultipleInputs(inputs, outputs);
         rawOutput = flattenDynamicTensor(outputs[0]);
@@ -520,17 +597,7 @@ class SelfieSegmentation {
       );
     }
 
-    // Combine all person classes (non-background) into a single mask
-    final maskData = _combinePersonClasses(rawOutput, _outW, _outH);
-
-    return SegmentationMask(
-      data: maskData,
-      width: _outW,
-      height: _outH,
-      originalWidth: decoded.width,
-      originalHeight: decoded.height,
-      padding: pack.padding,
-    );
+    return _buildMask(rawOutput, decoded.width, decoded.height, pack.padding);
   }
 
   /// Segments a cv.Mat image (OpenCV pipeline).
@@ -548,8 +615,10 @@ class SelfieSegmentation {
   /// final mask = await segmenter.callFromMat(mat);
   /// mat.dispose();
   /// ```
-  Future<SegmentationMask> callFromMat(cv.Mat image,
-      {Float32List? buffer}) async {
+  Future<SegmentationMask> callFromMat(
+    cv.Mat image, {
+    Float32List? buffer,
+  }) async {
     if (_disposed) {
       throw StateError('Cannot use SelfieSegmentation after dispose()');
     }
@@ -589,9 +658,7 @@ class SelfieSegmentation {
         final List<List<List<List<List<double>>>>> inputs = [_input4dCache];
 
         // Use pre-allocated output cache to avoid per-call allocation
-        final Map<int, Object> outputs = <int, Object>{
-          0: _output4dCache,
-        };
+        final Map<int, Object> outputs = <int, Object>{0: _output4dCache};
 
         await _iso!.runForMultipleInputs(inputs, outputs);
         rawOutput = flattenDynamicTensor(outputs[0]);
@@ -607,43 +674,76 @@ class SelfieSegmentation {
       );
     }
 
-    // Combine all person classes (non-background) into a single mask
-    final maskData = _combinePersonClasses(rawOutput, _outW, _outH);
-
-    return SegmentationMask(
-      data: maskData,
-      width: _outW,
-      height: _outH,
-      originalWidth: image.cols,
-      originalHeight: image.rows,
-      padding: pack.padding,
-    );
+    return _buildMask(rawOutput, image.cols, image.rows, pack.padding);
   }
 
-  /// Combines multiclass output into a single person probability mask.
+  /// Builds the appropriate mask type based on the active model.
   ///
-  /// The model outputs 6 channels: [background, hair, body, face, clothes, other].
-  /// This method computes person probability as (1 - softmax(background)).
+  /// For binary models (general/landscape): copies single-channel sigmoid output.
+  /// For multiclass: computes softmax, returns [MulticlassSegmentationMask].
+  SegmentationMask _buildMask(
+    Float32List rawOutput,
+    int originalWidth,
+    int originalHeight,
+    List<double> padding,
+  ) {
+    if (_model == SegmentationModel.multiclass) {
+      // Multiclass: compute full class probabilities, derive person mask
+      final classProbs = _computeClassProbabilities(rawOutput, _outW, _outH);
+      final int numPixels = _outW * _outH;
+      final personMask = Float32List(numPixels);
+      for (int i = 0; i < numPixels; i++) {
+        personMask[i] = 1.0 - classProbs[i * 6]; // 1 - P(background)
+      }
+      return MulticlassSegmentationMask(
+        data: personMask,
+        width: _outW,
+        height: _outH,
+        originalWidth: originalWidth,
+        originalHeight: originalHeight,
+        padding: padding,
+        classData: classProbs,
+      );
+    } else {
+      // Binary model: single channel, already sigmoid — copy directly
+      final int numPixels = _outW * _outH;
+      final personMask = Float32List(numPixels);
+      for (int i = 0; i < numPixels; i++) {
+        personMask[i] = rawOutput[i];
+      }
+      return SegmentationMask(
+        data: personMask,
+        width: _outW,
+        height: _outH,
+        originalWidth: originalWidth,
+        originalHeight: originalHeight,
+        padding: padding,
+      );
+    }
+  }
+
+  /// Computes per-pixel softmax probabilities for all 6 multiclass channels.
   ///
-  /// Optimized with:
-  /// - Single fused loop for max-finding and softmax computation
-  /// - Fast exp approximation (Schraudolph's method)
-  /// - No clamping needed (softmax guarantees [0,1] range)
-  static Float32List _combinePersonClasses(
-      Float32List rawOutput, int width, int height) {
+  /// Returns Float32List of length width * height * 6, with per-pixel
+  /// probabilities in channel order: background, hair, bodySkin, faceSkin, clothes, other.
+  static Float32List _computeClassProbabilities(
+    Float32List rawOutput,
+    int width,
+    int height,
+  ) {
     final int numPixels = width * height;
-    final result = Float32List(numPixels);
+    final result = Float32List(numPixels * 6);
 
     for (int i = 0; i < numPixels; i++) {
-      final int baseIdx = i * _segmentationOutputChannels;
+      final int base = i * 6;
 
       // Read all 6 logits and find max in single pass
-      final double l0 = rawOutput[baseIdx];
-      final double l1 = rawOutput[baseIdx + 1];
-      final double l2 = rawOutput[baseIdx + 2];
-      final double l3 = rawOutput[baseIdx + 3];
-      final double l4 = rawOutput[baseIdx + 4];
-      final double l5 = rawOutput[baseIdx + 5];
+      final double l0 = rawOutput[base];
+      final double l1 = rawOutput[base + 1];
+      final double l2 = rawOutput[base + 2];
+      final double l3 = rawOutput[base + 3];
+      final double l4 = rawOutput[base + 4];
+      final double l5 = rawOutput[base + 5];
 
       // Find max for numerical stability (unrolled for speed)
       double maxLogit = l0;
@@ -654,7 +754,7 @@ class SelfieSegmentation {
       if (l5 > maxLogit) maxLogit = l5;
 
       // Compute exp(logit - max) for each channel (unrolled)
-      final double e0 = _fastExp(l0 - maxLogit); // background
+      final double e0 = _fastExp(l0 - maxLogit);
       final double e1 = _fastExp(l1 - maxLogit);
       final double e2 = _fastExp(l2 - maxLogit);
       final double e3 = _fastExp(l3 - maxLogit);
@@ -664,9 +764,13 @@ class SelfieSegmentation {
       // Sum of all exponentials
       final double sumExp = e0 + e1 + e2 + e3 + e4 + e5;
 
-      // Person probability = 1 - background probability
-      // No clamping needed: softmax guarantees e0/sumExp is in [0,1]
-      result[i] = 1.0 - e0 / sumExp;
+      // Normalize to probabilities
+      result[base] = e0 / sumExp;
+      result[base + 1] = e1 / sumExp;
+      result[base + 2] = e2 / sumExp;
+      result[base + 3] = e3 / sumExp;
+      result[base + 4] = e4 / sumExp;
+      result[base + 5] = e5 / sumExp;
     }
 
     return result;
@@ -708,7 +812,8 @@ class SelfieSegmentation {
 
   /// Creates interpreter options with delegates based on performance configuration.
   ///
-  /// The multiclass model uses only standard TFLite ops, so no custom ops needed.
+  /// Binary models (general/landscape) require custom ops, which are registered
+  /// on all platforms. Multiclass uses only standard TFLite ops.
   ///
   /// ## Platform Behavior
   ///
@@ -722,8 +827,15 @@ class SelfieSegmentation {
   /// *Falls back to CPU (XNNPACK not supported on this platform)
   /// **Experimental, may crash on some devices
   static (InterpreterOptions, Delegate?) _createSegmentationInterpreterOptions(
-      PerformanceConfig? config) {
+    PerformanceConfig? config,
+  ) {
     final options = InterpreterOptions();
+    // Register MediaPipe custom ops (Convolution2DTransposeBias) required by
+    // the binary segmentation models. Available on all platforms:
+    // - Desktop: loaded from bundled dylib/dll/so
+    // - iOS: statically linked via CocoaPods, accessed via DynamicLibrary.process()
+    // - Android: built via CMake, loaded at runtime
+    options.addMediaPipeCustomOps();
     final effectiveConfig = config ?? const PerformanceConfig();
 
     final threadCount = effectiveConfig.numThreads?.clamp(0, 8) ??
@@ -752,7 +864,9 @@ class SelfieSegmentation {
 
   /// Creates options for auto mode - selects best delegate per platform.
   static (InterpreterOptions, Delegate?) _createAutoModeOptions(
-      InterpreterOptions options, int threadCount) {
+    InterpreterOptions options,
+    int threadCount,
+  ) {
     if (Platform.isMacOS || Platform.isLinux) {
       return _createXnnpackOptions(options, threadCount);
     }
@@ -767,7 +881,9 @@ class SelfieSegmentation {
 
   /// Creates options with XNNPACK delegate (desktop only).
   static (InterpreterOptions, Delegate?) _createXnnpackOptions(
-      InterpreterOptions options, int threadCount) {
+    InterpreterOptions options,
+    int threadCount,
+  ) {
     options.threads = threadCount;
 
     if (!Platform.isMacOS && !Platform.isLinux) {
@@ -787,7 +903,9 @@ class SelfieSegmentation {
 
   /// Creates options with GPU delegate.
   static (InterpreterOptions, Delegate?) _createGpuOptions(
-      InterpreterOptions options, int threadCount) {
+    InterpreterOptions options,
+    int threadCount,
+  ) {
     options.threads = threadCount;
 
     if (!Platform.isIOS && !Platform.isAndroid) {

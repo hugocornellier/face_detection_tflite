@@ -152,10 +152,7 @@ class PerformanceConfig {
   /// Parameters:
   /// - [mode]: Performance mode. Default: [PerformanceMode.auto]
   /// - [numThreads]: Number of threads (null for auto-detection)
-  const PerformanceConfig({
-    this.mode = PerformanceMode.auto,
-    this.numThreads,
-  });
+  const PerformanceConfig({this.mode = PerformanceMode.auto, this.numThreads});
 
   /// Creates config with XNNPACK enabled (desktop only).
   ///
@@ -293,9 +290,59 @@ class SegmentationException implements Exception {
   String toString() => 'SegmentationException($code): $message';
 }
 
+/// Selects which segmentation model variant to use.
+///
+/// Different models trade off speed, size, and output detail:
+/// - [general]: Binary person/background (default, ~244KB, fastest)
+/// - [landscape]: Binary person/background optimized for 16:9 video (~244KB)
+/// - [multiclass]: 6-class body part segmentation (~16MB, slowest, most detailed)
+///
+/// ## Platform Support
+///
+/// All models work on all platforms:
+///
+/// | Model | macOS | Windows | Linux | iOS | Android |
+/// |-------|-------|---------|-------|-----|---------|
+/// | general | ✅ | ✅* | ✅* | ✅ | ✅ |
+/// | landscape | ✅ | ✅* | ✅* | ✅ | ✅ |
+/// | multiclass | ✅ | ✅ | ✅ | ✅ | ✅ |
+///
+/// *Windows/Linux require custom ops library to be built and bundled.
+/// Binary models use the `Convolution2DTransposeBias` custom op which is:
+/// - macOS: bundled as dylib
+/// - iOS: statically linked via CocoaPods
+/// - Android: built via CMake, loaded at runtime
+enum SegmentationModel {
+  /// Binary segmentation: person vs background.
+  ///
+  /// Based on MobileNetV3, float16, ~244KB. 256x256 input.
+  /// Output: single-channel sigmoid probability (no post-processing needed).
+  /// Recommended default for most use cases (background blur, replacement, etc.).
+  general,
+
+  /// Binary segmentation optimized for landscape/video frames.
+  ///
+  /// Based on MobileNetV3, float16, ~244KB. 144x256 input.
+  /// Output: single-channel sigmoid probability.
+  /// Fastest option for real-time 16:9 video processing.
+  ///
+  /// Works on all platforms via custom ops integration.
+  landscape,
+
+  /// Multiclass segmentation: background, hair, body skin, face skin, clothes, other.
+  ///
+  /// Based on Vision Transformer, float32, ~16MB. 256x256 input.
+  /// Output: 6-channel raw logits (softmax applied in post-processing).
+  /// Use when you need per-class masks (hair coloring, virtual try-on, etc.).
+  /// Returns [MulticlassSegmentationMask] with per-class accessors.
+  ///
+  /// Works on all platforms. Largest model but most detailed output.
+  multiclass,
+}
+
 /// Configuration for segmentation operations.
 ///
-/// Controls delegate selection, output format, and memory limits.
+/// Controls model selection, delegate selection, output format, and memory limits.
 ///
 /// ## Presets
 ///
@@ -313,6 +360,13 @@ class SegmentationException implements Exception {
 /// final segmenter = await SelfieSegmentation.create(config: config);
 /// ```
 class SegmentationConfig {
+  /// Which segmentation model to use.
+  ///
+  /// - [SegmentationModel.general]: Binary person/background (~244KB, default)
+  /// - [SegmentationModel.landscape]: Binary for 16:9 video (~244KB)
+  /// - [SegmentationModel.multiclass]: 6-class body parts (~16MB)
+  final SegmentationModel model;
+
   /// Performance configuration for TFLite delegate.
   final PerformanceConfig performanceConfig;
 
@@ -353,12 +407,14 @@ class SegmentationConfig {
   /// Creates a segmentation configuration.
   ///
   /// Parameters:
+  /// - [model]: Which model variant to use. Default: [SegmentationModel.general].
   /// - [performanceConfig]: TFLite delegate settings. Default: auto.
   /// - [maxOutputSize]: Maximum dimension for upsampled output. Default: 2048.
   /// - [resizeStrategy]: How to handle aspect ratio mismatch. Default: letterbox.
   /// - [validateModel]: Whether to validate model on load. Default: true.
   /// - [useIsolate]: Whether to use IsolateInterpreter. Default: true.
   const SegmentationConfig({
+    this.model = SegmentationModel.general,
     this.performanceConfig = const PerformanceConfig.auto(),
     this.maxOutputSize = 2048,
     this.resizeStrategy = ResizeStrategy.letterbox,
@@ -366,7 +422,7 @@ class SegmentationConfig {
     this.useIsolate = true,
   });
 
-  /// Safe defaults: CPU-only, limited output size.
+  /// Safe defaults: CPU-only, limited output size, binary model.
   ///
   /// Recommended for Android where GPU delegates may be unstable.
   static const SegmentationConfig safe = SegmentationConfig(
@@ -374,7 +430,7 @@ class SegmentationConfig {
     maxOutputSize: 1024,
   );
 
-  /// Performance defaults: auto delegate, larger output.
+  /// Performance defaults: auto delegate, larger output, binary model.
   ///
   /// Good for iOS (Metal) and desktop (XNNPACK).
   static const SegmentationConfig performance = SegmentationConfig(
@@ -382,7 +438,7 @@ class SegmentationConfig {
     maxOutputSize: 2048,
   );
 
-  /// Maximum speed: auto delegate, no isolate overhead.
+  /// Maximum speed: auto delegate, no isolate overhead, binary model.
   ///
   /// Best for real-time video processing or background isolate usage.
   /// Blocks calling thread during inference (~90-100ms).
@@ -465,7 +521,8 @@ class SegmentationMask {
   }) {
     if (data.length != width * height) {
       throw ArgumentError(
-          'Data length ${data.length} != width*height ${width * height}');
+        'Data length ${data.length} != width*height ${width * height}',
+      );
     }
     return SegmentationMask._(
       data: Float32List.fromList(data), // Defensive copy
@@ -758,6 +815,119 @@ class SegmentationMask {
       'SegmentationMask(${width}x$height, original: ${originalWidth}x$originalHeight)';
 }
 
+/// Extended segmentation mask with per-class probabilities.
+///
+/// Only returned when using [SegmentationModel.multiclass].
+/// Inherits all [SegmentationMask] methods — the base [data] field contains
+/// the combined person probability, same as other models.
+///
+/// Access individual class masks via [classMask] or the convenience getters.
+///
+/// ## Example
+/// ```dart
+/// final seg = await SelfieSegmentation.create(
+///   config: SegmentationConfig(model: SegmentationModel.multiclass),
+/// );
+/// final mask = await seg(imageBytes);
+/// if (mask is MulticlassSegmentationMask) {
+///   final hair = mask.hairMask;
+///   final face = mask.faceSkinMask;
+/// }
+/// ```
+class MulticlassSegmentationMask extends SegmentationMask {
+  /// Per-class probabilities after softmax, shape [width * height * 6].
+  /// Channel order: background(0), hair(1), bodySkin(2), faceSkin(3), clothes(4), other(5).
+  final Float32List _classData;
+
+  // ignore: use_super_parameters -- super._() is a named private constructor
+  MulticlassSegmentationMask._({
+    required Float32List data,
+    required int width,
+    required int height,
+    required int originalWidth,
+    required int originalHeight,
+    required List<double> padding,
+    required Float32List classData,
+  })  : _classData = classData,
+        super._(
+          data: data,
+          width: width,
+          height: height,
+          originalWidth: originalWidth,
+          originalHeight: originalHeight,
+          padding: padding,
+        );
+
+  /// Creates a multiclass segmentation mask with validation and defensive copies.
+  factory MulticlassSegmentationMask({
+    required Float32List data,
+    required int width,
+    required int height,
+    required int originalWidth,
+    required int originalHeight,
+    List<double> padding = const [0.0, 0.0, 0.0, 0.0],
+    required Float32List classData,
+  }) {
+    if (data.length != width * height) {
+      throw ArgumentError(
+        'Data length ${data.length} != width*height ${width * height}',
+      );
+    }
+    if (classData.length != width * height * 6) {
+      throw ArgumentError(
+        'ClassData length ${classData.length} != width*height*6 ${width * height * 6}',
+      );
+    }
+    return MulticlassSegmentationMask._(
+      data: Float32List.fromList(data),
+      width: width,
+      height: height,
+      originalWidth: originalWidth,
+      originalHeight: originalHeight,
+      padding: List.unmodifiable(padding),
+      classData: Float32List.fromList(classData),
+    );
+  }
+
+  /// Returns a single-channel probability mask for the given [SegmentationClass] index.
+  ///
+  /// Values are in [0.0, 1.0] representing per-pixel probability for that class.
+  /// Returns a new [Float32List] each call (defensive copy).
+  Float32List classMask(int classIndex) {
+    if (classIndex < 0 || classIndex > 5) {
+      throw RangeError.range(classIndex, 0, 5, 'classIndex');
+    }
+    final int numPixels = width * height;
+    final result = Float32List(numPixels);
+    for (int i = 0; i < numPixels; i++) {
+      result[i] = _classData[i * 6 + classIndex];
+    }
+    return result;
+  }
+
+  /// Hair probability mask.
+  Float32List get hairMask => classMask(SegmentationClass.hair);
+
+  /// Body skin probability mask.
+  Float32List get bodySkinMask => classMask(SegmentationClass.bodySkin);
+
+  /// Face skin probability mask.
+  Float32List get faceSkinMask => classMask(SegmentationClass.faceSkin);
+
+  /// Clothes probability mask.
+  Float32List get clothesMask => classMask(SegmentationClass.clothes);
+
+  /// Other (accessories, etc.) probability mask.
+  Float32List get otherMask => classMask(SegmentationClass.other);
+
+  /// Background probability mask.
+  Float32List get backgroundMask => classMask(SegmentationClass.background);
+
+  @override
+  String toString() =>
+      'MulticlassSegmentationMask(${width}x$height, original: ${originalWidth}x$originalHeight, 6 classes)';
+}
+
 /// Result combining face detection and segmentation from parallel processing.
 ///
 /// This class bundles the results of running face detection and selfie
@@ -831,7 +1001,8 @@ class DetectionWithSegmentationResult {
           .toList(),
       segmentationMask: map['segmentationMask'] != null
           ? SegmentationMask.fromMap(
-              Map<String, dynamic>.from(map['segmentationMask'] as Map))
+              Map<String, dynamic>.from(map['segmentationMask'] as Map),
+            )
           : null,
       detectionTimeMs: map['detectionTimeMs'] as int,
       segmentationTimeMs: map['segmentationTimeMs'] as int,
@@ -876,7 +1047,7 @@ const List<List<int>> eyeLandmarkConnections = [
   [12, 13],
   [13, 14],
   [0, 9],
-  [8, 14]
+  [8, 14],
 ];
 
 /// Number of eye contour points that form the visible eyeball outline.
@@ -991,13 +1162,13 @@ class FaceMesh {
   String toString() => 'FaceMesh(${_points.length} points)';
 
   /// Converts this mesh to a map for isolate serialization.
-  Map<String, dynamic> toMap() =>
-      {'points': _points.map((p) => p.toMap()).toList()};
+  Map<String, dynamic> toMap() => {
+        'points': _points.map((p) => p.toMap()).toList(),
+      };
 
   /// Creates a face mesh from a map (isolate deserialization).
-  factory FaceMesh.fromMap(Map<String, dynamic> map) => FaceMesh(
-        (map['points'] as List).map((p) => Point.fromMap(p)).toList(),
-      );
+  factory FaceMesh.fromMap(Map<String, dynamic> map) =>
+      FaceMesh((map['points'] as List).map((p) => Point.fromMap(p)).toList());
 }
 
 /// Comprehensive eye tracking data including iris center, iris contour, and eye mesh.
@@ -1266,8 +1437,9 @@ class FaceLandmarks {
   factory FaceLandmarks.fromSerializableMap(Map<String, dynamic> map) {
     final landmarks = <FaceLandmarkType, Point>{};
     for (final entry in map.entries) {
-      final type =
-          FaceLandmarkType.values.firstWhere((t) => t.name == entry.key);
+      final type = FaceLandmarkType.values.firstWhere(
+        (t) => t.name == entry.key,
+      );
       landmarks[type] = Point.fromMap(entry.value);
     }
     return FaceLandmarks(landmarks);
@@ -1515,7 +1687,10 @@ class Face {
     }
 
     return Eye.optimized(
-        irisCenter: center, irisContour: contour, mesh: eyeMesh);
+      irisCenter: center,
+      irisContour: contour,
+      mesh: eyeMesh,
+    );
   }
 
   /// Comprehensive eye tracking data for both eyes.
@@ -1646,7 +1821,7 @@ class Face {
         'irisPoints': irisPoints.map((p) => p.toMap()).toList(),
         'originalSize': {
           'width': originalSize.width,
-          'height': originalSize.height
+          'height': originalSize.height,
         },
       };
 
@@ -1658,8 +1833,10 @@ class Face {
         mesh: map['mesh'] != null ? FaceMesh.fromMap(map['mesh']) : null,
         irises:
             (map['irisPoints'] as List).map((p) => Point.fromMap(p)).toList(),
-        originalSize:
-            Size(map['originalSize']['width'], map['originalSize']['height']),
+        originalSize: Size(
+          map['originalSize']['width'],
+          map['originalSize']['height'],
+        ),
       );
 }
 
@@ -1817,8 +1994,12 @@ class RectF {
   }
 
   /// Converts this rect to a map for isolate serialization.
-  Map<String, dynamic> toMap() =>
-      {'xmin': xmin, 'ymin': ymin, 'xmax': xmax, 'ymax': ymax};
+  Map<String, dynamic> toMap() => {
+        'xmin': xmin,
+        'ymin': ymin,
+        'xmax': xmax,
+        'ymax': ymax,
+      };
 
   /// Creates a rect from a map (isolate deserialization).
   factory RectF.fromMap(Map<String, dynamic> map) => RectF(

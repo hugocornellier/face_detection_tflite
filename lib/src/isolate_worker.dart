@@ -246,9 +246,7 @@ class IsolateWorker {
   ///
   /// It's important to call this when done processing a frame to avoid memory leaks.
   Future<void> releaseFrame(int frameId) async {
-    await _sendRequest<void>('releaseFrame', {
-      'frameId': frameId,
-    });
+    await _sendRequest<void>('releaseFrame', {'frameId': frameId});
   }
 
   /// Converts an image to a normalized tensor for TensorFlow Lite inference.
@@ -612,7 +610,8 @@ class IsolateWorker {
   }
 
   static Map<String, dynamic> _opDecodeAndRegister(
-      Map<dynamic, dynamic> params) {
+    Map<dynamic, dynamic> params,
+  ) {
     final int frameId = params['frameId'] as int;
     final ByteBuffer bb =
         (params['bytes'] as TransferableTypedData).materialize();
@@ -638,10 +637,7 @@ class IsolateWorker {
       image,
     );
 
-    return {
-      'w': decoded.width,
-      'h': decoded.height,
-    };
+    return {'w': decoded.width, 'h': decoded.height};
   }
 
   static Map<String, dynamic> _opTensor(Map<dynamic, dynamic> params) {
@@ -660,12 +656,16 @@ class IsolateWorker {
       order: img.ChannelOrder.rgb,
     );
 
-    final ImageTensor result =
-        convertImageToTensor(src, outW: outW, outH: outH);
+    final ImageTensor result = convertImageToTensor(
+      src,
+      outW: outW,
+      outH: outH,
+    );
 
     return {
-      'tensor': TransferableTypedData.fromList(
-          [result.tensorNHWC.buffer.asUint8List()]),
+      'tensor': TransferableTypedData.fromList([
+        result.tensorNHWC.buffer.asUint8List(),
+      ]),
       'padding': result.padding,
       'outW': result.width,
       'outH': result.height,
@@ -787,13 +787,7 @@ class IsolateWorker {
     final int cw = math.max(1, x1 - x0);
     final int ch = math.max(1, y1 - y0);
 
-    return img.copyCrop(
-      src,
-      x: x0,
-      y: y0,
-      width: cw,
-      height: ch,
-    );
+    return img.copyCrop(src, x: x0, y: y0, width: cw, height: ch);
   }
 
   /// Extracts a rotated square region from an image.
@@ -846,10 +840,7 @@ class IsolateWorker {
   }
 
   /// Helper to crop image and package result.
-  static Map<String, dynamic> _cropAndPackage(
-    img.Image src,
-    Map roiMap,
-  ) {
+  static Map<String, dynamic> _cropAndPackage(img.Image src, Map roiMap) {
     final double xmin = (roiMap['xmin'] as num).toDouble();
     final double ymin = (roiMap['ymin'] as num).toDouble();
     final double xmax = (roiMap['xmax'] as num).toDouble();
@@ -874,8 +865,13 @@ class IsolateWorker {
     double size,
     double theta,
   ) {
-    final img.Image out =
-        _extractAlignedSquareFromImage(src, cx, cy, size, theta);
+    final img.Image out = _extractAlignedSquareFromImage(
+      src,
+      cx,
+      cy,
+      size,
+      theta,
+    );
     final Uint8List outRgb = out.getBytes(order: img.ChannelOrder.rgb);
 
     return {
@@ -928,8 +924,9 @@ class IsolateWorker {
     );
 
     return {
-      'tensor': TransferableTypedData.fromList(
-          [result.tensorNHWC.buffer.asUint8List()]),
+      'tensor': TransferableTypedData.fromList([
+        result.tensorNHWC.buffer.asUint8List(),
+      ]),
       'padding': result.padding,
       'outW': result.width,
       'outH': result.height,
@@ -953,7 +950,8 @@ class IsolateWorker {
   }
 
   static Map<String, dynamic> _opExtractFromFrame(
-      Map<dynamic, dynamic> params) {
+    Map<dynamic, dynamic> params,
+  ) {
     try {
       final int frameId = params['frameId'] as int;
       final double cx = (params['cx'] as num).toDouble();

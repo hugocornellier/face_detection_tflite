@@ -1,8 +1,12 @@
+## 4.5.2
+- Fix bug causing auto-bundling to fail on MacOS
+
+## 4.5.1
+- Update all dependencies to latest version(s)
+
 ## 4.5.0
 - Selfie segmentation for background removal and virtual backgrounds
-  - `SelfieSegmentation` class for standalone segmentation
-  - `getSegmentationMask()` / `getSegmentationMaskFromMat()` on `FaceDetector` and `FaceDetectorIsolate`
-  - Uses MediaPipe Selfie Segmentation models (general 256×256, landscape 144×256)
+- Uses MediaPipe Selfie Segmentation models (general 256×256, landscape 144×256)
 
 ## 4.4.1
 - Performance optimizations: pre-allocated inference buffers, early score filtering (~17× fewer box decodes), parallel multi-face processing

@@ -25,9 +25,9 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   camera_macos: 9fd766915a6c236c8b3fd902f7ccd215636cd07a
-  face_detection_tflite: 2e848ccb3ee51fbd993a2dadd9f2d916478a5ab6
+  face_detection_tflite: 4f21ea032f913f04d70ca5dfc36d1771fdab0907
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
-  tflite_flutter_custom: 4d6a173c30b77994bcd611da5e0713fcad622125
+  tflite_flutter_custom: e5a7720905e48296cdafcf012116a1934cbd266b
 
 PODFILE CHECKSUM: 346bfb2deb41d4a6ebd6f6799f92188bde2d246f
 

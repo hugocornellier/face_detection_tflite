@@ -232,7 +232,7 @@ void main() {
       final input = [
         [1.0, 2.0],
         [3.0, 4.0],
-        [5.0, 6.0]
+        [5.0, 6.0],
       ];
       final result = flattenDynamicTensor(input);
 
@@ -245,12 +245,12 @@ void main() {
       final input = [
         [
           [1.0, 2.0],
-          [3.0, 4.0]
+          [3.0, 4.0],
         ],
         [
           [5.0, 6.0],
-          [7.0, 8.0]
-        ]
+          [7.0, 8.0],
+        ],
       ];
       final result = flattenDynamicTensor(input);
 
@@ -262,9 +262,9 @@ void main() {
       final input = [
         [
           [
-            [1.0, 2.0, 3.0]
-          ]
-        ]
+            [1.0, 2.0, 3.0],
+          ],
+        ],
       ];
       final result = flattenDynamicTensor(input);
 
@@ -295,10 +295,7 @@ void main() {
 
     test('should throw StateError on map input', () {
       final badInput = {'not': 'a list'};
-      expect(
-        () => flattenDynamicTensor(badInput),
-        throwsA(isA<StateError>()),
-      );
+      expect(() => flattenDynamicTensor(badInput), throwsA(isA<StateError>()));
     });
 
     test('should throw StateError on string in list', () {
@@ -314,10 +311,7 @@ void main() {
         [1.0, 2.0],
         [Object(), 4.0],
       ];
-      expect(
-        () => flattenDynamicTensor(badNested),
-        throwsA(isA<StateError>()),
-      );
+      expect(() => flattenDynamicTensor(badNested), throwsA(isA<StateError>()));
     });
 
     test('should handle integer values by converting to double', () {
@@ -548,88 +542,58 @@ void main() {
       final point = Point(320.0, 240.0);
       final imageSize = Size(640, 480);
 
-      expect(
-        TestUtils.isValidPixelCoordinate(point, imageSize),
-        true,
-      );
+      expect(TestUtils.isValidPixelCoordinate(point, imageSize), true);
     });
 
     test('should invalidate pixel coordinates outside bounds', () {
       final point = Point(700.0, 240.0);
       final imageSize = Size(640, 480);
 
-      expect(
-        TestUtils.isValidPixelCoordinate(point, imageSize),
-        false,
-      );
+      expect(TestUtils.isValidPixelCoordinate(point, imageSize), false);
     });
 
     test('should handle boundary coordinates', () {
       final point = Point(640.0, 480.0);
       final imageSize = Size(640, 480);
 
-      expect(
-        TestUtils.isValidPixelCoordinate(point, imageSize),
-        true,
-      );
+      expect(TestUtils.isValidPixelCoordinate(point, imageSize), true);
     });
 
     test('should handle negative coordinates', () {
       final point = Point(-10.0, 240.0);
       final imageSize = Size(640, 480);
 
-      expect(
-        TestUtils.isValidPixelCoordinate(point, imageSize),
-        false,
-      );
+      expect(TestUtils.isValidPixelCoordinate(point, imageSize), false);
     });
   });
 
   group('Floating Point Comparison', () {
     test('should detect approximately equal doubles', () {
-      expect(
-        TestUtils.approximatelyEqual(0.1 + 0.2, 0.3),
-        true,
-      );
+      expect(TestUtils.approximatelyEqual(0.1 + 0.2, 0.3), true);
     });
 
     test('should detect different doubles', () {
-      expect(
-        TestUtils.approximatelyEqual(0.1, 0.2),
-        false,
-      );
+      expect(TestUtils.approximatelyEqual(0.1, 0.2), false);
     });
 
     test('should use epsilon tolerance', () {
-      expect(
-        TestUtils.approximatelyEqual(1.0, 1.00005, epsilon: 0.001),
-        true,
-      );
+      expect(TestUtils.approximatelyEqual(1.0, 1.00005, epsilon: 0.001), true);
 
-      expect(
-        TestUtils.approximatelyEqual(1.0, 1.005, epsilon: 0.001),
-        false,
-      );
+      expect(TestUtils.approximatelyEqual(1.0, 1.005, epsilon: 0.001), false);
     });
 
     test('should detect approximately equal points', () {
       final p1 = Point(0.1 + 0.2, 0.3);
       final p2 = Point(0.3, 0.3);
 
-      expect(
-        TestUtils.pointsApproximatelyEqual(p1, p2),
-        true,
-      );
+      expect(TestUtils.pointsApproximatelyEqual(p1, p2), true);
     });
 
     test('should detect different points', () {
       final p1 = Point(0.1, 0.2);
       final p2 = Point(0.3, 0.4);
 
-      expect(
-        TestUtils.pointsApproximatelyEqual(p1, p2),
-        false,
-      );
+      expect(TestUtils.pointsApproximatelyEqual(p1, p2), false);
     });
   });
 

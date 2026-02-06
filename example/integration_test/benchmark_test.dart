@@ -255,7 +255,9 @@ void main() {
       () async {
         final worker = SegmentationWorker();
         await worker.initialize(
-          performanceConfig: PerformanceConfig.xnnpack(),
+          config: SegmentationConfig(
+            performanceConfig: PerformanceConfig.xnnpack(),
+          ),
         );
 
         print('\n${'=' * 60}');

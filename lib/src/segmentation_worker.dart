@@ -28,8 +28,8 @@ part of '../face_detection_tflite.dart';
 ///
 /// ## Memory Management
 ///
-/// The worker holds model memory (~16MB) in the background isolate.
-/// Call [dispose] when done to free resources.
+/// Model memory usage depends on the selected model variant
+/// (see [SegmentationModel]). Call [dispose] when done to free resources.
 class SegmentationWorker {
   /// Creates an uninitialized worker; call [initialize] before use.
   SegmentationWorker();
@@ -44,6 +44,7 @@ class SegmentationWorker {
   int _inputHeight = 256;
   int _outputWidth = 256;
   int _outputHeight = 256;
+  SegmentationModel _model = SegmentationModel.general;
 
   /// Returns true if the worker has been initialized and is ready for inference.
   bool get isInitialized => _initialized;
@@ -65,20 +66,24 @@ class SegmentationWorker {
   /// This spawns a background isolate, transfers the model bytes, and creates
   /// the TFLite interpreter inside the isolate.
   ///
-  /// [config] controls delegate selection and other options.
+  /// [config] controls model selection, delegate selection, and other options.
   ///
   /// Throws [StateError] if already initialized.
   /// Throws [SegmentationException] if model loading fails.
   Future<void> initialize({
-    PerformanceConfig performanceConfig = const PerformanceConfig.auto(),
+    SegmentationConfig config = const SegmentationConfig(),
   }) async {
     if (_initialized) {
       throw StateError('SegmentationWorker already initialized');
     }
 
+    // On iOS/Android, fall back to multiclass (binary models require custom ops)
+    _model = _effectiveModel(config.model);
+    final modelFile = _modelFileFor(_model);
+
     // Load model bytes in main isolate (has access to assets)
     final ByteData modelData = await rootBundle.load(
-      'packages/face_detection_tflite/assets/models/$_segmentationModel',
+      'packages/face_detection_tflite/assets/models/$modelFile',
     );
     final Uint8List modelBytes = modelData.buffer.asUint8List();
 
@@ -117,8 +122,9 @@ class SegmentationWorker {
       // Initialize interpreter in the worker isolate
       final Map result = await _sendRequest<Map>('init', {
         'modelBytes': TransferableTypedData.fromList([modelBytes]),
-        'numThreads': performanceConfig.numThreads ?? 4,
-        'mode': performanceConfig.mode.index,
+        'numThreads': config.performanceConfig.numThreads ?? 4,
+        'mode': config.performanceConfig.mode.index,
+        'modelIndex': config.model.index,
       });
 
       _inputWidth = result['inputWidth'] as int;
@@ -192,7 +198,8 @@ class SegmentationWorker {
   /// [imageBytes] should contain encoded image data (JPEG, PNG, etc.).
   /// The image is decoded, preprocessed, and segmented in the worker isolate.
   ///
-  /// Returns a [SegmentationMask] with per-pixel probabilities.
+  /// Returns a [SegmentationMask] (or [MulticlassSegmentationMask] for
+  /// multiclass model) with per-pixel probabilities.
   ///
   /// Throws [SegmentationException] on decode or inference failure.
   Future<SegmentationMask> segment(Uint8List imageBytes) async {
@@ -200,18 +207,7 @@ class SegmentationWorker {
       'imageBytes': TransferableTypedData.fromList([imageBytes]),
     });
 
-    final ByteBuffer maskBB =
-        (result['mask'] as TransferableTypedData).materialize();
-    final Float32List maskData = maskBB.asUint8List().buffer.asFloat32List();
-
-    return SegmentationMask(
-      data: maskData,
-      width: result['width'] as int,
-      height: result['height'] as int,
-      originalWidth: result['originalWidth'] as int,
-      originalHeight: result['originalHeight'] as int,
-      padding: (result['padding'] as List).cast<double>(),
-    );
+    return _rebuildMask(result);
   }
 
   /// Segments a pre-decoded cv.Mat image.
@@ -221,7 +217,8 @@ class SegmentationWorker {
   ///
   /// Note: The Mat is NOT disposed by this method.
   ///
-  /// Returns a [SegmentationMask] with per-pixel probabilities.
+  /// Returns a [SegmentationMask] (or [MulticlassSegmentationMask] for
+  /// multiclass model) with per-pixel probabilities.
   Future<SegmentationMask> segmentMat(cv.Mat mat) async {
     if (mat.isEmpty) {
       throw SegmentationException(
@@ -241,17 +238,44 @@ class SegmentationWorker {
       'channels': channels,
     });
 
+    return _rebuildMask(result);
+  }
+
+  /// Rebuilds a [SegmentationMask] or [MulticlassSegmentationMask] from
+  /// isolate transfer data.
+  SegmentationMask _rebuildMask(Map result) {
     final ByteBuffer maskBB =
         (result['mask'] as TransferableTypedData).materialize();
     final Float32List maskData = maskBB.asUint8List().buffer.asFloat32List();
+    final int width = result['width'] as int;
+    final int height = result['height'] as int;
+    final int originalWidth = result['originalWidth'] as int;
+    final int originalHeight = result['originalHeight'] as int;
+    final List<double> padding = (result['padding'] as List).cast<double>();
+
+    if (_model == SegmentationModel.multiclass && result['classData'] != null) {
+      final ByteBuffer classBB =
+          (result['classData'] as TransferableTypedData).materialize();
+      final Float32List classData =
+          classBB.asUint8List().buffer.asFloat32List();
+      return MulticlassSegmentationMask(
+        data: maskData,
+        width: width,
+        height: height,
+        originalWidth: originalWidth,
+        originalHeight: originalHeight,
+        padding: padding,
+        classData: classData,
+      );
+    }
 
     return SegmentationMask(
       data: maskData,
-      width: result['width'] as int,
-      height: result['height'] as int,
-      originalWidth: result['originalWidth'] as int,
-      originalHeight: result['originalHeight'] as int,
-      padding: (result['padding'] as List).cast<double>(),
+      width: width,
+      height: height,
+      originalWidth: originalWidth,
+      originalHeight: originalHeight,
+      padding: padding,
     );
   }
 
@@ -331,16 +355,10 @@ class SegmentationWorker {
             break;
 
           default:
-            mainSendPort.send({
-              'id': id,
-              'error': 'Unknown operation: $op',
-            });
+            mainSendPort.send({'id': id, 'error': 'Unknown operation: $op'});
         }
       } catch (e, stackTrace) {
-        mainSendPort.send({
-          'id': id,
-          'error': 'Worker error: $e\n$stackTrace',
-        });
+        mainSendPort.send({'id': id, 'error': 'Worker error: $e\n$stackTrace'});
       }
     });
   }
@@ -354,9 +372,17 @@ class SegmentationWorker {
     final int numThreads = params['numThreads'] as int;
     final int modeIndex = params['mode'] as int;
     final PerformanceMode mode = PerformanceMode.values[modeIndex];
+    final int modelIndex = params['modelIndex'] as int;
+    final SegmentationModel model = SegmentationModel.values[modelIndex];
+
+    final int inW = _inputWidthFor(model);
+    final int inH = _inputHeightFor(model);
 
     // Create interpreter options with appropriate delegate
     final options = InterpreterOptions();
+    // Register MediaPipe custom ops (Convolution2DTransposeBias) required by
+    // the binary segmentation models. Available on all platforms.
+    options.addMediaPipeCustomOps();
     options.threads = numThreads;
 
     Delegate? delegate;
@@ -404,10 +430,7 @@ class SegmentationWorker {
       options: options,
     );
 
-    interpreter.resizeInputTensor(
-      0,
-      [1, _segmentationInputSize, _segmentationInputSize, 3],
-    );
+    interpreter.resizeInputTensor(0, [1, inH, inW, 3]);
     interpreter.allocateTensors();
 
     final inputTensor = interpreter.getInputTensor(0);
@@ -417,10 +440,11 @@ class SegmentationWorker {
     return _SegmentationWorkerState(
       interpreter: interpreter,
       delegate: delegate,
-      inputWidth: _segmentationInputSize,
-      inputHeight: _segmentationInputSize,
-      outputWidth: outShape.length >= 3 ? outShape[2] : _segmentationInputSize,
-      outputHeight: outShape.length >= 2 ? outShape[1] : _segmentationInputSize,
+      model: model,
+      inputWidth: inW,
+      inputHeight: inH,
+      outputWidth: outShape.length >= 3 ? outShape[2] : inW,
+      outputHeight: outShape.length >= 2 ? outShape[1] : inH,
       inputBuffer: inputTensor.data.buffer.asFloat32List(),
       outputBuffer: outputTensor.data.buffer.asFloat32List(),
     );
@@ -462,8 +486,12 @@ class SegmentationWorker {
     final int channels = params['channels'] as int;
 
     // Reconstruct Mat from bytes
-    final cv.Mat image =
-        cv.Mat.fromList(height, width, cv.MatType.CV_8UC(channels), matBytes);
+    final cv.Mat image = cv.Mat.fromList(
+      height,
+      width,
+      cv.MatType.CV_8UC(channels),
+      matBytes,
+    );
     if (image.isEmpty) {
       throw SegmentationException(
         SegmentationError.imageDecodeFailed,
@@ -498,76 +526,49 @@ class SegmentationWorker {
     // Run inference
     state.interpreter.invoke();
 
-    // Copy output and run softmax
+    // Copy output
     final Float32List rawOutput = Float32List.fromList(state.outputBuffer);
-    final Float32List maskData = _combinePersonClasses(
-      rawOutput,
-      state.outputWidth,
-      state.outputHeight,
-    );
 
-    // Transfer mask data back via TransferableTypedData
-    return {
-      'mask': TransferableTypedData.fromList([maskData.buffer.asUint8List()]),
+    // Build result based on model type
+    final Map<String, dynamic> result = {
       'width': state.outputWidth,
       'height': state.outputHeight,
       'originalWidth': originalWidth,
       'originalHeight': originalHeight,
       'padding': pack.padding,
     };
-  }
 
-  /// Combines multiclass output into a single person probability mask.
-  /// (Same optimized implementation as SelfieSegmentation)
-  static Float32List _combinePersonClasses(
-    Float32List rawOutput,
-    int width,
-    int height,
-  ) {
-    final int numPixels = width * height;
-    final result = Float32List(numPixels);
-
-    for (int i = 0; i < numPixels; i++) {
-      final int baseIdx = i * _segmentationOutputChannels;
-
-      // Read all 6 logits and find max in single pass
-      final double l0 = rawOutput[baseIdx];
-      final double l1 = rawOutput[baseIdx + 1];
-      final double l2 = rawOutput[baseIdx + 2];
-      final double l3 = rawOutput[baseIdx + 3];
-      final double l4 = rawOutput[baseIdx + 4];
-      final double l5 = rawOutput[baseIdx + 5];
-
-      // Find max for numerical stability (unrolled for speed)
-      double maxLogit = l0;
-      if (l1 > maxLogit) maxLogit = l1;
-      if (l2 > maxLogit) maxLogit = l2;
-      if (l3 > maxLogit) maxLogit = l3;
-      if (l4 > maxLogit) maxLogit = l4;
-      if (l5 > maxLogit) maxLogit = l5;
-
-      // Compute exp(logit - max) for each channel (unrolled)
-      final double e0 = _fastExp(l0 - maxLogit);
-      final double e1 = _fastExp(l1 - maxLogit);
-      final double e2 = _fastExp(l2 - maxLogit);
-      final double e3 = _fastExp(l3 - maxLogit);
-      final double e4 = _fastExp(l4 - maxLogit);
-      final double e5 = _fastExp(l5 - maxLogit);
-
-      // Sum of all exponentials
-      final double sumExp = e0 + e1 + e2 + e3 + e4 + e5;
-
-      // Person probability = 1 - background probability
-      result[i] = 1.0 - e0 / sumExp;
+    if (state.model == SegmentationModel.multiclass) {
+      // Multiclass: compute full class probabilities, derive person mask
+      final classProbs = SelfieSegmentation._computeClassProbabilities(
+        rawOutput,
+        state.outputWidth,
+        state.outputHeight,
+      );
+      final int numPixels = state.outputWidth * state.outputHeight;
+      final personMask = Float32List(numPixels);
+      for (int i = 0; i < numPixels; i++) {
+        personMask[i] = 1.0 - classProbs[i * 6]; // 1 - P(background)
+      }
+      result['mask'] = TransferableTypedData.fromList([
+        personMask.buffer.asUint8List(),
+      ]);
+      result['classData'] = TransferableTypedData.fromList([
+        classProbs.buffer.asUint8List(),
+      ]);
+    } else {
+      // Binary model: single channel, already sigmoid — copy directly
+      final int numPixels = state.outputWidth * state.outputHeight;
+      final personMask = Float32List(numPixels);
+      for (int i = 0; i < numPixels; i++) {
+        personMask[i] = rawOutput[i];
+      }
+      result['mask'] = TransferableTypedData.fromList([
+        personMask.buffer.asUint8List(),
+      ]);
     }
 
     return result;
-  }
-
-  static double _fastExp(double x) {
-    if (x < -20.0) return 0.0;
-    if (x > 20.0) return 485165195.4;
-    return math.exp(x);
   }
 }
 
@@ -575,6 +576,7 @@ class SegmentationWorker {
 class _SegmentationWorkerState {
   final Interpreter interpreter;
   final Delegate? delegate;
+  final SegmentationModel model;
   final int inputWidth;
   final int inputHeight;
   final int outputWidth;
@@ -585,6 +587,7 @@ class _SegmentationWorkerState {
   _SegmentationWorkerState({
     required this.interpreter,
     required this.delegate,
+    required this.model,
     required this.inputWidth,
     required this.inputHeight,
     required this.outputWidth,

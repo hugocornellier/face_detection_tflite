@@ -1209,6 +1209,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   bool _showSegmentation = false;
   SegmentationMask? _segmentationMask;
   final Color _segmentationColor = const Color(0x8800FF00);
+  SegmentationModel _liveSegmentationModel = SegmentationModel.general;
 
   // Virtual background settings
   bool _showVirtualBackground = false;
@@ -1232,6 +1233,43 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     }
   }
 
+  Future<void> _switchLiveSegmentationModel(SegmentationModel model) async {
+    if (model == _liveSegmentationModel) return;
+    setState(() {
+      _liveSegmentationModel = model;
+      _segmentationMask = null;
+    });
+    // Reinitialize detector with new segmentation model
+    _faceDetectorIsolate?.dispose();
+    _faceDetectorIsolate = await FaceDetectorIsolate.spawn(
+      model: _detectionModel,
+      withSegmentation: true,
+      segmentationConfig: SegmentationConfig(model: _liveSegmentationModel),
+    );
+  }
+
+  Widget _segModelButton(SegmentationModel model, String label) {
+    final isSelected = _liveSegmentationModel == model;
+    return GestureDetector(
+      onTap: () => _switchLiveSegmentationModel(model),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.purple : Colors.white24,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? Colors.white : Colors.white70,
+            fontSize: 12,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _initCamera() async {
     try {
       // Initialize face detector isolate with segmentation enabled
@@ -1239,6 +1277,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       _faceDetectorIsolate = await FaceDetectorIsolate.spawn(
         model: _detectionModel,
         withSegmentation: true,
+        segmentationConfig: SegmentationConfig(model: _liveSegmentationModel),
       );
 
       if (_isMacOS) {
@@ -1666,6 +1705,9 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                     _faceDetectorIsolate?.dispose();
                     _faceDetectorIsolate = await FaceDetectorIsolate.spawn(
                       model: _detectionModel,
+                      withSegmentation: true,
+                      segmentationConfig:
+                          SegmentationConfig(model: _liveSegmentationModel),
                     );
                   }
                 },
@@ -1720,6 +1762,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                       painter: _LiveSegmentationPainter(
                         mask: _segmentationMask!,
                         maskColor: _segmentationColor,
+                        showAllClasses: _liveSegmentationModel ==
+                            SegmentationModel.multiclass,
                       ),
                     ),
                   if (_imageSize != null)
@@ -1804,6 +1848,22 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                             });
                           },
                         ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    // Segmentation model selector
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'Seg Model: ',
+                          style: TextStyle(color: Colors.white70, fontSize: 14),
+                        ),
+                        const SizedBox(width: 8),
+                        _segModelButton(SegmentationModel.general, 'Binary'),
+                        const SizedBox(width: 4),
+                        _segModelButton(
+                            SegmentationModel.multiclass, '6-Class'),
                       ],
                     ),
                     const SizedBox(height: 8),
@@ -1928,6 +1988,9 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                     _faceDetectorIsolate?.dispose();
                     _faceDetectorIsolate = await FaceDetectorIsolate.spawn(
                       model: _detectionModel,
+                      withSegmentation: true,
+                      segmentationConfig:
+                          SegmentationConfig(model: _liveSegmentationModel),
                     );
                   }
                 },
@@ -1988,6 +2051,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                       painter: _LiveSegmentationPainter(
                         mask: _segmentationMask!,
                         maskColor: _segmentationColor,
+                        showAllClasses: _liveSegmentationModel ==
+                            SegmentationModel.multiclass,
                       ),
                     ),
                   if (_imageSize != null)
@@ -2072,6 +2137,22 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                             });
                           },
                         ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    // Segmentation model selector
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'Seg Model: ',
+                          style: TextStyle(color: Colors.white70, fontSize: 14),
+                        ),
+                        const SizedBox(width: 8),
+                        _segModelButton(SegmentationModel.general, 'Binary'),
+                        const SizedBox(width: 4),
+                        _segModelButton(
+                            SegmentationModel.multiclass, '6-Class'),
                       ],
                     ),
                     const SizedBox(height: 8),
@@ -2385,15 +2466,35 @@ class _CameraDetectionPainter extends CustomPainter {
 class _LiveSegmentationPainter extends CustomPainter {
   final SegmentationMask mask;
   final Color maskColor;
+  final bool showAllClasses;
+
+  // Rainbow colors for multiclass visualization (same as static painter)
+  static const List<Color> classColors = [
+    Color(0x99A0A0A0), // 0: Background - light gray
+    Color(0x99CD853F), // 1: Hair - peru/tan brown
+    Color(0x88FFA500), // 2: Body Skin - orange
+    Color(0x88FF69B4), // 3: Face Skin - pink
+    Color(0x9900BFFF), // 4: Clothes - deep sky blue
+    Color(0x9940E0D0), // 5: Other - turquoise
+  ];
+
+  static const List<String> classLabels = [
+    'BG',
+    'Hair',
+    'Body',
+    'Face',
+    'Clothes',
+    'Other'
+  ];
 
   _LiveSegmentationPainter({
     required this.mask,
     required this.maskColor,
+    this.showAllClasses = false,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Same logic as the working static _SegmentationMaskPainter
     final pt = mask.padding[0];
     final pb = mask.padding[1];
     final pl = mask.padding[2];
@@ -2412,6 +2513,82 @@ class _LiveSegmentationPainter extends CustomPainter {
     final paint = Paint();
     const double threshold = 0.5;
 
+    // Multiclass: show all classes with unique colors
+    if (showAllClasses && mask is MulticlassSegmentationMask) {
+      final multiMask = mask as MulticlassSegmentationMask;
+      final classMasks = List.generate(6, (i) => multiMask.classMask(i));
+
+      // Track label positions (centroid of each class)
+      final labelCounts = List<int>.filled(6, 0);
+      final labelSumX = List<double>.filled(6, 0);
+      final labelSumY = List<double>.filled(6, 0);
+
+      for (int y = validY0; y < validY1; y++) {
+        for (int x = validX0; x < validX1; x++) {
+          final idx = y * mask.width + x;
+          final renderX = (x - validX0) * scaleX;
+          final renderY = (y - validY0) * scaleY;
+
+          // Find winning class for this pixel
+          int winningClass = 0;
+          double maxProb = classMasks[0][idx];
+          for (int c = 1; c < 6; c++) {
+            if (classMasks[c][idx] > maxProb) {
+              maxProb = classMasks[c][idx];
+              winningClass = c;
+            }
+          }
+
+          if (maxProb >= threshold) {
+            final color = classColors[winningClass];
+            final baseAlpha = (color.a * 255).round();
+            paint.color = color.withAlpha((maxProb * baseAlpha).round());
+            canvas.drawRect(
+              Rect.fromLTWH(renderX, renderY, scaleX + 0.5, scaleY + 0.5),
+              paint,
+            );
+
+            // Accumulate for centroid calculation
+            labelCounts[winningClass]++;
+            labelSumX[winningClass] += renderX;
+            labelSumY[winningClass] += renderY;
+          }
+        }
+      }
+
+      // Draw labels at centroids
+      for (int c = 0; c < 6; c++) {
+        if (labelCounts[c] > 100) {
+          final centroidX = labelSumX[c] / labelCounts[c];
+          final centroidY = labelSumY[c] / labelCounts[c];
+
+          final textPainter = TextPainter(
+            text: TextSpan(
+              text: classLabels[c],
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                shadows: [
+                  Shadow(color: Colors.black, blurRadius: 2),
+                  Shadow(color: Colors.black, blurRadius: 4),
+                ],
+              ),
+            ),
+            textDirection: TextDirection.ltr,
+          );
+          textPainter.layout();
+          textPainter.paint(
+            canvas,
+            Offset(centroidX - textPainter.width / 2,
+                centroidY - textPainter.height / 2),
+          );
+        }
+      }
+      return;
+    }
+
+    // Binary mask mode
     for (int y = validY0; y < validY1; y++) {
       for (int x = validX0; x < validX1; x++) {
         final prob = mask.at(x, y);
@@ -2432,7 +2609,9 @@ class _LiveSegmentationPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _LiveSegmentationPainter old) {
-    return old.mask != mask || old.maskColor != maskColor;
+    return old.mask != mask ||
+        old.maskColor != maskColor ||
+        old.showAllClasses != showAllClasses;
   }
 }
 
@@ -2556,10 +2735,17 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
   int? _inferenceTimeMs;
   String? _error;
 
+  // Model selection
+  SegmentationModel _selectedModel = SegmentationModel.general;
+
+  // Display options
   double _threshold = 0.5;
   bool _showMaskOnly = false;
   bool _showBinaryMask = true;
   Color _maskColor = const Color(0x8800FF00);
+
+  // Multiclass display - which class to show (null = combined person mask)
+  int? _selectedClassIndex;
 
   @override
   void initState() {
@@ -2575,7 +2761,9 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
 
     try {
       _segmenter?.dispose();
-      _segmenter = await SelfieSegmentation.create();
+      _segmenter = await SelfieSegmentation.create(
+        config: SegmentationConfig(model: _selectedModel),
+      );
     } catch (e) {
       _error = 'Failed to initialize: $e';
     }
@@ -2585,49 +2773,41 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
     }
   }
 
-  @override
-  void dispose() {
-    _segmenter?.dispose();
-    super.dispose();
-  }
-
-  Future<void> _pickAndSegment() async {
-    final ImagePicker picker = ImagePicker();
-    final XFile? picked =
-        await picker.pickImage(source: ImageSource.gallery, imageQuality: 100);
-    if (picked == null) return;
+  Future<void> _switchModel(SegmentationModel model) async {
+    if (model == _selectedModel) return;
 
     setState(() {
-      _imageBytes = null;
-      _mask = null;
-      _originalSize = null;
+      _selectedModel = model;
+      _selectedClassIndex = null; // Reset class selection
+      _mask = null; // Clear current mask
+    });
+
+    await _initSegmenter();
+
+    // Re-segment current image if we have one
+    if (_imageBytes != null) {
+      await _segmentCurrentImage();
+    }
+  }
+
+  Future<void> _segmentCurrentImage() async {
+    if (_imageBytes == null || _segmenter == null) return;
+
+    setState(() {
       _isLoading = true;
-      _inferenceTimeMs = null;
       _error = null;
     });
 
-    final Uint8List bytes = await picked.readAsBytes();
-
-    if (_segmenter == null) {
-      setState(() {
-        _isLoading = false;
-        _error = 'Segmenter not initialized';
-      });
-      return;
-    }
-
     try {
       final stopwatch = Stopwatch()..start();
-      final mask = await _segmenter!.call(bytes);
+      final mask = await _segmenter!.call(_imageBytes!);
       stopwatch.stop();
 
-      // Get image size from mask
       final Size originalSize =
           Size(mask.originalWidth.toDouble(), mask.originalHeight.toDouble());
 
       if (mounted) {
         setState(() {
-          _imageBytes = bytes;
           _mask = mask;
           _originalSize = originalSize;
           _inferenceTimeMs = stopwatch.elapsedMilliseconds;
@@ -2644,91 +2824,235 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
     }
   }
 
+  @override
+  void dispose() {
+    _segmenter?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickAndSegment() async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? picked =
+        await picker.pickImage(source: ImageSource.gallery, imageQuality: 100);
+    if (picked == null) return;
+
+    final Uint8List bytes = await picked.readAsBytes();
+
+    setState(() {
+      _imageBytes = bytes;
+      _mask = null;
+      _originalSize = null;
+      _inferenceTimeMs = null;
+      _error = null;
+      _selectedClassIndex = null;
+    });
+
+    await _segmentCurrentImage();
+  }
+
   void _showSettings() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.5,
-        minChildSize: 0.3,
-        maxChildSize: 0.8,
-        builder: (context, scrollController) => Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-          ),
-          child: Column(
-            children: [
-              Container(
-                margin: const EdgeInsets.symmetric(vertical: 8),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          minChildSize: 0.3,
+          maxChildSize: 0.85,
+          builder: (context, scrollController) => Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+            ),
+            child: Column(
+              children: [
+                Container(
+                  margin: const EdgeInsets.symmetric(vertical: 8),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-              ),
-              Expanded(
-                child: ListView(
-                  controller: scrollController,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  children: [
-                    const Text('Display Options',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 16)),
-                    const SizedBox(height: 8),
-                    SwitchListTile(
-                      title: const Text('Show mask only'),
-                      subtitle: const Text('Hide original image'),
-                      value: _showMaskOnly,
-                      onChanged: (value) {
-                        setState(() => _showMaskOnly = value);
-                        Navigator.pop(context);
-                      },
-                    ),
-                    SwitchListTile(
-                      title: const Text('Binary mask'),
-                      subtitle: const Text('Sharp edges vs soft blend'),
-                      value: _showBinaryMask,
-                      onChanged: (value) {
-                        setState(() => _showBinaryMask = value);
-                        Navigator.pop(context);
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                    Text('Threshold: ${_threshold.toStringAsFixed(2)}'),
-                    Slider(
-                      value: _threshold,
-                      min: 0.0,
-                      max: 1.0,
-                      divisions: 20,
-                      label: _threshold.toStringAsFixed(2),
-                      onChanged: (value) {
-                        setState(() => _threshold = value);
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    const Text('Mask Color',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 16)),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      children: [
-                        _colorOption(const Color(0x8800FF00), 'Green'),
-                        _colorOption(const Color(0x88FF0000), 'Red'),
-                        _colorOption(const Color(0x880000FF), 'Blue'),
-                        _colorOption(const Color(0x88FFFF00), 'Yellow'),
-                        _colorOption(const Color(0x88FF00FF), 'Magenta'),
-                        _colorOption(const Color(0x8800FFFF), 'Cyan'),
+                Expanded(
+                  child: ListView(
+                    controller: scrollController,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    children: [
+                      // Model Selection
+                      const Text('Model',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 16)),
+                      const SizedBox(height: 8),
+                      _modelOption(
+                        SegmentationModel.general,
+                        'General',
+                        '256×256 • Binary person/background',
+                        setModalState,
+                      ),
+                      _modelOption(
+                        SegmentationModel.landscape,
+                        'Landscape',
+                        '144×256 • Optimized for 16:9 video',
+                        setModalState,
+                      ),
+                      _modelOption(
+                        SegmentationModel.multiclass,
+                        'Multiclass',
+                        '256×256 • 6 body part classes',
+                        setModalState,
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Multiclass class selection (only show when multiclass)
+                      if (_selectedModel == SegmentationModel.multiclass) ...[
+                        const Text('Body Part Class',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 16)),
+                        const SizedBox(height: 4),
+                        const Text(
+                            'Default shows all classes with rainbow colors',
+                            style: TextStyle(fontSize: 12, color: Colors.grey)),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            _classOption(null, 'All Classes', Colors.purple,
+                                setModalState),
+                            _classOption(
+                                0, 'Background', Colors.grey, setModalState),
+                            _classOption(
+                                1, 'Hair', Colors.brown, setModalState),
+                            _classOption(
+                                2, 'Body Skin', Colors.orange, setModalState),
+                            _classOption(
+                                3, 'Face Skin', Colors.pink, setModalState),
+                            _classOption(
+                                4, 'Clothes', Colors.blue, setModalState),
+                            _classOption(
+                                5, 'Other', Colors.teal, setModalState),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
                       ],
-                    ),
-                    const SizedBox(height: 24),
-                  ],
+
+                      // Display Options
+                      const Text('Display Options',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 16)),
+                      const SizedBox(height: 8),
+                      SwitchListTile(
+                        title: const Text('Show mask only'),
+                        subtitle: const Text('Hide original image'),
+                        value: _showMaskOnly,
+                        onChanged: (value) {
+                          setState(() => _showMaskOnly = value);
+                          setModalState(() {});
+                        },
+                      ),
+                      SwitchListTile(
+                        title: const Text('Binary mask'),
+                        subtitle: const Text('Sharp edges vs soft blend'),
+                        value: _showBinaryMask,
+                        onChanged: (value) {
+                          setState(() => _showBinaryMask = value);
+                          setModalState(() {});
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      Text('Threshold: ${_threshold.toStringAsFixed(2)}'),
+                      Slider(
+                        value: _threshold,
+                        min: 0.0,
+                        max: 1.0,
+                        divisions: 20,
+                        label: _threshold.toStringAsFixed(2),
+                        onChanged: (value) {
+                          setState(() => _threshold = value);
+                          setModalState(() {});
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      const Text('Mask Color',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 16)),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          _colorOption(const Color(0x8800FF00), 'Green'),
+                          _colorOption(const Color(0x88FF0000), 'Red'),
+                          _colorOption(const Color(0x880000FF), 'Blue'),
+                          _colorOption(const Color(0x88FFFF00), 'Yellow'),
+                          _colorOption(const Color(0x88FF00FF), 'Magenta'),
+                          _colorOption(const Color(0x8800FFFF), 'Cyan'),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _modelOption(
+    SegmentationModel model,
+    String title,
+    String subtitle,
+    StateSetter setModalState,
+  ) {
+    final isSelected = _selectedModel == model;
+    return ListTile(
+      leading: Icon(
+        isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
+        color: isSelected ? Colors.purple : Colors.grey,
+      ),
+      title: Text(title,
+          style: TextStyle(
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+      subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
+      onTap: () {
+        Navigator.pop(context);
+        _switchModel(model);
+      },
+    );
+  }
+
+  Widget _classOption(
+    int? classIndex,
+    String label,
+    Color color,
+    StateSetter setModalState,
+  ) {
+    final isSelected = _selectedClassIndex == classIndex;
+    return GestureDetector(
+      onTap: () {
+        setState(() => _selectedClassIndex = classIndex);
+        setModalState(() {});
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? color : color.withAlpha(77),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected ? Colors.black : Colors.transparent,
+            width: 2,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? Colors.white : Colors.black87,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
           ),
         ),
       ),
@@ -2755,6 +3079,32 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
         child: Text(label, style: const TextStyle(color: Colors.white)),
       ),
     );
+  }
+
+  String _getModelBadgeText() {
+    final modelName = switch (_selectedModel) {
+      SegmentationModel.general => 'General (256×256)',
+      SegmentationModel.landscape => 'Landscape (144×256)',
+      SegmentationModel.multiclass => 'Multiclass (256×256)',
+    };
+
+    if (_selectedModel == SegmentationModel.multiclass) {
+      if (_selectedClassIndex == null) {
+        return '$modelName • All Classes';
+      }
+      final className = switch (_selectedClassIndex) {
+        0 => 'Background',
+        1 => 'Hair',
+        2 => 'Body Skin',
+        3 => 'Face Skin',
+        4 => 'Clothes',
+        5 => 'Other',
+        _ => 'Unknown',
+      };
+      return '$modelName • $className';
+    }
+
+    return modelName;
   }
 
   @override
@@ -2829,6 +3179,10 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
                                     threshold: _threshold,
                                     binary: _showBinaryMask,
                                     maskColor: _maskColor,
+                                    classIndex: _selectedClassIndex,
+                                    showAllClasses: _selectedModel ==
+                                            SegmentationModel.multiclass &&
+                                        _selectedClassIndex == null,
                                   ),
                                 ),
                             ],
@@ -2923,9 +3277,9 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
                   color: Colors.black.withAlpha(179),
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: const Text(
-                  'Multiclass (256x256)',
-                  style: TextStyle(color: Colors.white70, fontSize: 12),
+                child: Text(
+                  _getModelBadgeText(),
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
                 ),
               ),
             ),
@@ -2960,6 +3314,27 @@ class _SegmentationMaskPainter extends CustomPainter {
   final double threshold;
   final bool binary;
   final Color maskColor;
+  final int? classIndex; // null = show all classes for multiclass
+  final bool showAllClasses;
+
+  // Rainbow colors for multiclass visualization
+  static const List<Color> classColors = [
+    Color(0x99A0A0A0), // 0: Background - light gray
+    Color(0x99CD853F), // 1: Hair - peru/tan brown
+    Color(0x88FFA500), // 2: Body Skin - orange
+    Color(0x88FF69B4), // 3: Face Skin - pink
+    Color(0x9900BFFF), // 4: Clothes - deep sky blue
+    Color(0x9940E0D0), // 5: Other - turquoise
+  ];
+
+  static const List<String> classLabels = [
+    'BG',
+    'Hair',
+    'Body',
+    'Face',
+    'Clothes',
+    'Other',
+  ];
 
   _SegmentationMaskPainter({
     required this.mask,
@@ -2967,18 +3342,17 @@ class _SegmentationMaskPainter extends CustomPainter {
     required this.threshold,
     required this.binary,
     required this.maskColor,
+    this.classIndex,
+    this.showAllClasses = false,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Account for letterbox padding - the mask includes padded regions
-    // that need to be mapped correctly to the original image
-    final pt = mask.padding[0]; // top padding (normalized 0-1)
-    final pb = mask.padding[1]; // bottom padding (normalized 0-1)
-    final pl = mask.padding[2]; // left padding (normalized 0-1)
-    final pr = mask.padding[3]; // right padding (normalized 0-1)
+    final pt = mask.padding[0];
+    final pb = mask.padding[1];
+    final pl = mask.padding[2];
+    final pr = mask.padding[3];
 
-    // Calculate the valid (non-padded) region in mask coordinates
     final validX0 = (pl * mask.width).round();
     final validY0 = (pt * mask.height).round();
     final validX1 = ((1.0 - pr) * mask.width).round();
@@ -2986,17 +3360,109 @@ class _SegmentationMaskPainter extends CustomPainter {
     final validW = validX1 - validX0;
     final validH = validY1 - validY0;
 
-    // Scale from the valid mask region to render size
     final scaleX = validW > 0 ? size.width / validW : 1.0;
     final scaleY = validH > 0 ? size.height / validH : 1.0;
+
+    // Multiclass: show all classes with unique colors
+    if (showAllClasses && mask is MulticlassSegmentationMask) {
+      final multiMask = mask as MulticlassSegmentationMask;
+      final classMasks = List.generate(6, (i) => multiMask.classMask(i));
+      final paint = Paint();
+
+      // Track label positions (centroid of each class)
+      final labelCounts = List<int>.filled(6, 0);
+      final labelSumX = List<double>.filled(6, 0);
+      final labelSumY = List<double>.filled(6, 0);
+
+      for (int y = validY0; y < validY1; y++) {
+        for (int x = validX0; x < validX1; x++) {
+          final idx = y * mask.width + x;
+          final renderX = (x - validX0) * scaleX;
+          final renderY = (y - validY0) * scaleY;
+
+          // Find winning class for this pixel
+          int winningClass = 0;
+          double maxProb = classMasks[0][idx];
+          for (int c = 1; c < 6; c++) {
+            if (classMasks[c][idx] > maxProb) {
+              maxProb = classMasks[c][idx];
+              winningClass = c;
+            }
+          }
+
+          if (maxProb >= threshold) {
+            final color = classColors[winningClass];
+            final baseAlpha = (color.a * 255).round();
+            paint.color =
+                binary ? color : color.withAlpha((maxProb * baseAlpha).round());
+            canvas.drawRect(
+              Rect.fromLTWH(renderX, renderY, scaleX + 0.5, scaleY + 0.5),
+              paint,
+            );
+
+            // Accumulate for centroid calculation
+            labelCounts[winningClass]++;
+            labelSumX[winningClass] += renderX;
+            labelSumY[winningClass] += renderY;
+          }
+        }
+      }
+
+      // Calculate centroids and draw labels
+      for (int c = 0; c < 6; c++) {
+        if (labelCounts[c] > 100) {
+          // Only label if enough pixels
+          final centroidX = labelSumX[c] / labelCounts[c];
+          final centroidY = labelSumY[c] / labelCounts[c];
+
+          final textPainter = TextPainter(
+            text: TextSpan(
+              text: classLabels[c],
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                shadows: const [
+                  Shadow(color: Colors.black, blurRadius: 2),
+                  Shadow(color: Colors.black, blurRadius: 4),
+                ],
+              ),
+            ),
+            textDirection: TextDirection.ltr,
+          );
+          textPainter.layout();
+          textPainter.paint(
+            canvas,
+            Offset(
+              centroidX - textPainter.width / 2,
+              centroidY - textPainter.height / 2,
+            ),
+          );
+        }
+      }
+      return;
+    }
+
+    // Single class or binary mask mode
+    Float32List? classMaskData;
+    if (classIndex != null && mask is MulticlassSegmentationMask) {
+      classMaskData =
+          (mask as MulticlassSegmentationMask).classMask(classIndex!);
+    }
 
     final paint = Paint();
 
     for (int y = validY0; y < validY1; y++) {
       for (int x = validX0; x < validX1; x++) {
-        final prob = mask.at(x, y);
-        final double alpha;
+        final double prob;
+        if (classMaskData != null) {
+          final idx = y * mask.width + x;
+          prob = classMaskData[idx];
+        } else {
+          prob = mask.at(x, y);
+        }
 
+        final double alpha;
         if (binary) {
           alpha = prob >= threshold ? maskColor.a : 0.0;
         } else {
@@ -3005,7 +3471,6 @@ class _SegmentationMaskPainter extends CustomPainter {
 
         if (alpha > 0.01) {
           paint.color = maskColor.withAlpha((alpha * 255).round());
-          // Map mask coordinates (minus padding offset) to render coordinates
           final renderX = (x - validX0) * scaleX;
           final renderY = (y - validY0) * scaleY;
           canvas.drawRect(
@@ -3022,6 +3487,8 @@ class _SegmentationMaskPainter extends CustomPainter {
     return old.mask != mask ||
         old.threshold != threshold ||
         old.binary != binary ||
-        old.maskColor != maskColor;
+        old.maskColor != maskColor ||
+        old.classIndex != classIndex ||
+        old.showAllClasses != showAllClasses;
   }
 }

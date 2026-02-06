@@ -1,27 +1,31 @@
 PODS:
   - Flutter (1.0.0)
-  - TensorFlowLiteC (2.12.0):
-    - TensorFlowLiteC/Core (= 2.12.0)
-  - TensorFlowLiteC/Core (2.12.0)
-  - TensorFlowLiteC/CoreML (2.12.0):
+  - TensorFlowLiteC (2.17.0):
+    - TensorFlowLiteC/Core (= 2.17.0)
+  - TensorFlowLiteC/Core (2.17.0)
+  - TensorFlowLiteC/CoreML (2.17.0):
     - TensorFlowLiteC/Core
-  - TensorFlowLiteC/Metal (2.12.0):
+  - TensorFlowLiteC/Metal (2.17.0):
     - TensorFlowLiteC/Core
-  - TensorFlowLiteSwift (2.12.0):
-    - TensorFlowLiteSwift/Core (= 2.12.0)
-  - TensorFlowLiteSwift/Core (2.12.0):
-    - TensorFlowLiteC (= 2.12.0)
-  - TensorFlowLiteSwift/CoreML (2.12.0):
-    - TensorFlowLiteC/CoreML (= 2.12.0)
-    - TensorFlowLiteSwift/Core (= 2.12.0)
-  - TensorFlowLiteSwift/Metal (2.12.0):
-    - TensorFlowLiteC/Metal (= 2.12.0)
-    - TensorFlowLiteSwift/Core (= 2.12.0)
+  - TensorFlowLiteSwift (2.17.0):
+    - TensorFlowLiteSwift/Core (= 2.17.0)
+  - TensorFlowLiteSwift/Core (2.17.0):
+    - TensorFlowLiteC (= 2.17.0)
+    - TensorFlowLiteSwift/Privacy (= 2.17.0)
+  - TensorFlowLiteSwift/CoreML (2.17.0):
+    - TensorFlowLiteC/CoreML (= 2.17.0)
+    - TensorFlowLiteSwift/Core (= 2.17.0)
+    - TensorFlowLiteSwift/Privacy (= 2.17.0)
+  - TensorFlowLiteSwift/Metal (2.17.0):
+    - TensorFlowLiteC/Metal (= 2.17.0)
+    - TensorFlowLiteSwift/Core (= 2.17.0)
+    - TensorFlowLiteSwift/Privacy (= 2.17.0)
+  - TensorFlowLiteSwift/Privacy (2.17.0)
   - tflite_flutter_custom (0.0.1):
     - Flutter
-    - TensorFlowLiteSwift (= 2.12.0)
-    - TensorFlowLiteSwift/CoreML (= 2.12.0)
-    - TensorFlowLiteSwift/Metal (= 2.12.0)
+    - TensorFlowLiteSwift (= 2.17.0)
+    - TensorFlowLiteSwift/CoreML (= 2.17.0)
+    - TensorFlowLiteSwift/Metal (= 2.17.0)
 
 DEPENDENCIES:
   - Flutter (from `Flutter`)
@@ -40,10 +44,10 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
-  TensorFlowLiteC: 20785a69299185a379ba9852b6625f00afd7984a
-  TensorFlowLiteSwift: 3a4928286e9e35bdd3e17970f48e53c80d25e793
-  tflite_flutter_custom: c9b7ec51def8824214660fe6db81c7bd6afcf6f9
+  TensorFlowLiteC: eac6d689a8d391d1b202dc59e3d9165ba64aaf73
+  TensorFlowLiteSwift: 723fe42222815e72490c79feeff05305530de393
+  tflite_flutter_custom: 4cd444eddaef94d55669021c3cb8733c93d9f815
 
-PODFILE CHECKSUM: 3c63482e143d1b91d2d2560aee9fb04ecc74ac7e
+PODFILE CHECKSUM: 251cb053df7158f337c0712f2ab29f4e0fa474ce
 
 COCOAPODS: 1.16.2

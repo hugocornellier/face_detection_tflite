@@ -115,8 +115,9 @@ class FaceLandmark {
     int numElements(List<int> s) => s.fold(1, (a, b) => a * b);
 
     final Map<int, OutputTensorInfo> outputInfo = collectOutputTensorInfo(_itp);
-    final Map<int, List<int>> shapes =
-        outputInfo.map((int k, OutputTensorInfo v) => MapEntry(k, v.shape));
+    final Map<int, List<int>> shapes = outputInfo.map(
+      (int k, OutputTensorInfo v) => MapEntry(k, v.shape),
+    );
 
     int bestIdx = -1;
     int bestLen = -1;
@@ -284,7 +285,8 @@ class FaceLandmark {
   /// Delegates to [FaceDetection._createInterpreterOptions] for consistent
   /// platform-aware delegate selection across all model types.
   static (InterpreterOptions, Delegate?) _createInterpreterOptions(
-      PerformanceConfig? config) {
+    PerformanceConfig? config,
+  ) {
     return FaceDetection._createInterpreterOptions(config);
   }
 }

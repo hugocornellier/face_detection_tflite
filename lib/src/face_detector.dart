@@ -172,10 +172,12 @@ class FaceDetector {
       _meshPool.clear();
       _meshInferenceLocks.clear();
       for (int i = 0; i < meshPoolSize; i++) {
-        _meshPool.add(await FaceLandmark.create(
-          options: options,
-          performanceConfig: performanceConfig,
-        ));
+        _meshPool.add(
+          await FaceLandmark.create(
+            options: options,
+            performanceConfig: performanceConfig,
+          ),
+        );
         _meshInferenceLocks.add(Future.value());
       }
 
@@ -246,10 +248,12 @@ class FaceDetector {
       _meshPool.clear();
       _meshInferenceLocks.clear();
       for (int i = 0; i < meshPoolSize; i++) {
-        _meshPool.add(await FaceLandmark.createFromBuffer(
-          faceLandmarkBytes,
-          performanceConfig: performanceConfig,
-        ));
+        _meshPool.add(
+          await FaceLandmark.createFromBuffer(
+            faceLandmarkBytes,
+            performanceConfig: performanceConfig,
+          ),
+        );
         _meshInferenceLocks.add(Future.value());
       }
 
@@ -292,6 +296,8 @@ class FaceDetector {
   static Future<void> _ensureTFLiteLoaded() async {
     if (_tfliteLib != null) return;
 
+    if (!Platform.isWindows && !Platform.isLinux) return;
+
     final File exe = File(Platform.resolvedExecutable);
     final Directory exeDir = exe.parent;
     late final List<String> candidates;
@@ -305,7 +311,7 @@ class FaceDetector {
       hint = 'Make sure your Windows plugin CMakeLists.txt sets:\n'
           '  set(PLUGIN_NAME_bundled_libraries ".../libtensorflowlite_c-win.dll" PARENT_SCOPE)\n'
           'so Flutter copies it next to the app EXE.';
-    } else if (Platform.isLinux) {
+    } else {
       candidates = [
         p.join(exeDir.path, 'lib', 'libtensorflowlite_c-linux.so'),
         'libtensorflowlite_c-linux.so',
@@ -313,15 +319,6 @@ class FaceDetector {
       hint = 'Ensure linux/CMakeLists.txt sets:\n'
           '  set(PLUGIN_NAME_bundled_libraries "../assets/bin/libtensorflowlite_c-linux.so" PARENT_SCOPE)\n'
           'so Flutter copies it into bundle/lib/.';
-    } else if (Platform.isMacOS) {
-      final contents = exeDir.parent;
-      candidates = [
-        p.join(contents.path, 'Resources', 'libtensorflowlite_c-mac.dylib'),
-      ];
-      hint = 'Expected in app bundle Resources, or resolvable by name.';
-    } else {
-      _tfliteLib = ffi.DynamicLibrary.process();
-      return;
     }
 
     final List<String> tried = <String>[];
@@ -493,21 +490,25 @@ class FaceDetector {
 
     final results = await Future.wait([
       if (rois.isNotEmpty && rois[0].size > 0)
-        _withIrisLeftLock(() => irisLeft.runOnImageAlignedIris(
-              decoded,
-              rois[0],
-              isRight: false,
-              worker: _worker,
-            ))
+        _withIrisLeftLock(
+          () => irisLeft.runOnImageAlignedIris(
+            decoded,
+            rois[0],
+            isRight: false,
+            worker: _worker,
+          ),
+        )
       else
         Future.value(<List<double>>[]),
       if (rois.length > 1 && rois[1].size > 0)
-        _withIrisRightLock(() => irisRight.runOnImageAlignedIris(
-              decoded,
-              rois[1],
-              isRight: true,
-              worker: _worker,
-            ))
+        _withIrisRightLock(
+          () => irisRight.runOnImageAlignedIris(
+            decoded,
+            rois[1],
+            isRight: true,
+            worker: _worker,
+          ),
+        )
       else
         Future.value(<List<double>>[]),
     ]);
@@ -525,11 +526,13 @@ class FaceDetector {
     } else {
       if (allLandmarks != null) {
         allLandmarks.addAll(
-          leftLm.map((p) => Point(
-                p[0].toDouble(),
-                p[1].toDouble(),
-                p.length > 2 ? p[2].toDouble() : 0.0,
-              )),
+          leftLm.map(
+            (p) => Point(
+              p[0].toDouble(),
+              p[1].toDouble(),
+              p.length > 2 ? p[2].toDouble() : 0.0,
+            ),
+          ),
         );
       }
       centers.add(pickCenter(leftLm, leftFallback));
@@ -542,11 +545,13 @@ class FaceDetector {
     } else {
       if (allLandmarks != null) {
         allLandmarks.addAll(
-          rightLm.map((p) => Point(
-                p[0].toDouble(),
-                p[1].toDouble(),
-                p.length > 2 ? p[2].toDouble() : 0.0,
-              )),
+          rightLm.map(
+            (p) => Point(
+              p[0].toDouble(),
+              p[1].toDouble(),
+              p.length > 2 ? p[2].toDouble() : 0.0,
+            ),
+          ),
         );
       }
       centers.add(pickCenter(rightLm, rightFallback));
@@ -792,8 +797,9 @@ class FaceDetector {
     if (_meshPool.isEmpty) {
       return const <Point>[];
     }
-    final lmNorm =
-        await _withMeshLock((fl) => fl.call(faceCrop, worker: _worker));
+    final lmNorm = await _withMeshLock(
+      (fl) => fl.call(faceCrop, worker: _worker),
+    );
 
     final double ct = math.cos(aligned.theta);
     final double st = math.sin(aligned.theta);
@@ -903,18 +909,22 @@ class FaceDetector {
     final IrisLandmark irisRight = _irisRight!;
 
     final results = await Future.wait([
-      _withIrisLeftLock(() => irisLeft.runOnImageAlignedIris(
-            decoded,
-            rois[0],
-            isRight: false,
-            worker: _worker,
-          )),
-      _withIrisRightLock(() => irisRight.runOnImageAlignedIris(
-            decoded,
-            rois[1],
-            isRight: true,
-            worker: _worker,
-          )),
+      _withIrisLeftLock(
+        () => irisLeft.runOnImageAlignedIris(
+          decoded,
+          rois[0],
+          isRight: false,
+          worker: _worker,
+        ),
+      ),
+      _withIrisRightLock(
+        () => irisRight.runOnImageAlignedIris(
+          decoded,
+          rois[1],
+          isRight: true,
+          worker: _worker,
+        ),
+      ),
     ]);
 
     final List<Point> pts = <Point>[];
@@ -1053,10 +1063,7 @@ class FaceDetector {
     final List<List<Point>> out = await Future.wait(
       dets.map((Detection det) async {
         final AlignedFace aligned = await estimateAlignedFace(decoded, det);
-        return meshFromAlignedFace(
-          aligned.faceCrop,
-          aligned,
-        );
+        return meshFromAlignedFace(aligned.faceCrop, aligned);
       }),
     );
     return out;
@@ -1089,9 +1096,7 @@ class FaceDetector {
   ///
   /// This is useful when processing batch results or when mesh data from
   /// multiple faces has been concatenated for efficiency.
-  List<List<Point>> splitMeshesIfConcatenated(
-    List<Point> meshPts,
-  ) {
+  List<List<Point>> splitMeshesIfConcatenated(List<Point> meshPts) {
     if (meshPts.isEmpty) return const <List<Point>>[];
     if (meshPts.length % kMeshPoints != 0) return [meshPts];
     final int faces = meshPts.length ~/ kMeshPoints;
@@ -1233,18 +1238,22 @@ class FaceDetector {
     final IrisLandmark irisRight = _irisRight!;
 
     final results = await Future.wait([
-      _withIrisLeftLock(() => irisLeft.runOnImageAlignedIrisWithFrameId(
-            frameId,
-            rois[0],
-            isRight: false,
-            worker: _worker,
-          )),
-      _withIrisRightLock(() => irisRight.runOnImageAlignedIrisWithFrameId(
-            frameId,
-            rois[1],
-            isRight: true,
-            worker: _worker,
-          )),
+      _withIrisLeftLock(
+        () => irisLeft.runOnImageAlignedIrisWithFrameId(
+          frameId,
+          rois[0],
+          isRight: false,
+          worker: _worker,
+        ),
+      ),
+      _withIrisRightLock(
+        () => irisRight.runOnImageAlignedIrisWithFrameId(
+          frameId,
+          rois[1],
+          isRight: true,
+          worker: _worker,
+        ),
+      ),
     ]);
 
     final List<Point> pts = <Point>[];
@@ -1340,8 +1349,10 @@ class FaceDetector {
       data?.$2.faceCrop.dispose();
     }
 
-    final List<List<Point>?> irisResults =
-        List<List<Point>?>.filled(dets.length, null);
+    final List<List<Point>?> irisResults = List<List<Point>?>.filled(
+      dets.length,
+      null,
+    );
     if (computeIris) {
       for (int i = 0; i < meshResults.length; i++) {
         final meshPx = meshResults[i];
@@ -1389,12 +1400,14 @@ class FaceDetector {
 
       final FaceMesh? faceMesh = meshPx.isNotEmpty ? FaceMesh(meshPx) : null;
 
-      faces.add(Face(
-        detection: refinedDet,
-        mesh: faceMesh,
-        irises: irisPx,
-        originalSize: imgSize,
-      ));
+      faces.add(
+        Face(
+          detection: refinedDet,
+          mesh: faceMesh,
+          irises: irisPx,
+          originalSize: imgSize,
+        ),
+      );
     }
 
     return faces;
@@ -1744,10 +1757,12 @@ class FaceDetector {
       if (faceCrop.cols != _embedding!.inputWidth ||
           faceCrop.rows != _embedding!.inputHeight) {
         resized = cv.resize(
-          faceCrop,
-          (_embedding!.inputWidth, _embedding!.inputHeight),
-          interpolation: cv.INTER_LINEAR,
-        );
+            faceCrop,
+            (
+              _embedding!.inputWidth,
+              _embedding!.inputHeight,
+            ),
+            interpolation: cv.INTER_LINEAR);
         faceCrop.dispose();
       } else {
         resized = faceCrop;
@@ -1895,9 +1910,7 @@ class FaceDetector {
   /// // Now segmentation is available
   /// final mask = await detector.getSegmentationMask(imageBytes);
   /// ```
-  Future<void> initializeSegmentation({
-    SegmentationConfig? config,
-  }) async {
+  Future<void> initializeSegmentation({SegmentationConfig? config}) async {
     if (_segmenter != null) return;
     _segmenter = await SelfieSegmentation.create(
       config: config ?? SegmentationConfig.safe,

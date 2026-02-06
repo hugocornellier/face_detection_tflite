@@ -102,8 +102,10 @@ void main() {
 
   group('FaceMesh', () {
     test('should create mesh with 468 points', () {
-      final points =
-          List.generate(468, (i) => Point(i.toDouble(), i.toDouble()));
+      final points = List.generate(
+        468,
+        (i) => Point(i.toDouble(), i.toDouble()),
+      );
       final mesh = FaceMesh(points);
 
       expect(mesh.length, 468);
@@ -111,8 +113,10 @@ void main() {
     });
 
     test('should support indexing', () {
-      final points =
-          List.generate(468, (i) => Point(i.toDouble(), i.toDouble()));
+      final points = List.generate(
+        468,
+        (i) => Point(i.toDouble(), i.toDouble()),
+      );
       final mesh = FaceMesh(points);
 
       expect(mesh[0], equals(Point(0.0, 0.0)));
@@ -121,31 +125,39 @@ void main() {
     });
 
     test('should format toString', () {
-      final points =
-          List.generate(468, (i) => Point(i.toDouble(), i.toDouble()));
+      final points = List.generate(
+        468,
+        (i) => Point(i.toDouble(), i.toDouble()),
+      );
       final mesh = FaceMesh(points);
 
       expect(mesh.toString(), 'FaceMesh(468 points)');
     });
 
     test('should assert on wrong number of points', () {
-      final points =
-          List.generate(100, (i) => Point(i.toDouble(), i.toDouble()));
+      final points = List.generate(
+        100,
+        (i) => Point(i.toDouble(), i.toDouble()),
+      );
 
       expect(() => FaceMesh(points), throwsA(isA<AssertionError>()));
     });
 
     test('should return same points list reference', () {
-      final points =
-          List.generate(468, (i) => Point(i.toDouble(), i.toDouble()));
+      final points = List.generate(
+        468,
+        (i) => Point(i.toDouble(), i.toDouble()),
+      );
       final mesh = FaceMesh(points);
 
       expect(mesh.points, same(points));
     });
 
     test('toMap/fromMap round-trip preserves all points', () {
-      final points =
-          List.generate(468, (i) => Point(i.toDouble(), i * 2.0, i * 0.1));
+      final points = List.generate(
+        468,
+        (i) => Point(i.toDouble(), i * 2.0, i * 0.1),
+      );
       final mesh = FaceMesh(points);
       final map = mesh.toMap();
       final restored = FaceMesh.fromMap(map);
@@ -166,7 +178,7 @@ void main() {
         Point(90.0, 90.0),
         Point(110.0, 90.0),
         Point(110.0, 110.0),
-        Point(90.0, 110.0)
+        Point(90.0, 110.0),
       ];
       final mesh = <Point>[];
 
@@ -179,8 +191,10 @@ void main() {
 
     test('should create eye with mesh data', () {
       final center = Point(100.0, 100.0);
-      final contour =
-          List.generate(4, (i) => Point(i.toDouble(), i.toDouble()));
+      final contour = List.generate(
+        4,
+        (i) => Point(i.toDouble(), i.toDouble()),
+      );
       final mesh = List.generate(71, (i) => Point(i.toDouble(), i.toDouble()));
 
       final eye = Eye(irisCenter: center, irisContour: contour, mesh: mesh);
@@ -190,8 +204,10 @@ void main() {
 
     test('should return first 15 mesh points as contour', () {
       final center = Point(100.0, 100.0);
-      final irisContour =
-          List.generate(4, (i) => Point(i.toDouble(), i.toDouble()));
+      final irisContour = List.generate(
+        4,
+        (i) => Point(i.toDouble(), i.toDouble()),
+      );
       final mesh = List.generate(71, (i) => Point(100.0 + i, 100.0 + i));
 
       final eye = Eye(irisCenter: center, irisContour: irisContour, mesh: mesh);
@@ -202,23 +218,36 @@ void main() {
       expect(contour[14], equals(Point(114.0, 114.0)));
     });
 
-    test('should return full mesh as contour when mesh has less than 15 points',
-        () {
-      final center = Point(100.0, 100.0);
-      final irisContour =
-          List.generate(4, (i) => Point(i.toDouble(), i.toDouble()));
-      final mesh = List.generate(10, (i) => Point(i.toDouble(), i.toDouble()));
+    test(
+      'should return full mesh as contour when mesh has less than 15 points',
+      () {
+        final center = Point(100.0, 100.0);
+        final irisContour = List.generate(
+          4,
+          (i) => Point(i.toDouble(), i.toDouble()),
+        );
+        final mesh = List.generate(
+          10,
+          (i) => Point(i.toDouble(), i.toDouble()),
+        );
 
-      final eye = Eye(irisCenter: center, irisContour: irisContour, mesh: mesh);
+        final eye = Eye(
+          irisCenter: center,
+          irisContour: irisContour,
+          mesh: mesh,
+        );
 
-      expect(eye.contour.length, 10);
-      expect(eye.contour, equals(mesh));
-    });
+        expect(eye.contour.length, 10);
+        expect(eye.contour, equals(mesh));
+      },
+    );
 
     test('should return empty contour when mesh is empty', () {
       final center = Point(100.0, 100.0);
-      final irisContour =
-          List.generate(4, (i) => Point(i.toDouble(), i.toDouble()));
+      final irisContour = List.generate(
+        4,
+        (i) => Point(i.toDouble(), i.toDouble()),
+      );
       final mesh = <Point>[];
 
       final eye = Eye(irisCenter: center, irisContour: irisContour, mesh: mesh);
@@ -234,8 +263,10 @@ void main() {
         Point(110.0, 110.0, 4.0),
         Point(90.0, 110.0, 4.0),
       ];
-      final mesh =
-          List.generate(71, (i) => Point(i.toDouble(), i * 2.0, i * 0.1));
+      final mesh = List.generate(
+        71,
+        (i) => Point(i.toDouble(), i * 2.0, i * 0.1),
+      );
 
       final eye = Eye(irisCenter: center, irisContour: irisContour, mesh: mesh);
       final map = eye.toMap();
@@ -308,7 +339,7 @@ void main() {
           Point(45.0, 50.0),
           Point(55.0, 50.0),
           Point(50.0, 45.0),
-          Point(50.0, 55.0)
+          Point(50.0, 55.0),
         ],
         mesh: [],
       );
@@ -318,7 +349,7 @@ void main() {
           Point(145.0, 50.0),
           Point(155.0, 50.0),
           Point(150.0, 45.0),
-          Point(150.0, 55.0)
+          Point(150.0, 55.0),
         ],
         mesh: [],
       );
@@ -376,9 +407,7 @@ void main() {
     });
 
     test('should return null for missing landmarks', () {
-      final partialMap = {
-        FaceLandmarkType.leftEye: Point(30.0, 40.0),
-      };
+      final partialMap = {FaceLandmarkType.leftEye: Point(30.0, 40.0)};
       final landmarks = FaceLandmarks(partialMap);
 
       expect(landmarks.rightEye, isNull);
@@ -815,10 +844,7 @@ void main() {
       expect(landmarks.leftEye, equals(const Point(15.0, 15.0)));
       expect(landmarks.rightEye, equals(const Point(85.0, 15.0)));
 
-      expect(
-        landmarks.noseTip,
-        equals(const Point(50.0, 60.0)),
-      );
+      expect(landmarks.noseTip, equals(const Point(50.0, 60.0)));
     });
 
     test('toMap/fromMap round-trip preserves face with mesh and iris', () {
@@ -850,10 +876,14 @@ void main() {
       final map = face.toMap();
       final restored = Face.fromMap(map);
 
-      expect(restored.boundingBox.topLeft.x,
-          closeTo(face.boundingBox.topLeft.x, 0.01));
-      expect(restored.boundingBox.topLeft.y,
-          closeTo(face.boundingBox.topLeft.y, 0.01));
+      expect(
+        restored.boundingBox.topLeft.x,
+        closeTo(face.boundingBox.topLeft.x, 0.01),
+      );
+      expect(
+        restored.boundingBox.topLeft.y,
+        closeTo(face.boundingBox.topLeft.y, 0.01),
+      );
 
       expect(restored.mesh, isNotNull);
       expect(restored.mesh!.length, 468);
@@ -978,8 +1008,11 @@ void main() {
       final eyes2 = face.eyes;
 
       expect(eyes1, isNotNull);
-      expect(identical(eyes1, eyes2), isTrue,
-          reason: 'Face.eyes should return cached object on repeated access');
+      expect(
+        identical(eyes1, eyes2),
+        isTrue,
+        reason: 'Face.eyes should return cached object on repeated access',
+      );
     });
 
     test('Face.eyes caches null result for empty iris points', () {
@@ -993,23 +1026,30 @@ void main() {
     });
 
     test(
-        'Eye.contour returns identical object when using optimized constructor',
-        () {
-      final mesh = List.generate(71, (i) => Point(i.toDouble(), i.toDouble()));
-      final eye = Eye.optimized(
-        irisCenter: Point(100, 100),
-        irisContour: [Point(1, 1), Point(2, 2), Point(3, 3), Point(4, 4)],
-        mesh: mesh,
-      );
+      'Eye.contour returns identical object when using optimized constructor',
+      () {
+        final mesh = List.generate(
+          71,
+          (i) => Point(i.toDouble(), i.toDouble()),
+        );
+        final eye = Eye.optimized(
+          irisCenter: Point(100, 100),
+          irisContour: [Point(1, 1), Point(2, 2), Point(3, 3), Point(4, 4)],
+          mesh: mesh,
+        );
 
-      final contour1 = eye.contour;
-      final contour2 = eye.contour;
+        final contour1 = eye.contour;
+        final contour2 = eye.contour;
 
-      expect(contour1.length, kMaxEyeLandmark);
-      expect(identical(contour1, contour2), isTrue,
+        expect(contour1.length, kMaxEyeLandmark);
+        expect(
+          identical(contour1, contour2),
+          isTrue,
           reason:
-              'Eye.contour should return cached object when using optimized constructor');
-    });
+              'Eye.contour should return cached object when using optimized constructor',
+        );
+      },
+    );
 
     test('Eye.contour computes on access for const constructor', () {
       const eye = Eye(
@@ -1034,8 +1074,11 @@ void main() {
       final contour1 = restoredEye.contour;
       final contour2 = restoredEye.contour;
 
-      expect(identical(contour1, contour2), isTrue,
-          reason: 'Eye.fromMap should use optimized constructor with caching');
+      expect(
+        identical(contour1, contour2),
+        isTrue,
+        reason: 'Eye.fromMap should use optimized constructor with caching',
+      );
     });
 
     test('Face serialization round-trip recomputes cache correctly', () {
@@ -1046,12 +1089,19 @@ void main() {
       final restored = Face.fromMap(map);
       final restoredEyes = restored.eyes;
 
-      expect(identical(originalEyes, restoredEyes), isFalse,
-          reason: 'Serialization creates new objects');
-      expect(restoredEyes?.leftEye?.irisCenter,
-          equals(originalEyes?.leftEye?.irisCenter));
-      expect(restoredEyes?.rightEye?.irisCenter,
-          equals(originalEyes?.rightEye?.irisCenter));
+      expect(
+        identical(originalEyes, restoredEyes),
+        isFalse,
+        reason: 'Serialization creates new objects',
+      );
+      expect(
+        restoredEyes?.leftEye?.irisCenter,
+        equals(originalEyes?.leftEye?.irisCenter),
+      );
+      expect(
+        restoredEyes?.rightEye?.irisCenter,
+        equals(originalEyes?.rightEye?.irisCenter),
+      );
 
       final restoredEyes2 = restored.eyes;
       expect(identical(restoredEyes, restoredEyes2), isTrue);

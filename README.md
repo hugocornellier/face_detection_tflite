@@ -38,7 +38,7 @@ Note: The Facial mesh and eye area mesh are separate.
 
 - On-device face detection, runs fully offline
 - **Face recognition**: 192-dim embeddings to identify/compare faces across images
-- **Selfie segmentation**: separate person from background for virtual backgrounds
+- **Selfie segmentation**: separate person from background, or use multiclass model for 6-class body part segmentation (hair, face, body, clothes, etc.)
 - 468 point mesh with **3D depth information** (x, y, z coordinates)
 - Face landmarks, comprehensive eye tracking (iris + 71-point eye mesh), and bounding boxes
 - All coordinates are in absolute pixel coordinates
@@ -565,7 +565,7 @@ Also available: `FaceDetector.faceDistance()` for Euclidean distance, and batch 
 
 Separate people from backgrounds using MediaPipe Selfie Segmentation. Useful for virtual backgrounds, portrait effects, and background blur.
 
-### Standalone Usage
+### Standalone Usage 
 
 ```dart
 import 'package:face_detection_tflite/face_detection_tflite.dart';
@@ -619,16 +619,62 @@ await detector.dispose();
 
 ### Model Variants
 
-| Model | Input Size | Best For |
-|-------|------------|----------|
-| **general** (default) | 256×256 | Portraits, square images |
-| **landscape** | 144×256 | Wide images, slightly faster |
+| Model | Input Size | Output | Best For |
+|-------|------------|--------|----------|
+| **general** (default) | 256×256 | Binary | Portraits, square images |
+| **landscape** | 144×256 | Binary | Wide images, video streams |
+| **multiclass** | 256×256 | 6 classes | Body part segmentation |
 
 ```dart
-// Use landscape model
+// Use landscape model for video
 final segmenter = await SelfieSegmentation.create(
-  model: SegmentationModel.landscape,
+  config: SegmentationConfig(model: SegmentationModel.landscape),
 );
+
+// Use multiclass for body part segmentation
+final segmenter = await SelfieSegmentation.create(
+  config: SegmentationConfig(model: SegmentationModel.multiclass),
+);
+```
+
+### Multiclass Segmentation
+
+The `multiclass` model segments images into 6 body part classes:
+
+| Class Index | Class Name | Description |
+|-------------|------------|-------------|
+| 0 | Background | Non-person pixels |
+| 1 | Hair | Hair regions |
+| 2 | Body Skin | Arms, hands, legs (exposed skin) |
+| 3 | Face Skin | Face and neck skin |
+| 4 | Clothes | Clothing regions |
+| 5 | Other | Accessories, hats, glasses, etc. |
+
+```dart
+final segmenter = await SelfieSegmentation.create(
+  config: SegmentationConfig(model: SegmentationModel.multiclass),
+);
+
+final mask = await segmenter(imageBytes);
+
+// Check if we got a multiclass mask
+if (mask is MulticlassSegmentationMask) {
+  // Access individual class probability masks
+  final hairMask = mask.hairMask;           // Float32List of probabilities
+  final faceSkinMask = mask.faceSkinMask;
+  final bodySkinMask = mask.bodySkinMask;
+  final clothesMask = mask.clothesMask;
+  final backgroundMask = mask.backgroundMask;
+  final otherMask = mask.otherMask;
+
+  // Or access by index
+  final hairMask2 = mask.classMask(1);  // Same as hairMask
+
+  // The base mask.data still contains combined person probability
+  final combinedPerson = mask.at(x, y);
+}
+
+segmenter.dispose();
 ```
 
 ### Memory Considerations
@@ -637,9 +683,18 @@ The background isolate holds all TFLite models (~26-40MB for full pipeline). Alw
 
 ## Example
 
-The [sample code](https://pub.dev/packages/face_detection_tflite/example) from the pub.dev example tab includes a
-Flutter app that paints detections onto an image: bounding boxes, landmarks, mesh, and comprehensive eye tracking. The
-example code provides inference time, and demonstrates when to use `FaceDetectionMode.standard` or `FaceDetectionMode.fast`.
+The [sample code](https://pub.dev/packages/face_detection_tflite/example) from the pub.dev example tab includes a Flutter app demonstrating all features:
+
+**Face Detection Demo:**
+- Bounding boxes, landmarks, 468-point mesh, and comprehensive eye tracking
+- Compare `FaceDetectionMode.fast`, `standard`, and `full` modes
+- Real-time inference timing display
+
+**Selfie Segmentation Demo:**
+- Switch between `general`, `landscape`, and `multiclass` models
+- Visualize individual body part masks (hair, face skin, clothes, etc.) with multiclass
+- Adjustable threshold, binary/soft mask toggle, and color options
+- Virtual background replacement demo in live camera mode
 
 ## Running Tests
 

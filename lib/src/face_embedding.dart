@@ -230,8 +230,10 @@ class FaceEmbedding {
   /// final embedding = await faceEmbedding.callFromMat(faceCropMat);
   /// faceCropMat.dispose();
   /// ```
-  Future<Float32List> callFromMat(cv.Mat faceCrop,
-      {Float32List? buffer}) async {
+  Future<Float32List> callFromMat(
+    cv.Mat faceCrop, {
+    Float32List? buffer,
+  }) async {
     final ImageTensor pack = convertImageToTensorFromMat(
       faceCrop,
       outW: _inW,
@@ -301,7 +303,8 @@ class FaceEmbedding {
   static double cosineSimilarity(Float32List a, Float32List b) {
     if (a.length != b.length) {
       throw ArgumentError(
-          'Embedding dimensions must match: ${a.length} vs ${b.length}');
+        'Embedding dimensions must match: ${a.length} vs ${b.length}',
+      );
     }
 
     double dot = 0.0;
@@ -338,7 +341,8 @@ class FaceEmbedding {
   static double euclideanDistance(Float32List a, Float32List b) {
     if (a.length != b.length) {
       throw ArgumentError(
-          'Embedding dimensions must match: ${a.length} vs ${b.length}');
+        'Embedding dimensions must match: ${a.length} vs ${b.length}',
+      );
     }
 
     double sum = 0.0;
@@ -371,7 +375,8 @@ class FaceEmbedding {
   /// Delegates to [FaceDetection._createInterpreterOptions] for consistent
   /// platform-aware delegate selection across all model types.
   static (InterpreterOptions, Delegate?) _createInterpreterOptions(
-      PerformanceConfig? config) {
+    PerformanceConfig? config,
+  ) {
     return FaceDetection._createInterpreterOptions(config);
   }
 }
@@ -435,10 +440,5 @@ AlignedFaceForEmbedding computeEmbeddingAlignment({
   final double cx = eyeCx - offsetY * st;
   final double cy = eyeCy + offsetY * ct;
 
-  return AlignedFaceForEmbedding(
-    cx: cx,
-    cy: cy,
-    size: size,
-    theta: theta,
-  );
+  return AlignedFaceForEmbedding(cx: cx, cy: cy, size: size, theta: theta);
 }

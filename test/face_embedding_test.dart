@@ -21,13 +21,15 @@ void main() {
       expect(similarity, closeTo(1.0, 0.0001));
     });
 
-    test('should return 1.0 for parallel vectors with different magnitudes',
-        () {
-      final a = Float32List.fromList([1.0, 2.0, 3.0]);
-      final b = Float32List.fromList([2.0, 4.0, 6.0]);
-      final similarity = FaceEmbedding.cosineSimilarity(a, b);
-      expect(similarity, closeTo(1.0, 0.0001));
-    });
+    test(
+      'should return 1.0 for parallel vectors with different magnitudes',
+      () {
+        final a = Float32List.fromList([1.0, 2.0, 3.0]);
+        final b = Float32List.fromList([2.0, 4.0, 6.0]);
+        final similarity = FaceEmbedding.cosineSimilarity(a, b);
+        expect(similarity, closeTo(1.0, 0.0001));
+      },
+    );
 
     test('should return -1.0 for opposite vectors', () {
       final a = Float32List.fromList([1.0, 0.0, 0.0]);
@@ -45,8 +47,10 @@ void main() {
 
     test('should handle normalized vectors correctly', () {
       final a = Float32List.fromList([1.0, 0.0]);
-      final b =
-          Float32List.fromList([math.cos(math.pi / 4), math.sin(math.pi / 4)]);
+      final b = Float32List.fromList([
+        math.cos(math.pi / 4),
+        math.sin(math.pi / 4),
+      ]);
 
       final similarity = FaceEmbedding.cosineSimilarity(a, b);
       expect(similarity, closeTo(math.cos(math.pi / 4), 0.0001));
@@ -58,11 +62,13 @@ void main() {
 
       expect(
         () => FaceEmbedding.cosineSimilarity(a, b),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.message,
-          'message',
-          contains('dimensions must match'),
-        )),
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => e.message,
+            'message',
+            contains('dimensions must match'),
+          ),
+        ),
       );
     });
 
@@ -127,11 +133,13 @@ void main() {
 
       expect(
         () => FaceEmbedding.euclideanDistance(a, b),
-        throwsA(isA<ArgumentError>().having(
-          (e) => e.message,
-          'message',
-          contains('dimensions must match'),
-        )),
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => e.message,
+            'message',
+            contains('dimensions must match'),
+          ),
+        ),
       );
     });
 
@@ -197,43 +205,52 @@ void main() {
 
   group('FaceDetector.compareFaces and faceDistance consistency', () {
     test(
-        'similarity and distance should be inversely related for normalized vectors',
-        () {
-      final angles = [0.0, math.pi / 6, math.pi / 4, math.pi / 3, math.pi / 2];
+      'similarity and distance should be inversely related for normalized vectors',
+      () {
+        final angles = [
+          0.0,
+          math.pi / 6,
+          math.pi / 4,
+          math.pi / 3,
+          math.pi / 2,
+        ];
 
-      for (final angle in angles) {
-        final a = Float32List.fromList([1.0, 0.0]);
-        final b = Float32List.fromList([math.cos(angle), math.sin(angle)]);
+        for (final angle in angles) {
+          final a = Float32List.fromList([1.0, 0.0]);
+          final b = Float32List.fromList([math.cos(angle), math.sin(angle)]);
 
-        final similarity = FaceDetector.compareFaces(a, b);
-        final distance = FaceDetector.faceDistance(a, b);
+          final similarity = FaceDetector.compareFaces(a, b);
+          final distance = FaceDetector.faceDistance(a, b);
 
-        expect(similarity, closeTo(math.cos(angle), 0.001));
-        expect(distance, closeTo(2 * math.sin(angle / 2), 0.001));
-      }
-    });
+          expect(similarity, closeTo(math.cos(angle), 0.001));
+          expect(distance, closeTo(2 * math.sin(angle / 2), 0.001));
+        }
+      },
+    );
 
-    test('identical embeddings should have similarity 1.0 and distance 0.0',
-        () {
-      final embedding = Float32List.fromList(
-        List.generate(192, (i) => math.sin(i.toDouble())),
-      );
+    test(
+      'identical embeddings should have similarity 1.0 and distance 0.0',
+      () {
+        final embedding = Float32List.fromList(
+          List.generate(192, (i) => math.sin(i.toDouble())),
+        );
 
-      double norm = 0.0;
-      for (final v in embedding) {
-        norm += v * v;
-      }
-      norm = math.sqrt(norm);
-      final normalized = Float32List.fromList(
-        embedding.map((v) => v / norm).toList(),
-      );
+        double norm = 0.0;
+        for (final v in embedding) {
+          norm += v * v;
+        }
+        norm = math.sqrt(norm);
+        final normalized = Float32List.fromList(
+          embedding.map((v) => v / norm).toList(),
+        );
 
-      final similarity = FaceDetector.compareFaces(normalized, normalized);
-      final distance = FaceDetector.faceDistance(normalized, normalized);
+        final similarity = FaceDetector.compareFaces(normalized, normalized);
+        final distance = FaceDetector.faceDistance(normalized, normalized);
 
-      expect(similarity, closeTo(1.0, 0.0001));
-      expect(distance, closeTo(0.0, 0.0001));
-    });
+        expect(similarity, closeTo(1.0, 0.0001));
+        expect(distance, closeTo(0.0, 0.0001));
+      },
+    );
   });
 
   group('computeEmbeddingAlignment', () {

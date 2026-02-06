@@ -36,8 +36,13 @@ class ImageUtils {
       newHeight = (imageHeight * ash).toInt();
     }
 
-    final resizedImage =
-        cv.resize(image, (newWidth, newHeight), interpolation: cv.INTER_LINEAR);
+    final resizedImage = cv.resize(
+        image,
+        (
+          newWidth,
+          newHeight,
+        ),
+        interpolation: cv.INTER_LINEAR);
 
     final padTop = (resizeHeight - newHeight) ~/ 2;
     final padBottom = resizeHeight - newHeight - padTop;
@@ -83,8 +88,11 @@ class ImageUtils {
 
     final angleDegrees = -theta * 180.0 / math.pi;
 
-    final rotMat =
-        cv.getRotationMatrix2D(cv.Point2f(cx, cy), angleDegrees, 1.0);
+    final rotMat = cv.getRotationMatrix2D(
+      cv.Point2f(cx, cy),
+      angleDegrees,
+      1.0,
+    );
 
     final outCenter = sizeInt / 2.0;
 
@@ -115,13 +123,7 @@ class ImageUtils {
   /// - [y2]: Bottom boundary in pixels
   ///
   /// Returns the cropped region. Caller must dispose.
-  static cv.Mat cropRect(
-    cv.Mat image,
-    int x1,
-    int y1,
-    int x2,
-    int y2,
-  ) {
+  static cv.Mat cropRect(cv.Mat image, int x1, int y1, int x2, int y2) {
     final clampedX1 = x1.clamp(0, image.cols - 1);
     final clampedY1 = y1.clamp(0, image.rows - 1);
     final clampedX2 = x2.clamp(clampedX1 + 1, image.cols);
@@ -169,8 +171,10 @@ class ImageUtils {
   /// - [buffer]: Optional pre-allocated buffer to reuse
   ///
   /// Returns a flat Float32List with normalized RGB pixel values in [-1, 1].
-  static Float32List matToFloat32TensorMediaPipe(cv.Mat mat,
-      {Float32List? buffer}) {
+  static Float32List matToFloat32TensorMediaPipe(
+    cv.Mat mat, {
+    Float32List? buffer,
+  }) {
     final data = mat.data;
     final totalPixels = mat.rows * mat.cols;
     final size = totalPixels * 3;

@@ -34,6 +34,8 @@ class _SegmentationIsolateStartupData {
   final int maxOutputSize;
   final String resizeStrategyName;
   final bool validateModel;
+  final String modelName;
+  final int modelIndex;
 
   _SegmentationIsolateStartupData({
     required this.sendPort,
@@ -43,6 +45,8 @@ class _SegmentationIsolateStartupData {
     required this.maxOutputSize,
     required this.resizeStrategyName,
     required this.validateModel,
+    required this.modelName,
+    required this.modelIndex,
   });
 }
 
@@ -193,8 +197,13 @@ class FaceDetectorIsolate {
 
       // Optionally load segmentation model
       if (withSegmentation) {
-        const segmentationModelPath =
-            'packages/face_detection_tflite/assets/models/$_segmentationModel';
+        // On iOS/Android, fall back to multiclass (binary models require custom ops)
+        final effectiveSegModel = _effectiveModel(
+          segmentationConfig?.model ?? SegmentationModel.general,
+        );
+        final segModelFile = _modelFileFor(effectiveSegModel);
+        final segmentationModelPath =
+            'packages/face_detection_tflite/assets/models/$segModelFile';
         assetFutures.add(rootBundle.load(segmentationModelPath));
       }
 
@@ -220,10 +229,7 @@ class FaceDetectorIsolate {
       if (withSegmentation && results.length > 4) {
         final segBytes = results[4].buffer.asUint8List();
         final config = segmentationConfig ?? SegmentationConfig.safe;
-        await _spawnSegmentationIsolate(
-          modelBytes: segBytes,
-          config: config,
-        );
+        await _spawnSegmentationIsolate(modelBytes: segBytes, config: config);
         _segmentationInitialized = true;
       }
 
@@ -254,8 +260,9 @@ class FaceDetectorIsolate {
       _detectionIsolateEntry,
       _DetectionIsolateStartupData(
         sendPort: _detectionReceivePort.sendPort,
-        faceDetectionBytes:
-            TransferableTypedData.fromList([faceDetectionBytes]),
+        faceDetectionBytes: TransferableTypedData.fromList([
+          faceDetectionBytes,
+        ]),
         faceLandmarkBytes: TransferableTypedData.fromList([faceLandmarkBytes]),
         irisLandmarkBytes: TransferableTypedData.fromList([irisLandmarkBytes]),
         embeddingBytes: TransferableTypedData.fromList([embeddingBytes]),
@@ -300,6 +307,8 @@ class FaceDetectorIsolate {
     required Uint8List modelBytes,
     required SegmentationConfig config,
   }) async {
+    // On iOS/Android, fall back to multiclass (binary models require custom ops)
+    final effectiveModel = _effectiveModel(config.model);
     _segmentationIsolate = await Isolate.spawn(
       _segmentationIsolateEntry,
       _SegmentationIsolateStartupData(
@@ -310,6 +319,8 @@ class FaceDetectorIsolate {
         maxOutputSize: config.maxOutputSize,
         resizeStrategyName: config.resizeStrategy.name,
         validateModel: config.validateModel,
+        modelName: _modelFileFor(effectiveModel),
+        modelIndex: effectiveModel.index,
       ),
       debugName: 'FaceDetectorIsolate.segmentation',
     );
@@ -375,7 +386,9 @@ class FaceDetectorIsolate {
   }
 
   Future<T> _sendDetectionRequest<T>(
-      String operation, Map<String, dynamic> params) async {
+    String operation,
+    Map<String, dynamic> params,
+  ) async {
     if (!_initialized) {
       throw StateError(
         'FaceDetectorIsolate not initialized. Use FaceDetectorIsolate.spawn().',
@@ -399,7 +412,9 @@ class FaceDetectorIsolate {
   }
 
   Future<T> _sendSegmentationRequest<T>(
-      String operation, Map<String, dynamic> params) async {
+    String operation,
+    Map<String, dynamic> params,
+  ) async {
     if (!_segmentationInitialized) {
       throw StateError(
         'Segmentation not initialized. Use spawn(withSegmentation: true).',
@@ -452,11 +467,13 @@ class FaceDetectorIsolate {
     Uint8List imageBytes, {
     FaceDetectionMode mode = FaceDetectionMode.full,
   }) async {
-    final List<dynamic> result =
-        await _sendDetectionRequest<List<dynamic>>('detect', {
-      'bytes': TransferableTypedData.fromList([imageBytes]),
-      'mode': mode.name,
-    });
+    final List<dynamic> result = await _sendDetectionRequest<List<dynamic>>(
+      'detect',
+      {
+        'bytes': TransferableTypedData.fromList([imageBytes]),
+        'mode': mode.name,
+      },
+    );
 
     return result
         .map((map) => Face.fromMap(Map<String, dynamic>.from(map as Map)))
@@ -548,14 +565,16 @@ class FaceDetectorIsolate {
     int matType = 16, // CV_8UC3
     FaceDetectionMode mode = FaceDetectionMode.full,
   }) async {
-    final List<dynamic> result =
-        await _sendDetectionRequest<List<dynamic>>('detectMat', {
-      'bytes': TransferableTypedData.fromList([bytes]),
-      'width': width,
-      'height': height,
-      'matType': matType,
-      'mode': mode.name,
-    });
+    final List<dynamic> result = await _sendDetectionRequest<List<dynamic>>(
+      'detectMat',
+      {
+        'bytes': TransferableTypedData.fromList([bytes]),
+        'width': width,
+        'height': height,
+        'matType': matType,
+        'mode': mode.name,
+      },
+    );
 
     return result
         .map((map) => Face.fromMap(Map<String, dynamic>.from(map as Map)))
@@ -583,11 +602,13 @@ class FaceDetectorIsolate {
   /// final similarity = FaceDetector.compareFaces(embedding, referenceEmbedding);
   /// ```
   Future<Float32List> getFaceEmbedding(Face face, Uint8List imageBytes) async {
-    final List<double> result =
-        await _sendDetectionRequest<List<double>>('embedding', {
-      'bytes': TransferableTypedData.fromList([imageBytes]),
-      'face': face.toMap(),
-    });
+    final List<double> result = await _sendDetectionRequest<List<double>>(
+      'embedding',
+      {
+        'bytes': TransferableTypedData.fromList([imageBytes]),
+        'face': face.toMap(),
+      },
+    );
 
     return Float32List.fromList(result);
   }
@@ -619,11 +640,13 @@ class FaceDetectorIsolate {
     List<Face> faces,
     Uint8List imageBytes,
   ) async {
-    final List<dynamic> result =
-        await _sendDetectionRequest<List<dynamic>>('embeddings', {
-      'bytes': TransferableTypedData.fromList([imageBytes]),
-      'faces': faces.map((f) => f.toMap()).toList(),
-    });
+    final List<dynamic> result = await _sendDetectionRequest<List<dynamic>>(
+      'embeddings',
+      {
+        'bytes': TransferableTypedData.fromList([imageBytes]),
+        'faces': faces.map((f) => f.toMap()).toList(),
+      },
+    );
 
     return result.map((dynamic item) {
       if (item == null) return null;
@@ -674,7 +697,7 @@ class FaceDetectorIsolate {
       'binaryThreshold': binaryThreshold,
     });
 
-    return SegmentationMask.fromMap(result);
+    return _deserializeMask(result);
   }
 
   /// Segments an OpenCV [cv.Mat] image in the background isolate.
@@ -722,7 +745,7 @@ class FaceDetectorIsolate {
       'binaryThreshold': binaryThreshold,
     });
 
-    return SegmentationMask.fromMap(result);
+    return _deserializeMask(result);
   }
 
   /// Detects faces and generates segmentation mask in parallel.
@@ -804,7 +827,7 @@ class FaceDetectorIsolate {
         'binaryThreshold': binaryThreshold,
       }).then((result) {
         segmentationStopwatch.stop();
-        return SegmentationMask.fromMap(result);
+        return _deserializeMask(result);
       }),
     ]);
 
@@ -867,7 +890,7 @@ class FaceDetectorIsolate {
         'binaryThreshold': binaryThreshold,
       }).then((result) {
         segmentationStopwatch.stop();
-        return SegmentationMask.fromMap(result);
+        return _deserializeMask(result);
       }),
     ]);
 
@@ -975,8 +998,9 @@ class FaceDetectorIsolate {
 
       mainSendPort.send(workerReceivePort.sendPort);
     } catch (e, st) {
-      mainSendPort
-          .send({'error': 'Detection isolate initialization failed: $e\n$st'});
+      mainSendPort.send({
+        'error': 'Detection isolate initialization failed: $e\n$st',
+      });
       return;
     }
 
@@ -1055,12 +1079,15 @@ class FaceDetectorIsolate {
             final ByteBuffer bb =
                 (message['bytes'] as TransferableTypedData).materialize();
             final Uint8List imageBytes = bb.asUint8List();
-            final Map<String, dynamic> faceMap =
-                Map<String, dynamic>.from(message['face'] as Map);
+            final Map<String, dynamic> faceMap = Map<String, dynamic>.from(
+              message['face'] as Map,
+            );
             final Face face = Face.fromMap(faceMap);
 
-            final embedding =
-                await detector!.getFaceEmbedding(face, imageBytes);
+            final embedding = await detector!.getFaceEmbedding(
+              face,
+              imageBytes,
+            );
             mainSendPort.send({'id': id, 'result': embedding.toList()});
 
           case 'embeddings':
@@ -1080,8 +1107,10 @@ class FaceDetectorIsolate {
                 .map((m) => Face.fromMap(Map<String, dynamic>.from(m as Map)))
                 .toList();
 
-            final embeddings =
-                await detector!.getFaceEmbeddings(faces, imageBytes);
+            final embeddings = await detector!.getFaceEmbeddings(
+              faces,
+              imageBytes,
+            );
             final serialized = embeddings.map((e) => e?.toList()).toList();
             mainSendPort.send({'id': id, 'result': serialized});
 
@@ -1099,7 +1128,8 @@ class FaceDetectorIsolate {
   /// Segmentation isolate entry point - handles selfie segmentation.
   @pragma('vm:entry-point')
   static void _segmentationIsolateEntry(
-      _SegmentationIsolateStartupData data) async {
+    _SegmentationIsolateStartupData data,
+  ) async {
     final SendPort mainSendPort = data.sendPort;
     final ReceivePort workerReceivePort = ReceivePort();
 
@@ -1115,7 +1145,11 @@ class FaceDetectorIsolate {
         (s) => s.name == data.resizeStrategyName,
       );
 
+      // Derive model variant from the transferred model index
+      final SegmentationModel model = SegmentationModel.values[data.modelIndex];
+
       final config = SegmentationConfig(
+        model: model,
         performanceConfig: PerformanceConfig(
           mode: performanceMode,
           numThreads: data.numThreads,
@@ -1132,8 +1166,9 @@ class FaceDetectorIsolate {
 
       mainSendPort.send(workerReceivePort.sendPort);
     } catch (e, st) {
-      mainSendPort.send(
-          {'error': 'Segmentation isolate initialization failed: $e\n$st'});
+      mainSendPort.send({
+        'error': 'Segmentation isolate initialization failed: $e\n$st',
+      });
       return;
     }
 
@@ -1229,6 +1264,7 @@ class FaceDetectorIsolate {
   /// Serializes a segmentation mask for isolate transfer.
   ///
   /// Converts the mask to the requested output format to reduce transfer overhead.
+  /// For [MulticlassSegmentationMask], also serializes per-class probability data.
   static Map<String, dynamic> _serializeMask(
     SegmentationMask mask,
     IsolateOutputFormat format,
@@ -1266,6 +1302,38 @@ class FaceDetectorIsolate {
         break;
     }
 
+    // Include multiclass data if present
+    if (mask is MulticlassSegmentationMask) {
+      result['classData'] = mask._classData.toList();
+    }
+
     return result;
+  }
+
+  /// Deserializes a segmentation mask from isolate transfer data.
+  ///
+  /// Reconstructs a [MulticlassSegmentationMask] when classData is present,
+  /// otherwise returns a standard [SegmentationMask].
+  static SegmentationMask _deserializeMask(Map<String, dynamic> map) {
+    final baseMask = SegmentationMask.fromMap(map);
+
+    // If multiclass data is present, wrap in MulticlassSegmentationMask
+    if (map['classData'] != null) {
+      final List rawClassData = map['classData'] as List;
+      final Float32List classData = Float32List.fromList(
+        rawClassData.cast<double>(),
+      );
+      return MulticlassSegmentationMask(
+        data: baseMask.data,
+        width: baseMask.width,
+        height: baseMask.height,
+        originalWidth: baseMask.originalWidth,
+        originalHeight: baseMask.originalHeight,
+        padding: baseMask.padding,
+        classData: classData,
+      );
+    }
+
+    return baseMask;
   }
 }

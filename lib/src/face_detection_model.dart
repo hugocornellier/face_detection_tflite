@@ -25,12 +25,8 @@ class FaceDetection {
   late final List<List<List<double>>> _boxesOutCache;
   late final Object _scoresOutCache;
 
-  FaceDetection._(
-    this._itp,
-    this._inW,
-    this._inH,
-    this._anchors,
-  ) : _assumeMirrored = false;
+  FaceDetection._(this._itp, this._inW, this._inH, this._anchors)
+      : _assumeMirrored = false;
 
   /// The model input width in pixels.
   int get inputWidth => _inW;
@@ -96,12 +92,7 @@ class FaceDetection {
     );
 
     final Float32List anchors = _ssdGenerateAnchors(opts);
-    final FaceDetection obj = FaceDetection._(
-      itp,
-      inW,
-      inH,
-      anchors,
-    );
+    final FaceDetection obj = FaceDetection._(itp, inW, inH, anchors);
     obj._delegate = delegate;
 
     await obj._initializeTensors();
@@ -134,12 +125,7 @@ class FaceDetection {
     );
 
     final Float32List anchors = _ssdGenerateAnchors(opts);
-    final FaceDetection obj = FaceDetection._(
-      itp,
-      inW,
-      inH,
-      anchors,
-    );
+    final FaceDetection obj = FaceDetection._(itp, inW, inH, anchors);
     obj._delegate = delegate;
 
     await obj._initializeTensors();
@@ -560,7 +546,8 @@ class FaceDetection {
   /// *Falls back to CPU (XNNPACK not supported on this platform)
   /// **Experimental, may crash on some devices
   static (InterpreterOptions, Delegate?) _createInterpreterOptions(
-      PerformanceConfig? config) {
+    PerformanceConfig? config,
+  ) {
     final options = InterpreterOptions();
     final effectiveConfig = config ?? const PerformanceConfig();
 
@@ -590,7 +577,9 @@ class FaceDetection {
 
   /// Creates options for auto mode - selects best delegate per platform.
   static (InterpreterOptions, Delegate?) _createAutoModeOptions(
-      InterpreterOptions options, int threadCount) {
+    InterpreterOptions options,
+    int threadCount,
+  ) {
     if (Platform.isMacOS || Platform.isLinux) {
       return _createXnnpackOptions(options, threadCount);
     }
@@ -605,7 +594,9 @@ class FaceDetection {
 
   /// Creates options with XNNPACK delegate (desktop only).
   static (InterpreterOptions, Delegate?) _createXnnpackOptions(
-      InterpreterOptions options, int threadCount) {
+    InterpreterOptions options,
+    int threadCount,
+  ) {
     options.threads = threadCount;
 
     if (!Platform.isMacOS && !Platform.isLinux) {
@@ -625,7 +616,9 @@ class FaceDetection {
 
   /// Creates options with GPU delegate.
   static (InterpreterOptions, Delegate?) _createGpuOptions(
-      InterpreterOptions options, int threadCount) {
+    InterpreterOptions options,
+    int threadCount,
+  ) {
     options.threads = threadCount;
 
     if (!Platform.isIOS && !Platform.isAndroid) {

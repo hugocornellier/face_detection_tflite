@@ -116,10 +116,12 @@ class IrisLandmark {
     _inputBuf = _inputTensor.data.buffer.asFloat32List();
 
     final Map<int, OutputTensorInfo> outputInfo = collectOutputTensorInfo(_itp);
-    _outShapes =
-        outputInfo.map((int k, OutputTensorInfo v) => MapEntry(k, v.shape));
-    _outBuffers =
-        outputInfo.map((int k, OutputTensorInfo v) => MapEntry(k, v.buffer));
+    _outShapes = outputInfo.map(
+      (int k, OutputTensorInfo v) => MapEntry(k, v.shape),
+    );
+    _outBuffers = outputInfo.map(
+      (int k, OutputTensorInfo v) => MapEntry(k, v.buffer),
+    );
     _input4dCache = createNHWCTensor4D(_inH, _inW);
 
     _outputsCache = <int, Object>{};
@@ -198,10 +200,12 @@ class IrisLandmark {
     obj._inputBuf = obj._inputTensor.data.buffer.asFloat32List();
 
     final Map<int, OutputTensorInfo> outputInfo = collectOutputTensorInfo(itp);
-    obj._outShapes =
-        outputInfo.map((int k, OutputTensorInfo v) => MapEntry(k, v.shape));
-    obj._outBuffers =
-        outputInfo.map((int k, OutputTensorInfo v) => MapEntry(k, v.buffer));
+    obj._outShapes = outputInfo.map(
+      (int k, OutputTensorInfo v) => MapEntry(k, v.shape),
+    );
+    obj._outBuffers = outputInfo.map(
+      (int k, OutputTensorInfo v) => MapEntry(k, v.buffer),
+    );
     obj._input4dCache = createNHWCTensor4D(inH, inW);
 
     obj._outputsCache = <int, Object>{};
@@ -763,7 +767,8 @@ class IrisLandmark {
   /// Delegates to [FaceDetection._createInterpreterOptions] for consistent
   /// platform-aware delegate selection across all model types.
   static (InterpreterOptions, Delegate?) _createInterpreterOptions(
-      PerformanceConfig? config) {
+    PerformanceConfig? config,
+  ) {
     return FaceDetection._createInterpreterOptions(config);
   }
 }

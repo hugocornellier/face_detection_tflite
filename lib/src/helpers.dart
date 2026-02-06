@@ -123,11 +123,7 @@ Object allocTensorShape(List<int> shape) {
           growable: false,
         );
       default:
-        return List.generate(
-          size,
-          (_) => build(depth + 1),
-          growable: false,
-        );
+        return List.generate(size, (_) => build(depth + 1), growable: false);
     }
   }
 
@@ -241,8 +237,9 @@ Future<void> _imageToTensorIsolate(Map<String, dynamic> params) async {
   final ImageTensor result = convertImageToTensor(src, outW: outW, outH: outH);
 
   sp.send({
-    'tensor': TransferableTypedData.fromList(
-        [result.tensorNHWC.buffer.asUint8List()]),
+    'tensor': TransferableTypedData.fromList([
+      result.tensorNHWC.buffer.asUint8List(),
+    ]),
     'padding': result.padding,
     'outW': result.width,
     'outH': result.height,
@@ -488,14 +485,22 @@ List<Detection> _nmsCore(
     if (cellToIndices == null) {
       candidateIndices = Iterable<int>.generate(n - i - 1, (k) => i + 1 + k);
     } else {
-      final int minCol =
-          (baseBox.xmin / cellSize).floor().clamp(0, gridSize - 1);
-      final int maxCol =
-          (baseBox.xmax / cellSize).floor().clamp(0, gridSize - 1);
-      final int minRow =
-          (baseBox.ymin / cellSize).floor().clamp(0, gridSize - 1);
-      final int maxRow =
-          (baseBox.ymax / cellSize).floor().clamp(0, gridSize - 1);
+      final int minCol = (baseBox.xmin / cellSize).floor().clamp(
+            0,
+            gridSize - 1,
+          );
+      final int maxCol = (baseBox.xmax / cellSize).floor().clamp(
+            0,
+            gridSize - 1,
+          );
+      final int minRow = (baseBox.ymin / cellSize).floor().clamp(
+            0,
+            gridSize - 1,
+          );
+      final int maxRow = (baseBox.ymax / cellSize).floor().clamp(
+            0,
+            gridSize - 1,
+          );
 
       final Set<int> candidates = <int>{};
       for (int row = minRow; row <= maxRow; row++) {
@@ -1193,8 +1198,13 @@ ImageTensor convertImageToTensorFromMat(
   final int newW = (inW * scale).round();
   final int newH = (inH * scale).round();
 
-  final cv.Mat resized =
-      cv.resize(src, (newW, newH), interpolation: cv.INTER_LINEAR);
+  final cv.Mat resized = cv.resize(
+      src,
+      (
+        newW,
+        newH,
+      ),
+      interpolation: cv.INTER_LINEAR);
 
   final int dx = (outW - newW) ~/ 2;
   final int dy = (outH - newH) ~/ 2;

@@ -84,8 +84,11 @@ void main() {
     });
 
     test('testImageFromDecodedRgb rebuilds image', () {
-      final decoded =
-          DecodedRgb(2, 1, Uint8List.fromList([255, 0, 0, 0, 255, 0]));
+      final decoded = DecodedRgb(
+        2,
+        1,
+        Uint8List.fromList([255, 0, 0, 0, 255, 0]),
+      );
       final image = testImageFromDecodedRgb(decoded);
 
       expect(image.width, 2);
@@ -126,9 +129,9 @@ class _FakeInterpreter implements Interpreter {
   Tensor getOutputTensor(int index) {
     if (index >= outputs) throw StateError('no more tensors');
     final shape = [index + 1, index + 2, index + 3];
-    final buffer =
-        Float32List.fromList(List.filled(shape.reduce((a, b) => a * b), 0))
-            .buffer;
+    final buffer = Float32List.fromList(
+      List.filled(shape.reduce((a, b) => a * b), 0),
+    ).buffer;
     return _FakeTensor(shape, buffer);
   }
 

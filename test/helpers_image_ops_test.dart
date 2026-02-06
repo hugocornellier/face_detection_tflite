@@ -133,23 +133,25 @@ void main() {
       expect(decoded.rgb, isNotEmpty);
     });
 
-    test('imageToTensorWithWorker uses isolate conversion when worker null',
-        () async {
-      final image = _solidImage(2, 2, img.ColorRgb8(0, 0, 255));
+    test(
+      'imageToTensorWithWorker uses isolate conversion when worker null',
+      () async {
+        final image = _solidImage(2, 2, img.ColorRgb8(0, 0, 255));
 
-      final tensor = await imageToTensorWithWorker(
-        image,
-        outW: 2,
-        outH: 2,
-        worker: null,
-      );
+        final tensor = await imageToTensorWithWorker(
+          image,
+          outW: 2,
+          outH: 2,
+          worker: null,
+        );
 
-      expect(tensor.width, 2);
-      expect(tensor.height, 2);
-      expect(tensor.padding, [0.0, 0.0, 0.0, 0.0]);
-      expect(tensor.tensorNHWC[0], closeTo(-1.0, 1e-6));
-      expect(tensor.tensorNHWC[1], closeTo(-1.0, 1e-6));
-      expect(tensor.tensorNHWC[2], closeTo(1.0, 1e-6));
-    });
+        expect(tensor.width, 2);
+        expect(tensor.height, 2);
+        expect(tensor.padding, [0.0, 0.0, 0.0, 0.0]);
+        expect(tensor.tensorNHWC[0], closeTo(-1.0, 1e-6));
+        expect(tensor.tensorNHWC[1], closeTo(-1.0, 1e-6));
+        expect(tensor.tensorNHWC[2], closeTo(1.0, 1e-6));
+      },
+    );
   });
 }
