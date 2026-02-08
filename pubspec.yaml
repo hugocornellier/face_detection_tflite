@@ -1,6 +1,6 @@
 name: face_detection_tflite
 description: "Advanced face & landmark detection, embedding and segmentation using on-device TFLite models."
-version: 4.5.3
+version: 4.6.0
 
 repository: https://github.com/hugocornellier/face_detection_tflite
 homepage: https://github.com/hugocornellier/face_detection_tflite

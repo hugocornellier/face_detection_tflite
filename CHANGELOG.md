@@ -1,3 +1,8 @@
+## 4.6.0
+- Fix FaceDetectorIsolate hang on Android during batch face embeddings
+- 3-4x performance improvement for FaceDetectorIsolate by eliminating redundant nested isolates
+- Models inside worker isolates now invoke TFLite directly instead of routing through nested IsolateInterpreters
+
 ## 4.5.3
 - Fix Android build: bump tflite_flutter_custom to 1.2.5 (fixes undefined symbol TfLiteIntArrayCreate linker error)
 

@@ -1194,8 +1194,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   bool _isProcessing = false;
   bool _isInitialized = false;
   int _frameCounter = 0;
-  int _processEveryNFrames =
-      3; // Process every 3rd frame for better performance
+  int _processEveryNFrames = 1; // Process every frame
   int _detectionTimeMs = 0;
   int _fps = 0;
   DateTime? _lastFpsUpdate;
