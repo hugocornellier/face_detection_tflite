@@ -106,12 +106,18 @@ class IrisLandmark {
 
     final IrisLandmark obj = IrisLandmark._(itp, inW, inH);
     obj._delegate = delegate;
-    await obj._initializeTensors();
+    await obj._initializeTensors(useIsolateInterpreter: false);
     return obj;
   }
 
   /// Shared tensor initialization logic.
-  Future<void> _initializeTensors() async {
+  ///
+  /// When [useIsolateInterpreter] is false, inference runs directly via
+  /// `_itp.invoke()` instead of spawning a nested isolate. This should be
+  /// used when the model is already running inside a background isolate.
+  Future<void> _initializeTensors({
+    bool useIsolateInterpreter = true,
+  }) async {
     _inputTensor = _itp.getInputTensor(0);
     _inputBuf = _inputTensor.data.buffer.asFloat32List();
 
@@ -129,7 +135,9 @@ class IrisLandmark {
       _outputsCache[i] = allocTensorShape(shape);
     });
 
-    _iso = await IsolateInterpreter.create(address: _itp.address);
+    if (useIsolateInterpreter) {
+      _iso = await IsolateInterpreter.create(address: _itp.address);
+    }
   }
 
   /// Creates and initializes an iris landmark model from a custom file path.

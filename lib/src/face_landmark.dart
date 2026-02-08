@@ -105,12 +105,18 @@ class FaceLandmark {
 
     final FaceLandmark obj = FaceLandmark._(itp, inW, inH);
     obj._delegate = delegate;
-    await obj._initializeTensors();
+    await obj._initializeTensors(useIsolateInterpreter: false);
     return obj;
   }
 
   /// Shared tensor initialization logic.
-  Future<void> _initializeTensors() async {
+  ///
+  /// When [useIsolateInterpreter] is false, inference runs directly via
+  /// `_itp.invoke()` instead of spawning a nested isolate. This should be
+  /// used when the model is already running inside a background isolate.
+  Future<void> _initializeTensors({
+    bool useIsolateInterpreter = true,
+  }) async {
     _inputTensor = _itp.getInputTensor(0);
     int numElements(List<int> s) => s.fold(1, (a, b) => a * b);
 
@@ -150,7 +156,9 @@ class FaceLandmark {
       }
     }
 
-    _iso = await IsolateInterpreter.create(address: _itp.address);
+    if (useIsolateInterpreter) {
+      _iso = await IsolateInterpreter.create(address: _itp.address);
+    }
   }
 
   /// Predicts the 468-point face mesh for an aligned face crop.

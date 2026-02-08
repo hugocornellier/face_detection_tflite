@@ -128,12 +128,18 @@ class FaceDetection {
     final FaceDetection obj = FaceDetection._(itp, inW, inH, anchors);
     obj._delegate = delegate;
 
-    await obj._initializeTensors();
+    await obj._initializeTensors(useIsolateInterpreter: false);
     return obj;
   }
 
   /// Shared tensor initialization logic.
-  Future<void> _initializeTensors() async {
+  ///
+  /// When [useIsolateInterpreter] is false, inference runs directly via
+  /// `_itp.invoke()` instead of spawning a nested isolate. This should be
+  /// used when the model is already running inside a background isolate.
+  Future<void> _initializeTensors({
+    bool useIsolateInterpreter = true,
+  }) async {
     int foundIdx = -1;
     for (int i = 0; i < 10; i++) {
       try {
@@ -204,7 +210,9 @@ class FaceDetection {
       );
     }
 
-    _iso = await IsolateInterpreter.create(address: _itp.address);
+    if (useIsolateInterpreter) {
+      _iso = await IsolateInterpreter.create(address: _itp.address);
+    }
   }
 
   void _flatten3D(List<List<List<num>>> src, Float32List dst) {
