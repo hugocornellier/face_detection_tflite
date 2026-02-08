@@ -1,3 +1,6 @@
+## 4.5.3
+- Fix Android build: bump tflite_flutter_custom to 1.2.5 (fixes undefined symbol TfLiteIntArrayCreate linker error)
+
 ## 4.5.2
 - Fix bug causing auto-bundling to fail on MacOS
 

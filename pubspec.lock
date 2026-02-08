@@ -340,10 +340,10 @@ packages:
     dependency: "direct main"
     description:
       name: tflite_flutter_custom
-      sha256: d00cd245eb9dde371efeefadb9e9bf0b2347dd0f6d14a2b557f04a792868527a
+      sha256: "536189bcfebc3f1ff4c1f1f07eca764be9962bbf937a6cc6defce40180577473"
       url: "https://pub.dev"
     source: hosted
-    version: "1.2.4"
+    version: "1.2.5"
   typed_data:
     dependency: transitive
     description:

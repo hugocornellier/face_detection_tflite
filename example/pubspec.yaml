@@ -27,7 +27,7 @@ dev_dependencies:
   integration_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  tflite_flutter_custom: ^1.2.4
+  tflite_flutter_custom: ^1.2.5
 
 flutter:
   uses-material-design: true
