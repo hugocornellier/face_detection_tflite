@@ -1,5 +1,10 @@
 PODS:
   - Flutter (1.0.0)
+  - flutter_litert (0.0.1):
+    - Flutter
+    - TensorFlowLiteSwift (= 2.17.0)
+    - TensorFlowLiteSwift/CoreML (= 2.17.0)
+    - TensorFlowLiteSwift/Metal (= 2.17.0)
   - TensorFlowLiteC (2.17.0):
     - TensorFlowLiteC/Core (= 2.17.0)
   - TensorFlowLiteC/Core (2.17.0)
@@ -21,15 +26,10 @@ PODS:
     - TensorFlowLiteSwift/Core (= 2.17.0)
     - TensorFlowLiteSwift/Privacy (= 2.17.0)
   - TensorFlowLiteSwift/Privacy (2.17.0)
-  - tflite_flutter_custom (0.0.1):
-    - Flutter
-    - TensorFlowLiteSwift (= 2.17.0)
-    - TensorFlowLiteSwift/CoreML (= 2.17.0)
-    - TensorFlowLiteSwift/Metal (= 2.17.0)
 
 DEPENDENCIES:
   - Flutter (from `Flutter`)
-  - tflite_flutter_custom (from `.symlinks/plugins/tflite_flutter_custom/ios`)
+  - flutter_litert (from `.symlinks/plugins/flutter_litert/ios`)
 
 SPEC REPOS:
   trunk:
@@ -39,14 +39,14 @@ SPEC REPOS:
 EXTERNAL SOURCES:
   Flutter:
     :path: Flutter
-  tflite_flutter_custom:
-    :path: ".symlinks/plugins/tflite_flutter_custom/ios"
+  flutter_litert:
+    :path: ".symlinks/plugins/flutter_litert/ios"
 
 SPEC CHECKSUMS:
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  flutter_litert: c6955e9b80066ce00931d3abead21871f9241085
   TensorFlowLiteC: eac6d689a8d391d1b202dc59e3d9165ba64aaf73
   TensorFlowLiteSwift: 723fe42222815e72490c79feeff05305530de393
-  tflite_flutter_custom: 4cd444eddaef94d55669021c3cb8733c93d9f815
 
 PODFILE CHECKSUM: 251cb053df7158f337c0712f2ab29f4e0fa474ce
 

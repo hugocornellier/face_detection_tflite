@@ -16,5 +16,5 @@ Pod::Spec.new do |s|
   s.dependency            'FlutterMacOS'
   s.static_framework      = true
 
-  # TFLite libraries are provided by tflite_flutter_custom dependency
+  # TFLite libraries are provided by flutter_litert dependency
 end

@@ -152,16 +152,14 @@ class FaceEmbedding {
   /// `_itp.invoke()` instead of spawning a nested isolate. This should be
   /// used when the model is already running inside a background isolate
   /// (e.g. via [FaceDetectorIsolate]) to avoid nested isolate issues.
-  Future<void> _initializeTensors({
-    bool useIsolateInterpreter = true,
-  }) async {
+  Future<void> _initializeTensors({bool useIsolateInterpreter = true}) async {
     _inputTensor = _itp.getInputTensor(0);
     _outputTensor = _itp.getOutputTensor(0);
     _inputBuf = _inputTensor.data.buffer.asFloat32List();
     _outputBuf = _outputTensor.data.buffer.asFloat32List();
     _embeddingDim = _outputTensor.shape.last;
     _input4dCache = createNHWCTensor4D(_inH, _inW);
-    if (useIsolateInterpreter) {
+    if (useIsolateInterpreter && _delegate == null) {
       _iso = await IsolateInterpreter.create(address: _itp.address);
     }
   }
@@ -193,6 +191,7 @@ class FaceEmbedding {
   /// final embedding = await faceEmbedding(alignedFaceCrop);
   /// print('Got ${embedding.length}-dimensional embedding');
   /// ```
+  @Deprecated('Will be removed in 5.0.0. Use callFromMat instead.')
   Future<Float32List> call(img.Image faceCrop) async {
     final ImageTensor pack = convertImageToTensor(
       faceCrop,

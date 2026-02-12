@@ -1157,6 +1157,7 @@ class FaceDetectorIsolate {
         maxOutputSize: data.maxOutputSize,
         resizeStrategy: resizeStrategy,
         validateModel: data.validateModel,
+        useIsolate: false,
       );
 
       segmenter = await SelfieSegmentation.createFromBuffer(

@@ -274,6 +274,8 @@ class SelfieSegmentation {
   ///
   /// This is primarily used by [FaceDetectorIsolate] to initialize models
   /// in a background isolate where asset loading is not available.
+  /// The [IsolateInterpreter] is skipped since the model is already running
+  /// inside a background isolate.
   ///
   /// [modelBytes]: Raw TFLite model file contents.
   /// [config]: Configuration for model selection, delegates, and output limits.
@@ -363,12 +365,18 @@ class SelfieSegmentation {
     );
     obj._delegate = delegate;
     obj._delegateFailed = delegateFailed;
-    await obj._initializeTensors();
+    await obj._initializeTensors(useIsolateInterpreter: false);
     return obj;
   }
 
   /// Shared tensor initialization logic.
-  Future<void> _initializeTensors() async {
+  ///
+  /// When [useIsolateInterpreter] is false, inference runs directly via
+  /// `_itp.invoke()` instead of spawning a nested isolate. This should be
+  /// used when the model is already running inside a background isolate.
+  Future<void> _initializeTensors({
+    bool useIsolateInterpreter = true,
+  }) async {
     _inputTensor = _itp.getInputTensor(0);
     _outputTensor = _itp.getOutputTensor(0);
     _inputBuf = _inputTensor.data.buffer.asFloat32List();
@@ -388,8 +396,9 @@ class SelfieSegmentation {
     // Pre-allocate buffer for Mat tensor conversions
     _matTensorBuffer = Float32List(_inW * _inH * 3);
 
-    // Only create IsolateInterpreter if configured (adds ~2-5ms overhead per call)
-    if (_config.useIsolate) {
+    // Only create IsolateInterpreter if configured, not inside a worker isolate,
+    // and no delegate is active (delegates handle threading internally)
+    if (useIsolateInterpreter && _config.useIsolate && _delegate == null) {
       _iso = await IsolateInterpreter.create(address: _itp.address);
     }
   }
@@ -508,6 +517,9 @@ class SelfieSegmentation {
   /// Prefer [call] which uses OpenCV and is 5-10x faster.
   ///
   /// [imageBytes]: Encoded image (JPEG, PNG, or other supported format).
+  @Deprecated(
+    'Will be removed in 5.0.0. Use call (which uses OpenCV internally) or callFromMat instead.',
+  )
   Future<SegmentationMask> callWithImagePackage(Uint8List imageBytes) async {
     img.Image? decoded;
     try {
@@ -539,6 +551,7 @@ class SelfieSegmentation {
   /// final image = img.decodeImage(bytes)!;
   /// final mask = await segmenter.callWithDecoded(image);
   /// ```
+  @Deprecated('Will be removed in 5.0.0. Use callFromMat instead.')
   Future<SegmentationMask> callWithDecoded(img.Image decoded) async {
     if (_disposed) {
       throw StateError('Cannot use SelfieSegmentation after dispose()');

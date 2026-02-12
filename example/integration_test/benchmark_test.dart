@@ -378,7 +378,7 @@ void main() {
     );
 
     test(
-      'Benchmark segmentation with pure Dart decode (callWithImagePackage)',
+      'Benchmark segmentation with call (OpenCV decode)',
       () async {
         final segmenter = await SelfieSegmentation.create(
           config: SegmentationConfig(
@@ -387,9 +387,7 @@ void main() {
         );
 
         print('\n${'=' * 60}');
-        print(
-            'BENCHMARK: Segmentation with pure Dart decode (callWithImagePackage)');
-        print('This is the SLOW path for comparison');
+        print('BENCHMARK: Segmentation with call (OpenCV decode)');
         print('=' * 60);
 
         final allStats = <BenchmarkStats>[];
@@ -402,7 +400,7 @@ void main() {
 
           for (int i = 0; i < iterations; i++) {
             final stopwatch = Stopwatch()..start();
-            await segmenter.callWithImagePackage(bytes);
+            await segmenter.call(bytes);
             stopwatch.stop();
             timings.add(stopwatch.elapsedMilliseconds);
           }
@@ -450,8 +448,7 @@ void main() {
 
         print('\n${'=' * 60}');
         print('BENCHMARK: Segmentation Decode Overhead Comparison');
-        print(
-            'Compares: callFromMat (no decode) vs call (OpenCV) vs callWithImagePackage (Dart)');
+        print('Compares: callFromMat (no decode) vs call (OpenCV decode)');
         print('=' * 60);
 
         for (final imagePath in sampleImages) {
@@ -483,36 +480,19 @@ void main() {
             opencvTimings.add(stopwatch.elapsedMilliseconds);
           }
 
-          // 3. callWithImagePackage (Dart decode)
-          final List<int> dartTimings = [];
-          for (int i = 0; i < iterations; i++) {
-            final stopwatch = Stopwatch()..start();
-            await segmenter.callWithImagePackage(bytes);
-            stopwatch.stop();
-            dartTimings.add(stopwatch.elapsedMilliseconds);
-          }
-
           final matMean =
               matTimings.reduce((a, b) => a + b) / matTimings.length;
           final opencvMean =
               opencvTimings.reduce((a, b) => a + b) / opencvTimings.length;
-          final dartMean =
-              dartTimings.reduce((a, b) => a + b) / dartTimings.length;
 
           print('\n$imagePath:');
           print(
               '  callFromMat (no decode):      ${matMean.toStringAsFixed(1)} ms');
           print(
               '  call (OpenCV decode):         ${opencvMean.toStringAsFixed(1)} ms');
-          print(
-              '  callWithImagePackage (Dart):  ${dartMean.toStringAsFixed(1)} ms');
           print('  ---');
           print(
               '  OpenCV decode overhead:       ${(opencvMean - matMean).toStringAsFixed(1)} ms');
-          print(
-              '  Dart decode overhead:         ${(dartMean - matMean).toStringAsFixed(1)} ms');
-          print(
-              '  OpenCV vs Dart speedup:       ${(dartMean / opencvMean).toStringAsFixed(2)}x');
         }
 
         segmenter.dispose();

@@ -1906,6 +1906,7 @@ const _ssdFull = {
 /// translated so that the eyes are horizontal and the face roughly fills the
 /// crop. Downstream models such as [FaceLandmark] and [IrisLandmark] expect
 /// this normalized orientation.
+@Deprecated('Will be removed in 5.0.0. Use AlignedFaceFromMat instead.')
 class AlignedFace {
   /// X coordinate of the face center in absolute pixel coordinates.
   final double cx;

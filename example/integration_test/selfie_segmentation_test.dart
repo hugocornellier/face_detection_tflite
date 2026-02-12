@@ -8,7 +8,7 @@ import 'package:integration_test/integration_test.dart';
 import 'package:face_detection_tflite/face_detection_tflite.dart';
 import 'package:image/image.dart' as img;
 import 'package:opencv_dart/opencv_dart.dart' as cv;
-import 'package:tflite_flutter_custom/tflite_flutter.dart';
+import 'package:flutter_litert/flutter_litert.dart';
 
 /// Helper to check if the default segmentation model is available
 Future<bool> _areModelsAvailable() async {
@@ -305,25 +305,31 @@ void main() {
       print('Test passed');
     });
 
-    test('callWithDecoded() with decoded image', () async {
+    test('callFromMat() with constructed Mat', () async {
       if (!modelsAvailable) {
         print('Skipping: models not available');
         return;
       }
 
-      print('\n--- Testing callWithDecoded() ---');
+      print('\n--- Testing callFromMat() with constructed Mat ---');
       final segmenter = await SelfieSegmentation.create();
 
-      final image = img.Image(width: 300, height: 200);
-      img.fill(image, color: img.ColorRgb8(100, 150, 200));
+      final bgrData = Uint8List(300 * 200 * 3);
+      for (int i = 0; i < bgrData.length; i += 3) {
+        bgrData[i] = 200; // B
+        bgrData[i + 1] = 150; // G
+        bgrData[i + 2] = 100; // R
+      }
+      final mat = cv.Mat.fromList(200, 300, cv.MatType.CV_8UC3, bgrData);
 
-      final mask = await segmenter.callWithDecoded(image);
+      final mask = await segmenter.callFromMat(mat);
 
       expect(mask.originalWidth, 300);
       expect(mask.originalHeight, 200);
       print(
           'Mask generated for ${mask.originalWidth}x${mask.originalHeight} image');
 
+      mat.dispose();
       segmenter.dispose();
       print('Test passed');
     });
@@ -1222,25 +1228,27 @@ void main() {
       print('Test passed');
     });
 
-    test('callWithDecoded throws after dispose', () async {
+    test('callFromMat throws after dispose (constructed Mat)', () async {
       if (!modelsAvailable) {
         print('Skipping: models not available');
         return;
       }
 
-      print('\n--- Testing callWithDecoded after dispose ---');
+      print('\n--- Testing callFromMat after dispose ---');
       final segmenter = await SelfieSegmentation.create();
       segmenter.dispose();
 
-      final image = img.Image(width: 64, height: 64);
+      final bgrData = Uint8List(64 * 64 * 3);
+      final mat = cv.Mat.fromList(64, 64, cv.MatType.CV_8UC3, bgrData);
 
       try {
-        await segmenter.callWithDecoded(image);
+        await segmenter.callFromMat(mat);
         fail('Should have thrown StateError');
       } on StateError catch (e) {
         print('Correctly threw: ${e.message}');
       }
 
+      mat.dispose();
       print('Test passed');
     });
 

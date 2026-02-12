@@ -156,6 +156,7 @@ class IsolateWorker {
   ///
   /// Throws [FormatException] if the image format is unsupported or corrupt.
   /// Throws [StateError] if the worker is not initialized.
+  @Deprecated('Will be removed in 5.0.0. Use cv.imdecode instead.')
   Future<DecodedRgb> decodeImage(Uint8List bytes) async {
     final Map result = await _sendRequest<Map>('decode', {
       'bytes': TransferableTypedData.fromList([bytes]),
@@ -191,6 +192,7 @@ class IsolateWorker {
   /// final crop = await worker.cropFromRoiWithFrameId(frameId, roi);
   /// await worker.releaseFrame(frameId); // Clean up
   /// ```
+  @Deprecated('Will be removed in 5.0.0. Use cv.imdecode instead.')
   Future<(int, int, int)> decodeAndRegisterFrame(Uint8List bytes) async {
     final int frameId = _nextFrameId++;
 
@@ -225,6 +227,9 @@ class IsolateWorker {
   /// final crop2 = await worker.cropFromRoiWithFrameId(frameId, roi2);
   /// await worker.releaseFrame(frameId); // Clean up
   /// ```
+  @Deprecated(
+    'Will be removed in 5.0.0. The image package dependency will be removed.',
+  )
   Future<int> registerFrame(img.Image src) async {
     final Uint8List rgb = src.getBytes(order: img.ChannelOrder.rgb);
     final int frameId = _nextFrameId++;
@@ -245,6 +250,7 @@ class IsolateWorker {
   /// After calling this, the frame ID is no longer valid and should not be used.
   ///
   /// It's important to call this when done processing a frame to avoid memory leaks.
+  @Deprecated('Will be removed in 5.0.0. The frame pipeline is being removed.')
   Future<void> releaseFrame(int frameId) async {
     await _sendRequest<void>('releaseFrame', {'frameId': frameId});
   }
@@ -259,6 +265,9 @@ class IsolateWorker {
   /// padding information needed to reverse the letterbox transformation.
   ///
   /// Throws [StateError] if the worker is not initialized.
+  @Deprecated(
+    'Will be removed in 5.0.0. Use convertImageToTensorFromMat instead.',
+  )
   Future<ImageTensor> imageToTensor(
     img.Image src, {
     required int outW,
@@ -293,6 +302,9 @@ class IsolateWorker {
   ///
   /// Returns an [ImageTensor] containing the normalized tensor data and
   /// padding information.
+  @Deprecated(
+    'Will be removed in 5.0.0. Use convertImageToTensorFromMat instead.',
+  )
   Future<ImageTensor> imageToTensorWithFrameId(
     int frameId, {
     required int outW,
@@ -325,6 +337,7 @@ class IsolateWorker {
   ///
   /// Throws [ArgumentError] if ROI coordinates are invalid.
   /// Throws [StateError] if the worker is not initialized or crop fails.
+  @Deprecated('Will be removed in 5.0.0. Use cropFromRoiMat instead.')
   Future<img.Image> cropFromRoi(img.Image src, RectF roi) async {
     if (roi.xmin < 0 || roi.ymin < 0 || roi.xmax > 1 || roi.ymax > 1) {
       throw ArgumentError(
@@ -373,6 +386,9 @@ class IsolateWorker {
   ///
   /// Similar to [cropFromRoi] but uses a previously registered frame ID
   /// instead of transferring the full image data again.
+  @Deprecated(
+    'Will be removed in 5.0.0. The image package dependency will be removed.',
+  )
   Future<img.Image> cropFromRoiWithFrameId(int frameId, RectF roi) async {
     if (roi.xmin < 0 || roi.ymin < 0 || roi.xmax > 1 || roi.ymax > 1) {
       throw ArgumentError(
@@ -430,6 +446,9 @@ class IsolateWorker {
   ///
   /// Throws [ArgumentError] if [size] is not positive.
   /// Throws [StateError] if the worker is not initialized or extraction fails.
+  @Deprecated(
+    'Will be removed in 5.0.0. Use extractAlignedSquareFromMat instead.',
+  )
   Future<img.Image> extractAlignedSquare(
     img.Image src,
     double cx,
@@ -476,6 +495,9 @@ class IsolateWorker {
   ///
   /// Similar to [extractAlignedSquare] but uses a previously registered frame ID
   /// instead of transferring the full image data again.
+  @Deprecated(
+    'Will be removed in 5.0.0. The image package dependency will be removed.',
+  )
   Future<img.Image> extractAlignedSquareWithFrameId(
     int frameId,
     double cx,

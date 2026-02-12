@@ -114,9 +114,7 @@ class FaceLandmark {
   /// When [useIsolateInterpreter] is false, inference runs directly via
   /// `_itp.invoke()` instead of spawning a nested isolate. This should be
   /// used when the model is already running inside a background isolate.
-  Future<void> _initializeTensors({
-    bool useIsolateInterpreter = true,
-  }) async {
+  Future<void> _initializeTensors({bool useIsolateInterpreter = true}) async {
     _inputTensor = _itp.getInputTensor(0);
     int numElements(List<int> s) => s.fold(1, (a, b) => a * b);
 
@@ -156,7 +154,7 @@ class FaceLandmark {
       }
     }
 
-    if (useIsolateInterpreter) {
+    if (useIsolateInterpreter && _delegate == null) {
       _iso = await IsolateInterpreter.create(address: _itp.address);
     }
   }
@@ -186,6 +184,7 @@ class FaceLandmark {
   /// final meshPoints = await faceLandmark(alignedFaceCrop);
   /// print('Predicted ${meshPoints.length} mesh points'); // 468
   /// ```
+  @Deprecated('Will be removed in 5.0.0. Use callFromMat instead.')
   Future<List<List<double>>> call(
     img.Image faceCrop, {
     IsolateWorker? worker,

@@ -1,3 +1,6 @@
+## 4.6.1
+- Migrate from `tflite_flutter_custom` to `flutter_litert` 
+
 ## 4.6.0
 - Fix FaceDetectorIsolate hang on Android during batch face embeddings
 - 3-4x performance improvement for FaceDetectorIsolate by eliminating redundant nested isolates

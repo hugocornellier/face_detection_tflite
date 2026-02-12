@@ -137,9 +137,7 @@ class FaceDetection {
   /// When [useIsolateInterpreter] is false, inference runs directly via
   /// `_itp.invoke()` instead of spawning a nested isolate. This should be
   /// used when the model is already running inside a background isolate.
-  Future<void> _initializeTensors({
-    bool useIsolateInterpreter = true,
-  }) async {
+  Future<void> _initializeTensors({bool useIsolateInterpreter = true}) async {
     int foundIdx = -1;
     for (int i = 0; i < 10; i++) {
       try {
@@ -210,7 +208,7 @@ class FaceDetection {
       );
     }
 
-    if (useIsolateInterpreter) {
+    if (useIsolateInterpreter && _delegate == null) {
       _iso = await IsolateInterpreter.create(address: _itp.address);
     }
   }
@@ -259,6 +257,7 @@ class FaceDetection {
   /// which provides a higher-level API with automatic coordinate mapping.
   ///
   /// Throws [ArgumentError] if [imageBytes] is empty.
+  @Deprecated('Will be removed in 5.0.0. Use callFromMat instead.')
   Future<List<Detection>> call(Uint8List imageBytes, {RectF? roi}) async {
     if (imageBytes.isEmpty) {
       throw ArgumentError('Image bytes cannot be empty');
@@ -290,6 +289,7 @@ class FaceDetection {
   ///
   /// **Note:** This method is primarily for internal optimization. Most users
   /// should use [call] or [FaceDetector.detectFaces].
+  @Deprecated('Will be removed in 5.0.0. Use callFromMat instead.')
   Future<List<Detection>> callWithDecoded(
     img.Image decoded, {
     RectF? roi,
@@ -312,6 +312,7 @@ class FaceDetection {
   ///
   /// This is an optimized variant that uses a pre-registered frame to avoid
   /// transferring the full image data multiple times.
+  @Deprecated('Will be removed in 5.0.0. Use callFromMat instead.')
   Future<List<Detection>> callWithFrameId(
     int frameId,
     int width,

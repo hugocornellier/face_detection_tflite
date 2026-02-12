@@ -115,9 +115,7 @@ class IrisLandmark {
   /// When [useIsolateInterpreter] is false, inference runs directly via
   /// `_itp.invoke()` instead of spawning a nested isolate. This should be
   /// used when the model is already running inside a background isolate.
-  Future<void> _initializeTensors({
-    bool useIsolateInterpreter = true,
-  }) async {
+  Future<void> _initializeTensors({bool useIsolateInterpreter = true}) async {
     _inputTensor = _itp.getInputTensor(0);
     _inputBuf = _inputTensor.data.buffer.asFloat32List();
 
@@ -135,7 +133,7 @@ class IrisLandmark {
       _outputsCache[i] = allocTensorShape(shape);
     });
 
-    if (useIsolateInterpreter) {
+    if (useIsolateInterpreter && _delegate == null) {
       _iso = await IsolateInterpreter.create(address: _itp.address);
     }
   }
@@ -221,7 +219,9 @@ class IrisLandmark {
       obj._outputsCache[i] = allocTensorShape(shape);
     });
 
-    obj._iso = await IsolateInterpreter.create(address: itp.address);
+    if (delegate == null) {
+      obj._iso = await IsolateInterpreter.create(address: itp.address);
+    }
 
     return obj;
   }
@@ -260,6 +260,7 @@ class IrisLandmark {
   /// See also:
   /// - [callIrisOnly] to extract only the 5 iris keypoints
   /// - [runOnImage] to run on a full image with an eye ROI
+  @Deprecated('Will be removed in 5.0.0. Use callFromMat instead.')
   Future<List<List<double>>> call(
     img.Image eyeCrop, {
     IsolateWorker? worker,
@@ -328,6 +329,9 @@ class IrisLandmark {
   /// See also:
   /// - [call] to run on a pre-cropped eye image
   /// - [runOnImageAlignedIris] for aligned eye ROI processing
+  @Deprecated(
+    'Will be removed in 5.0.0. Use the Mat-based detection pipeline instead.',
+  )
   Future<List<List<double>>> runOnImage(
     img.Image src,
     RectF eyeRoi, {
@@ -465,6 +469,9 @@ class IrisLandmark {
   /// See also:
   /// - [call] to get all iris and eye contour landmarks
   /// - [runOnImageAlignedIris] for aligned eye ROI processing
+  @Deprecated(
+    'Will be removed in 5.0.0. Use the Mat-based detection pipeline instead.',
+  )
   Future<List<List<double>>> callIrisOnly(
     img.Image eyeCrop, {
     IsolateWorker? worker,
@@ -566,6 +573,9 @@ class IrisLandmark {
   ///
   /// **Note:** This is an internal method used by [FaceDetector]. Most users
   /// should use [FaceDetector.detectFaces] with [FaceDetectionMode.full] instead.
+  @Deprecated(
+    'Will be removed in 5.0.0. Use the Mat-based detection pipeline instead.',
+  )
   Future<List<List<double>>> runOnImageAlignedIris(
     img.Image src,
     AlignedRoi roi, {
@@ -605,6 +615,9 @@ class IrisLandmark {
   /// transferring the full image data again.
   ///
   /// Returns iris and eye contour landmarks in absolute pixel coordinates.
+  @Deprecated(
+    'Will be removed in 5.0.0. Use the Mat-based detection pipeline instead.',
+  )
   Future<List<List<double>>> runOnImageAlignedIrisWithFrameId(
     int frameId,
     AlignedRoi roi, {

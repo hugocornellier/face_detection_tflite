@@ -158,7 +158,6 @@ class FaceDetector {
     PerformanceConfig performanceConfig = const PerformanceConfig(),
     int meshPoolSize = 3,
   }) async {
-    await _ensureTFLiteLoaded();
     try {
       _worker = IsolateWorker();
       await _worker!.initialize();
@@ -234,7 +233,6 @@ class FaceDetector {
     PerformanceConfig performanceConfig = const PerformanceConfig(),
     int meshPoolSize = 3,
   }) async {
-    await _ensureTFLiteLoaded();
     try {
       _worker = IsolateWorker();
       await _worker!.initialize();
@@ -290,57 +288,6 @@ class FaceDetector {
       _embedding = null;
       rethrow;
     }
-  }
-
-  static ffi.DynamicLibrary? _tfliteLib;
-  static Future<void> _ensureTFLiteLoaded() async {
-    if (_tfliteLib != null) return;
-
-    if (!Platform.isWindows && !Platform.isLinux) return;
-
-    final File exe = File(Platform.resolvedExecutable);
-    final Directory exeDir = exe.parent;
-    late final List<String> candidates;
-    late final String hint;
-
-    if (Platform.isWindows) {
-      candidates = [
-        p.join(exeDir.path, 'libtensorflowlite_c-win.dll'),
-        'libtensorflowlite_c-win.dll',
-      ];
-      hint = 'Make sure your Windows plugin CMakeLists.txt sets:\n'
-          '  set(PLUGIN_NAME_bundled_libraries ".../libtensorflowlite_c-win.dll" PARENT_SCOPE)\n'
-          'so Flutter copies it next to the app EXE.';
-    } else {
-      candidates = [
-        p.join(exeDir.path, 'lib', 'libtensorflowlite_c-linux.so'),
-        'libtensorflowlite_c-linux.so',
-      ];
-      hint = 'Ensure linux/CMakeLists.txt sets:\n'
-          '  set(PLUGIN_NAME_bundled_libraries "../assets/bin/libtensorflowlite_c-linux.so" PARENT_SCOPE)\n'
-          'so Flutter copies it into bundle/lib/.';
-    }
-
-    final List<String> tried = <String>[];
-    for (final String c in candidates) {
-      try {
-        if (c.contains(p.separator)) {
-          if (!File(c).existsSync()) {
-            tried.add(c);
-            continue;
-          }
-        }
-        _tfliteLib = ffi.DynamicLibrary.open(c);
-        return;
-      } catch (_) {
-        tried.add(c);
-      }
-    }
-
-    throw ArgumentError(
-      'Failed to locate TensorFlow Lite C library.\n'
-      'Tried:\n - ${tried.join('\n - ')}\n\n$hint',
-    );
   }
 
   /// Serializes mesh model inference using a pool of models for parallel processing.
@@ -436,6 +383,9 @@ class FaceDetector {
   /// See also:
   /// - [detectFaces] with [FaceDetectionMode.full] for multi-face iris tracking
   /// - [getDetections] for basic detection without iris refinement
+  @Deprecated(
+    'Will be removed in 5.0.0. Use detectFaces with FaceDetectionMode.full instead.',
+  )
   Future<List<Detection>> getDetectionsWithIrisCenters(
     Uint8List imageBytes,
   ) async {
@@ -718,6 +668,9 @@ class FaceDetector {
   /// - Mouth distance × 3.6
   ///
   /// This ensures the full face fits within the crop with appropriate padding.
+  @Deprecated(
+    'Will be removed in 5.0.0. Use detectFacesFromMat which handles alignment internally.',
+  )
   Future<AlignedFace> estimateAlignedFace(
     img.Image decoded,
     Detection det,
@@ -790,6 +743,9 @@ class FaceDetector {
   ///
   /// Each point represents a specific facial feature as defined by MediaPipe's
   /// canonical face mesh topology (eyes, eyebrows, nose, mouth, face contours).
+  @Deprecated(
+    'Will be removed in 5.0.0. Use detectFacesFromMat which handles mesh internally.',
+  )
   Future<List<Point>> meshFromAlignedFace(
     img.Image faceCrop,
     AlignedFace aligned,
@@ -894,6 +850,9 @@ class FaceDetector {
   /// Each eye's 76 points include:
   /// - 71 eye mesh landmarks (eyelid, eyebrow, and tracking halos)
   /// - 5 iris keypoints (1 center + 4 contour points)
+  @Deprecated(
+    'Will be removed in 5.0.0. Use detectFacesFromMat with FaceDetectionMode.full instead.',
+  )
   Future<List<Point>> irisFromEyeRois(
     img.Image decoded,
     List<AlignedRoi> rois,
@@ -961,6 +920,7 @@ class FaceDetector {
   /// See also:
   /// - [detectFaces] for the main public API with mesh and iris support
   /// - [getDetectionsWithIrisCenters] for explicit iris center refinement
+  @Deprecated('Will be removed in 5.0.0. Use detectFaces instead.')
   Future<List<Detection>> getDetections(Uint8List imageBytes) async {
     return await _detectDetections(imageBytes);
   }
@@ -969,6 +929,9 @@ class FaceDetector {
   ///
   /// The input [imageBytes] is an encoded image (e.g., JPEG/PNG).
   /// Returns an empty list when no face is found.
+  @Deprecated(
+    'Will be removed in 5.0.0. Use detectFaces with FaceDetectionMode.standard instead.',
+  )
   Future<List<Point>> getFaceMesh(Uint8List imageBytes) async {
     final DecodedRgb d = await decodeImageWithWorker(imageBytes, _worker);
     final img.Image decoded = _imageFromDecodedRgb(d);
@@ -988,6 +951,9 @@ class FaceDetector {
   /// The [imageBytes] should contain encoded image data (e.g., JPEG/PNG).
   /// Returns up to 152 points (76 per eye: 71 eye mesh + 5 iris keypoints) in absolute pixels.
   /// If no face or iris is found, returns an empty list.
+  @Deprecated(
+    'Will be removed in 5.0.0. Use detectFaces with FaceDetectionMode.full instead.',
+  )
   Future<List<Point>> getEyeMeshWithIris(Uint8List imageBytes) async {
     final DecodedRgb d = await decodeImageWithWorker(imageBytes, _worker);
     final img.Image decoded = _imageFromDecodedRgb(d);
@@ -1016,6 +982,9 @@ class FaceDetector {
   /// final size = await detector.getOriginalSize(imageBytes);
   /// print('Image is ${size.width}x${size.height} pixels');
   /// ```
+  @Deprecated(
+    'Will be removed in 5.0.0. Use cv.imdecode then .cols/.rows instead.',
+  )
   Future<Size> getOriginalSize(Uint8List imageBytes) async {
     final DecodedRgb d = await decodeImageWithWorker(imageBytes, _worker);
     final img.Image decoded = _imageFromDecodedRgb(d);
@@ -1053,6 +1022,9 @@ class FaceDetector {
   /// See also:
   /// - [getFaceMesh] for single-face mesh detection
   /// - [detectFaces] for the complete pipeline in one call
+  @Deprecated(
+    'Will be removed in 5.0.0. Use detectFaces which handles mesh internally.',
+  )
   Future<List<List<Point>>> getFaceMeshFromDetections(
     Uint8List imageBytes,
     List<Detection> dets,
@@ -1158,6 +1130,9 @@ class FaceDetector {
   ///
   /// Returns an [AlignedFace] object containing center coordinates, crop size,
   /// rotation angle, and the extracted aligned face crop image.
+  @Deprecated(
+    'Will be removed in 5.0.0. Use detectFacesFromMat which handles alignment internally.',
+  )
   Future<AlignedFace> estimateAlignedFaceWithFrameId(
     int frameId,
     int imgW,
@@ -1227,6 +1202,9 @@ class FaceDetector {
   /// Each eye's 76 points include:
   /// - 71 eye mesh landmarks (eyelid, eyebrow, and tracking halos)
   /// - 5 iris keypoints (1 center + 4 contour points)
+  @Deprecated(
+    'Will be removed in 5.0.0. Use detectFacesFromMat with FaceDetectionMode.full instead.',
+  )
   Future<List<Point>> irisFromEyeRoisWithFrameId(
     int frameId,
     List<AlignedRoi> rois,

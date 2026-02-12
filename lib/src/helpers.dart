@@ -267,6 +267,9 @@ Future<void> _imageToTensorIsolate(Map<String, dynamic> params) async {
 /// // result.tensorNHWC is ready for TFLite inference
 /// // result.padding can be used to unpad output coordinates
 /// ```
+@Deprecated(
+  'Will be removed in 5.0.0. Use convertImageToTensorFromMat instead.',
+)
 ImageTensor convertImageToTensor(
   img.Image src, {
   required int outW,
@@ -680,6 +683,7 @@ RectF faceDetectionToRoi(RectF boundingBox, {double expandFraction = 0.6}) {
 /// final roi = RectF(0.2, 0.3, 0.8, 0.7); // Crop center region
 /// final cropped = await cropFromRoi(sourceImage, roi);
 /// ```
+@Deprecated('Will be removed in 5.0.0. Use cropFromRoiMat instead.')
 Future<img.Image> cropFromRoi(img.Image src, RectF roi) async {
   if (roi.xmin < 0 || roi.ymin < 0 || roi.xmax > 1 || roi.ymax > 1) {
     throw ArgumentError(
@@ -763,6 +767,9 @@ Future<img.Image> cropFromRoi(img.Image src, RectF roi) async {
 ///   -rotationAngle, // Negative to upright the face
 /// );
 /// ```
+@Deprecated(
+  'Will be removed in 5.0.0. Use extractAlignedSquareFromMat instead.',
+)
 Future<img.Image> extractAlignedSquare(
   img.Image src,
   double cx,
@@ -859,6 +866,7 @@ void _bilinearSampleToBuffer(
 }
 
 /// RGB image payload decoded off the UI thread.
+@Deprecated('Will be removed in 5.0.0. Use cv.imdecode instead.')
 class DecodedRgb {
   /// Width of the decoded image in pixels.
   final int width;
@@ -901,6 +909,7 @@ Future<DecodedRgb> _decodeImageOffUi(Uint8List bytes) async {
 }
 
 @visibleForTesting
+@Deprecated('Will be removed in 5.0.0. Use cv.imdecode instead.')
 Future<DecodedRgb> testDecodeImageOffUi(Uint8List bytes) =>
     _decodeImageOffUi(bytes);
 
@@ -914,6 +923,9 @@ img.Image _imageFromDecodedRgb(DecodedRgb d) {
 }
 
 @visibleForTesting
+@Deprecated(
+  'Will be removed in 5.0.0. The image package dependency will be removed.',
+)
 img.Image testImageFromDecodedRgb(DecodedRgb d) => _imageFromDecodedRgb(d);
 
 @pragma('vm:entry-point')
@@ -1056,6 +1068,7 @@ Future<void> _imageTransformIsolate(Map<String, dynamic> params) async {
 ///
 /// When [worker] is null, falls back to [_decodeImageOffUi] for backwards
 /// compatibility.
+@Deprecated('Will be removed in 5.0.0. Use cv.imdecode instead.')
 Future<DecodedRgb> decodeImageWithWorker(
   Uint8List bytes,
   IsolateWorker? worker,
@@ -1075,6 +1088,9 @@ Future<DecodedRgb> decodeImageWithWorker(
 ///
 /// When [worker] is null, falls back to [_imageToTensor] for backwards
 /// compatibility.
+@Deprecated(
+  'Will be removed in 5.0.0. Use convertImageToTensorFromMat instead.',
+)
 Future<ImageTensor> imageToTensorWithWorker(
   img.Image src, {
   required int outW,
@@ -1096,6 +1112,7 @@ Future<ImageTensor> imageToTensorWithWorker(
 ///
 /// When [worker] is null, falls back to [cropFromRoi] for backwards
 /// compatibility.
+@Deprecated('Will be removed in 5.0.0. Use cropFromRoiMat instead.')
 Future<img.Image> cropFromRoiWithWorker(
   img.Image src,
   RectF roi,
@@ -1116,6 +1133,9 @@ Future<img.Image> cropFromRoiWithWorker(
 ///
 /// When [worker] is null, falls back to [extractAlignedSquare] for backwards
 /// compatibility.
+@Deprecated(
+  'Will be removed in 5.0.0. Use extractAlignedSquareFromMat instead.',
+)
 Future<img.Image> extractAlignedSquareWithWorker(
   img.Image src,
   double cx,
