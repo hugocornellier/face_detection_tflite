@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'dart:ui' as ui;
@@ -1182,6 +1183,7 @@ class LiveCameraScreen extends StatefulWidget {
 
 class _LiveCameraScreenState extends State<LiveCameraScreen> {
   bool get _isMacOS => !kIsWeb && Platform.isMacOS;
+  bool get _isWindows => !kIsWeb && Platform.isWindows;
 
   CameraController? _cameraController;
   CameraMacOSController? _macCameraController;
@@ -1199,6 +1201,10 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   int _fps = 0;
   DateTime? _lastFpsUpdate;
   int _framesSinceLastUpdate = 0;
+  bool _isImageStreamStarted = false;
+  Timer? _windowsFrameTimer;
+  bool _isWindowsFrameCaptureInProgress = false;
+  int _windowsLoopIntervalMs = 180;
 
   // Detection settings
   FaceDetectionMode _detectionMode = FaceDetectionMode.full;
@@ -1324,15 +1330,163 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
             CameraLensDirection.front;
       });
 
-      // Start image stream
-      _cameraController!.startImageStream(_processCameraImage);
-    } catch (e) {
+      if (_isWindows) {
+        _startWindowsDetectionLoop();
+        return;
+      }
+
+      // Start image stream on platforms that support it.
+      await _cameraController!.startImageStream(_processCameraImage);
+      _isImageStreamStarted = true;
+    } catch (e, st) {
+      debugPrint('Camera init failed: $e');
+      debugPrint('$st');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error initializing camera: $e')),
         );
       }
     }
+  }
+
+  void _startWindowsDetectionLoop() {
+    _windowsFrameTimer?.cancel();
+    _lastFpsUpdate = DateTime.now();
+    _windowsFrameTimer =
+        Timer.periodic(Duration(milliseconds: _windowsLoopIntervalMs), (_) {
+      _captureAndProcessWindowsFrame();
+    });
+  }
+
+  void _retuneWindowsDetectionLoop({
+    required bool segmentationEnabled,
+    required int processingTimeMs,
+  }) {
+    // Keep camera cadence adaptive:
+    // - Face-only: tighter interval for responsiveness.
+    // - Face+segmentation: slower interval to avoid CPU saturation/jank.
+    final int minInterval = segmentationEnabled ? 280 : 120;
+    final int maxInterval = segmentationEnabled ? 650 : 320;
+    final int safetyMargin = segmentationEnabled ? 90 : 40;
+
+    final int nextInterval =
+        (processingTimeMs + safetyMargin).clamp(minInterval, maxInterval);
+
+    // Avoid timer churn from tiny fluctuations.
+    if ((nextInterval - _windowsLoopIntervalMs).abs() < 40) return;
+
+    _windowsLoopIntervalMs = nextInterval;
+    _startWindowsDetectionLoop();
+  }
+
+  Future<void> _captureAndProcessWindowsFrame() async {
+    if (!_isWindows ||
+        !mounted ||
+        _cameraController == null ||
+        !_cameraController!.value.isInitialized ||
+        _isWindowsFrameCaptureInProgress) {
+      return;
+    }
+
+    _isWindowsFrameCaptureInProgress = true;
+    try {
+      final XFile frame = await _cameraController!.takePicture();
+      final Uint8List bytes = await frame.readAsBytes();
+      try {
+        final file = File(frame.path);
+        if (await file.exists()) {
+          await file.delete();
+        }
+      } catch (_) {}
+
+      await _processWindowsImageBytes(bytes);
+    } catch (_) {
+      // Ignore intermittent capture errors on Windows.
+    } finally {
+      _isWindowsFrameCaptureInProgress = false;
+    }
+  }
+
+  Future<void> _processWindowsImageBytes(Uint8List bytes) async {
+    _frameCounter++;
+    _framesSinceLastUpdate++;
+
+    final now = DateTime.now();
+    if (_lastFpsUpdate != null) {
+      final diff = now.difference(_lastFpsUpdate!).inMilliseconds;
+      if (diff >= 1000 && mounted) {
+        setState(() {
+          _fps = (_framesSinceLastUpdate * 1000 / diff).round();
+          _framesSinceLastUpdate = 0;
+          _lastFpsUpdate = now;
+        });
+      }
+    } else {
+      _lastFpsUpdate = now;
+    }
+
+    if (_frameCounter % _processEveryNFrames != 0) return;
+    if (_isProcessing || _faceDetectorIsolate == null) return;
+
+    _isProcessing = true;
+    try {
+      final startTime = DateTime.now();
+      final bool segmentationEnabled =
+          (_showSegmentation || _showVirtualBackground) &&
+          _faceDetectorIsolate!.isSegmentationReady;
+
+      List<Face> faces;
+      SegmentationMask? segMask;
+      int processingTimeMs;
+
+      if (segmentationEnabled) {
+        final result = await _faceDetectorIsolate!.detectFacesWithSegmentation(
+          bytes,
+          mode: _detectionMode,
+        );
+        faces = result.faces;
+        segMask = result.segmentationMask;
+        processingTimeMs = result.totalTimeMs;
+      } else {
+        faces = await _faceDetectorIsolate!.detectFaces(
+          bytes,
+          mode: _detectionMode,
+        );
+        segMask = null;
+        processingTimeMs = DateTime.now().difference(startTime).inMilliseconds;
+      }
+
+      final Size imageSize = faces.isNotEmpty
+          ? faces.first.originalSize
+          : await _decodeImageSize(bytes);
+
+      if (mounted) {
+        setState(() {
+          _faces = faces;
+          _imageSize = imageSize;
+          _detectionTimeMs = processingTimeMs;
+          _segmentationMask = segMask;
+        });
+      }
+
+      _retuneWindowsDetectionLoop(
+        segmentationEnabled: segmentationEnabled,
+        processingTimeMs: processingTimeMs,
+      );
+    } catch (_) {
+      // Ignore frame-level processing errors.
+    } finally {
+      _isProcessing = false;
+    }
+  }
+
+  Future<Size> _decodeImageSize(Uint8List bytes) async {
+    final codec = await ui.instantiateImageCodec(bytes);
+    final frame = await codec.getNextFrame();
+    final size =
+        Size(frame.image.width.toDouble(), frame.image.height.toDouble());
+    frame.image.dispose();
+    return size;
   }
 
   DeviceOrientation _effectiveDeviceOrientation(BuildContext context) {
@@ -1589,11 +1743,14 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
 
   @override
   void dispose() {
+    _windowsFrameTimer?.cancel();
     if (_isMacOS) {
       _macCameraController?.stopImageStream();
       _macCameraController?.destroy();
     } else {
-      _cameraController?.stopImageStream();
+      if (_isImageStreamStarted) {
+        _cameraController?.stopImageStream();
+      }
       _cameraController?.dispose();
     }
     _faceDetectorIsolate?.dispose();
@@ -1751,6 +1908,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                       painter: _VirtualBackgroundOverlayPainter(
                         background: _beachBackground!,
                         mask: _segmentationMask!,
+                        mirrorHorizontally: _isWindows && _isFrontCamera,
                       ),
                     ),
                   // Segmentation mask overlay (only when not using virtual background)
@@ -1763,6 +1921,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                         maskColor: _segmentationColor,
                         showAllClasses: _liveSegmentationModel ==
                             SegmentationModel.multiclass,
+                        mirrorHorizontally: _isWindows && _isFrontCamera,
                       ),
                     ),
                   if (_imageSize != null)
@@ -1776,6 +1935,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                         sensorOrientation: _sensorOrientation ?? 0,
                         deviceOrientation: deviceOrientation,
                         isFrontCamera: _isFrontCamera,
+                        mirrorHorizontally: _isWindows && _isFrontCamera,
                       ),
                     ),
                 ],
@@ -2040,6 +2200,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                       painter: _VirtualBackgroundOverlayPainter(
                         background: _beachBackground!,
                         mask: _segmentationMask!,
+                        mirrorHorizontally: false,
                       ),
                     ),
                   // Segmentation mask overlay (only when not using virtual background)
@@ -2052,6 +2213,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                         maskColor: _segmentationColor,
                         showAllClasses: _liveSegmentationModel ==
                             SegmentationModel.multiclass,
+                        mirrorHorizontally: false,
                       ),
                     ),
                   if (_imageSize != null)
@@ -2066,6 +2228,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                         deviceOrientation: Orientation.landscape,
                         isFrontCamera:
                             true, // macOS typically uses front camera
+                        mirrorHorizontally: false,
                       ),
                     ),
                 ],
@@ -2282,6 +2445,7 @@ class _CameraDetectionPainter extends CustomPainter {
   final int sensorOrientation;
   final Orientation deviceOrientation;
   final bool isFrontCamera;
+  final bool mirrorHorizontally;
 
   _CameraDetectionPainter({
     required this.faces,
@@ -2292,6 +2456,7 @@ class _CameraDetectionPainter extends CustomPainter {
     required this.sensorOrientation,
     required this.deviceOrientation,
     required this.isFrontCamera,
+    required this.mirrorHorizontally,
   });
 
   @override
@@ -2332,12 +2497,30 @@ class _CameraDetectionPainter extends CustomPainter {
     final double sourceWidth = imageSize.width;
     final double sourceHeight = imageSize.height;
 
-    final double scaleX = displayWidth / sourceWidth;
-    final double scaleY = displayHeight / sourceHeight;
+    // Match CameraPreview's cover behavior to avoid stretched/squashed overlays.
+    final double sourceAspectRatio = sourceWidth / sourceHeight;
+    final double viewportAspectRatio = displayWidth / displayHeight;
+
+    final double scale;
+    double offsetX = 0;
+    double offsetY = 0;
+
+    if (sourceAspectRatio > viewportAspectRatio) {
+      // Source is wider: fit height and crop left/right.
+      scale = displayHeight / sourceHeight;
+      offsetX = (displayWidth - sourceWidth * scale) / 2;
+    } else {
+      // Source is taller: fit width and crop top/bottom.
+      scale = displayWidth / sourceWidth;
+      offsetY = (displayHeight - sourceHeight * scale) / 2;
+    }
 
     // Transform a detection coordinate to canvas coordinate
     Offset transformPoint(double x, double y) {
-      return Offset(x * scaleX, y * scaleY);
+      if (mirrorHorizontally) {
+        x = sourceWidth - x;
+      }
+      return Offset(x * scale + offsetX, y * scale + offsetY);
     }
 
     // Draw bounding boxes and features for each face
@@ -2457,7 +2640,8 @@ class _CameraDetectionPainter extends CustomPainter {
         old.detectionMode != detectionMode ||
         old.sensorOrientation != sensorOrientation ||
         old.deviceOrientation != deviceOrientation ||
-        old.isFrontCamera != isFrontCamera;
+        old.isFrontCamera != isFrontCamera ||
+        old.mirrorHorizontally != mirrorHorizontally;
   }
 }
 
@@ -2466,6 +2650,7 @@ class _LiveSegmentationPainter extends CustomPainter {
   final SegmentationMask mask;
   final Color maskColor;
   final bool showAllClasses;
+  final bool mirrorHorizontally;
 
   // Rainbow colors for multiclass visualization (same as static painter)
   static const List<Color> classColors = [
@@ -2490,6 +2675,7 @@ class _LiveSegmentationPainter extends CustomPainter {
     required this.mask,
     required this.maskColor,
     this.showAllClasses = false,
+    this.mirrorHorizontally = false,
   });
 
   @override
@@ -2506,8 +2692,26 @@ class _LiveSegmentationPainter extends CustomPainter {
     final validW = validX1 - validX0;
     final validH = validY1 - validY0;
 
-    final scaleX = validW > 0 ? size.width / validW : 1.0;
-    final scaleY = validH > 0 ? size.height / validH : 1.0;
+    final sourceW = validW.toDouble();
+    final sourceH = validH.toDouble();
+    final viewportW = size.width;
+    final viewportH = size.height;
+    final sourceAspect = sourceW / sourceH;
+    final viewportAspect = viewportW / viewportH;
+
+    final double scale;
+    double offsetX = 0;
+    double offsetY = 0;
+    if (sourceAspect > viewportAspect) {
+      scale = viewportH / sourceH;
+      offsetX = (viewportW - sourceW * scale) / 2;
+    } else {
+      scale = viewportW / sourceW;
+      offsetY = (viewportH - sourceH * scale) / 2;
+    }
+
+    final double pixelW = scale + 0.5;
+    final double pixelH = scale + 0.5;
 
     final paint = Paint();
     const double threshold = 0.5;
@@ -2525,8 +2729,11 @@ class _LiveSegmentationPainter extends CustomPainter {
       for (int y = validY0; y < validY1; y++) {
         for (int x = validX0; x < validX1; x++) {
           final idx = y * mask.width + x;
-          final renderX = (x - validX0) * scaleX;
-          final renderY = (y - validY0) * scaleY;
+          final rawX = (x - validX0) * scale + offsetX;
+          final renderX = mirrorHorizontally
+              ? size.width - rawX - pixelW
+              : rawX;
+          final renderY = (y - validY0) * scale + offsetY;
 
           // Find winning class for this pixel
           int winningClass = 0;
@@ -2543,7 +2750,7 @@ class _LiveSegmentationPainter extends CustomPainter {
             final baseAlpha = (color.a * 255).round();
             paint.color = color.withAlpha((maxProb * baseAlpha).round());
             canvas.drawRect(
-              Rect.fromLTWH(renderX, renderY, scaleX + 0.5, scaleY + 0.5),
+              Rect.fromLTWH(renderX, renderY, pixelW, pixelH),
               paint,
             );
 
@@ -2595,10 +2802,13 @@ class _LiveSegmentationPainter extends CustomPainter {
 
         if (alpha > 0.01) {
           paint.color = maskColor.withAlpha((alpha * 255).round());
-          final renderX = (x - validX0) * scaleX;
-          final renderY = (y - validY0) * scaleY;
+          final rawX = (x - validX0) * scale + offsetX;
+          final renderX = mirrorHorizontally
+              ? size.width - rawX - pixelW
+              : rawX;
+          final renderY = (y - validY0) * scale + offsetY;
           canvas.drawRect(
-            Rect.fromLTWH(renderX, renderY, scaleX + 0.5, scaleY + 0.5),
+            Rect.fromLTWH(renderX, renderY, pixelW, pixelH),
             paint,
           );
         }
@@ -2610,7 +2820,8 @@ class _LiveSegmentationPainter extends CustomPainter {
   bool shouldRepaint(covariant _LiveSegmentationPainter old) {
     return old.mask != mask ||
         old.maskColor != maskColor ||
-        old.showAllClasses != showAllClasses;
+        old.showAllClasses != showAllClasses ||
+        old.mirrorHorizontally != mirrorHorizontally;
   }
 }
 
@@ -2641,10 +2852,12 @@ class _BackgroundImagePainter extends CustomPainter {
 class _VirtualBackgroundOverlayPainter extends CustomPainter {
   final ui.Image background;
   final SegmentationMask mask;
+  final bool mirrorHorizontally;
 
   _VirtualBackgroundOverlayPainter({
     required this.background,
     required this.mask,
+    this.mirrorHorizontally = false,
   });
 
   @override
@@ -2664,8 +2877,26 @@ class _VirtualBackgroundOverlayPainter extends CustomPainter {
 
     if (validW <= 0 || validH <= 0) return;
 
-    final scaleX = size.width / validW;
-    final scaleY = size.height / validH;
+    final sourceW = validW.toDouble();
+    final sourceH = validH.toDouble();
+    final viewportW = size.width;
+    final viewportH = size.height;
+    final sourceAspect = sourceW / sourceH;
+    final viewportAspect = viewportW / viewportH;
+
+    final double scale;
+    double offsetX = 0;
+    double offsetY = 0;
+    if (sourceAspect > viewportAspect) {
+      scale = viewportH / sourceH;
+      offsetX = (viewportW - sourceW * scale) / 2;
+    } else {
+      scale = viewportW / sourceW;
+      offsetY = (viewportH - sourceH * scale) / 2;
+    }
+
+    final double pixelW = scale + 0.5;
+    final double pixelH = scale + 0.5;
 
     // Scale factors for sampling from background image
     final bgScaleX = background.width / size.width;
@@ -2688,8 +2919,11 @@ class _VirtualBackgroundOverlayPainter extends CustomPainter {
         // Skip fully transparent pixels for performance
         if (bgAlpha < 0.01) continue;
 
-        final renderX = (x - validX0) * scaleX;
-        final renderY = (y - validY0) * scaleY;
+        final rawX = (x - validX0) * scale + offsetX;
+        final renderX = mirrorHorizontally
+            ? size.width - rawX - pixelW
+            : rawX;
+        final renderY = (y - validY0) * scale + offsetY;
 
         // Sample from background image
         final bgX =
@@ -2699,9 +2933,8 @@ class _VirtualBackgroundOverlayPainter extends CustomPainter {
 
         // Draw background with alpha based on inverse mask probability
         paint.color = Color.fromRGBO(255, 255, 255, bgAlpha);
-        final src =
-            Rect.fromLTWH(bgX, bgY, bgScaleX * scaleX, bgScaleY * scaleY);
-        final dst = Rect.fromLTWH(renderX, renderY, scaleX + 0.5, scaleY + 0.5);
+        final src = Rect.fromLTWH(bgX, bgY, bgScaleX * pixelW, bgScaleY * pixelH);
+        final dst = Rect.fromLTWH(renderX, renderY, pixelW, pixelH);
         canvas.drawImageRect(background, src, dst, paint);
       }
     }
@@ -2709,7 +2942,9 @@ class _VirtualBackgroundOverlayPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _VirtualBackgroundOverlayPainter old) {
-    return old.background != background || old.mask != mask;
+    return old.background != background ||
+        old.mask != mask ||
+        old.mirrorHorizontally != mirrorHorizontally;
   }
 }
 
