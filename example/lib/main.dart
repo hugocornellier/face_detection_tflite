@@ -2731,6 +2731,7 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
   Size? _originalSize;
   bool _isLoading = false;
   bool _isInitializing = true;
+  bool _isSwitchingModel = false;
   int? _inferenceTimeMs;
   String? _error;
 
@@ -2759,12 +2760,13 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
     });
 
     try {
-      _segmenter?.dispose();
+      await _segmenter?.disposeAsync();
       _segmenter = await SelfieSegmentation.create(
         config: SegmentationConfig(model: _selectedModel),
       );
-    } catch (e) {
+    } catch (e, st) {
       _error = 'Failed to initialize: $e';
+      debugPrint('Segmentation init error: $e\n$st');
     }
 
     if (mounted) {
@@ -2773,19 +2775,26 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
   }
 
   Future<void> _switchModel(SegmentationModel model) async {
-    if (model == _selectedModel) return;
+    if (model == _selectedModel || _isSwitchingModel) return;
 
     setState(() {
+      _isSwitchingModel = true;
       _selectedModel = model;
       _selectedClassIndex = null; // Reset class selection
       _mask = null; // Clear current mask
     });
 
-    await _initSegmenter();
+    try {
+      await _initSegmenter();
 
-    // Re-segment current image if we have one
-    if (_imageBytes != null) {
-      await _segmentCurrentImage();
+      // Re-segment current image if we have one
+      if (_imageBytes != null) {
+        await _segmentCurrentImage();
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSwitchingModel = false);
+      }
     }
   }
 

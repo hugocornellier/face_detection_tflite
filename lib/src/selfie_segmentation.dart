@@ -809,18 +809,47 @@ class SelfieSegmentation {
   /// After calling dispose, this instance cannot be used for inference.
   ///
   /// It is safe to call dispose multiple times.
+  ///
+  /// **Important:** If you are switching models (disposing one and immediately
+  /// creating another), prefer [disposeAsync] which ensures the background
+  /// isolate is fully terminated before freeing the native interpreter.
   void dispose() {
     if (_disposed) return;
     _disposed = true;
 
-    _delegate?.delete();
-    _delegate = null;
     final IsolateInterpreter? iso = _iso;
     if (iso != null) {
+      // IsolateInterpreter.close() kills the isolate first (before awaits),
+      // but since we can't await here, the isolate may still be alive when
+      // _itp.close() runs. Use disposeAsync() when possible.
       iso.close();
       _iso = null;
     }
     _itp.close();
+    _delegate?.delete();
+    _delegate = null;
+  }
+
+  /// Asynchronously releases all resources, ensuring the background isolate
+  /// is fully terminated before freeing the native interpreter.
+  ///
+  /// Prefer this over [dispose] when switching models or when you can await
+  /// the cleanup. This prevents native crashes caused by the interpreter
+  /// being freed while the background isolate still references it.
+  ///
+  /// It is safe to call this multiple times.
+  Future<void> disposeAsync() async {
+    if (_disposed) return;
+    _disposed = true;
+
+    final IsolateInterpreter? iso = _iso;
+    if (iso != null) {
+      await iso.close();
+      _iso = null;
+    }
+    _itp.close();
+    _delegate?.delete();
+    _delegate = null;
   }
 
   /// Creates interpreter options with delegates based on performance configuration.

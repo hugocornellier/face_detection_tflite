@@ -1888,6 +1888,39 @@ void main() {
 
       print('Test passed');
     });
+
+    test('stress switch binary <-> multiclass with inference (30x)', () async {
+      final multiclassAvailable = await _isMulticlassModelAvailable();
+      if (!modelsAvailable || !multiclassAvailable) {
+        print('Skipping: required models not available');
+        return;
+      }
+
+      print('\n--- Stress switching binary <-> multiclass (30x) ---');
+      final imageBytes = _createTestImage(256, 256, r: 180, g: 140, b: 100);
+
+      for (int i = 0; i < 30; i++) {
+        final binary = await SelfieSegmentation.create(
+          config: const SegmentationConfig(model: SegmentationModel.general),
+        );
+        final binaryMask = await binary.call(imageBytes);
+        expect(binaryMask, isNot(isA<MulticlassSegmentationMask>()));
+        await binary.disposeAsync();
+
+        final multiclass = await SelfieSegmentation.create(
+          config: const SegmentationConfig(model: SegmentationModel.multiclass),
+        );
+        final multiMask = await multiclass.call(imageBytes);
+        expect(multiMask, isA<MulticlassSegmentationMask>());
+        await multiclass.disposeAsync();
+
+        if ((i + 1) % 5 == 0) {
+          print('Completed ${i + 1}/30 cycles');
+        }
+      }
+
+      print('Test passed');
+    });
   });
 
   // ===========================================================================

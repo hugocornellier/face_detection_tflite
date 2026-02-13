@@ -1,3 +1,7 @@
+## 4.6.2
+- Windows: Custom ops (segmentation) fix
+- Fix heap corruption crash when switching between segmentation models
+
 ## 4.6.1
 - Migrate from `tflite_flutter_custom` to `flutter_litert` 
 
