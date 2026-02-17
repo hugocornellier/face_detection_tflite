@@ -1,23 +1,18 @@
 PODS:
   - camera_macos (0.0.1):
     - FlutterMacOS
-  - face_detection_tflite (0.0.1):
-    - FlutterMacOS
   - flutter_litert (0.0.1):
     - FlutterMacOS
   - FlutterMacOS (1.0.0)
 
 DEPENDENCIES:
   - camera_macos (from `Flutter/ephemeral/.symlinks/plugins/camera_macos/macos`)
-  - face_detection_tflite (from `Flutter/ephemeral/.symlinks/plugins/face_detection_tflite/macos`)
   - flutter_litert (from `Flutter/ephemeral/.symlinks/plugins/flutter_litert/macos`)
   - FlutterMacOS (from `Flutter/ephemeral`)
 
 EXTERNAL SOURCES:
   camera_macos:
     :path: Flutter/ephemeral/.symlinks/plugins/camera_macos/macos
-  face_detection_tflite:
-    :path: Flutter/ephemeral/.symlinks/plugins/face_detection_tflite/macos
   flutter_litert:
     :path: Flutter/ephemeral/.symlinks/plugins/flutter_litert/macos
   FlutterMacOS:
@@ -25,7 +20,6 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   camera_macos: 9fd766915a6c236c8b3fd902f7ccd215636cd07a
-  face_detection_tflite: 4f21ea032f913f04d70ca5dfc36d1771fdab0907
   flutter_litert: 40fce50e7afb94edd95d41276920ca91ff03f7a7
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
 

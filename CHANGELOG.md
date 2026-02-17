@@ -1,4 +1,5 @@
 ## 4.6.3
+- Swift Package Manager support
 - Windows: remove bundled .dll files, as they are no longer needed as of `flutter_litert` 0.1.4
 
 ## 4.6.2

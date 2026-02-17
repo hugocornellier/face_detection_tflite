@@ -13,6 +13,101 @@ import 'package:camera_macos/camera_macos.dart';
 import 'package:face_detection_tflite/face_detection_tflite.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 
+// Shared segmentation class colors for multiclass visualization.
+const List<Color> _kSegmentationClassColors = [
+  Color(0x99A0A0A0), // 0: Background - light gray
+  Color(0x99CD853F), // 1: Hair - peru/tan brown
+  Color(0x88FFA500), // 2: Body Skin - orange
+  Color(0x88FF69B4), // 3: Face Skin - pink
+  Color(0x9900BFFF), // 4: Clothes - deep sky blue
+  Color(0x9940E0D0), // 5: Other - turquoise
+];
+
+const List<String> _kSegmentationClassLabels = [
+  'BG',
+  'Hair',
+  'Body',
+  'Face',
+  'Clothes',
+  'Other',
+];
+
+// Shared detection model dropdown items.
+const List<DropdownMenuItem<FaceDetectionModel>> _kDetectionModelItems = [
+  DropdownMenuItem(value: FaceDetectionModel.frontCamera, child: Text('Front')),
+  DropdownMenuItem(value: FaceDetectionModel.backCamera, child: Text('Back')),
+  DropdownMenuItem(value: FaceDetectionModel.shortRange, child: Text('Short')),
+  DropdownMenuItem(value: FaceDetectionModel.full, child: Text('Full Range')),
+  DropdownMenuItem(
+      value: FaceDetectionModel.fullSparse, child: Text('Full Sparse')),
+];
+
+// Shared detection mode dropdown items.
+const List<DropdownMenuItem<FaceDetectionMode>> _kDetectionModeItems = [
+  DropdownMenuItem(value: FaceDetectionMode.fast, child: Text('Fast')),
+  DropdownMenuItem(value: FaceDetectionMode.standard, child: Text('Standard')),
+  DropdownMenuItem(value: FaceDetectionMode.full, child: Text('Full')),
+];
+
+// Performance classification based on processing time.
+({String label, Color color, IconData icon}) _performanceLevel(int ms) {
+  if (ms < 200) {
+    return (label: 'Excellent', color: Colors.green, icon: Icons.speed);
+  } else if (ms < 500) {
+    return (label: 'Good', color: Colors.lightGreen, icon: Icons.thumb_up);
+  } else if (ms < 1000) {
+    return (label: 'Fair', color: Colors.orange, icon: Icons.warning_amber);
+  } else {
+    return (label: 'Slow', color: Colors.red, icon: Icons.hourglass_bottom);
+  }
+}
+
+// Compute the valid (non-padding) region of a segmentation mask.
+({int x0, int y0, int x1, int y1}) _maskValidRegion(SegmentationMask mask) {
+  final pt = mask.padding[0];
+  final pb = mask.padding[1];
+  final pl = mask.padding[2];
+  final pr = mask.padding[3];
+  return (
+    x0: (pl * mask.width).round(),
+    y0: (pt * mask.height).round(),
+    x1: ((1.0 - pr) * mask.width).round(),
+    y1: ((1.0 - pb) * mask.height).round(),
+  );
+}
+
+// Draw multiclass segmentation labels at class centroids.
+void _drawClassLabels(
+    Canvas canvas, List<int> counts, List<double> sumX, List<double> sumY) {
+  for (int c = 0; c < 6; c++) {
+    if (counts[c] > 100) {
+      final centroidX = sumX[c] / counts[c];
+      final centroidY = sumY[c] / counts[c];
+      final textPainter = TextPainter(
+        text: TextSpan(
+          text: _kSegmentationClassLabels[c],
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+            shadows: [
+              Shadow(color: Colors.black, blurRadius: 2),
+              Shadow(color: Colors.black, blurRadius: 4),
+            ],
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      );
+      textPainter.layout();
+      textPainter.paint(
+        canvas,
+        Offset(centroidX - textPainter.width / 2,
+            centroidY - textPainter.height / 2),
+      );
+    }
+  }
+}
+
 Future<void> main() async {
   // Ensure platform plugins (camera_macos, etc.) are registered before use.
   WidgetsFlutterBinding.ensureInitialized();
@@ -369,45 +464,23 @@ class _ExampleState extends State<Example> {
 
   Widget _buildPerformanceIndicator() {
     if (_totalTimeMs == null) return const SizedBox.shrink();
-
-    String performance;
-    Color color;
-    IconData icon;
-
-    if (_totalTimeMs! < 200) {
-      performance = 'Excellent';
-      color = Colors.green;
-      icon = Icons.speed;
-    } else if (_totalTimeMs! < 500) {
-      performance = 'Good';
-      color = Colors.lightGreen;
-      icon = Icons.thumb_up;
-    } else if (_totalTimeMs! < 1000) {
-      performance = 'Fair';
-      color = Colors.orange;
-      icon = Icons.warning_amber;
-    } else {
-      performance = 'Slow';
-      color = Colors.red;
-      icon = Icons.hourglass_bottom;
-    }
-
+    final perf = _performanceLevel(_totalTimeMs!);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withAlpha(26),
+        color: perf.color.withAlpha(26),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withAlpha(77)),
+        border: Border.all(color: perf.color.withAlpha(77)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: color),
+          Icon(perf.icon, size: 16, color: perf.color),
           const SizedBox(width: 6),
           Text(
-            performance,
+            perf.label,
             style: TextStyle(
-              color: color,
+              color: perf.color,
               fontWeight: FontWeight.bold,
               fontSize: 14,
             ),
@@ -631,29 +704,7 @@ class _ExampleState extends State<Example> {
 
   Widget _buildCompactPerformanceBadge() {
     if (_totalTimeMs == null) return const SizedBox.shrink();
-
-    String performance;
-    Color color;
-    IconData icon;
-
-    if (_totalTimeMs! < 200) {
-      performance = 'Excellent';
-      color = Colors.green;
-      icon = Icons.speed;
-    } else if (_totalTimeMs! < 500) {
-      performance = 'Good';
-      color = Colors.lightGreen;
-      icon = Icons.thumb_up;
-    } else if (_totalTimeMs! < 1000) {
-      performance = 'Fair';
-      color = Colors.orange;
-      icon = Icons.warning_amber;
-    } else {
-      performance = 'Slow';
-      color = Colors.red;
-      icon = Icons.hourglass_bottom;
-    }
-
+    final perf = _performanceLevel(_totalTimeMs!);
     return Positioned(
       top: 12,
       left: 12,
@@ -668,7 +719,7 @@ class _ExampleState extends State<Example> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 14, color: color),
+              Icon(perf.icon, size: 14, color: perf.color),
               const SizedBox(width: 6),
               Text(
                 '${_totalTimeMs}ms',
@@ -680,8 +731,8 @@ class _ExampleState extends State<Example> {
               ),
               const SizedBox(width: 4),
               Text(
-                performance,
-                style: TextStyle(color: color, fontSize: 12),
+                perf.label,
+                style: TextStyle(color: perf.color, fontSize: 12),
               ),
               const SizedBox(width: 4),
               const Icon(Icons.info_outline, size: 12, color: Colors.white54),
@@ -1238,19 +1289,39 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     }
   }
 
-  Future<void> _switchLiveSegmentationModel(SegmentationModel model) async {
-    if (model == _liveSegmentationModel) return;
-    setState(() {
-      _liveSegmentationModel = model;
-      _segmentationMask = null;
-    });
-    // Reinitialize detector with new segmentation model
+  void _updateFps() {
+    _framesSinceLastUpdate++;
+    final now = DateTime.now();
+    if (_lastFpsUpdate != null) {
+      final diff = now.difference(_lastFpsUpdate!).inMilliseconds;
+      if (diff >= 1000 && mounted) {
+        setState(() {
+          _fps = (_framesSinceLastUpdate * 1000 / diff).round();
+          _framesSinceLastUpdate = 0;
+          _lastFpsUpdate = now;
+        });
+      }
+    } else {
+      _lastFpsUpdate = now;
+    }
+  }
+
+  Future<void> _reinitDetectorIsolate() async {
     _faceDetectorIsolate?.dispose();
     _faceDetectorIsolate = await FaceDetectorIsolate.spawn(
       model: _detectionModel,
       withSegmentation: true,
       segmentationConfig: SegmentationConfig(model: _liveSegmentationModel),
     );
+  }
+
+  Future<void> _switchLiveSegmentationModel(SegmentationModel model) async {
+    if (model == _liveSegmentationModel) return;
+    setState(() {
+      _liveSegmentationModel = model;
+      _segmentationMask = null;
+    });
+    await _reinitDetectorIsolate();
   }
 
   Widget _segModelButton(SegmentationModel model, String label) {
@@ -1275,15 +1346,234 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     );
   }
 
+  AppBar _buildCameraAppBar() {
+    return AppBar(
+      title: const Text('Live Camera Detection'),
+      backgroundColor: Colors.green,
+      foregroundColor: Colors.white,
+      actions: [
+        Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: DropdownButton<FaceDetectionMode>(
+              value: _detectionMode,
+              dropdownColor: Colors.green[800],
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+              underline: const SizedBox(),
+              items: _kDetectionModeItems,
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() => _detectionMode = value);
+                }
+              },
+            ),
+          ),
+        ),
+        Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: DropdownButton<FaceDetectionModel>(
+              value: _detectionModel,
+              dropdownColor: Colors.green[800],
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+              underline: const SizedBox(),
+              items: _kDetectionModelItems,
+              onChanged: (value) async {
+                if (value != null && value != _detectionModel) {
+                  setState(() => _detectionModel = value);
+                  await _reinitDetectorIsolate();
+                }
+              },
+            ),
+          ),
+        ),
+        Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Text(
+              'FPS: $_fps | ${_detectionTimeMs}ms',
+              style: const TextStyle(fontSize: 14),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCameraOverlays({
+    required Widget cameraWidget,
+    required double cameraAspectRatio,
+    required double displayAspectRatio,
+    required bool mirrorHorizontally,
+    required int sensorOrientation,
+    required Orientation deviceOrientation,
+    required bool isFrontCamera,
+  }) {
+    return Center(
+      child: AspectRatio(
+        aspectRatio: displayAspectRatio,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (_showVirtualBackground && _beachBackground != null)
+              Positioned.fill(
+                child: CustomPaint(
+                  painter: _BackgroundImagePainter(image: _beachBackground!),
+                ),
+              ),
+            cameraWidget,
+            if (_showVirtualBackground &&
+                _beachBackground != null &&
+                _segmentationMask != null)
+              CustomPaint(
+                painter: _VirtualBackgroundOverlayPainter(
+                  background: _beachBackground!,
+                  mask: _segmentationMask!,
+                  mirrorHorizontally: mirrorHorizontally,
+                ),
+              ),
+            if (_showSegmentation &&
+                !_showVirtualBackground &&
+                _segmentationMask != null)
+              CustomPaint(
+                painter: _LiveSegmentationPainter(
+                  mask: _segmentationMask!,
+                  maskColor: _segmentationColor,
+                  showAllClasses:
+                      _liveSegmentationModel == SegmentationModel.multiclass,
+                  mirrorHorizontally: mirrorHorizontally,
+                ),
+              ),
+            if (_imageSize != null)
+              CustomPaint(
+                painter: _CameraDetectionPainter(
+                  faces: _faces,
+                  imageSize: _imageSize!,
+                  cameraAspectRatio: cameraAspectRatio,
+                  displayAspectRatio: displayAspectRatio,
+                  detectionMode: _detectionMode,
+                  sensorOrientation: sensorOrientation,
+                  deviceOrientation: deviceOrientation,
+                  isFrontCamera: isFrontCamera,
+                  mirrorHorizontally: mirrorHorizontally,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoPanel() {
+    return Positioned(
+      bottom: 20,
+      left: 0,
+      right: 0,
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.black.withAlpha(179),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Faces Detected: ${_faces.length}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Frame Skip: ',
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
+                  DropdownButton<int>(
+                    value: _processEveryNFrames,
+                    dropdownColor: Colors.black87,
+                    style: const TextStyle(color: Colors.white),
+                    items: [1, 2, 3, 4, 5]
+                        .map((n) => DropdownMenuItem(
+                              value: n,
+                              child: Text('1/$n'),
+                            ))
+                        .toList(),
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() {
+                          _processEveryNFrames = value;
+                        });
+                      }
+                    },
+                  ),
+                  const SizedBox(width: 16),
+                  const Text(
+                    'Segmentation: ',
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
+                  Switch(
+                    value: _showSegmentation,
+                    activeTrackColor: Colors.green,
+                    onChanged: (value) {
+                      setState(() {
+                        _showSegmentation = value;
+                        if (!value) _segmentationMask = null;
+                      });
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Seg Model: ',
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
+                  const SizedBox(width: 8),
+                  _segModelButton(SegmentationModel.general, 'Binary'),
+                  const SizedBox(width: 4),
+                  _segModelButton(SegmentationModel.multiclass, '6-Class'),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Virtual Background: ',
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
+                  Switch(
+                    value: _showVirtualBackground,
+                    activeTrackColor: Colors.blue,
+                    onChanged: (value) {
+                      setState(() {
+                        _showVirtualBackground = value;
+                        if (!value) _segmentationMask = null;
+                      });
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _initCamera() async {
     try {
-      // Initialize face detector isolate with segmentation enabled
-      // Parallel processing happens automatically via dual internal isolates
-      _faceDetectorIsolate = await FaceDetectorIsolate.spawn(
-        model: _detectionModel,
-        withSegmentation: true,
-        segmentationConfig: SegmentationConfig(model: _liveSegmentationModel),
-      );
+      await _reinitDetectorIsolate();
 
       if (_isMacOS) {
         if (mounted) {
@@ -1409,21 +1699,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
 
   Future<void> _processWindowsImageBytes(Uint8List bytes) async {
     _frameCounter++;
-    _framesSinceLastUpdate++;
-
-    final now = DateTime.now();
-    if (_lastFpsUpdate != null) {
-      final diff = now.difference(_lastFpsUpdate!).inMilliseconds;
-      if (diff >= 1000 && mounted) {
-        setState(() {
-          _fps = (_framesSinceLastUpdate * 1000 / diff).round();
-          _framesSinceLastUpdate = 0;
-          _lastFpsUpdate = now;
-        });
-      }
-    } else {
-      _lastFpsUpdate = now;
-    }
+    _updateFps();
 
     if (_frameCounter % _processEveryNFrames != 0) return;
     if (_isProcessing || _faceDetectorIsolate == null) return;
@@ -1433,7 +1709,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       final startTime = DateTime.now();
       final bool segmentationEnabled =
           (_showSegmentation || _showVirtualBackground) &&
-          _faceDetectorIsolate!.isSegmentationReady;
+              _faceDetectorIsolate!.isSegmentationReady;
 
       List<Face> faces;
       SegmentationMask? segMask;
@@ -1526,22 +1802,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
 
   Future<void> _processCameraImage(CameraImage image) async {
     _frameCounter++;
-
-    // Calculate FPS
-    _framesSinceLastUpdate++;
-    final now = DateTime.now();
-    if (_lastFpsUpdate != null) {
-      final diff = now.difference(_lastFpsUpdate!).inMilliseconds;
-      if (diff >= 1000) {
-        setState(() {
-          _fps = (_framesSinceLastUpdate * 1000 / diff).round();
-          _framesSinceLastUpdate = 0;
-          _lastFpsUpdate = now;
-        });
-      }
-    } else {
-      _lastFpsUpdate = now;
-    }
+    _updateFps();
 
     // Skip frames for better performance
     if (_frameCounter % _processEveryNFrames != 0) return;
@@ -1626,6 +1887,18 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       // Allocate BGR buffer for OpenCV (3 bytes per pixel)
       final bgrBytes = Uint8List(width * height * 3);
 
+      void writePixel(int x, int y, int yp, int up, int vp) {
+        int r = (yp + vp * 1436 / 1024 - 179).round().clamp(0, 255);
+        int g = (yp - up * 46549 / 131072 + 44 - vp * 93604 / 131072 + 91)
+            .round()
+            .clamp(0, 255);
+        int b = (yp + up * 1814 / 1024 - 227).round().clamp(0, 255);
+        final int bgrIdx = (y * width + x) * 3;
+        bgrBytes[bgrIdx] = b;
+        bgrBytes[bgrIdx + 1] = g;
+        bgrBytes[bgrIdx + 2] = r;
+      }
+
       if (image.planes.length == 2) {
         // iOS NV12 format
         final int uvRowStride = image.planes[1].bytesPerRow;
@@ -1636,23 +1909,12 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
             final int uvIndex =
                 uvPixelStride * (x ~/ 2) + uvRowStride * (y ~/ 2);
             final int index = y * yRowStride + x * yPixelStride;
-
-            final yp = image.planes[0].bytes[index];
-            final up = image.planes[1].bytes[uvIndex];
-            final vp = image.planes[1].bytes[uvIndex + 1];
-
-            // Convert YUV to RGB
-            int r = (yp + vp * 1436 / 1024 - 179).round().clamp(0, 255);
-            int g = (yp - up * 46549 / 131072 + 44 - vp * 93604 / 131072 + 91)
-                .round()
-                .clamp(0, 255);
-            int b = (yp + up * 1814 / 1024 - 227).round().clamp(0, 255);
-
-            // Write BGR (OpenCV format)
-            final int bgrIdx = (y * width + x) * 3;
-            bgrBytes[bgrIdx] = b;
-            bgrBytes[bgrIdx + 1] = g;
-            bgrBytes[bgrIdx + 2] = r;
+            writePixel(
+                x,
+                y,
+                image.planes[0].bytes[index],
+                image.planes[1].bytes[uvIndex],
+                image.planes[1].bytes[uvIndex + 1]);
           }
         }
       } else if (image.planes.length >= 3) {
@@ -1665,23 +1927,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
             final int uvIndex =
                 uvPixelStride * (x ~/ 2) + uvRowStride * (y ~/ 2);
             final int index = y * yRowStride + x * yPixelStride;
-
-            final yp = image.planes[0].bytes[index];
-            final up = image.planes[1].bytes[uvIndex];
-            final vp = image.planes[2].bytes[uvIndex];
-
-            // Convert YUV to RGB
-            int r = (yp + vp * 1436 / 1024 - 179).round().clamp(0, 255);
-            int g = (yp - up * 46549 / 131072 + 44 - vp * 93604 / 131072 + 91)
-                .round()
-                .clamp(0, 255);
-            int b = (yp + up * 1814 / 1024 - 227).round().clamp(0, 255);
-
-            // Write BGR (OpenCV format)
-            final int bgrIdx = (y * width + x) * 3;
-            bgrBytes[bgrIdx] = b;
-            bgrBytes[bgrIdx + 1] = g;
-            bgrBytes[bgrIdx + 2] = r;
+            writePixel(x, y, image.planes[0].bytes[index],
+                image.planes[1].bytes[uvIndex], image.planes[2].bytes[uvIndex]);
           }
         }
       } else {
@@ -1787,269 +2034,20 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         isPortrait ? 1.0 / cameraAspectRatio : cameraAspectRatio;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Live Camera Detection'),
-        backgroundColor: Colors.green,
-        foregroundColor: Colors.white,
-        actions: [
-          // Detection mode dropdown
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8.0),
-              child: DropdownButton<FaceDetectionMode>(
-                value: _detectionMode,
-                dropdownColor: Colors.green[800],
-                style: const TextStyle(color: Colors.white, fontSize: 14),
-                underline: const SizedBox(),
-                items: const [
-                  DropdownMenuItem(
-                    value: FaceDetectionMode.fast,
-                    child: Text('Fast'),
-                  ),
-                  DropdownMenuItem(
-                    value: FaceDetectionMode.standard,
-                    child: Text('Standard'),
-                  ),
-                  DropdownMenuItem(
-                    value: FaceDetectionMode.full,
-                    child: Text('Full'),
-                  ),
-                ],
-                onChanged: (value) {
-                  if (value != null) {
-                    setState(() => _detectionMode = value);
-                  }
-                },
-              ),
-            ),
-          ),
-          // Detection model dropdown
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8.0),
-              child: DropdownButton<FaceDetectionModel>(
-                value: _detectionModel,
-                dropdownColor: Colors.green[800],
-                style: const TextStyle(color: Colors.white, fontSize: 14),
-                underline: const SizedBox(),
-                items: const [
-                  DropdownMenuItem(
-                    value: FaceDetectionModel.frontCamera,
-                    child: Text('Front'),
-                  ),
-                  DropdownMenuItem(
-                    value: FaceDetectionModel.backCamera,
-                    child: Text('Back'),
-                  ),
-                  DropdownMenuItem(
-                    value: FaceDetectionModel.shortRange,
-                    child: Text('Short'),
-                  ),
-                  DropdownMenuItem(
-                    value: FaceDetectionModel.full,
-                    child: Text('Full Range'),
-                  ),
-                  DropdownMenuItem(
-                    value: FaceDetectionModel.fullSparse,
-                    child: Text('Full Sparse'),
-                  ),
-                ],
-                onChanged: (value) async {
-                  if (value != null && value != _detectionModel) {
-                    setState(() => _detectionModel = value);
-                    // Reinitialize detector isolate with new model
-                    _faceDetectorIsolate?.dispose();
-                    _faceDetectorIsolate = await FaceDetectorIsolate.spawn(
-                      model: _detectionModel,
-                      withSegmentation: true,
-                      segmentationConfig:
-                          SegmentationConfig(model: _liveSegmentationModel),
-                    );
-                  }
-                },
-              ),
-            ),
-          ),
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Text(
-                'FPS: $_fps | ${_detectionTimeMs}ms',
-                style: const TextStyle(fontSize: 14),
-              ),
-            ),
-          ),
-        ],
-      ),
+      appBar: _buildCameraAppBar(),
       body: Stack(
         fit: StackFit.expand,
         children: [
-          Center(
-            child: AspectRatio(
-              aspectRatio: displayAspectRatio,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  // Virtual background: draw beach first, then camera, then beach on background areas
-                  if (_showVirtualBackground && _beachBackground != null)
-                    Positioned.fill(
-                      child: CustomPaint(
-                        painter:
-                            _BackgroundImagePainter(image: _beachBackground!),
-                      ),
-                    ),
-                  // Camera preview (always shown)
-                  CameraPreview(_cameraController!),
-                  // Virtual background: overlay beach on non-person areas
-                  if (_showVirtualBackground &&
-                      _beachBackground != null &&
-                      _segmentationMask != null)
-                    CustomPaint(
-                      painter: _VirtualBackgroundOverlayPainter(
-                        background: _beachBackground!,
-                        mask: _segmentationMask!,
-                        mirrorHorizontally: _isWindows && _isFrontCamera,
-                      ),
-                    ),
-                  // Segmentation mask overlay (only when not using virtual background)
-                  if (_showSegmentation &&
-                      !_showVirtualBackground &&
-                      _segmentationMask != null)
-                    CustomPaint(
-                      painter: _LiveSegmentationPainter(
-                        mask: _segmentationMask!,
-                        maskColor: _segmentationColor,
-                        showAllClasses: _liveSegmentationModel ==
-                            SegmentationModel.multiclass,
-                        mirrorHorizontally: _isWindows && _isFrontCamera,
-                      ),
-                    ),
-                  if (_imageSize != null)
-                    CustomPaint(
-                      painter: _CameraDetectionPainter(
-                        faces: _faces,
-                        imageSize: _imageSize!,
-                        cameraAspectRatio: cameraAspectRatio,
-                        displayAspectRatio: displayAspectRatio,
-                        detectionMode: _detectionMode,
-                        sensorOrientation: _sensorOrientation ?? 0,
-                        deviceOrientation: deviceOrientation,
-                        isFrontCamera: _isFrontCamera,
-                        mirrorHorizontally: _isWindows && _isFrontCamera,
-                      ),
-                    ),
-                ],
-              ),
-            ),
+          _buildCameraOverlays(
+            cameraWidget: CameraPreview(_cameraController!),
+            cameraAspectRatio: cameraAspectRatio,
+            displayAspectRatio: displayAspectRatio,
+            mirrorHorizontally: _isWindows && _isFrontCamera,
+            sensorOrientation: _sensorOrientation ?? 0,
+            deviceOrientation: deviceOrientation,
+            isFrontCamera: _isFrontCamera,
           ),
-          // Info panel
-          Positioned(
-            bottom: 20,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                decoration: BoxDecoration(
-                  color: Colors.black.withAlpha(179),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'Faces Detected: ${_faces.length}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text(
-                          'Frame Skip: ',
-                          style: TextStyle(color: Colors.white70, fontSize: 14),
-                        ),
-                        DropdownButton<int>(
-                          value: _processEveryNFrames,
-                          dropdownColor: Colors.black87,
-                          style: const TextStyle(color: Colors.white),
-                          items: [1, 2, 3, 4, 5]
-                              .map((n) => DropdownMenuItem(
-                                    value: n,
-                                    child: Text('1/$n'),
-                                  ))
-                              .toList(),
-                          onChanged: (value) {
-                            if (value != null) {
-                              setState(() {
-                                _processEveryNFrames = value;
-                              });
-                            }
-                          },
-                        ),
-                        const SizedBox(width: 16),
-                        const Text(
-                          'Segmentation: ',
-                          style: TextStyle(color: Colors.white70, fontSize: 14),
-                        ),
-                        Switch(
-                          value: _showSegmentation,
-                          activeTrackColor: Colors.green,
-                          onChanged: (value) {
-                            setState(() {
-                              _showSegmentation = value;
-                              if (!value) _segmentationMask = null;
-                            });
-                          },
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    // Segmentation model selector
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text(
-                          'Seg Model: ',
-                          style: TextStyle(color: Colors.white70, fontSize: 14),
-                        ),
-                        const SizedBox(width: 8),
-                        _segModelButton(SegmentationModel.general, 'Binary'),
-                        const SizedBox(width: 4),
-                        _segModelButton(
-                            SegmentationModel.multiclass, '6-Class'),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text(
-                          'Virtual Background: ',
-                          style: TextStyle(color: Colors.white70, fontSize: 14),
-                        ),
-                        Switch(
-                          value: _showVirtualBackground,
-                          activeTrackColor: Colors.blue,
-                          onChanged: (value) {
-                            setState(() {
-                              _showVirtualBackground = value;
-                              if (!value) _segmentationMask = null;
-                            });
-                          },
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+          _buildInfoPanel(),
         ],
       ),
     );
@@ -2073,275 +2071,26 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         : size.width / size.height;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Live Camera Detection'),
-        backgroundColor: Colors.green,
-        foregroundColor: Colors.white,
-        actions: [
-          // Detection mode dropdown
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8.0),
-              child: DropdownButton<FaceDetectionMode>(
-                value: _detectionMode,
-                dropdownColor: Colors.green[800],
-                style: const TextStyle(color: Colors.white, fontSize: 14),
-                underline: const SizedBox(),
-                items: const [
-                  DropdownMenuItem(
-                    value: FaceDetectionMode.fast,
-                    child: Text('Fast'),
-                  ),
-                  DropdownMenuItem(
-                    value: FaceDetectionMode.standard,
-                    child: Text('Standard'),
-                  ),
-                  DropdownMenuItem(
-                    value: FaceDetectionMode.full,
-                    child: Text('Full'),
-                  ),
-                ],
-                onChanged: (value) {
-                  if (value != null) {
-                    setState(() => _detectionMode = value);
-                  }
-                },
-              ),
-            ),
-          ),
-          // Detection model dropdown
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8.0),
-              child: DropdownButton<FaceDetectionModel>(
-                value: _detectionModel,
-                dropdownColor: Colors.green[800],
-                style: const TextStyle(color: Colors.white, fontSize: 14),
-                underline: const SizedBox(),
-                items: const [
-                  DropdownMenuItem(
-                    value: FaceDetectionModel.frontCamera,
-                    child: Text('Front'),
-                  ),
-                  DropdownMenuItem(
-                    value: FaceDetectionModel.backCamera,
-                    child: Text('Back'),
-                  ),
-                  DropdownMenuItem(
-                    value: FaceDetectionModel.shortRange,
-                    child: Text('Short'),
-                  ),
-                  DropdownMenuItem(
-                    value: FaceDetectionModel.full,
-                    child: Text('Full Range'),
-                  ),
-                  DropdownMenuItem(
-                    value: FaceDetectionModel.fullSparse,
-                    child: Text('Full Sparse'),
-                  ),
-                ],
-                onChanged: (value) async {
-                  if (value != null && value != _detectionModel) {
-                    setState(() => _detectionModel = value);
-                    // Reinitialize detector isolate with new model
-                    _faceDetectorIsolate?.dispose();
-                    _faceDetectorIsolate = await FaceDetectorIsolate.spawn(
-                      model: _detectionModel,
-                      withSegmentation: true,
-                      segmentationConfig:
-                          SegmentationConfig(model: _liveSegmentationModel),
-                    );
-                  }
-                },
-              ),
-            ),
-          ),
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Text(
-                'FPS: $_fps | ${_detectionTimeMs}ms',
-                style: const TextStyle(fontSize: 14),
-              ),
-            ),
-          ),
-        ],
-      ),
+      appBar: _buildCameraAppBar(),
       body: Stack(
         fit: StackFit.expand,
         children: [
-          Center(
-            child: AspectRatio(
-              aspectRatio: cameraAspectRatio,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  // Virtual background: draw beach first
-                  if (_showVirtualBackground && _beachBackground != null)
-                    Positioned.fill(
-                      child: CustomPaint(
-                        painter:
-                            _BackgroundImagePainter(image: _beachBackground!),
-                      ),
-                    ),
-                  // Camera view
-                  CameraMacOSView(
-                    cameraMode: CameraMacOSMode.photo,
-                    fit: BoxFit.contain,
-                    onCameraInizialized: _onMacCameraInitialized,
-                    onCameraLoading: (_) =>
-                        const Center(child: CircularProgressIndicator()),
-                  ),
-                  // Virtual background: overlay beach on non-person areas
-                  if (_showVirtualBackground &&
-                      _beachBackground != null &&
-                      _segmentationMask != null)
-                    CustomPaint(
-                      painter: _VirtualBackgroundOverlayPainter(
-                        background: _beachBackground!,
-                        mask: _segmentationMask!,
-                        mirrorHorizontally: false,
-                      ),
-                    ),
-                  // Segmentation mask overlay (only when not using virtual background)
-                  if (_showSegmentation &&
-                      !_showVirtualBackground &&
-                      _segmentationMask != null)
-                    CustomPaint(
-                      painter: _LiveSegmentationPainter(
-                        mask: _segmentationMask!,
-                        maskColor: _segmentationColor,
-                        showAllClasses: _liveSegmentationModel ==
-                            SegmentationModel.multiclass,
-                        mirrorHorizontally: false,
-                      ),
-                    ),
-                  if (_imageSize != null)
-                    CustomPaint(
-                      painter: _CameraDetectionPainter(
-                        faces: _faces,
-                        imageSize: _imageSize!,
-                        cameraAspectRatio: cameraAspectRatio,
-                        displayAspectRatio: cameraAspectRatio,
-                        detectionMode: _detectionMode,
-                        sensorOrientation: 0, // macOS doesn't need rotation
-                        deviceOrientation: Orientation.landscape,
-                        isFrontCamera:
-                            true, // macOS typically uses front camera
-                        mirrorHorizontally: false,
-                      ),
-                    ),
-                ],
-              ),
+          _buildCameraOverlays(
+            cameraWidget: CameraMacOSView(
+              cameraMode: CameraMacOSMode.photo,
+              fit: BoxFit.contain,
+              onCameraInizialized: _onMacCameraInitialized,
+              onCameraLoading: (_) =>
+                  const Center(child: CircularProgressIndicator()),
             ),
+            cameraAspectRatio: cameraAspectRatio,
+            displayAspectRatio: cameraAspectRatio,
+            mirrorHorizontally: false,
+            sensorOrientation: 0,
+            deviceOrientation: Orientation.landscape,
+            isFrontCamera: true,
           ),
-          Positioned(
-            bottom: 20,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                decoration: BoxDecoration(
-                  color: Colors.black.withAlpha(179),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'Faces Detected: ${_faces.length}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text(
-                          'Frame Skip: ',
-                          style: TextStyle(color: Colors.white70, fontSize: 14),
-                        ),
-                        DropdownButton<int>(
-                          value: _processEveryNFrames,
-                          dropdownColor: Colors.black87,
-                          style: const TextStyle(color: Colors.white),
-                          items: [1, 2, 3, 4, 5]
-                              .map((n) => DropdownMenuItem(
-                                    value: n,
-                                    child: Text('1/$n'),
-                                  ))
-                              .toList(),
-                          onChanged: (value) {
-                            if (value != null) {
-                              setState(() {
-                                _processEveryNFrames = value;
-                              });
-                            }
-                          },
-                        ),
-                        const SizedBox(width: 16),
-                        const Text(
-                          'Segmentation: ',
-                          style: TextStyle(color: Colors.white70, fontSize: 14),
-                        ),
-                        Switch(
-                          value: _showSegmentation,
-                          activeTrackColor: Colors.green,
-                          onChanged: (value) {
-                            setState(() {
-                              _showSegmentation = value;
-                              if (!value) _segmentationMask = null;
-                            });
-                          },
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    // Segmentation model selector
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text(
-                          'Seg Model: ',
-                          style: TextStyle(color: Colors.white70, fontSize: 14),
-                        ),
-                        const SizedBox(width: 8),
-                        _segModelButton(SegmentationModel.general, 'Binary'),
-                        const SizedBox(width: 4),
-                        _segModelButton(
-                            SegmentationModel.multiclass, '6-Class'),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text(
-                          'Virtual Background: ',
-                          style: TextStyle(color: Colors.white70, fontSize: 14),
-                        ),
-                        Switch(
-                          value: _showVirtualBackground,
-                          activeTrackColor: Colors.blue,
-                          onChanged: (value) {
-                            setState(() {
-                              _showVirtualBackground = value;
-                              if (!value) _segmentationMask = null;
-                            });
-                          },
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+          _buildInfoPanel(),
         ],
       ),
     );
@@ -2363,20 +2112,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       if (image == null) return;
 
       _frameCounter++;
-      _framesSinceLastUpdate++;
-      final now = DateTime.now();
-      if (_lastFpsUpdate != null) {
-        final diff = now.difference(_lastFpsUpdate!).inMilliseconds;
-        if (diff >= 1000) {
-          setState(() {
-            _fps = (_framesSinceLastUpdate * 1000 / diff).round();
-            _framesSinceLastUpdate = 0;
-            _lastFpsUpdate = now;
-          });
-        }
-      } else {
-        _lastFpsUpdate = now;
-      }
+      _updateFps();
 
       if (_frameCounter % _processEveryNFrames != 0) return;
       if (_isProcessing) return;
@@ -2652,25 +2388,6 @@ class _LiveSegmentationPainter extends CustomPainter {
   final bool showAllClasses;
   final bool mirrorHorizontally;
 
-  // Rainbow colors for multiclass visualization (same as static painter)
-  static const List<Color> classColors = [
-    Color(0x99A0A0A0), // 0: Background - light gray
-    Color(0x99CD853F), // 1: Hair - peru/tan brown
-    Color(0x88FFA500), // 2: Body Skin - orange
-    Color(0x88FF69B4), // 3: Face Skin - pink
-    Color(0x9900BFFF), // 4: Clothes - deep sky blue
-    Color(0x9940E0D0), // 5: Other - turquoise
-  ];
-
-  static const List<String> classLabels = [
-    'BG',
-    'Hair',
-    'Body',
-    'Face',
-    'Clothes',
-    'Other'
-  ];
-
   _LiveSegmentationPainter({
     required this.mask,
     required this.maskColor,
@@ -2680,34 +2397,24 @@ class _LiveSegmentationPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final pt = mask.padding[0];
-    final pb = mask.padding[1];
-    final pl = mask.padding[2];
-    final pr = mask.padding[3];
-
-    final validX0 = (pl * mask.width).round();
-    final validY0 = (pt * mask.height).round();
-    final validX1 = ((1.0 - pr) * mask.width).round();
-    final validY1 = ((1.0 - pb) * mask.height).round();
-    final validW = validX1 - validX0;
-    final validH = validY1 - validY0;
+    final v = _maskValidRegion(mask);
+    final validW = v.x1 - v.x0;
+    final validH = v.y1 - v.y0;
 
     final sourceW = validW.toDouble();
     final sourceH = validH.toDouble();
-    final viewportW = size.width;
-    final viewportH = size.height;
     final sourceAspect = sourceW / sourceH;
-    final viewportAspect = viewportW / viewportH;
+    final viewportAspect = size.width / size.height;
 
     final double scale;
     double offsetX = 0;
     double offsetY = 0;
     if (sourceAspect > viewportAspect) {
-      scale = viewportH / sourceH;
-      offsetX = (viewportW - sourceW * scale) / 2;
+      scale = size.height / sourceH;
+      offsetX = (size.width - sourceW * scale) / 2;
     } else {
-      scale = viewportW / sourceW;
-      offsetY = (viewportH - sourceH * scale) / 2;
+      scale = size.width / sourceW;
+      offsetY = (size.height - sourceH * scale) / 2;
     }
 
     final double pixelW = scale + 0.5;
@@ -2716,26 +2423,22 @@ class _LiveSegmentationPainter extends CustomPainter {
     final paint = Paint();
     const double threshold = 0.5;
 
-    // Multiclass: show all classes with unique colors
     if (showAllClasses && mask is MulticlassSegmentationMask) {
       final multiMask = mask as MulticlassSegmentationMask;
       final classMasks = List.generate(6, (i) => multiMask.classMask(i));
 
-      // Track label positions (centroid of each class)
       final labelCounts = List<int>.filled(6, 0);
       final labelSumX = List<double>.filled(6, 0);
       final labelSumY = List<double>.filled(6, 0);
 
-      for (int y = validY0; y < validY1; y++) {
-        for (int x = validX0; x < validX1; x++) {
+      for (int y = v.y0; y < v.y1; y++) {
+        for (int x = v.x0; x < v.x1; x++) {
           final idx = y * mask.width + x;
-          final rawX = (x - validX0) * scale + offsetX;
-          final renderX = mirrorHorizontally
-              ? size.width - rawX - pixelW
-              : rawX;
-          final renderY = (y - validY0) * scale + offsetY;
+          final rawX = (x - v.x0) * scale + offsetX;
+          final renderX =
+              mirrorHorizontally ? size.width - rawX - pixelW : rawX;
+          final renderY = (y - v.y0) * scale + offsetY;
 
-          // Find winning class for this pixel
           int winningClass = 0;
           double maxProb = classMasks[0][idx];
           for (int c = 1; c < 6; c++) {
@@ -2746,7 +2449,7 @@ class _LiveSegmentationPainter extends CustomPainter {
           }
 
           if (maxProb >= threshold) {
-            final color = classColors[winningClass];
+            final color = _kSegmentationClassColors[winningClass];
             final baseAlpha = (color.a * 255).round();
             paint.color = color.withAlpha((maxProb * baseAlpha).round());
             canvas.drawRect(
@@ -2754,7 +2457,6 @@ class _LiveSegmentationPainter extends CustomPainter {
               paint,
             );
 
-            // Accumulate for centroid calculation
             labelCounts[winningClass]++;
             labelSumX[winningClass] += renderX;
             labelSumY[winningClass] += renderY;
@@ -2762,51 +2464,21 @@ class _LiveSegmentationPainter extends CustomPainter {
         }
       }
 
-      // Draw labels at centroids
-      for (int c = 0; c < 6; c++) {
-        if (labelCounts[c] > 100) {
-          final centroidX = labelSumX[c] / labelCounts[c];
-          final centroidY = labelSumY[c] / labelCounts[c];
-
-          final textPainter = TextPainter(
-            text: TextSpan(
-              text: classLabels[c],
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-                shadows: [
-                  Shadow(color: Colors.black, blurRadius: 2),
-                  Shadow(color: Colors.black, blurRadius: 4),
-                ],
-              ),
-            ),
-            textDirection: TextDirection.ltr,
-          );
-          textPainter.layout();
-          textPainter.paint(
-            canvas,
-            Offset(centroidX - textPainter.width / 2,
-                centroidY - textPainter.height / 2),
-          );
-        }
-      }
+      _drawClassLabels(canvas, labelCounts, labelSumX, labelSumY);
       return;
     }
 
-    // Binary mask mode
-    for (int y = validY0; y < validY1; y++) {
-      for (int x = validX0; x < validX1; x++) {
+    for (int y = v.y0; y < v.y1; y++) {
+      for (int x = v.x0; x < v.x1; x++) {
         final prob = mask.at(x, y);
         final alpha = prob >= threshold ? maskColor.a : 0.0;
 
         if (alpha > 0.01) {
           paint.color = maskColor.withAlpha((alpha * 255).round());
-          final rawX = (x - validX0) * scale + offsetX;
-          final renderX = mirrorHorizontally
-              ? size.width - rawX - pixelW
-              : rawX;
-          final renderY = (y - validY0) * scale + offsetY;
+          final rawX = (x - v.x0) * scale + offsetX;
+          final renderX =
+              mirrorHorizontally ? size.width - rawX - pixelW : rawX;
+          final renderY = (y - v.y0) * scale + offsetY;
           canvas.drawRect(
             Rect.fromLTWH(renderX, renderY, pixelW, pixelH),
             paint,
@@ -2862,54 +2534,38 @@ class _VirtualBackgroundOverlayPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Account for letterbox padding
-    final pt = mask.padding[0];
-    final pb = mask.padding[1];
-    final pl = mask.padding[2];
-    final pr = mask.padding[3];
-
-    final validX0 = (pl * mask.width).round();
-    final validY0 = (pt * mask.height).round();
-    final validX1 = ((1.0 - pr) * mask.width).round();
-    final validY1 = ((1.0 - pb) * mask.height).round();
-    final validW = validX1 - validX0;
-    final validH = validY1 - validY0;
+    final v = _maskValidRegion(mask);
+    final validW = v.x1 - v.x0;
+    final validH = v.y1 - v.y0;
 
     if (validW <= 0 || validH <= 0) return;
 
     final sourceW = validW.toDouble();
     final sourceH = validH.toDouble();
-    final viewportW = size.width;
-    final viewportH = size.height;
     final sourceAspect = sourceW / sourceH;
-    final viewportAspect = viewportW / viewportH;
+    final viewportAspect = size.width / size.height;
 
     final double scale;
     double offsetX = 0;
     double offsetY = 0;
     if (sourceAspect > viewportAspect) {
-      scale = viewportH / sourceH;
-      offsetX = (viewportW - sourceW * scale) / 2;
+      scale = size.height / sourceH;
+      offsetX = (size.width - sourceW * scale) / 2;
     } else {
-      scale = viewportW / sourceW;
-      offsetY = (viewportH - sourceH * scale) / 2;
+      scale = size.width / sourceW;
+      offsetY = (size.height - sourceH * scale) / 2;
     }
 
     final double pixelW = scale + 0.5;
     final double pixelH = scale + 0.5;
 
-    // Scale factors for sampling from background image
     final bgScaleX = background.width / size.width;
     final bgScaleY = background.height / size.height;
 
     final paint = Paint();
 
-    // Draw background with soft alpha blending based on mask probability
-    // prob = 1.0 means person (don't draw background)
-    // prob = 0.0 means background (draw background fully)
-    // Values in between create smooth edge blending
-    for (int y = validY0; y < validY1; y++) {
-      for (int x = validX0; x < validX1; x++) {
+    for (int y = v.y0; y < v.y1; y++) {
+      for (int x = v.x0; x < v.x1; x++) {
         final prob = mask.at(x, y).clamp(0.0, 1.0);
 
         // Calculate background opacity (inverse of person probability)
@@ -2919,11 +2575,9 @@ class _VirtualBackgroundOverlayPainter extends CustomPainter {
         // Skip fully transparent pixels for performance
         if (bgAlpha < 0.01) continue;
 
-        final rawX = (x - validX0) * scale + offsetX;
-        final renderX = mirrorHorizontally
-            ? size.width - rawX - pixelW
-            : rawX;
-        final renderY = (y - validY0) * scale + offsetY;
+        final rawX = (x - v.x0) * scale + offsetX;
+        final renderX = mirrorHorizontally ? size.width - rawX - pixelW : rawX;
+        final renderY = (y - v.y0) * scale + offsetY;
 
         // Sample from background image
         final bgX =
@@ -2933,7 +2587,8 @@ class _VirtualBackgroundOverlayPainter extends CustomPainter {
 
         // Draw background with alpha based on inverse mask probability
         paint.color = Color.fromRGBO(255, 255, 255, bgAlpha);
-        final src = Rect.fromLTWH(bgX, bgY, bgScaleX * pixelW, bgScaleY * pixelH);
+        final src =
+            Rect.fromLTWH(bgX, bgY, bgScaleX * pixelW, bgScaleY * pixelH);
         final dst = Rect.fromLTWH(renderX, renderY, pixelW, pixelH);
         canvas.drawImageRect(background, src, dst, paint);
       }
@@ -3557,27 +3212,8 @@ class _SegmentationMaskPainter extends CustomPainter {
   final double threshold;
   final bool binary;
   final Color maskColor;
-  final int? classIndex; // null = show all classes for multiclass
+  final int? classIndex;
   final bool showAllClasses;
-
-  // Rainbow colors for multiclass visualization
-  static const List<Color> classColors = [
-    Color(0x99A0A0A0), // 0: Background - light gray
-    Color(0x99CD853F), // 1: Hair - peru/tan brown
-    Color(0x88FFA500), // 2: Body Skin - orange
-    Color(0x88FF69B4), // 3: Face Skin - pink
-    Color(0x9900BFFF), // 4: Clothes - deep sky blue
-    Color(0x9940E0D0), // 5: Other - turquoise
-  ];
-
-  static const List<String> classLabels = [
-    'BG',
-    'Hair',
-    'Body',
-    'Face',
-    'Clothes',
-    'Other',
-  ];
 
   _SegmentationMaskPainter({
     required this.mask,
@@ -3591,39 +3227,28 @@ class _SegmentationMaskPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final pt = mask.padding[0];
-    final pb = mask.padding[1];
-    final pl = mask.padding[2];
-    final pr = mask.padding[3];
-
-    final validX0 = (pl * mask.width).round();
-    final validY0 = (pt * mask.height).round();
-    final validX1 = ((1.0 - pr) * mask.width).round();
-    final validY1 = ((1.0 - pb) * mask.height).round();
-    final validW = validX1 - validX0;
-    final validH = validY1 - validY0;
+    final v = _maskValidRegion(mask);
+    final validW = v.x1 - v.x0;
+    final validH = v.y1 - v.y0;
 
     final scaleX = validW > 0 ? size.width / validW : 1.0;
     final scaleY = validH > 0 ? size.height / validH : 1.0;
 
-    // Multiclass: show all classes with unique colors
     if (showAllClasses && mask is MulticlassSegmentationMask) {
       final multiMask = mask as MulticlassSegmentationMask;
       final classMasks = List.generate(6, (i) => multiMask.classMask(i));
       final paint = Paint();
 
-      // Track label positions (centroid of each class)
       final labelCounts = List<int>.filled(6, 0);
       final labelSumX = List<double>.filled(6, 0);
       final labelSumY = List<double>.filled(6, 0);
 
-      for (int y = validY0; y < validY1; y++) {
-        for (int x = validX0; x < validX1; x++) {
+      for (int y = v.y0; y < v.y1; y++) {
+        for (int x = v.x0; x < v.x1; x++) {
           final idx = y * mask.width + x;
-          final renderX = (x - validX0) * scaleX;
-          final renderY = (y - validY0) * scaleY;
+          final renderX = (x - v.x0) * scaleX;
+          final renderY = (y - v.y0) * scaleY;
 
-          // Find winning class for this pixel
           int winningClass = 0;
           double maxProb = classMasks[0][idx];
           for (int c = 1; c < 6; c++) {
@@ -3634,7 +3259,7 @@ class _SegmentationMaskPainter extends CustomPainter {
           }
 
           if (maxProb >= threshold) {
-            final color = classColors[winningClass];
+            final color = _kSegmentationClassColors[winningClass];
             final baseAlpha = (color.a * 255).round();
             paint.color =
                 binary ? color : color.withAlpha((maxProb * baseAlpha).round());
@@ -3643,7 +3268,6 @@ class _SegmentationMaskPainter extends CustomPainter {
               paint,
             );
 
-            // Accumulate for centroid calculation
             labelCounts[winningClass]++;
             labelSumX[winningClass] += renderX;
             labelSumY[winningClass] += renderY;
@@ -3651,42 +3275,10 @@ class _SegmentationMaskPainter extends CustomPainter {
         }
       }
 
-      // Calculate centroids and draw labels
-      for (int c = 0; c < 6; c++) {
-        if (labelCounts[c] > 100) {
-          // Only label if enough pixels
-          final centroidX = labelSumX[c] / labelCounts[c];
-          final centroidY = labelSumY[c] / labelCounts[c];
-
-          final textPainter = TextPainter(
-            text: TextSpan(
-              text: classLabels[c],
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-                shadows: const [
-                  Shadow(color: Colors.black, blurRadius: 2),
-                  Shadow(color: Colors.black, blurRadius: 4),
-                ],
-              ),
-            ),
-            textDirection: TextDirection.ltr,
-          );
-          textPainter.layout();
-          textPainter.paint(
-            canvas,
-            Offset(
-              centroidX - textPainter.width / 2,
-              centroidY - textPainter.height / 2,
-            ),
-          );
-        }
-      }
+      _drawClassLabels(canvas, labelCounts, labelSumX, labelSumY);
       return;
     }
 
-    // Single class or binary mask mode
     Float32List? classMaskData;
     if (classIndex != null && mask is MulticlassSegmentationMask) {
       classMaskData =
@@ -3695,8 +3287,8 @@ class _SegmentationMaskPainter extends CustomPainter {
 
     final paint = Paint();
 
-    for (int y = validY0; y < validY1; y++) {
-      for (int x = validX0; x < validX1; x++) {
+    for (int y = v.y0; y < v.y1; y++) {
+      for (int x = v.x0; x < v.x1; x++) {
         final double prob;
         if (classMaskData != null) {
           final idx = y * mask.width + x;
@@ -3714,8 +3306,8 @@ class _SegmentationMaskPainter extends CustomPainter {
 
         if (alpha > 0.01) {
           paint.color = maskColor.withAlpha((alpha * 255).round());
-          final renderX = (x - validX0) * scaleX;
-          final renderY = (y - validY0) * scaleY;
+          final renderX = (x - v.x0) * scaleX;
+          final renderY = (y - v.y0) * scaleY;
           canvas.drawRect(
             Rect.fromLTWH(renderX, renderY, scaleX + 0.5, scaleY + 0.5),
             paint,
