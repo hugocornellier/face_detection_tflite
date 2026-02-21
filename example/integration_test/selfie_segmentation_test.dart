@@ -177,7 +177,6 @@ void main() {
       final config = SegmentationConfig(
         performanceConfig: PerformanceConfig.disabled,
         maxOutputSize: 512,
-        resizeStrategy: ResizeStrategy.stretch,
         validateModel: true,
       );
 
@@ -490,9 +489,7 @@ void main() {
       }
 
       print('\n--- Testing extreme aspect ratio (500x50) ---');
-      final segmenter = await SelfieSegmentation.create(
-        config: SegmentationConfig(resizeStrategy: ResizeStrategy.letterbox),
-      );
+      final segmenter = await SelfieSegmentation.create();
 
       final wideImage = _createTestImage(500, 50);
       final mask = await segmenter.call(wideImage);
@@ -822,19 +819,17 @@ void main() {
   });
 
   // ===========================================================================
-  // Resize Strategies
+  // Letterbox Resize
   // ===========================================================================
-  group('Resize Strategies', () {
-    test('letterbox strategy preserves aspect ratio', () async {
+  group('Letterbox Resize', () {
+    test('letterbox preserves aspect ratio', () async {
       if (!modelsAvailable) {
         print('Skipping: models not available');
         return;
       }
 
       print('\n--- Testing letterbox strategy ---');
-      final segmenter = await SelfieSegmentation.create(
-        config: SegmentationConfig(resizeStrategy: ResizeStrategy.letterbox),
-      );
+      final segmenter = await SelfieSegmentation.create();
 
       final wideImage = _createTestImage(400, 200);
       final mask = await segmenter.call(wideImage);
@@ -843,28 +838,6 @@ void main() {
       expect(mask.originalHeight, 200);
       // Padding should be recorded for 2:1 aspect ratio
       print('Padding: ${mask.padding}');
-
-      segmenter.dispose();
-      print('Test passed');
-    });
-
-    test('stretch strategy fills input', () async {
-      if (!modelsAvailable) {
-        print('Skipping: models not available');
-        return;
-      }
-
-      print('\n--- Testing stretch strategy ---');
-      final segmenter = await SelfieSegmentation.create(
-        config: SegmentationConfig(resizeStrategy: ResizeStrategy.stretch),
-      );
-
-      final wideImage = _createTestImage(400, 200);
-      final mask = await segmenter.call(wideImage);
-
-      expect(mask.originalWidth, 400);
-      // Stretch doesn't add padding
-      expect(mask.padding.every((p) => p == 0), true);
 
       segmenter.dispose();
       print('Test passed');
@@ -941,6 +914,20 @@ void main() {
   // Isolate Support
   // ===========================================================================
   group('Isolate Support', () {
+    late FaceDetectorIsolate detector;
+
+    setUpAll(() async {
+      if (modelsAvailable) {
+        detector = await FaceDetectorIsolate.spawn(withSegmentation: true);
+      }
+    });
+
+    tearDownAll(() async {
+      if (modelsAvailable) {
+        await detector.dispose();
+      }
+    });
+
     test('FaceDetectorIsolate.spawn() with segmentation', () async {
       if (!modelsAvailable) {
         print('Skipping: models not available');
@@ -948,13 +935,7 @@ void main() {
       }
 
       print('\n--- Testing FaceDetectorIsolate with segmentation ---');
-      final detector = await FaceDetectorIsolate.spawn(
-        withSegmentation: true,
-      );
-
       expect(detector.isSegmentationReady, true);
-
-      await detector.dispose();
       print('Test passed');
     });
 
@@ -965,16 +946,12 @@ void main() {
       }
 
       print('\n--- Testing isolate segmentation ---');
-      final detector = await FaceDetectorIsolate.spawn(withSegmentation: true);
-
       final imageBytes = _createTestImage(256, 256);
       final mask = await detector.getSegmentationMask(imageBytes);
 
       expect(mask.width, greaterThan(0));
       expect(mask.height, greaterThan(0));
       print('Isolate mask size: ${mask.width}x${mask.height}');
-
-      await detector.dispose();
       print('Test passed');
     });
 
@@ -985,8 +962,6 @@ void main() {
       }
 
       print('\n--- Testing isolate uint8 output ---');
-      final detector = await FaceDetectorIsolate.spawn(withSegmentation: true);
-
       final imageBytes = _createTestImage(256, 256);
       final mask = await detector.getSegmentationMask(
         imageBytes,
@@ -999,7 +974,6 @@ void main() {
         expect(mask.data[i], inInclusiveRange(0.0, 1.0));
       }
 
-      await detector.dispose();
       print('Test passed');
     });
 
@@ -1010,8 +984,6 @@ void main() {
       }
 
       print('\n--- Testing isolate binary output ---');
-      final detector = await FaceDetectorIsolate.spawn(withSegmentation: true);
-
       final imageBytes = _createTestImage(256, 256);
       final mask = await detector.getSegmentationMask(
         imageBytes,
@@ -1024,24 +996,25 @@ void main() {
         expect(mask.data[i], anyOf(0.0, 1.0));
       }
 
-      await detector.dispose();
       print('Test passed');
     });
 
     test('isolate segmentation throws if not enabled', () async {
       print('\n--- Testing isolate without segmentation ---');
-      final detector = await FaceDetectorIsolate.spawn(withSegmentation: false);
+      final noSegDetector = await FaceDetectorIsolate.spawn(
+        withSegmentation: false,
+      );
 
-      expect(detector.isSegmentationReady, false);
+      expect(noSegDetector.isSegmentationReady, false);
 
       try {
-        await detector.getSegmentationMask(Uint8List(0));
+        await noSegDetector.getSegmentationMask(Uint8List(0));
         fail('Should have thrown StateError');
       } on StateError catch (e) {
         print('Correctly threw: ${e.message}');
       }
 
-      await detector.dispose();
+      await noSegDetector.dispose();
       print('Test passed');
     });
   });
@@ -1303,30 +1276,6 @@ void main() {
       final mask = await segmenter.callFromMat(mat);
       expect(mask.width, greaterThan(0));
       print('Mask from BGRA: ${mask.width}x${mask.height}');
-
-      mat.dispose();
-      segmenter.dispose();
-      print('Test passed');
-    });
-
-    test('callFromMat with CV_8UC1 (grayscale)', () async {
-      if (!modelsAvailable) {
-        print('Skipping: models not available');
-        return;
-      }
-
-      print('\n--- Testing CV_8UC1 (grayscale) Mat ---');
-      final segmenter = await SelfieSegmentation.create();
-
-      final grayData = Uint8List(64 * 64);
-      for (int i = 0; i < grayData.length; i++) {
-        grayData[i] = 128;
-      }
-      final mat = cv.Mat.fromList(64, 64, cv.MatType.CV_8UC1, grayData);
-
-      final mask = await segmenter.callFromMat(mat);
-      expect(mask.width, greaterThan(0));
-      print('Mask from grayscale: ${mask.width}x${mask.height}');
 
       mat.dispose();
       segmenter.dispose();

@@ -124,6 +124,20 @@ void main() {
   // FaceDetectorIsolate.getSegmentationMaskFromMat
   // ===========================================================================
   group('FaceDetectorIsolate.getSegmentationMaskFromMat', () {
+    late FaceDetectorIsolate detector;
+
+    setUpAll(() async {
+      if (modelsAvailable) {
+        detector = await FaceDetectorIsolate.spawn(withSegmentation: true);
+      }
+    });
+
+    tearDownAll(() async {
+      if (modelsAvailable) {
+        await detector.dispose();
+      }
+    });
+
     test('returns valid mask with float32 format', () async {
       if (!modelsAvailable) {
         print('Skipping: models not available');
@@ -131,10 +145,6 @@ void main() {
       }
 
       print('\n--- Testing Isolate.getSegmentationMaskFromMat (float32) ---');
-      final detector = await FaceDetectorIsolate.spawn(
-        withSegmentation: true,
-      );
-
       final mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
       final mask = await detector.getSegmentationMaskFromMat(mat);
       mat.dispose();
@@ -147,7 +157,6 @@ void main() {
       }
 
       print('Mask size: ${mask.width}x${mask.height}');
-      await detector.dispose();
       print('Test passed');
     }, timeout: testTimeout);
 
@@ -158,10 +167,6 @@ void main() {
       }
 
       print('\n--- Testing Isolate.getSegmentationMaskFromMat (uint8) ---');
-      final detector = await FaceDetectorIsolate.spawn(
-        withSegmentation: true,
-      );
-
       final mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
       final mask = await detector.getSegmentationMaskFromMat(
         mat,
@@ -174,7 +179,6 @@ void main() {
         expect(mask.data[i], inInclusiveRange(0.0, 1.0));
       }
 
-      await detector.dispose();
       print('Test passed');
     }, timeout: testTimeout);
 
@@ -185,10 +189,6 @@ void main() {
       }
 
       print('\n--- Testing Isolate.getSegmentationMaskFromMat (binary) ---');
-      final detector = await FaceDetectorIsolate.spawn(
-        withSegmentation: true,
-      );
-
       final mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
       final mask = await detector.getSegmentationMaskFromMat(
         mat,
@@ -201,19 +201,18 @@ void main() {
         expect(mask.data[i], anyOf(0.0, 1.0));
       }
 
-      await detector.dispose();
       print('Test passed');
     }, timeout: testTimeout);
 
     test('throws StateError when spawned without segmentation', () async {
       print('\n--- Testing Isolate.getSegmentationMaskFromMat StateError ---');
-      final detector = await FaceDetectorIsolate.spawn(
+      final noSegDetector = await FaceDetectorIsolate.spawn(
         withSegmentation: false,
       );
 
       final mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
       try {
-        await detector.getSegmentationMaskFromMat(mat);
+        await noSegDetector.getSegmentationMaskFromMat(mat);
         fail('Should have thrown StateError');
       } on StateError catch (e) {
         print('Correctly threw: ${e.message}');
@@ -221,7 +220,7 @@ void main() {
         mat.dispose();
       }
 
-      await detector.dispose();
+      await noSegDetector.dispose();
       print('Test passed');
     }, timeout: testTimeout);
   });
@@ -230,6 +229,20 @@ void main() {
   // FaceDetectorIsolate.detectFacesWithSegmentation
   // ===========================================================================
   group('FaceDetectorIsolate.detectFacesWithSegmentation', () {
+    late FaceDetectorIsolate detector;
+
+    setUpAll(() async {
+      if (modelsAvailable) {
+        detector = await FaceDetectorIsolate.spawn(withSegmentation: true);
+      }
+    });
+
+    tearDownAll(() async {
+      if (modelsAvailable) {
+        await detector.dispose();
+      }
+    });
+
     test('returns faces and segmentation mask from bytes', () async {
       if (!modelsAvailable) {
         print('Skipping: models not available');
@@ -237,10 +250,6 @@ void main() {
       }
 
       print('\n--- Testing detectFacesWithSegmentation ---');
-      final detector = await FaceDetectorIsolate.spawn(
-        withSegmentation: true,
-      );
-
       final result = await detector.detectFacesWithSegmentation(imageBytes);
 
       expect(result.faces, isNotEmpty);
@@ -265,7 +274,6 @@ void main() {
         'Total: ${result.totalTimeMs}ms',
       );
 
-      await detector.dispose();
       print('Test passed');
     }, timeout: testTimeout);
 
@@ -276,10 +284,6 @@ void main() {
       }
 
       print('\n--- Testing detectFacesWithSegmentation (uint8) ---');
-      final detector = await FaceDetectorIsolate.spawn(
-        withSegmentation: true,
-      );
-
       final result = await detector.detectFacesWithSegmentation(
         imageBytes,
         outputFormat: IsolateOutputFormat.uint8,
@@ -293,7 +297,6 @@ void main() {
         expect(result.segmentationMask!.data[i], inInclusiveRange(0.0, 1.0));
       }
 
-      await detector.dispose();
       print('Test passed');
     }, timeout: testTimeout);
 
@@ -304,10 +307,6 @@ void main() {
       }
 
       print('\n--- Testing detectFacesWithSegmentation (binary) ---');
-      final detector = await FaceDetectorIsolate.spawn(
-        withSegmentation: true,
-      );
-
       final result = await detector.detectFacesWithSegmentation(
         imageBytes,
         outputFormat: IsolateOutputFormat.binary,
@@ -320,7 +319,6 @@ void main() {
         expect(v, anyOf(0.0, 1.0));
       }
 
-      await detector.dispose();
       print('Test passed');
     }, timeout: testTimeout);
 
@@ -331,10 +329,6 @@ void main() {
       }
 
       print('\n--- Testing detectFacesWithSegmentation (fast mode) ---');
-      final detector = await FaceDetectorIsolate.spawn(
-        withSegmentation: true,
-      );
-
       final result = await detector.detectFacesWithSegmentation(
         imageBytes,
         mode: FaceDetectionMode.fast,
@@ -345,24 +339,23 @@ void main() {
       // Fast mode: no mesh
       expect(result.faces.first.mesh, isNull);
 
-      await detector.dispose();
       print('Test passed');
     }, timeout: testTimeout);
 
     test('throws StateError when spawned without segmentation', () async {
       print('\n--- Testing detectFacesWithSegmentation StateError ---');
-      final detector = await FaceDetectorIsolate.spawn(
+      final noSegDetector = await FaceDetectorIsolate.spawn(
         withSegmentation: false,
       );
 
       try {
-        await detector.detectFacesWithSegmentation(imageBytes);
+        await noSegDetector.detectFacesWithSegmentation(imageBytes);
         fail('Should have thrown StateError');
       } on StateError catch (e) {
         print('Correctly threw: ${e.message}');
       }
 
-      await detector.dispose();
+      await noSegDetector.dispose();
       print('Test passed');
     }, timeout: testTimeout);
   });
@@ -371,6 +364,20 @@ void main() {
   // FaceDetectorIsolate.detectFacesWithSegmentationFromMat
   // ===========================================================================
   group('FaceDetectorIsolate.detectFacesWithSegmentationFromMat', () {
+    late FaceDetectorIsolate detector;
+
+    setUpAll(() async {
+      if (modelsAvailable) {
+        detector = await FaceDetectorIsolate.spawn(withSegmentation: true);
+      }
+    });
+
+    tearDownAll(() async {
+      if (modelsAvailable) {
+        await detector.dispose();
+      }
+    });
+
     test('returns faces and mask from cv.Mat', () async {
       if (!modelsAvailable) {
         print('Skipping: models not available');
@@ -378,10 +385,6 @@ void main() {
       }
 
       print('\n--- Testing detectFacesWithSegmentationFromMat ---');
-      final detector = await FaceDetectorIsolate.spawn(
-        withSegmentation: true,
-      );
-
       final mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
       final result = await detector.detectFacesWithSegmentationFromMat(mat);
       mat.dispose();
@@ -397,7 +400,6 @@ void main() {
         'Mask: ${result.segmentationMask!.width}x${result.segmentationMask!.height}',
       );
 
-      await detector.dispose();
       print('Test passed');
     }, timeout: testTimeout);
 
@@ -408,10 +410,6 @@ void main() {
       }
 
       print('\n--- Testing consistency: combined vs separate ---');
-      final detector = await FaceDetectorIsolate.spawn(
-        withSegmentation: true,
-      );
-
       final mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
 
       final facesOnly = await detector.detectFacesFromMat(
@@ -434,7 +432,6 @@ void main() {
         expect((bb1.topLeft.y - bb2.topLeft.y).abs(), lessThan(5));
       }
 
-      await detector.dispose();
       print('Test passed');
     }, timeout: testTimeout);
 
@@ -442,13 +439,13 @@ void main() {
       print(
         '\n--- Testing detectFacesWithSegmentationFromMat StateError ---',
       );
-      final detector = await FaceDetectorIsolate.spawn(
+      final noSegDetector = await FaceDetectorIsolate.spawn(
         withSegmentation: false,
       );
 
       final mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
       try {
-        await detector.detectFacesWithSegmentationFromMat(mat);
+        await noSegDetector.detectFacesWithSegmentationFromMat(mat);
         fail('Should have thrown StateError');
       } on StateError catch (e) {
         print('Correctly threw: ${e.message}');
@@ -456,7 +453,7 @@ void main() {
         mat.dispose();
       }
 
-      await detector.dispose();
+      await noSegDetector.dispose();
       print('Test passed');
     }, timeout: testTimeout);
   });

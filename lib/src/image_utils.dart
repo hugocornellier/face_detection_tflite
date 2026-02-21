@@ -181,9 +181,9 @@ class ImageUtils {
     final tensor = buffer ?? Float32List(size);
 
     for (int i = 0, j = 0; i < totalPixels * 3 && j < size; i += 3, j += 3) {
-      tensor[j] = (data[i + 2] / 127.5) - 1.0; // B -> R
-      tensor[j + 1] = (data[i + 1] / 127.5) - 1.0; // G -> G
-      tensor[j + 2] = (data[i] / 127.5) - 1.0; // R -> B
+      tensor[j] = (data[i + 2] / 127.5) - 1.0;
+      tensor[j + 1] = (data[i + 1] / 127.5) - 1.0;
+      tensor[j + 2] = (data[i] / 127.5) - 1.0;
     }
     return tensor;
   }
@@ -206,9 +206,9 @@ class ImageUtils {
     const scale = 1.0 / 255.0;
 
     for (int i = 0, j = 0; i < totalPixels * 3 && j < size; i += 3, j += 3) {
-      tensor[j] = data[i + 2] * scale; // B -> R
-      tensor[j + 1] = data[i + 1] * scale; // G -> G
-      tensor[j + 2] = data[i] * scale; // R -> B
+      tensor[j] = data[i + 2] * scale;
+      tensor[j + 1] = data[i + 1] * scale;
+      tensor[j + 2] = data[i] * scale;
     }
     return tensor;
   }
@@ -301,9 +301,9 @@ class ImageUtils {
       final List<List<double>> row = out[0][y];
       for (int x = 0; x < width; x++) {
         final List<double> pixel = row[x];
-        pixel[0] = (bytes[byteIndex + 2] / 127.5) - 1.0; // B -> R
-        pixel[1] = (bytes[byteIndex + 1] / 127.5) - 1.0; // G -> G
-        pixel[2] = (bytes[byteIndex] / 127.5) - 1.0; // R -> B
+        pixel[0] = (bytes[byteIndex + 2] / 127.5) - 1.0;
+        pixel[1] = (bytes[byteIndex + 1] / 127.5) - 1.0;
+        pixel[2] = (bytes[byteIndex] / 127.5) - 1.0;
         byteIndex += 3;
       }
     }

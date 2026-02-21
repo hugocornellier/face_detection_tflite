@@ -141,9 +141,8 @@ class SelfieSegmentation {
   late final Float32List _inputBuf;
   late final Float32List _outputBuf;
   late final List<List<List<List<double>>>> _input4dCache;
-  late final Object _output4dCache; // Pre-allocated output for isolate path
-  late final Float32List
-      _matTensorBuffer; // Reusable buffer for Mat conversions
+  late final Object _output4dCache;
+  late final Float32List _matTensorBuffer;
   late final int _outW;
   late final int _outH;
 
@@ -184,88 +183,18 @@ class SelfieSegmentation {
   static Future<SelfieSegmentation> create({
     SegmentationConfig config = const SegmentationConfig(),
   }) async {
-    // Resolve the effective model (all platforms now support all models)
     final effectiveModel = _effectiveModel(config.model);
     final modelFile = _modelFileFor(effectiveModel);
-    final inW = _inputWidthFor(effectiveModel);
-    final inH = _inputHeightFor(effectiveModel);
-    final outChannels = _expectedOutputChannels(effectiveModel);
 
-    Delegate? delegate;
-    InterpreterOptions options;
-    bool delegateFailed = false;
-
-    try {
-      final result = _createSegmentationInterpreterOptions(
-        config.performanceConfig,
-      );
-      options = result.$1;
-      delegate = result.$2;
-    } catch (e) {
-      throw SegmentationException(
-        SegmentationError.interpreterCreationFailed,
-        'Failed to create interpreter options: $e',
-        e,
-      );
-    }
-
-    Interpreter itp;
-    try {
-      itp = await Interpreter.fromAsset(
+    final obj = await _createWithLoader(
+      config: config,
+      loadInterpreter: (options) => Interpreter.fromAsset(
         'packages/face_detection_tflite/assets/models/$modelFile',
         options: options,
-      );
-    } catch (e) {
-      // If using a delegate, try again without it (fallback to CPU)
-      if (delegate != null) {
-        delegate.delete();
-        delegate = null;
-        delegateFailed = true;
-
-        // Retry with CPU-only options
-        options = InterpreterOptions();
-        options.addMediaPipeCustomOps();
-        options.threads = config.performanceConfig.numThreads ?? 4;
-
-        try {
-          itp = await Interpreter.fromAsset(
-            'packages/face_detection_tflite/assets/models/$modelFile',
-            options: options,
-          );
-        } catch (retryError) {
-          throw SegmentationException(
-            SegmentationError.modelNotFound,
-            'Failed to load model $modelFile (even after delegate fallback): $retryError',
-            retryError,
-          );
-        }
-      } else {
-        throw SegmentationException(
-          SegmentationError.modelNotFound,
-          'Failed to load model $modelFile: $e',
-          e,
-        );
-      }
-    }
-
-    // Validate model if configured
-    if (config.validateModel) {
-      _validateModel(itp, effectiveModel);
-    }
-
-    itp.resizeInputTensor(0, [1, inH, inW, 3]);
-    itp.allocateTensors();
-
-    final obj = SelfieSegmentation._(
-      itp,
-      inW,
-      inH,
-      outChannels,
-      config,
-      effectiveModel,
+      ),
+      loadErrorCode: SegmentationError.modelNotFound,
+      loadErrorPrefix: 'Failed to load model $modelFile',
     );
-    obj._delegate = delegate;
-    obj._delegateFailed = delegateFailed;
     await obj._initializeTensors();
     return obj;
   }
@@ -292,7 +221,27 @@ class SelfieSegmentation {
     Uint8List modelBytes, {
     SegmentationConfig config = const SegmentationConfig(),
   }) async {
-    // Resolve the effective model (all platforms now support all models)
+    final obj = await _createWithLoader(
+      config: config,
+      loadInterpreter: (options) =>
+          Interpreter.fromBuffer(modelBytes, options: options),
+      loadErrorCode: SegmentationError.interpreterCreationFailed,
+      loadErrorPrefix: 'Failed to create interpreter from buffer',
+    );
+    await obj._initializeTensors(useIsolateInterpreter: false);
+    return obj;
+  }
+
+  /// Shared factory logic for [create] and [createFromBuffer].
+  ///
+  /// Handles delegate setup, fallback retry, validation, and tensor resize.
+  /// Returns a [SelfieSegmentation] instance ready for [_initializeTensors].
+  static Future<SelfieSegmentation> _createWithLoader({
+    required SegmentationConfig config,
+    required FutureOr<Interpreter> Function(InterpreterOptions) loadInterpreter,
+    required SegmentationError loadErrorCode,
+    required String loadErrorPrefix,
+  }) async {
     final effectiveModel = _effectiveModel(config.model);
     final inW = _inputWidthFor(effectiveModel);
     final inH = _inputHeightFor(effectiveModel);
@@ -318,9 +267,8 @@ class SelfieSegmentation {
 
     Interpreter itp;
     try {
-      itp = Interpreter.fromBuffer(modelBytes, options: options);
+      itp = await loadInterpreter(options);
     } catch (e) {
-      // If using a delegate, try again without it (fallback to CPU)
       if (delegate != null) {
         delegate.delete();
         delegate = null;
@@ -331,18 +279,18 @@ class SelfieSegmentation {
         options.threads = config.performanceConfig.numThreads ?? 4;
 
         try {
-          itp = Interpreter.fromBuffer(modelBytes, options: options);
+          itp = await loadInterpreter(options);
         } catch (retryError) {
           throw SegmentationException(
-            SegmentationError.interpreterCreationFailed,
-            'Failed to create interpreter from buffer (even after delegate fallback): $retryError',
+            loadErrorCode,
+            '$loadErrorPrefix (even after delegate fallback): $retryError',
             retryError,
           );
         }
       } else {
         throw SegmentationException(
-          SegmentationError.interpreterCreationFailed,
-          'Failed to create interpreter from buffer: $e',
+          loadErrorCode,
+          '$loadErrorPrefix: $e',
           e,
         );
       }
@@ -365,7 +313,6 @@ class SelfieSegmentation {
     );
     obj._delegate = delegate;
     obj._delegateFailed = delegateFailed;
-    await obj._initializeTensors(useIsolateInterpreter: false);
     return obj;
   }
 
@@ -382,22 +329,16 @@ class SelfieSegmentation {
     _inputBuf = _inputTensor.data.buffer.asFloat32List();
     _outputBuf = _outputTensor.data.buffer.asFloat32List();
 
-    // Output shape: [1, H, W, C] where C=1 (binary) or C=6 (multiclass)
     final outShape = _outputTensor.shape;
     _outH = outShape.length >= 2 ? outShape[1] : _inH;
     _outW = outShape.length >= 3 ? outShape[2] : _inW;
 
-    // Pre-allocate input cache for isolate path
     _input4dCache = createNHWCTensor4D(_inH, _inW);
 
-    // Pre-allocate output cache for isolate path (eliminates per-call allocation)
     _output4dCache = allocTensorShape(outShape);
 
-    // Pre-allocate buffer for Mat tensor conversions
     _matTensorBuffer = Float32List(_inW * _inH * 3);
 
-    // Only create IsolateInterpreter if configured, not inside a worker isolate,
-    // and no delegate is active (delegates handle threading internally)
     if (useIsolateInterpreter && _config.useIsolate && _delegate == null) {
       _iso = await IsolateInterpreter.create(address: _itp.address);
     }
@@ -409,7 +350,6 @@ class SelfieSegmentation {
     final outputShape = itp.getOutputTensor(0).shape;
     final expectedChannels = _expectedOutputChannels(model);
 
-    // Validate input shape [1, H, W, 3]
     if (inputShape.length != 4 || inputShape[3] != 3) {
       throw SegmentationException(
         SegmentationError.unexpectedTensorShape,
@@ -417,7 +357,6 @@ class SelfieSegmentation {
       );
     }
 
-    // Validate output channels match model type
     if (outputShape.length != 4 || outputShape[3] != expectedChannels) {
       throw SegmentationException(
         SegmentationError.unexpectedTensorShape,
@@ -485,7 +424,6 @@ class SelfieSegmentation {
       throw StateError('Cannot use SelfieSegmentation after dispose()');
     }
 
-    // Use OpenCV native decode (5-10x faster than img.decodeImage)
     final cv.Mat image;
     try {
       image = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
@@ -557,7 +495,6 @@ class SelfieSegmentation {
       throw StateError('Cannot use SelfieSegmentation after dispose()');
     }
 
-    // Validate minimum size
     if (decoded.width < kMinSegmentationInputSize ||
         decoded.height < kMinSegmentationInputSize) {
       throw SegmentationException(
@@ -567,12 +504,10 @@ class SelfieSegmentation {
       );
     }
 
-    // Handle grayscale: convert to RGB
     img.Image inputImage = decoded;
     if (decoded.numChannels == 1) {
       inputImage = _grayscaleToRgb(decoded);
     } else if (decoded.numChannels == 4) {
-      // Handle RGBA: use as-is, getBytes will handle channel conversion
       inputImage = decoded;
     }
 
@@ -592,14 +527,12 @@ class SelfieSegmentation {
         fillNHWC4D(pack.tensorNHWC, _input4dCache, _inH, _inW);
         final List<List<List<List<List<double>>>>> inputs = [_input4dCache];
 
-        // Use pre-allocated output cache to avoid per-call allocation
         final Map<int, Object> outputs = <int, Object>{0: _output4dCache};
 
         await _iso!.runForMultipleInputs(inputs, outputs);
         rawOutput = flattenDynamicTensor(outputs[0]);
       }
     } catch (e) {
-      // Track GPU delegate failures for fallback detection
       if (!_delegateFailed && _delegate != null) {
         _delegateFailed = true;
       }
@@ -652,7 +585,6 @@ class SelfieSegmentation {
       );
     }
 
-    // Use provided buffer or fall back to pre-allocated internal buffer
     final ImageTensor pack = convertImageToTensorFromMat(
       image,
       outW: _inW,
@@ -670,7 +602,6 @@ class SelfieSegmentation {
         fillNHWC4D(pack.tensorNHWC, _input4dCache, _inH, _inW);
         final List<List<List<List<List<double>>>>> inputs = [_input4dCache];
 
-        // Use pre-allocated output cache to avoid per-call allocation
         final Map<int, Object> outputs = <int, Object>{0: _output4dCache};
 
         await _iso!.runForMultipleInputs(inputs, outputs);
@@ -701,12 +632,11 @@ class SelfieSegmentation {
     List<double> padding,
   ) {
     if (_model == SegmentationModel.multiclass) {
-      // Multiclass: compute full class probabilities, derive person mask
       final classProbs = _computeClassProbabilities(rawOutput, _outW, _outH);
       final int numPixels = _outW * _outH;
       final personMask = Float32List(numPixels);
       for (int i = 0; i < numPixels; i++) {
-        personMask[i] = 1.0 - classProbs[i * 6]; // 1 - P(background)
+        personMask[i] = 1.0 - classProbs[i * 6];
       }
       return MulticlassSegmentationMask(
         data: personMask,
@@ -718,7 +648,6 @@ class SelfieSegmentation {
         classData: classProbs,
       );
     } else {
-      // Binary model: single channel, already sigmoid — copy directly
       final int numPixels = _outW * _outH;
       final personMask = Float32List(numPixels);
       for (int i = 0; i < numPixels; i++) {
@@ -750,7 +679,6 @@ class SelfieSegmentation {
     for (int i = 0; i < numPixels; i++) {
       final int base = i * 6;
 
-      // Read all 6 logits and find max in single pass
       final double l0 = rawOutput[base];
       final double l1 = rawOutput[base + 1];
       final double l2 = rawOutput[base + 2];
@@ -758,7 +686,6 @@ class SelfieSegmentation {
       final double l4 = rawOutput[base + 4];
       final double l5 = rawOutput[base + 5];
 
-      // Find max for numerical stability (unrolled for speed)
       double maxLogit = l0;
       if (l1 > maxLogit) maxLogit = l1;
       if (l2 > maxLogit) maxLogit = l2;
@@ -766,7 +693,6 @@ class SelfieSegmentation {
       if (l4 > maxLogit) maxLogit = l4;
       if (l5 > maxLogit) maxLogit = l5;
 
-      // Compute exp(logit - max) for each channel (unrolled)
       final double e0 = _fastExp(l0 - maxLogit);
       final double e1 = _fastExp(l1 - maxLogit);
       final double e2 = _fastExp(l2 - maxLogit);
@@ -774,10 +700,8 @@ class SelfieSegmentation {
       final double e4 = _fastExp(l4 - maxLogit);
       final double e5 = _fastExp(l5 - maxLogit);
 
-      // Sum of all exponentials
       final double sumExp = e0 + e1 + e2 + e3 + e4 + e5;
 
-      // Normalize to probabilities
       result[base] = e0 / sumExp;
       result[base + 1] = e1 / sumExp;
       result[base + 2] = e2 / sumExp;
@@ -794,12 +718,9 @@ class SelfieSegmentation {
   /// Uses range reduction + polynomial approximation.
   /// ~2x faster than math.exp() with <1% relative error for [-20, 20] range.
   static double _fastExp(double x) {
-    // Early exit for extreme values
     if (x < -20.0) return 0.0;
-    if (x > 20.0) return 485165195.4; // e^20
+    if (x > 20.0) return 485165195.4;
 
-    // For softmax, most values after max subtraction are in [-10, 0]
-    // Use standard exp() which is well-optimized for this range
     return math.exp(x);
   }
 
@@ -819,9 +740,6 @@ class SelfieSegmentation {
 
     final IsolateInterpreter? iso = _iso;
     if (iso != null) {
-      // IsolateInterpreter.close() kills the isolate first (before awaits),
-      // but since we can't await here, the isolate may still be alive when
-      // _itp.close() runs. Use disposeAsync() when possible.
       iso.close();
       _iso = null;
     }
@@ -872,11 +790,6 @@ class SelfieSegmentation {
     PerformanceConfig? config,
   ) {
     final options = InterpreterOptions();
-    // Register MediaPipe custom ops (Convolution2DTransposeBias) required by
-    // the binary segmentation models. Available on all platforms:
-    // - Desktop: loaded from bundled dylib/dll/so
-    // - iOS: statically linked via CocoaPods, accessed via DynamicLibrary.process()
-    // - Android: built via CMake, loaded at runtime
     options.addMediaPipeCustomOps();
     final effectiveConfig = config ?? const PerformanceConfig();
 

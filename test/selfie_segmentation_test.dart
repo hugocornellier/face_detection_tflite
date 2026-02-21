@@ -43,21 +43,10 @@ void main() {
         model: SegmentationModel.multiclass,
         maxOutputSize: 512,
         validateModel: false,
-        resizeStrategy: ResizeStrategy.letterbox,
       );
       expect(config.model, SegmentationModel.multiclass);
       expect(config.maxOutputSize, 512);
       expect(config.validateModel, isFalse);
-      expect(config.resizeStrategy, ResizeStrategy.letterbox);
-    });
-  });
-
-  group('ResizeStrategy enum', () {
-    test('should have letterbox and stretch', () {
-      expect(
-        ResizeStrategy.values.map((s) => s.name),
-        containsAll(['letterbox', 'stretch']),
-      );
     });
   });
 

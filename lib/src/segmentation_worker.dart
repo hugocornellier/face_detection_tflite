@@ -77,11 +77,9 @@ class SegmentationWorker {
       throw StateError('SegmentationWorker already initialized');
     }
 
-    // On iOS/Android, fall back to multiclass (binary models require custom ops)
     _model = _effectiveModel(config.model);
     final modelFile = _modelFileFor(_model);
 
-    // Load model bytes in main isolate (has access to assets)
     final ByteData modelData = await rootBundle.load(
       'packages/face_detection_tflite/assets/models/$modelFile',
     );
@@ -119,7 +117,6 @@ class SegmentationWorker {
         },
       );
 
-      // Initialize interpreter in the worker isolate
       final Map result = await _sendRequest<Map>('init', {
         'modelBytes': TransferableTypedData.fromList([modelBytes]),
         'numThreads': config.performanceConfig.numThreads ?? 4,
@@ -227,7 +224,6 @@ class SegmentationWorker {
       );
     }
 
-    // Get raw bytes from Mat
     final Uint8List matBytes = mat.data;
     final int channels = mat.channels;
 
@@ -298,8 +294,6 @@ class SegmentationWorker {
     _sendPort = null;
     _initialized = false;
   }
-
-  // ========== Isolate Entry Point ==========
 
   @pragma('vm:entry-point')
   static void _isolateEntry(SendPort mainSendPort) {
@@ -378,16 +372,12 @@ class SegmentationWorker {
     final int inW = _inputWidthFor(model);
     final int inH = _inputHeightFor(model);
 
-    // Create interpreter options with appropriate delegate
     final options = InterpreterOptions();
-    // Register MediaPipe custom ops (Convolution2DTransposeBias) required by
-    // the binary segmentation models. Available on all platforms.
     options.addMediaPipeCustomOps();
     options.threads = numThreads;
 
     Delegate? delegate;
 
-    // Apply delegate based on mode (same logic as SelfieSegmentation)
     if (mode == PerformanceMode.auto) {
       if (Platform.isMacOS || Platform.isLinux) {
         try {
@@ -458,7 +448,6 @@ class SegmentationWorker {
         (params['imageBytes'] as TransferableTypedData).materialize();
     final Uint8List imageBytes = imageBB.asUint8List();
 
-    // Decode image using OpenCV (fast native decode)
     final cv.Mat image = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
     if (image.isEmpty) {
       throw SegmentationException(
@@ -485,7 +474,6 @@ class SegmentationWorker {
     final int height = params['height'] as int;
     final int channels = params['channels'] as int;
 
-    // Reconstruct Mat from bytes
     final cv.Mat image = cv.Mat.fromList(
       height,
       width,
@@ -513,23 +501,18 @@ class SegmentationWorker {
     final int originalWidth = image.cols;
     final int originalHeight = image.rows;
 
-    // Convert Mat to tensor using OpenCV pipeline
     final ImageTensor pack = convertImageToTensorFromMat(
       image,
       outW: state.inputWidth,
       outH: state.inputHeight,
     );
 
-    // Copy tensor data to input buffer
     state.inputBuffer.setAll(0, pack.tensorNHWC);
 
-    // Run inference
     state.interpreter.invoke();
 
-    // Copy output
     final Float32List rawOutput = Float32List.fromList(state.outputBuffer);
 
-    // Build result based on model type
     final Map<String, dynamic> result = {
       'width': state.outputWidth,
       'height': state.outputHeight,
@@ -539,7 +522,6 @@ class SegmentationWorker {
     };
 
     if (state.model == SegmentationModel.multiclass) {
-      // Multiclass: compute full class probabilities, derive person mask
       final classProbs = SelfieSegmentation._computeClassProbabilities(
         rawOutput,
         state.outputWidth,
@@ -548,7 +530,7 @@ class SegmentationWorker {
       final int numPixels = state.outputWidth * state.outputHeight;
       final personMask = Float32List(numPixels);
       for (int i = 0; i < numPixels; i++) {
-        personMask[i] = 1.0 - classProbs[i * 6]; // 1 - P(background)
+        personMask[i] = 1.0 - classProbs[i * 6];
       }
       result['mask'] = TransferableTypedData.fromList([
         personMask.buffer.asUint8List(),
@@ -557,7 +539,6 @@ class SegmentationWorker {
         classProbs.buffer.asUint8List(),
       ]);
     } else {
-      // Binary model: single channel, already sigmoid — copy directly
       final int numPixels = state.outputWidth * state.outputHeight;
       final personMask = Float32List(numPixels);
       for (int i = 0; i < numPixels; i++) {

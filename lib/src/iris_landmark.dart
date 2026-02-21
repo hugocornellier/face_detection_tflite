@@ -1,5 +1,32 @@
 part of '../face_detection_tflite.dart';
 
+/// Transforms normalized iris landmarks to absolute pixel coordinates
+/// using the alignment parameters from an [AlignedRoi].
+///
+/// When [isRight] is true, the x-coordinate is flipped (mirrored) before
+/// transforming, which undoes the horizontal flip applied to right eye crops.
+List<List<double>> _transformIrisToAbsolute(
+  List<List<double>> lmNorm,
+  AlignedRoi roi,
+  bool isRight,
+) {
+  final double ct = math.cos(roi.theta);
+  final double st = math.sin(roi.theta);
+  final double s = roi.size;
+  final List<List<double>> out = <List<double>>[];
+  for (final List<double> p in lmNorm) {
+    final double px = isRight ? (1.0 - p[0]) : p[0];
+    final double lx2 = (px - 0.5) * s;
+    final double ly2 = (p[1] - 0.5) * s;
+    out.add([
+      roi.cx + lx2 * ct - ly2 * st,
+      roi.cy + lx2 * st + ly2 * ct,
+      p[2],
+    ]);
+  }
+  return out;
+}
+
 /// Estimates dense iris keypoints within cropped eye regions and lets callers
 /// derive a robust iris center (with fallback if inference fails).
 class IrisLandmark {
@@ -53,32 +80,15 @@ class IrisLandmark {
   static Future<IrisLandmark> create({
     InterpreterOptions? options,
     PerformanceConfig? performanceConfig,
-  }) async {
-    Delegate? delegate;
-    final InterpreterOptions interpreterOptions;
-    if (options != null) {
-      interpreterOptions = options;
-    } else {
-      final result = _createInterpreterOptions(performanceConfig);
-      interpreterOptions = result.$1;
-      delegate = result.$2;
-    }
-
-    final Interpreter itp = await Interpreter.fromAsset(
-      'packages/face_detection_tflite/assets/models/$_irisLandmarkModel',
-      options: interpreterOptions,
-    );
-    final List<int> ishape = itp.getInputTensor(0).shape;
-    final int inH = ishape[1];
-    final int inW = ishape[2];
-    itp.resizeInputTensor(0, [1, inH, inW, 3]);
-    itp.allocateTensors();
-
-    final IrisLandmark obj = IrisLandmark._(itp, inW, inH);
-    obj._delegate = delegate;
-    await obj._initializeTensors();
-    return obj;
-  }
+  }) =>
+      _createWithLoader(
+        load: (opts) => Interpreter.fromAsset(
+          'packages/face_detection_tflite/assets/models/$_irisLandmarkModel',
+          options: opts,
+        ),
+        options: options,
+        performanceConfig: performanceConfig,
+      );
 
   /// Creates an iris landmark model from pre-loaded model bytes.
   ///
@@ -89,26 +99,12 @@ class IrisLandmark {
   static Future<IrisLandmark> createFromBuffer(
     Uint8List modelBytes, {
     PerformanceConfig? performanceConfig,
-  }) async {
-    final result = _createInterpreterOptions(performanceConfig);
-    final interpreterOptions = result.$1;
-    final delegate = result.$2;
-
-    final Interpreter itp = Interpreter.fromBuffer(
-      modelBytes,
-      options: interpreterOptions,
-    );
-    final List<int> ishape = itp.getInputTensor(0).shape;
-    final int inH = ishape[1];
-    final int inW = ishape[2];
-    itp.resizeInputTensor(0, [1, inH, inW, 3]);
-    itp.allocateTensors();
-
-    final IrisLandmark obj = IrisLandmark._(itp, inW, inH);
-    obj._delegate = delegate;
-    await obj._initializeTensors(useIsolateInterpreter: false);
-    return obj;
-  }
+  }) =>
+      _createWithLoader(
+        load: (opts) => Interpreter.fromBuffer(modelBytes, options: opts),
+        performanceConfig: performanceConfig,
+        useIsolateInterpreter: false,
+      );
 
   /// Shared tensor initialization logic.
   ///
@@ -178,21 +174,31 @@ class IrisLandmark {
     String modelPath, {
     InterpreterOptions? options,
     PerformanceConfig? performanceConfig,
+  }) =>
+      _createWithLoader(
+        load: (opts) => Interpreter.fromFile(File(modelPath), options: opts),
+        options: options,
+        performanceConfig: performanceConfig,
+      );
+
+  /// Shared factory logic for [create], [createFromBuffer], and [createFromFile].
+  static Future<IrisLandmark> _createWithLoader({
+    required FutureOr<Interpreter> Function(InterpreterOptions) load,
+    InterpreterOptions? options,
+    PerformanceConfig? performanceConfig,
+    bool useIsolateInterpreter = true,
   }) async {
     Delegate? delegate;
-    final InterpreterOptions interpreterOptions;
+    final InterpreterOptions opts;
     if (options != null) {
-      interpreterOptions = options;
+      opts = options;
     } else {
       final result = _createInterpreterOptions(performanceConfig);
-      interpreterOptions = result.$1;
+      opts = result.$1;
       delegate = result.$2;
     }
 
-    final Interpreter itp = Interpreter.fromFile(
-      File(modelPath),
-      options: interpreterOptions,
-    );
+    final Interpreter itp = await load(opts);
     final List<int> ishape = itp.getInputTensor(0).shape;
     final int inH = ishape[1];
     final int inW = ishape[2];
@@ -201,28 +207,7 @@ class IrisLandmark {
 
     final IrisLandmark obj = IrisLandmark._(itp, inW, inH);
     obj._delegate = delegate;
-
-    obj._inputTensor = itp.getInputTensor(0);
-    obj._inputBuf = obj._inputTensor.data.buffer.asFloat32List();
-
-    final Map<int, OutputTensorInfo> outputInfo = collectOutputTensorInfo(itp);
-    obj._outShapes = outputInfo.map(
-      (int k, OutputTensorInfo v) => MapEntry(k, v.shape),
-    );
-    obj._outBuffers = outputInfo.map(
-      (int k, OutputTensorInfo v) => MapEntry(k, v.buffer),
-    );
-    obj._input4dCache = createNHWCTensor4D(inH, inW);
-
-    obj._outputsCache = <int, Object>{};
-    obj._outShapes.forEach((i, shape) {
-      obj._outputsCache[i] = allocTensorShape(shape);
-    });
-
-    if (delegate == null) {
-      obj._iso = await IsolateInterpreter.create(address: itp.address);
-    }
-
+    await obj._initializeTensors(useIsolateInterpreter: useIsolateInterpreter);
     return obj;
   }
 
@@ -271,32 +256,7 @@ class IrisLandmark {
       outH: _inH,
       worker: worker,
     );
-
-    if (_iso == null) {
-      _inputBuf.setAll(0, pack.tensorNHWC);
-      _itp.invoke();
-
-      final List<List<double>> lm = <List<double>>[];
-      for (final Float32List flat in _outBuffers.values) {
-        lm.addAll(
-          _unpackLandmarks(flat, _inW, _inH, pack.padding, clamp: false),
-        );
-      }
-      return lm;
-    } else {
-      fillNHWC4D(pack.tensorNHWC, _input4dCache, _inH, _inW);
-      final List<List<List<List<List<double>>>>> inputs = [_input4dCache];
-      await _iso!.runForMultipleInputs(inputs, _outputsCache);
-
-      final List<List<double>> lm = <List<double>>[];
-      _outShapes.forEach((i, _) {
-        final Float32List flat = flattenDynamicTensor(_outputsCache[i]);
-        lm.addAll(
-          _unpackLandmarks(flat, _inW, _inH, pack.padding, clamp: false),
-        );
-      });
-      return lm;
-    }
+    return _inferAndUnpack(pack);
   }
 
   /// Runs iris detection on a full image using a specified eye region of interest.
@@ -483,73 +443,44 @@ class IrisLandmark {
       worker: worker,
     );
 
+    Float32List? irisFlat;
+
     if (_iso == null) {
       _inputBuf.setAll(0, pack.tensorNHWC);
       _itp.invoke();
-
-      Float32List? irisFlat;
       _outBuffers.forEach((_, buf) {
-        if (buf.length == 15) {
-          irisFlat = buf;
-        }
+        if (buf.length == 15) irisFlat = buf;
       });
-      if (irisFlat == null) {
-        return const <List<double>>[];
-      }
-
-      final pt = pack.padding[0],
-          pb = pack.padding[1],
-          pl = pack.padding[2],
-          pr = pack.padding[3];
-      final double sx = 1.0 - (pl + pr);
-      final double sy = 1.0 - (pt + pb);
-
-      final Float32List flat = irisFlat!;
-      final List<List<double>> lm = <List<double>>[];
-      for (int i = 0; i < 5; i++) {
-        double x = flat[i * 3 + 0] / _inW;
-        double y = flat[i * 3 + 1] / _inH;
-        final double z = flat[i * 3 + 2];
-        x = (x - pl) / sx;
-        y = (y - pt) / sy;
-        lm.add([x, y, z]);
-      }
-      return lm;
     } else {
       fillNHWC4D(pack.tensorNHWC, _input4dCache, _inH, _inW);
       final List<List<List<List<List<double>>>>> inputs = [_input4dCache];
       await _iso!.runForMultipleInputs(inputs, _outputsCache);
-
-      final double pt = pack.padding[0],
-          pb = pack.padding[1],
-          pl = pack.padding[2],
-          pr = pack.padding[3];
-      final double sx = 1.0 - (pl + pr);
-      final double sy = 1.0 - (pt + pb);
-
-      Float32List? irisFlat;
       _outShapes.forEach((i, shape) {
         final Float32List flat = flattenDynamicTensor(_outputsCache[i]);
-        if (flat.length == 15) {
-          irisFlat = flat;
-        }
+        if (flat.length == 15) irisFlat = flat;
       });
-      if (irisFlat == null) {
-        return const <List<double>>[];
-      }
-
-      final Float32List flat = irisFlat!;
-      final List<List<double>> lm = <List<double>>[];
-      for (int i = 0; i < 5; i++) {
-        double x = flat[i * 3 + 0] / _inW;
-        double y = flat[i * 3 + 1] / _inH;
-        final double z = flat[i * 3 + 2];
-        x = (x - pl) / sx;
-        y = (y - pt) / sy;
-        lm.add([x, y, z]);
-      }
-      return lm;
     }
+
+    if (irisFlat == null) return const <List<double>>[];
+
+    final pt = pack.padding[0],
+        pb = pack.padding[1],
+        pl = pack.padding[2],
+        pr = pack.padding[3];
+    final double sx = 1.0 - (pl + pr);
+    final double sy = 1.0 - (pt + pb);
+
+    final Float32List flat = irisFlat!;
+    final List<List<double>> lm = <List<double>>[];
+    for (int i = 0; i < 5; i++) {
+      double x = flat[i * 3 + 0] / _inW;
+      double y = flat[i * 3 + 1] / _inH;
+      final double z = flat[i * 3 + 2];
+      x = (x - pl) / sx;
+      y = (y - pt) / sy;
+      lm.add([x, y, z]);
+    }
+    return lm;
   }
 
   /// Runs iris detection on an aligned eye region of interest.
@@ -591,22 +522,8 @@ class IrisLandmark {
       worker,
     );
     final img.Image eye = isRight ? await _flipHorizontal(crop) : crop;
-    final double ct = math.cos(roi.theta);
-    final double st = math.sin(roi.theta);
-    final double s = roi.size;
-
-    final List<List<double>> out = <List<double>>[];
     final List<List<double>> lmNorm = await call(eye, worker: worker);
-    for (final List<double> p in lmNorm) {
-      final double px = isRight ? (1.0 - p[0]) : p[0];
-      final double py = p[1];
-      final double lx2 = (px - 0.5) * s;
-      final double ly2 = (py - 0.5) * s;
-      final double x = roi.cx + lx2 * ct - ly2 * st;
-      final double y = roi.cy + lx2 * st + ly2 * ct;
-      out.add([x, y, p[2]]);
-    }
-    return out;
+    return _transformIrisToAbsolute(lmNorm, roi, isRight);
   }
 
   /// Runs iris detection using a registered frame ID.
@@ -636,22 +553,8 @@ class IrisLandmark {
       roi.theta,
     );
     final img.Image eye = isRight ? await _flipHorizontal(crop) : crop;
-    final double ct = math.cos(roi.theta);
-    final double st = math.sin(roi.theta);
-    final double s = roi.size;
-
-    final List<List<double>> out = <List<double>>[];
     final List<List<double>> lmNorm = await call(eye, worker: worker);
-    for (final List<double> p in lmNorm) {
-      final double px = isRight ? (1.0 - p[0]) : p[0];
-      final double py = p[1];
-      final double lx2 = (px - 0.5) * s;
-      final double ly2 = (py - 0.5) * s;
-      final double x = roi.cx + lx2 * ct - ly2 * st;
-      final double y = roi.cy + lx2 * st + ly2 * ct;
-      out.add([x, y, p[2]]);
-    }
-    return out;
+    return _transformIrisToAbsolute(lmNorm, roi, isRight);
   }
 
   /// Predicts iris and eye contour landmarks from a cv.Mat eye crop.
@@ -683,7 +586,11 @@ class IrisLandmark {
       outH: _inH,
       buffer: buffer,
     );
+    return _inferAndUnpack(pack);
+  }
 
+  /// Runs inference on pre-computed tensor and unpacks all landmarks.
+  Future<List<List<double>>> _inferAndUnpack(ImageTensor pack) async {
     if (_iso == null) {
       _inputBuf.setAll(0, pack.tensorNHWC);
       _itp.invoke();
@@ -743,30 +650,15 @@ class IrisLandmark {
 
     cv.Mat eye;
     if (isRight) {
-      eye = cv.flip(crop, 1); // Horizontal flip
+      eye = cv.flip(crop, 1);
       crop.dispose();
     } else {
       eye = crop;
     }
 
-    final double ct = math.cos(roi.theta);
-    final double st = math.sin(roi.theta);
-    final double s = roi.size;
-
-    final List<List<double>> out = <List<double>>[];
     final List<List<double>> lmNorm = await callFromMat(eye, buffer: buffer);
     eye.dispose();
-
-    for (final List<double> p in lmNorm) {
-      final double px = isRight ? (1.0 - p[0]) : p[0];
-      final double py = p[1];
-      final double lx2 = (px - 0.5) * s;
-      final double ly2 = (py - 0.5) * s;
-      final double x = roi.cx + lx2 * ct - ly2 * st;
-      final double y = roi.cy + lx2 * st + ly2 * ct;
-      out.add([x, y, p[2]]);
-    }
-    return out;
+    return _transformIrisToAbsolute(lmNorm, roi, isRight);
   }
 
   /// Releases all TensorFlow Lite resources held by this model.

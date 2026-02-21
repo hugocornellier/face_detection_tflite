@@ -61,8 +61,7 @@ void fillNHWC4D(
   int inH,
   int inW,
 ) {
-  double sanitize(double value) =>
-      (value * 1e6).roundToDouble() / 1e6; // Reduce float32 noise.
+  double sanitize(double value) => (value * 1e6).roundToDouble() / 1e6;
 
   int k = 0;
   for (int y = 0; y < inH; y++) {
@@ -1250,9 +1249,9 @@ ImageTensor convertImageToTensorFromMat(
   for (int i = 0, j = 0;
       i < totalPixels * 3 && j < totalPixels * 3;
       i += 3, j += 3) {
-    tensor[j] = (data[i + 2] / 127.5) - 1.0; // B -> R
-    tensor[j + 1] = (data[i + 1] / 127.5) - 1.0; // G -> G
-    tensor[j + 2] = (data[i] / 127.5) - 1.0; // R -> B
+    tensor[j] = (data[i + 2] / 127.5) - 1.0;
+    tensor[j + 1] = (data[i + 1] / 127.5) - 1.0;
+    tensor[j + 2] = (data[i] / 127.5) - 1.0;
   }
   padded.dispose();
 

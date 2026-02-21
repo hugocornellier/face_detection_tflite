@@ -32,7 +32,6 @@ class _SegmentationIsolateStartupData {
   final String performanceModeName;
   final int? numThreads;
   final int maxOutputSize;
-  final String resizeStrategyName;
   final bool validateModel;
   final String modelName;
   final int modelIndex;
@@ -43,7 +42,6 @@ class _SegmentationIsolateStartupData {
     required this.performanceModeName,
     required this.numThreads,
     required this.maxOutputSize,
-    required this.resizeStrategyName,
     required this.validateModel,
     required this.modelName,
     required this.modelIndex,
@@ -100,14 +98,12 @@ class _SegmentationIsolateStartupData {
 class FaceDetectorIsolate {
   FaceDetectorIsolate._();
 
-  // Detection isolate (always present when initialized)
   Isolate? _detectionIsolate;
   SendPort? _detectionSendPort;
   final ReceivePort _detectionReceivePort = ReceivePort();
   final Map<int, Completer<dynamic>> _detectionPending = {};
   int _detectionNextId = 0;
 
-  // Segmentation isolate (optional, for parallel processing)
   Isolate? _segmentationIsolate;
   SendPort? _segmentationSendPort;
   final ReceivePort _segmentationReceivePort = ReceivePort();
@@ -187,7 +183,6 @@ class FaceDetectorIsolate {
       const embeddingPath =
           'packages/face_detection_tflite/assets/models/$_embeddingModel';
 
-      // Build list of asset loads
       final assetFutures = [
         rootBundle.load(faceDetectionPath),
         rootBundle.load(faceLandmarkPath),
@@ -195,9 +190,7 @@ class FaceDetectorIsolate {
         rootBundle.load(embeddingPath),
       ];
 
-      // Optionally load segmentation model
       if (withSegmentation) {
-        // On iOS/Android, fall back to multiclass (binary models require custom ops)
         final effectiveSegModel = _effectiveModel(
           segmentationConfig?.model ?? SegmentationModel.general,
         );
@@ -214,7 +207,6 @@ class FaceDetectorIsolate {
       final irisLandmarkBytes = results[2].buffer.asUint8List();
       final embeddingBytes = results[3].buffer.asUint8List();
 
-      // Spawn detection isolate
       await _spawnDetectionIsolate(
         faceDetectionBytes: faceDetectionBytes,
         faceLandmarkBytes: faceLandmarkBytes,
@@ -225,7 +217,6 @@ class FaceDetectorIsolate {
         meshPoolSize: meshPoolSize,
       );
 
-      // Spawn segmentation isolate in parallel if enabled
       if (withSegmentation && results.length > 4) {
         final segBytes = results[4].buffer.asUint8List();
         final config = segmentationConfig ?? SegmentationConfig.safe;
@@ -235,7 +226,6 @@ class FaceDetectorIsolate {
 
       _initialized = true;
     } catch (e) {
-      // Cleanup on failure
       _detectionIsolate?.kill(priority: Isolate.immediate);
       _segmentationIsolate?.kill(priority: Isolate.immediate);
       _detectionReceivePort.close();
@@ -274,31 +264,11 @@ class FaceDetectorIsolate {
       debugName: 'FaceDetectorIsolate.detection',
     );
 
-    final Completer<SendPort> initCompleter = Completer<SendPort>();
-    late final StreamSubscription<dynamic> subscription;
-
-    subscription = _detectionReceivePort.listen((message) {
-      if (!initCompleter.isCompleted) {
-        if (message is SendPort) {
-          initCompleter.complete(message);
-        } else if (message is Map && message['error'] != null) {
-          initCompleter.completeError(StateError(message['error'] as String));
-        } else {
-          initCompleter.completeError(
-            StateError('Expected SendPort, got ${message.runtimeType}'),
-          );
-        }
-        return;
-      }
-      _handleDetectionResponse(message);
-    });
-
-    _detectionSendPort = await initCompleter.future.timeout(
-      const Duration(seconds: 30),
-      onTimeout: () {
-        subscription.cancel();
-        throw TimeoutException('Detection isolate initialization timed out');
-      },
+    _detectionSendPort = await _setupIsolateListener(
+      receivePort: _detectionReceivePort,
+      responseHandler: _handleDetectionResponse,
+      timeout: const Duration(seconds: 30),
+      timeoutMsg: 'Detection isolate initialization timed out',
     );
   }
 
@@ -307,7 +277,6 @@ class FaceDetectorIsolate {
     required Uint8List modelBytes,
     required SegmentationConfig config,
   }) async {
-    // On iOS/Android, fall back to multiclass (binary models require custom ops)
     final effectiveModel = _effectiveModel(config.model);
     _segmentationIsolate = await Isolate.spawn(
       _segmentationIsolateEntry,
@@ -317,7 +286,6 @@ class FaceDetectorIsolate {
         performanceModeName: config.performanceConfig.mode.name,
         numThreads: config.performanceConfig.numThreads,
         maxOutputSize: config.maxOutputSize,
-        resizeStrategyName: config.resizeStrategy.name,
         validateModel: config.validateModel,
         modelName: _modelFileFor(effectiveModel),
         modelIndex: effectiveModel.index,
@@ -325,10 +293,25 @@ class FaceDetectorIsolate {
       debugName: 'FaceDetectorIsolate.segmentation',
     );
 
+    _segmentationSendPort = await _setupIsolateListener(
+      receivePort: _segmentationReceivePort,
+      responseHandler: _handleSegmentationResponse,
+      timeout: const Duration(seconds: 15),
+      timeoutMsg: 'Segmentation isolate initialization timed out',
+    );
+  }
+
+  /// Sets up init handshake and message routing for an isolate.
+  static Future<SendPort> _setupIsolateListener({
+    required ReceivePort receivePort,
+    required void Function(dynamic) responseHandler,
+    required Duration timeout,
+    required String timeoutMsg,
+  }) async {
     final Completer<SendPort> initCompleter = Completer<SendPort>();
     late final StreamSubscription<dynamic> subscription;
 
-    subscription = _segmentationReceivePort.listen((message) {
+    subscription = receivePort.listen((message) {
       if (!initCompleter.isCompleted) {
         if (message is SendPort) {
           initCompleter.complete(message);
@@ -341,41 +324,34 @@ class FaceDetectorIsolate {
         }
         return;
       }
-      _handleSegmentationResponse(message);
+      responseHandler(message);
     });
 
-    _segmentationSendPort = await initCompleter.future.timeout(
-      const Duration(seconds: 15),
+    return initCompleter.future.timeout(
+      timeout,
       onTimeout: () {
         subscription.cancel();
-        throw TimeoutException('Segmentation isolate initialization timed out');
+        throw TimeoutException(timeoutMsg);
       },
     );
   }
 
-  void _handleDetectionResponse(dynamic message) {
+  void _handleDetectionResponse(dynamic msg) =>
+      _handleIsolateResponse(msg, _detectionPending);
+
+  void _handleSegmentationResponse(dynamic msg) =>
+      _handleIsolateResponse(msg, _segmentationPending);
+
+  static void _handleIsolateResponse(
+    dynamic message,
+    Map<int, Completer<dynamic>> pending,
+  ) {
     if (message is! Map) return;
 
     final int? id = message['id'] as int?;
     if (id == null) return;
 
-    final Completer<dynamic>? completer = _detectionPending.remove(id);
-    if (completer == null) return;
-
-    if (message['error'] != null) {
-      completer.completeError(StateError(message['error'] as String));
-    } else {
-      completer.complete(message['result']);
-    }
-  }
-
-  void _handleSegmentationResponse(dynamic message) {
-    if (message is! Map) return;
-
-    final int? id = message['id'] as int?;
-    if (id == null) return;
-
-    final Completer<dynamic>? completer = _segmentationPending.remove(id);
+    final Completer<dynamic>? completer = pending.remove(id);
     if (completer == null) return;
 
     if (message['error'] != null) {
@@ -562,7 +538,7 @@ class FaceDetectorIsolate {
     Uint8List bytes, {
     required int width,
     required int height,
-    int matType = 16, // CV_8UC3
+    int matType = 16,
     FaceDetectionMode mode = FaceDetectionMode.full,
   }) async {
     final List<dynamic> result = await _sendDetectionRequest<List<dynamic>>(
@@ -793,7 +769,6 @@ class FaceDetectorIsolate {
       );
     }
 
-    // Extract Mat data once for both isolates
     final int rows = image.rows;
     final int cols = image.cols;
     final int type = image.type.value;
@@ -802,9 +777,7 @@ class FaceDetectorIsolate {
     final detectionStopwatch = Stopwatch()..start();
     final segmentationStopwatch = Stopwatch()..start();
 
-    // Run both in parallel using separate isolates
     final results = await Future.wait([
-      // Detection in detection isolate
       _sendDetectionRequest<List<dynamic>>('detectMat', {
         'bytes': TransferableTypedData.fromList([data]),
         'width': cols,
@@ -817,7 +790,6 @@ class FaceDetectorIsolate {
             .map((m) => Face.fromMap(Map<String, dynamic>.from(m as Map)))
             .toList();
       }),
-      // Segmentation in segmentation isolate
       _sendSegmentationRequest<Map<String, dynamic>>('segmentMat', {
         'bytes': TransferableTypedData.fromList([data]),
         'width': cols,
@@ -871,9 +843,7 @@ class FaceDetectorIsolate {
     final detectionStopwatch = Stopwatch()..start();
     final segmentationStopwatch = Stopwatch()..start();
 
-    // Run both in parallel using separate isolates
     final results = await Future.wait([
-      // Detection in detection isolate
       _sendDetectionRequest<List<dynamic>>('detect', {
         'bytes': TransferableTypedData.fromList([imageBytes]),
         'mode': mode.name,
@@ -883,7 +853,6 @@ class FaceDetectorIsolate {
             .map((m) => Face.fromMap(Map<String, dynamic>.from(m as Map)))
             .toList();
       }),
-      // Segmentation in segmentation isolate
       _sendSegmentationRequest<Map<String, dynamic>>('segment', {
         'bytes': TransferableTypedData.fromList([imageBytes]),
         'outputFormat': outputFormat.index,
@@ -913,7 +882,6 @@ class FaceDetectorIsolate {
   /// After calling dispose, the instance cannot be reused. Create a new
   /// instance with [spawn] if needed.
   Future<void> dispose() async {
-    // Fail all pending detection requests
     for (final completer in _detectionPending.values) {
       if (!completer.isCompleted) {
         completer.completeError(StateError('FaceDetectorIsolate disposed'));
@@ -921,7 +889,6 @@ class FaceDetectorIsolate {
     }
     _detectionPending.clear();
 
-    // Fail all pending segmentation requests
     for (final completer in _segmentationPending.values) {
       if (!completer.isCompleted) {
         completer.completeError(StateError('FaceDetectorIsolate disposed'));
@@ -929,7 +896,6 @@ class FaceDetectorIsolate {
     }
     _segmentationPending.clear();
 
-    // Send dispose messages to isolates (best effort)
     if (_detectionSendPort != null) {
       try {
         _detectionSendPort!.send({'id': -1, 'op': 'dispose'});
@@ -941,15 +907,12 @@ class FaceDetectorIsolate {
       } catch (_) {}
     }
 
-    // Kill isolates
     _detectionIsolate?.kill(priority: Isolate.immediate);
     _segmentationIsolate?.kill(priority: Isolate.immediate);
 
-    // Close receive ports
     _detectionReceivePort.close();
     _segmentationReceivePort.close();
 
-    // Reset state
     _detectionIsolate = null;
     _segmentationIsolate = null;
     _detectionSendPort = null;
@@ -1141,11 +1104,7 @@ class FaceDetectorIsolate {
       final performanceMode = PerformanceMode.values.firstWhere(
         (m) => m.name == data.performanceModeName,
       );
-      final resizeStrategy = ResizeStrategy.values.firstWhere(
-        (s) => s.name == data.resizeStrategyName,
-      );
 
-      // Derive model variant from the transferred model index
       final SegmentationModel model = SegmentationModel.values[data.modelIndex];
 
       final config = SegmentationConfig(
@@ -1155,7 +1114,6 @@ class FaceDetectorIsolate {
           numThreads: data.numThreads,
         ),
         maxOutputSize: data.maxOutputSize,
-        resizeStrategy: resizeStrategy,
         validateModel: data.validateModel,
         useIsolate: false,
       );
@@ -1271,7 +1229,6 @@ class FaceDetectorIsolate {
     IsolateOutputFormat format,
     double binaryThreshold,
   ) {
-    // Base metadata always included
     final result = <String, dynamic>{
       'width': mask.width,
       'height': mask.height,
@@ -1282,20 +1239,17 @@ class FaceDetectorIsolate {
 
     switch (format) {
       case IsolateOutputFormat.float32:
-        // Full precision - use toMap() data directly
         result['data'] = mask.data.toList();
         result['dataFormat'] = 'float32';
         break;
 
       case IsolateOutputFormat.uint8:
-        // 8-bit grayscale - 4x smaller than float32
         final uint8Data = mask.toUint8();
         result['data'] = uint8Data.toList();
         result['dataFormat'] = 'uint8';
         break;
 
       case IsolateOutputFormat.binary:
-        // Binary at threshold - smallest transfer
         final binaryData = mask.toBinary(threshold: binaryThreshold);
         result['data'] = binaryData.toList();
         result['dataFormat'] = 'binary';
@@ -1303,7 +1257,6 @@ class FaceDetectorIsolate {
         break;
     }
 
-    // Include multiclass data if present
     if (mask is MulticlassSegmentationMask) {
       result['classData'] = mask._classData.toList();
     }
@@ -1318,7 +1271,6 @@ class FaceDetectorIsolate {
   static SegmentationMask _deserializeMask(Map<String, dynamic> map) {
     final baseMask = SegmentationMask.fromMap(map);
 
-    // If multiclass data is present, wrap in MulticlassSegmentationMask
     if (map['classData'] != null) {
       final List rawClassData = map['classData'] as List;
       final Float32List classData = Float32List.fromList(

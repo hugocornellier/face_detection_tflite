@@ -103,17 +103,17 @@ class IsolateWorker {
 
   void _handleResponse(dynamic message) {
     if (message is! Map) {
-      return; // Ignore malformed messages
+      return;
     }
 
     final int? id = message['id'] as int?;
     if (id == null) {
-      return; // Ignore messages without ID
+      return;
     }
 
     final Completer? completer = _pending.remove(id);
     if (completer == null) {
-      return; // Ignore responses for cancelled/unknown requests
+      return;
     }
 
     if (message['error'] != null) {
@@ -854,7 +854,7 @@ class IsolateWorker {
           outOffset,
         );
 
-        outOffset += 3; // Move to next RGB pixel
+        outOffset += 3;
       }
     }
 

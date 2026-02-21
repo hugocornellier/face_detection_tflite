@@ -183,10 +183,6 @@ class PerformanceConfig {
   );
 }
 
-// ============================================================================
-// Selfie Segmentation Types
-// ============================================================================
-
 /// Pixel format for RGBA output from segmentation masks.
 ///
 /// Use this to match the expected format of your rendering pipeline.
@@ -199,19 +195,6 @@ enum PixelFormat {
 
   /// Alpha-Red-Green-Blue (legacy format).
   argb,
-}
-
-/// Strategy for handling aspect ratio mismatch during segmentation.
-///
-/// When the input image aspect ratio doesn't match the model's expected
-/// input ratio, one of these strategies is applied.
-enum ResizeStrategy {
-  /// Letterbox with black padding, preserve aspect ratio.
-  /// Mask is unletterboxed before return.
-  letterbox,
-
-  /// Stretch to fit model input (may distort).
-  stretch,
 }
 
 /// Output format options for isolate-based segmentation to reduce transfer overhead.
@@ -355,7 +338,7 @@ enum SegmentationModel {
 /// final config = SegmentationConfig(
 ///   performanceConfig: PerformanceConfig.auto(),
 ///   maxOutputSize: 1920,
-///   resizeStrategy: ResizeStrategy.letterbox,
+///   maxOutputSize: 1920,
 /// );
 /// final segmenter = await SelfieSegmentation.create(config: config);
 /// ```
@@ -375,9 +358,6 @@ class SegmentationConfig {
   /// If original image exceeds this, upsampled mask is capped to prevent OOM.
   /// Default 2048. Set to 0 for unlimited (use with caution on mobile).
   final int maxOutputSize;
-
-  /// Resize strategy for non-matching aspect ratios.
-  final ResizeStrategy resizeStrategy;
 
   /// Whether to validate model metadata on load.
   ///
@@ -410,14 +390,12 @@ class SegmentationConfig {
   /// - [model]: Which model variant to use. Default: [SegmentationModel.general].
   /// - [performanceConfig]: TFLite delegate settings. Default: auto.
   /// - [maxOutputSize]: Maximum dimension for upsampled output. Default: 2048.
-  /// - [resizeStrategy]: How to handle aspect ratio mismatch. Default: letterbox.
   /// - [validateModel]: Whether to validate model on load. Default: true.
   /// - [useIsolate]: Whether to use IsolateInterpreter. Default: true.
   const SegmentationConfig({
     this.model = SegmentationModel.general,
     this.performanceConfig = const PerformanceConfig.auto(),
     this.maxOutputSize = 2048,
-    this.resizeStrategy = ResizeStrategy.letterbox,
     this.validateModel = true,
     this.useIsolate = true,
   });
@@ -525,7 +503,7 @@ class SegmentationMask {
       );
     }
     return SegmentationMask._(
-      data: Float32List.fromList(data), // Defensive copy
+      data: Float32List.fromList(data),
       width: width,
       height: height,
       originalWidth: originalWidth,
@@ -572,20 +550,17 @@ class SegmentationMask {
     final tw = targetWidth ?? originalWidth;
     final th = targetHeight ?? originalHeight;
 
-    // Apply maxSize cap
     final maxDim = math.max(tw, th);
     final scale = maxSize > 0 && maxDim > maxSize ? maxSize / maxDim : 1.0;
     final finalW = (tw * scale).round();
     final finalH = (th * scale).round();
 
-    // First, unletterbox if padding was applied
     Float32List sourceData = _data;
     int sourceW = width;
     int sourceH = height;
 
     final pt = padding[0], pb = padding[1], pl = padding[2], pr = padding[3];
     if (pt > 0 || pb > 0 || pl > 0 || pr > 0) {
-      // Calculate the valid region (without padding)
       final validX0 = (pl * width).round();
       final validY0 = (pt * height).round();
       final validX1 = ((1.0 - pr) * width).round();
@@ -606,7 +581,6 @@ class SegmentationMask {
       }
     }
 
-    // Bilinear interpolation to target size
     final result = Float32List(finalW * finalH);
     final scaleX = sourceW / finalW;
     final scaleY = sourceH / finalH;
@@ -623,7 +597,6 @@ class SegmentationMask {
         final x1 = (x0 + 1).clamp(0, sourceW - 1);
         final xFrac = srcX - x0;
 
-        // Bilinear interpolation
         final v00 = sourceData[y0 * sourceW + x0];
         final v10 = sourceData[y0 * sourceW + x1];
         final v01 = sourceData[y1 * sourceW + x0];
@@ -641,7 +614,7 @@ class SegmentationMask {
       height: finalH,
       originalWidth: originalWidth,
       originalHeight: originalHeight,
-      padding: const [0.0, 0.0, 0.0, 0.0], // Padding removed
+      padding: const [0.0, 0.0, 0.0, 0.0],
     );
   }
 
@@ -709,12 +682,10 @@ class SegmentationMask {
       final offset = i * 4;
 
       if (threshold < 0) {
-        // Soft blend based on probability
         for (int c = 0; c < 4; c++) {
           result[offset + c] = (fg[c] * prob + bg[c] * (1 - prob)).round();
         }
       } else {
-        // Binary threshold
         final color = prob >= threshold ? fg : bg;
         for (int c = 0; c < 4; c++) {
           result[offset + c] = color[c];
@@ -729,24 +700,24 @@ class SegmentationMask {
     switch (format) {
       case PixelFormat.rgba:
         return [
-          (color >> 24) & 0xFF, // R
-          (color >> 16) & 0xFF, // G
-          (color >> 8) & 0xFF, // B
-          color & 0xFF, // A
+          (color >> 24) & 0xFF,
+          (color >> 16) & 0xFF,
+          (color >> 8) & 0xFF,
+          color & 0xFF,
         ];
       case PixelFormat.bgra:
         return [
-          (color >> 8) & 0xFF, // B
-          (color >> 16) & 0xFF, // G
-          (color >> 24) & 0xFF, // R
-          color & 0xFF, // A
+          (color >> 8) & 0xFF,
+          (color >> 16) & 0xFF,
+          (color >> 24) & 0xFF,
+          color & 0xFF,
         ];
       case PixelFormat.argb:
         return [
-          (color >> 16) & 0xFF, // R
-          (color >> 8) & 0xFF, // G
-          color & 0xFF, // B
-          (color >> 24) & 0xFF, // A
+          (color >> 16) & 0xFF,
+          (color >> 8) & 0xFF,
+          color & 0xFF,
+          (color >> 24) & 0xFF,
         ];
     }
   }
@@ -780,7 +751,6 @@ class SegmentationMask {
         data = Float32List.fromList(rawData.cast<double>());
         break;
       case 'uint8':
-        // Convert uint8 (0-255) back to float32 (0.0-1.0)
         final uint8List = rawData.cast<int>();
         data = Float32List(uint8List.length);
         for (int i = 0; i < uint8List.length; i++) {
@@ -788,7 +758,6 @@ class SegmentationMask {
         }
         break;
       case 'binary':
-        // Convert binary (0 or 255) back to float32 (0.0 or 1.0)
         final binaryList = rawData.cast<int>();
         data = Float32List(binaryList.length);
         for (int i = 0; i < binaryList.length; i++) {

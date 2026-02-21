@@ -1,3 +1,6 @@
+## 4.6.4
+- Update flutter_litert to 0.1.12
+
 ## 4.6.3
 - Swift Package Manager support
 - Windows: remove bundled .dll files, as they are no longer needed as of `flutter_litert` 0.1.4

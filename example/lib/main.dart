@@ -76,6 +76,20 @@ const List<DropdownMenuItem<FaceDetectionMode>> _kDetectionModeItems = [
   );
 }
 
+// Cover-fit scale and offset for rendering a source region into a viewport.
+({double scale, double offsetX, double offsetY}) _coverFitScaleOffset(
+    int sourceW, int sourceH, double viewW, double viewH) {
+  final sourceAspect = sourceW / sourceH;
+  final viewAspect = viewW / viewH;
+  if (sourceAspect > viewAspect) {
+    final s = viewH / sourceH;
+    return (scale: s, offsetX: (viewW - sourceW * s) / 2, offsetY: 0.0);
+  } else {
+    final s = viewW / sourceW;
+    return (scale: s, offsetX: 0.0, offsetY: (viewH - sourceH * s) / 2);
+  }
+}
+
 // Draw multiclass segmentation labels at class centroids.
 void _drawClassLabels(
     Canvas canvas, List<int> counts, List<double> sumX, List<double> sumY) {
@@ -243,7 +257,10 @@ class _ExampleState extends State<Example> {
   double _meshSize = 1.25;
   double _eyeMeshSize = 0.8;
 
-  FaceDetectionModel _detectionModel = FaceDetectionModel.backCamera;
+  FaceDetectionModel _detectionModel =
+      !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux)
+          ? FaceDetectionModel.backCamera
+          : FaceDetectionModel.frontCamera;
 
   @override
   void initState() {
@@ -1259,7 +1276,10 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
 
   // Detection settings
   FaceDetectionMode _detectionMode = FaceDetectionMode.full;
-  FaceDetectionModel _detectionModel = FaceDetectionModel.frontCamera;
+  FaceDetectionModel _detectionModel =
+      !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux)
+          ? FaceDetectionModel.backCamera
+          : FaceDetectionModel.frontCamera;
 
   // Segmentation settings
   bool _showSegmentation = false;
@@ -1307,12 +1327,30 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   }
 
   Future<void> _reinitDetectorIsolate() async {
-    _faceDetectorIsolate?.dispose();
+    final old = _faceDetectorIsolate;
+    _faceDetectorIsolate = null;
+    old?.dispose();
     _faceDetectorIsolate = await FaceDetectorIsolate.spawn(
       model: _detectionModel,
       withSegmentation: true,
       segmentationConfig: SegmentationConfig(model: _liveSegmentationModel),
     );
+  }
+
+  Future<({List<Face> faces, SegmentationMask? segMask})> _detectFromMat(
+      cv.Mat mat) async {
+    if ((_showSegmentation || _showVirtualBackground) &&
+        _faceDetectorIsolate!.isSegmentationReady) {
+      final result = await _faceDetectorIsolate!
+          .detectFacesWithSegmentationFromMat(mat, mode: _detectionMode);
+      return (faces: result.faces, segMask: result.segmentationMask);
+    } else {
+      final faces = await _faceDetectorIsolate!.detectFacesFromMat(
+        mat,
+        mode: _detectionMode,
+      );
+      return (faces: faces, segMask: null);
+    }
   }
 
   Future<void> _switchLiveSegmentationModel(SegmentationModel model) async {
@@ -1823,27 +1861,10 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         return;
       }
 
-      // Run face detection and segmentation
-      final List<Face> faces;
-      SegmentationMask? segMask;
-
-      if ((_showSegmentation || _showVirtualBackground) &&
-          _faceDetectorIsolate!.isSegmentationReady) {
-        // Parallel execution via dual internal isolates
-        final result = await _faceDetectorIsolate!
-            .detectFacesWithSegmentationFromMat(mat, mode: _detectionMode);
-        faces = result.faces;
-        segMask = result.segmentationMask;
-      } else {
-        // Detection only (no segmentation)
-        faces = await _faceDetectorIsolate!.detectFacesFromMat(
-          mat,
-          mode: _detectionMode,
-        );
-      }
-
-      // Dispose the Mat after detection
+      final result = await _detectFromMat(mat);
       mat.dispose();
+      final faces = result.faces;
+      final segMask = result.segMask;
 
       final endTime = DateTime.now();
       final detectionTime = endTime.difference(startTime).inMilliseconds;
@@ -2128,27 +2149,10 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
           return;
         }
 
-        // Run face detection and segmentation
-        final List<Face> faces;
-        SegmentationMask? segMask;
-
-        if ((_showSegmentation || _showVirtualBackground) &&
-            _faceDetectorIsolate!.isSegmentationReady) {
-          // Parallel execution via dual internal isolates
-          final result = await _faceDetectorIsolate!
-              .detectFacesWithSegmentationFromMat(mat, mode: _detectionMode);
-          faces = result.faces;
-          segMask = result.segmentationMask;
-        } else {
-          // Detection only (no segmentation)
-          faces = await _faceDetectorIsolate!.detectFacesFromMat(
-            mat,
-            mode: _detectionMode,
-          );
-        }
-
-        // Dispose the Mat after detection
+        final result = await _detectFromMat(mat);
         mat.dispose();
+        final faces = result.faces;
+        final segMask = result.segMask;
 
         final detectionTime =
             DateTime.now().difference(startTime).inMilliseconds;
@@ -2401,21 +2405,10 @@ class _LiveSegmentationPainter extends CustomPainter {
     final validW = v.x1 - v.x0;
     final validH = v.y1 - v.y0;
 
-    final sourceW = validW.toDouble();
-    final sourceH = validH.toDouble();
-    final sourceAspect = sourceW / sourceH;
-    final viewportAspect = size.width / size.height;
-
-    final double scale;
-    double offsetX = 0;
-    double offsetY = 0;
-    if (sourceAspect > viewportAspect) {
-      scale = size.height / sourceH;
-      offsetX = (size.width - sourceW * scale) / 2;
-    } else {
-      scale = size.width / sourceW;
-      offsetY = (size.height - sourceH * scale) / 2;
-    }
+    final fit = _coverFitScaleOffset(validW, validH, size.width, size.height);
+    final scale = fit.scale;
+    final offsetX = fit.offsetX;
+    final offsetY = fit.offsetY;
 
     final double pixelW = scale + 0.5;
     final double pixelH = scale + 0.5;
@@ -2540,21 +2533,10 @@ class _VirtualBackgroundOverlayPainter extends CustomPainter {
 
     if (validW <= 0 || validH <= 0) return;
 
-    final sourceW = validW.toDouble();
-    final sourceH = validH.toDouble();
-    final sourceAspect = sourceW / sourceH;
-    final viewportAspect = size.width / size.height;
-
-    final double scale;
-    double offsetX = 0;
-    double offsetY = 0;
-    if (sourceAspect > viewportAspect) {
-      scale = size.height / sourceH;
-      offsetX = (size.width - sourceW * scale) / 2;
-    } else {
-      scale = size.width / sourceW;
-      offsetY = (size.height - sourceH * scale) / 2;
-    }
+    final fit = _coverFitScaleOffset(validW, validH, size.width, size.height);
+    final scale = fit.scale;
+    final offsetX = fit.offsetX;
+    final offsetY = fit.offsetY;
 
     final double pixelW = scale + 0.5;
     final double pixelH = scale + 0.5;
