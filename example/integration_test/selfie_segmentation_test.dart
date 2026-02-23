@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:face_detection_tflite/face_detection_tflite.dart';
-import 'package:image/image.dart' as img;
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:flutter_litert/flutter_litert.dart';
 
@@ -37,13 +36,12 @@ Future<bool> _isMulticlassModelAvailable() async {
 /// Helper to create a solid color test image
 Uint8List _createTestImage(int width, int height,
     {int r = 128, int g = 128, int b = 128}) {
-  final image = img.Image(width: width, height: height);
-  for (int y = 0; y < height; y++) {
-    for (int x = 0; x < width; x++) {
-      image.setPixelRgba(x, y, r, g, b, 255);
-    }
-  }
-  return Uint8List.fromList(img.encodePng(image));
+  final mat =
+      cv.Mat.create(rows: height, cols: width, type: cv.MatType.CV_8UC3);
+  mat.setTo(cv.Scalar(b.toDouble(), g.toDouble(), r.toDouble(), 255));
+  final (_, bytes) = cv.imencode('.png', mat);
+  mat.dispose();
+  return bytes;
 }
 
 /// Separator line for test output
@@ -52,13 +50,12 @@ const _separator =
 
 /// Helper to create a grayscale test image
 Uint8List _createGrayscaleImage(int width, int height, {int gray = 128}) {
-  final image = img.Image(width: width, height: height, numChannels: 1);
-  for (int y = 0; y < height; y++) {
-    for (int x = 0; x < width; x++) {
-      image.setPixelRgba(x, y, gray, gray, gray, 255);
-    }
-  }
-  return Uint8List.fromList(img.encodePng(image));
+  final mat =
+      cv.Mat.create(rows: height, cols: width, type: cv.MatType.CV_8UC1);
+  mat.setTo(cv.Scalar(gray.toDouble(), 0, 0, 0));
+  final (_, bytes) = cv.imencode('.png', mat);
+  mat.dispose();
+  return bytes;
 }
 
 void main() {
@@ -257,7 +254,7 @@ void main() {
       final segmenter = await SelfieSegmentation.create();
       final imageBytes = _createTestImage(256, 256);
 
-      final mask = await segmenter.call(imageBytes);
+      final mask = await segmenter.callFromBytes(imageBytes);
 
       expect(mask.width, greaterThan(0));
       expect(mask.height, greaterThan(0));
@@ -284,7 +281,7 @@ void main() {
         final imageBytes = data.buffer.asUint8List();
 
         final sw = Stopwatch()..start();
-        final mask = await segmenter.call(imageBytes);
+        final mask = await segmenter.callFromBytes(imageBytes);
         sw.stop();
 
         print('Inference time: ${sw.elapsedMilliseconds}ms');
@@ -296,7 +293,7 @@ void main() {
       } catch (e) {
         print('Sample image not found, using generated image');
         final imageBytes = _createTestImage(512, 512);
-        final mask = await segmenter.call(imageBytes);
+        final mask = await segmenter.callFromBytes(imageBytes);
         expect(mask.width, greaterThan(0));
       }
 
@@ -304,13 +301,13 @@ void main() {
       print('Test passed');
     });
 
-    test('callFromMat() with constructed Mat', () async {
+    test('call() with constructed Mat', () async {
       if (!modelsAvailable) {
         print('Skipping: models not available');
         return;
       }
 
-      print('\n--- Testing callFromMat() with constructed Mat ---');
+      print('\n--- Testing call() with constructed Mat ---');
       final segmenter = await SelfieSegmentation.create();
 
       final bgrData = Uint8List(300 * 200 * 3);
@@ -321,7 +318,7 @@ void main() {
       }
       final mat = cv.Mat.fromList(200, 300, cv.MatType.CV_8UC3, bgrData);
 
-      final mask = await segmenter.callFromMat(mat);
+      final mask = await segmenter.call(mat);
 
       expect(mask.originalWidth, 300);
       expect(mask.originalHeight, 200);
@@ -333,13 +330,13 @@ void main() {
       print('Test passed');
     });
 
-    test('callFromMat() with OpenCV Mat', () async {
+    test('call() with OpenCV Mat', () async {
       if (!modelsAvailable) {
         print('Skipping: models not available');
         return;
       }
 
-      print('\n--- Testing callFromMat() ---');
+      print('\n--- Testing call() ---');
       final segmenter = await SelfieSegmentation.create();
 
       // Create a BGR Mat (OpenCV default)
@@ -351,7 +348,7 @@ void main() {
       }
       final mat = cv.Mat.fromList(256, 256, cv.MatType.CV_8UC3, bgrData);
 
-      final mask = await segmenter.callFromMat(mat);
+      final mask = await segmenter.call(mat);
 
       expect(mask.width, greaterThan(0));
       expect(mask.height, greaterThan(0));
@@ -370,11 +367,12 @@ void main() {
       print('\n--- Testing JPEG format ---');
       final segmenter = await SelfieSegmentation.create();
 
-      final image = img.Image(width: 200, height: 200);
-      img.fill(image, color: img.ColorRgb8(100, 100, 100));
-      final jpegBytes = Uint8List.fromList(img.encodeJpg(image, quality: 90));
+      final mat = cv.Mat.create(rows: 200, cols: 200, type: cv.MatType.CV_8UC3);
+      mat.setTo(cv.Scalar(100, 100, 100, 255));
+      final (_, jpegBytes) = cv.imencode('.jpg', mat);
+      mat.dispose();
 
-      final mask = await segmenter.call(jpegBytes);
+      final mask = await segmenter.callFromBytes(jpegBytes);
       expect(mask.originalWidth, 200);
 
       segmenter.dispose();
@@ -391,8 +389,8 @@ void main() {
       final segmenter = await SelfieSegmentation.create();
       final imageBytes = _createTestImage(256, 256, r: 200, g: 150, b: 100);
 
-      final mask1 = await segmenter.call(imageBytes);
-      final mask2 = await segmenter.call(imageBytes);
+      final mask1 = await segmenter.callFromBytes(imageBytes);
+      final mask2 = await segmenter.callFromBytes(imageBytes);
 
       // Same image should produce identical masks
       expect(mask1.width, mask2.width);
@@ -429,7 +427,7 @@ void main() {
       final smallImage = _createTestImage(10, 10);
 
       try {
-        await segmenter.call(smallImage);
+        await segmenter.callFromBytes(smallImage);
         fail('Should have thrown SegmentationException');
       } on SegmentationException catch (e) {
         expect(e.code, SegmentationError.imageTooSmall);
@@ -450,7 +448,7 @@ void main() {
       final segmenter = await SelfieSegmentation.create();
       final minImage = _createTestImage(16, 16);
 
-      final mask = await segmenter.call(minImage);
+      final mask = await segmenter.callFromBytes(minImage);
       expect(mask.originalWidth, 16);
       expect(mask.originalHeight, 16);
 
@@ -471,7 +469,7 @@ void main() {
       final largeImage = _createTestImage(1920, 1080);
 
       final sw = Stopwatch()..start();
-      final mask = await segmenter.call(largeImage);
+      final mask = await segmenter.callFromBytes(largeImage);
       sw.stop();
 
       print('Inference time: ${sw.elapsedMilliseconds}ms');
@@ -492,7 +490,7 @@ void main() {
       final segmenter = await SelfieSegmentation.create();
 
       final wideImage = _createTestImage(500, 50);
-      final mask = await segmenter.call(wideImage);
+      final mask = await segmenter.callFromBytes(wideImage);
 
       expect(mask.originalWidth, 500);
       expect(mask.originalHeight, 50);
@@ -513,7 +511,7 @@ void main() {
       final segmenter = await SelfieSegmentation.create();
 
       final tallImage = _createTestImage(50, 500);
-      final mask = await segmenter.call(tallImage);
+      final mask = await segmenter.callFromBytes(tallImage);
 
       expect(mask.originalWidth, 50);
       expect(mask.originalHeight, 500);
@@ -537,7 +535,7 @@ void main() {
       final segmenter = await SelfieSegmentation.create();
       final grayImage = _createGrayscaleImage(256, 256);
 
-      final mask = await segmenter.call(grayImage);
+      final mask = await segmenter.callFromBytes(grayImage);
       expect(mask.width, greaterThan(0));
 
       segmenter.dispose();
@@ -553,15 +551,12 @@ void main() {
       print('\n--- Testing RGBA image ---');
       final segmenter = await SelfieSegmentation.create();
 
-      final image = img.Image(width: 200, height: 200, numChannels: 4);
-      for (int y = 0; y < 200; y++) {
-        for (int x = 0; x < 200; x++) {
-          image.setPixelRgba(x, y, 100, 150, 200, 128); // Semi-transparent
-        }
-      }
-      final pngBytes = Uint8List.fromList(img.encodePng(image));
+      final mat = cv.Mat.create(rows: 200, cols: 200, type: cv.MatType.CV_8UC4);
+      mat.setTo(cv.Scalar(200, 150, 100, 128)); // BGRA: Semi-transparent
+      final (_, pngBytes) = cv.imencode('.png', mat);
+      mat.dispose();
 
-      final mask = await segmenter.call(pngBytes);
+      final mask = await segmenter.callFromBytes(pngBytes);
       expect(mask.originalWidth, 200);
 
       segmenter.dispose();
@@ -580,7 +575,7 @@ void main() {
           Uint8List.fromList([0xFF, 0xD8, 0x00, 0x00]); // Invalid JPEG
 
       try {
-        await segmenter.call(corrupted);
+        await segmenter.callFromBytes(corrupted);
         fail('Should have thrown SegmentationException');
       } on SegmentationException catch (e) {
         expect(e.code, SegmentationError.imageDecodeFailed);
@@ -601,7 +596,7 @@ void main() {
       final segmenter = await SelfieSegmentation.create();
 
       try {
-        await segmenter.call(Uint8List(0));
+        await segmenter.callFromBytes(Uint8List(0));
         fail('Should have thrown SegmentationException');
       } on SegmentationException catch (e) {
         expect(e.code, SegmentationError.imageDecodeFailed);
@@ -627,7 +622,7 @@ void main() {
       final segmenter = await SelfieSegmentation.create();
       final imageBytes = _createTestImage(256, 256);
 
-      final mask = await segmenter.call(imageBytes);
+      final mask = await segmenter.callFromBytes(imageBytes);
       final binary = mask.toBinary(threshold: 0.5);
 
       for (int i = 0; i < binary.length; i++) {
@@ -650,7 +645,7 @@ void main() {
       final segmenter = await SelfieSegmentation.create();
       final imageBytes = _createTestImage(256, 256);
 
-      final mask = await segmenter.call(imageBytes);
+      final mask = await segmenter.callFromBytes(imageBytes);
       final uint8 = mask.toUint8();
 
       for (int i = 0; i < uint8.length; i++) {
@@ -672,7 +667,7 @@ void main() {
       final segmenter = await SelfieSegmentation.create();
       final imageBytes = _createTestImage(64, 64);
 
-      final mask = await segmenter.call(imageBytes);
+      final mask = await segmenter.callFromBytes(imageBytes);
       final rgba = mask.toRgba(
         foreground: 0xFF0000FF, // Red
         background: 0x00000000, // Transparent
@@ -697,7 +692,7 @@ void main() {
       final segmenter = await SelfieSegmentation.create();
       final imageBytes = _createTestImage(64, 64);
 
-      final mask = await segmenter.call(imageBytes);
+      final mask = await segmenter.callFromBytes(imageBytes);
       final rgba = mask.toRgba(
         foreground: 0xFFFFFFFF, // White
         background: 0xFF000000, // Black
@@ -720,7 +715,7 @@ void main() {
       final segmenter = await SelfieSegmentation.create();
       final imageBytes = _createTestImage(256, 256);
 
-      final mask = await segmenter.call(imageBytes);
+      final mask = await segmenter.callFromBytes(imageBytes);
 
       // Valid coordinates
       final centerValue = mask.at(mask.width ~/ 2, mask.height ~/ 2);
@@ -747,7 +742,7 @@ void main() {
       final segmenter = await SelfieSegmentation.create();
       final imageBytes = _createTestImage(64, 64);
 
-      final mask = await segmenter.call(imageBytes);
+      final mask = await segmenter.callFromBytes(imageBytes);
       final map = mask.toMap();
       final restored = SegmentationMask.fromMap(map);
 
@@ -776,7 +771,7 @@ void main() {
       final segmenter = await SelfieSegmentation.create();
       final imageBytes = _createTestImage(256, 256);
 
-      final mask = await segmenter.call(imageBytes);
+      final mask = await segmenter.callFromBytes(imageBytes);
 
       double minVal = double.infinity;
       double maxVal = double.negativeInfinity;
@@ -802,8 +797,8 @@ void main() {
       final segmenter = await SelfieSegmentation.create();
       final imageBytes = _createTestImage(128, 128);
 
-      final mask1 = await segmenter.call(imageBytes);
-      final mask2 = await segmenter.call(imageBytes);
+      final mask1 = await segmenter.callFromBytes(imageBytes);
+      final mask2 = await segmenter.callFromBytes(imageBytes);
 
       for (int i = 0; i < mask1.data.length; i++) {
         expect(
@@ -832,7 +827,7 @@ void main() {
       final segmenter = await SelfieSegmentation.create();
 
       final wideImage = _createTestImage(400, 200);
-      final mask = await segmenter.call(wideImage);
+      final mask = await segmenter.callFromBytes(wideImage);
 
       expect(mask.originalWidth, 400);
       expect(mask.originalHeight, 200);
@@ -1035,7 +1030,7 @@ void main() {
 
       final sw = Stopwatch()..start();
       for (int i = 0; i < 10; i++) {
-        final mask = await segmenter.call(imageBytes);
+        final mask = await segmenter.callFromBytes(imageBytes);
         expect(mask.width, greaterThan(0));
       }
       sw.stop();
@@ -1059,7 +1054,7 @@ void main() {
       for (int i = 0; i < 50; i++) {
         final imageBytes =
             _createTestImage(128, 128, r: i * 5, g: i * 3, b: i * 2);
-        final mask = await segmenter.call(imageBytes);
+        final mask = await segmenter.callFromBytes(imageBytes);
         expect(mask.data.length, greaterThan(0));
         if (i % 10 == 9) print('Completed ${i + 1} inferences');
       }
@@ -1107,10 +1102,10 @@ void main() {
       // Safe (CPU)
       final safeSeg =
           await SelfieSegmentation.create(config: SegmentationConfig.safe);
-      await safeSeg.call(imageBytes); // Warmup
+      await safeSeg.callFromBytes(imageBytes); // Warmup
       final safeSw = Stopwatch()..start();
       for (int i = 0; i < 5; i++) {
-        await safeSeg.call(imageBytes);
+        await safeSeg.callFromBytes(imageBytes);
       }
       safeSw.stop();
       final safeAvg = safeSw.elapsedMilliseconds / 5;
@@ -1119,10 +1114,10 @@ void main() {
       // Performance (auto delegate)
       final perfSeg = await SelfieSegmentation.create(
           config: SegmentationConfig.performance);
-      await perfSeg.call(imageBytes); // Warmup
+      await perfSeg.callFromBytes(imageBytes); // Warmup
       final perfSw = Stopwatch()..start();
       for (int i = 0; i < 5; i++) {
-        await perfSeg.call(imageBytes);
+        await perfSeg.callFromBytes(imageBytes);
       }
       perfSw.stop();
       final perfAvg = perfSw.elapsedMilliseconds / 5;
@@ -1153,7 +1148,7 @@ void main() {
       final segmenter = await SelfieSegmentation.create();
 
       try {
-        await segmenter.call(Uint8List.fromList([1, 2, 3])); // Invalid
+        await segmenter.callFromBytes(Uint8List.fromList([1, 2, 3])); // Invalid
         fail('Should throw');
       } on SegmentationException catch (e) {
         expect(e.code, isNotNull);
@@ -1183,7 +1178,7 @@ void main() {
       final imageBytes = _createTestImage(64, 64);
 
       // Should work before dispose
-      final mask = await segmenter.call(imageBytes);
+      final mask = await segmenter.callFromBytes(imageBytes);
       expect(mask.width, greaterThan(0));
 
       segmenter.dispose();
@@ -1191,7 +1186,7 @@ void main() {
 
       // Should throw after dispose
       try {
-        await segmenter.call(imageBytes);
+        await segmenter.callFromBytes(imageBytes);
         fail('Should have thrown StateError');
       } on StateError catch (e) {
         print('Correctly threw StateError: ${e.message}');
@@ -1201,13 +1196,13 @@ void main() {
       print('Test passed');
     });
 
-    test('callFromMat throws after dispose (constructed Mat)', () async {
+    test('call throws after dispose (constructed Mat)', () async {
       if (!modelsAvailable) {
         print('Skipping: models not available');
         return;
       }
 
-      print('\n--- Testing callFromMat after dispose ---');
+      print('\n--- Testing call after dispose ---');
       final segmenter = await SelfieSegmentation.create();
       segmenter.dispose();
 
@@ -1215,7 +1210,7 @@ void main() {
       final mat = cv.Mat.fromList(64, 64, cv.MatType.CV_8UC3, bgrData);
 
       try {
-        await segmenter.callFromMat(mat);
+        await segmenter.call(mat);
         fail('Should have thrown StateError');
       } on StateError catch (e) {
         print('Correctly threw: ${e.message}');
@@ -1225,13 +1220,13 @@ void main() {
       print('Test passed');
     });
 
-    test('callFromMat throws after dispose', () async {
+    test('call throws after dispose', () async {
       if (!modelsAvailable) {
         print('Skipping: models not available');
         return;
       }
 
-      print('\n--- Testing callFromMat after dispose ---');
+      print('\n--- Testing call after dispose ---');
       final segmenter = await SelfieSegmentation.create();
       segmenter.dispose();
 
@@ -1239,7 +1234,7 @@ void main() {
       final mat = cv.Mat.fromList(64, 64, cv.MatType.CV_8UC3, matData);
 
       try {
-        await segmenter.callFromMat(mat);
+        await segmenter.call(mat);
         fail('Should have thrown StateError');
       } on StateError catch (e) {
         print('Correctly threw: ${e.message}');
@@ -1255,7 +1250,7 @@ void main() {
   // Mat Channel Variations (Codex Gap #2)
   // ===========================================================================
   group('Mat Channel Variations', () {
-    test('callFromMat with CV_8UC4 (BGRA)', () async {
+    test('call with CV_8UC4 (BGRA)', () async {
       if (!modelsAvailable) {
         print('Skipping: models not available');
         return;
@@ -1273,7 +1268,7 @@ void main() {
       }
       final mat = cv.Mat.fromList(64, 64, cv.MatType.CV_8UC4, bgraData);
 
-      final mask = await segmenter.callFromMat(mat);
+      final mask = await segmenter.call(mat);
       expect(mask.width, greaterThan(0));
       print('Mask from BGRA: ${mask.width}x${mask.height}');
 
@@ -1282,7 +1277,7 @@ void main() {
       print('Test passed');
     });
 
-    test('callFromMat with empty Mat throws', () async {
+    test('call with empty Mat throws', () async {
       if (!modelsAvailable) {
         print('Skipping: models not available');
         return;
@@ -1294,7 +1289,7 @@ void main() {
       final emptyMat = cv.Mat.empty();
 
       try {
-        await segmenter.callFromMat(emptyMat);
+        await segmenter.call(emptyMat);
         fail('Should have thrown SegmentationException');
       } on SegmentationException catch (e) {
         expect(e.code, SegmentationError.imageDecodeFailed);
@@ -1358,7 +1353,7 @@ void main() {
       final segmenter = await SelfieSegmentation.create();
       final imageBytes = _createTestImage(512, 512);
 
-      final mask = await segmenter.call(imageBytes);
+      final mask = await segmenter.callFromBytes(imageBytes);
       final upsampled = mask.upsample(
         targetWidth: 1000,
         targetHeight: 1000,
@@ -1385,7 +1380,7 @@ void main() {
 
       // Wide image will have top/bottom padding
       final wideImage = _createTestImage(400, 100);
-      final mask = await segmenter.call(wideImage);
+      final mask = await segmenter.callFromBytes(wideImage);
 
       print('Original padding: ${mask.padding}');
       expect(mask.padding.any((p) => p > 0), true,
@@ -1537,7 +1532,7 @@ void main() {
           final imageBytes = data.buffer.asUint8List();
 
           final sw = Stopwatch()..start();
-          final mask = await segmenter.call(imageBytes);
+          final mask = await segmenter.callFromBytes(imageBytes);
           sw.stop();
 
           // Verify all mask values are in valid range [0.0, 1.0]
@@ -1595,7 +1590,7 @@ void main() {
         expect(segmenter.outputChannels, 6);
 
         final sw = Stopwatch()..start();
-        final mask = await segmenter.call(imageBytes);
+        final mask = await segmenter.callFromBytes(imageBytes);
         sw.stop();
 
         // Multiclass model should return MulticlassSegmentationMask
@@ -1661,7 +1656,7 @@ void main() {
             await rootBundle.load('assets/samples/landmark-ex1.jpg');
         final imageBytes = data.buffer.asUint8List();
 
-        final mask = await segmenter.call(imageBytes);
+        final mask = await segmenter.callFromBytes(imageBytes);
         print('Original image: ${mask.originalWidth}x${mask.originalHeight}');
         print('Raw mask: ${mask.width}x${mask.height}');
 
@@ -1713,7 +1708,7 @@ void main() {
       expect(segmenter.outputChannels, 1);
 
       final imageBytes = _createTestImage(256, 256);
-      final mask = await segmenter.call(imageBytes);
+      final mask = await segmenter.callFromBytes(imageBytes);
 
       expect(mask, isNot(isA<MulticlassSegmentationMask>()));
       expect(mask.width, greaterThan(0));
@@ -1738,7 +1733,7 @@ void main() {
       expect(segmenter.outputChannels, 1);
 
       final imageBytes = _createTestImage(256, 256);
-      final mask = await segmenter.call(imageBytes);
+      final mask = await segmenter.callFromBytes(imageBytes);
       expect(mask, isNot(isA<MulticlassSegmentationMask>()));
 
       segmenter.dispose();
@@ -1761,7 +1756,7 @@ void main() {
       expect(segmenter.outputChannels, 1);
 
       final imageBytes = _createTestImage(640, 360); // 16:9
-      final mask = await segmenter.call(imageBytes);
+      final mask = await segmenter.callFromBytes(imageBytes);
 
       expect(mask, isNot(isA<MulticlassSegmentationMask>()));
       expect(mask.width, greaterThan(0));
@@ -1789,7 +1784,7 @@ void main() {
       expect(segmenter.outputChannels, 6);
 
       final imageBytes = _createTestImage(256, 256);
-      final mask = await segmenter.call(imageBytes);
+      final mask = await segmenter.callFromBytes(imageBytes);
 
       expect(mask, isA<MulticlassSegmentationMask>());
       print('Multiclass model: ${mask.width}x${mask.height}');
@@ -1810,7 +1805,7 @@ void main() {
 
       // General model
       final general = await SelfieSegmentation.create();
-      final gMask = await general.call(imageBytes);
+      final gMask = await general.callFromBytes(imageBytes);
       expect(gMask, isNot(isA<MulticlassSegmentationMask>()));
       general.dispose();
       print('General: OK');
@@ -1819,7 +1814,7 @@ void main() {
       final landscape = await SelfieSegmentation.create(
         config: SegmentationConfig(model: SegmentationModel.landscape),
       );
-      final lMask = await landscape.call(imageBytes);
+      final lMask = await landscape.callFromBytes(imageBytes);
       expect(lMask, isNot(isA<MulticlassSegmentationMask>()));
       landscape.dispose();
       print('Landscape: OK');
@@ -1829,7 +1824,7 @@ void main() {
         final multiclass = await SelfieSegmentation.create(
           config: SegmentationConfig(model: SegmentationModel.multiclass),
         );
-        final mMask = await multiclass.call(imageBytes);
+        final mMask = await multiclass.callFromBytes(imageBytes);
         expect(mMask, isA<MulticlassSegmentationMask>());
         multiclass.dispose();
         print('Multiclass: OK');
@@ -1852,14 +1847,14 @@ void main() {
         final binary = await SelfieSegmentation.create(
           config: const SegmentationConfig(model: SegmentationModel.general),
         );
-        final binaryMask = await binary.call(imageBytes);
+        final binaryMask = await binary.callFromBytes(imageBytes);
         expect(binaryMask, isNot(isA<MulticlassSegmentationMask>()));
         await binary.disposeAsync();
 
         final multiclass = await SelfieSegmentation.create(
           config: const SegmentationConfig(model: SegmentationModel.multiclass),
         );
-        final multiMask = await multiclass.call(imageBytes);
+        final multiMask = await multiclass.callFromBytes(imageBytes);
         expect(multiMask, isA<MulticlassSegmentationMask>());
         await multiclass.disposeAsync();
 
@@ -1888,8 +1883,8 @@ void main() {
         config: SegmentationConfig(model: SegmentationModel.multiclass),
       );
       final imageBytes = _createTestImage(128, 128);
-      final mask =
-          await segmenter.call(imageBytes) as MulticlassSegmentationMask;
+      final mask = await segmenter.callFromBytes(imageBytes)
+          as MulticlassSegmentationMask;
 
       final numPixels = mask.width * mask.height;
       for (int c = 0; c < 6; c++) {
@@ -1918,8 +1913,8 @@ void main() {
         config: SegmentationConfig(model: SegmentationModel.multiclass),
       );
       final imageBytes = _createTestImage(64, 64);
-      final mask =
-          await segmenter.call(imageBytes) as MulticlassSegmentationMask;
+      final mask = await segmenter.callFromBytes(imageBytes)
+          as MulticlassSegmentationMask;
 
       // Verify named accessors return the same data as classMask(index)
       expect(mask.backgroundMask, mask.classMask(0));
@@ -1946,8 +1941,8 @@ void main() {
         config: SegmentationConfig(model: SegmentationModel.multiclass),
       );
       final imageBytes = _createTestImage(64, 64);
-      final mask =
-          await segmenter.call(imageBytes) as MulticlassSegmentationMask;
+      final mask = await segmenter.callFromBytes(imageBytes)
+          as MulticlassSegmentationMask;
 
       expect(() => mask.classMask(-1), throwsRangeError);
       expect(() => mask.classMask(6), throwsRangeError);
@@ -1968,8 +1963,8 @@ void main() {
         config: SegmentationConfig(model: SegmentationModel.multiclass),
       );
       final imageBytes = _createTestImage(128, 128);
-      final mask =
-          await segmenter.call(imageBytes) as MulticlassSegmentationMask;
+      final mask = await segmenter.callFromBytes(imageBytes)
+          as MulticlassSegmentationMask;
 
       // toBinary
       final binary = mask.toBinary(threshold: 0.5);

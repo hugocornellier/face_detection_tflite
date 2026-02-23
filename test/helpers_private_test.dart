@@ -81,27 +81,6 @@ void main() {
       expect(map[0]!.shape, [1, 2, 3]);
       expect(map[1]!.shape, [2, 3, 4]);
     });
-
-    test('testImageFromDecodedRgb rebuilds image', () {
-      final decoded = DecodedRgb(
-        2,
-        1,
-        Uint8List.fromList([255, 0, 0, 0, 255, 0]),
-      );
-      final image = testImageFromDecodedRgb(decoded);
-
-      expect(image.width, 2);
-      expect(image.height, 1);
-      final pixel = image.getPixel(0, 0);
-      expect(pixel.r, 255);
-    });
-
-    test('testDecodeImageOffUi validates non-empty bytes', () async {
-      expect(
-        () => testDecodeImageOffUi(Uint8List(0)),
-        throwsA(isA<ArgumentError>()),
-      );
-    });
   });
 }
 

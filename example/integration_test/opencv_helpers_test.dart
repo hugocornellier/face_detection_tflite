@@ -3,10 +3,10 @@
 /// Integration tests for OpenCV-based helper functions in helpers.dart.
 ///
 /// Tests cover:
-/// - convertImageToTensorFromMat: tensor conversion with letterboxing
-/// - extractAlignedSquareFromMat: rotated square extraction via warpAffine
+/// - convertImageToTensor: tensor conversion with letterboxing
+/// - extractAlignedSquare: rotated square extraction via warpAffine
 /// - cropFromRoiMat: region cropping with normalized coordinates
-/// - AlignedFaceFromMat: cv.Mat-based aligned face container
+/// - AlignedFace: cv.Mat-based aligned face container
 library;
 
 import 'dart:typed_data';
@@ -37,11 +37,11 @@ void main() {
     return mat;
   }
 
-  group('convertImageToTensorFromMat', () {
+  group('convertImageToTensor', () {
     test('produces correct tensor with no padding for square image', () {
       final mat = createSolidMat(100, 100, r: 128, g: 128, b: 128);
 
-      final result = convertImageToTensorFromMat(mat, outW: 100, outH: 100);
+      final result = convertImageToTensor(mat, outW: 100, outH: 100);
 
       expect(result.width, 100);
       expect(result.height, 100);
@@ -57,7 +57,7 @@ void main() {
     test('adds padding for landscape image', () {
       final mat = createSolidMat(200, 100, r: 255, g: 0, b: 0);
 
-      final result = convertImageToTensorFromMat(mat, outW: 200, outH: 200);
+      final result = convertImageToTensor(mat, outW: 200, outH: 200);
 
       expect(result.width, 200);
       expect(result.height, 200);
@@ -72,7 +72,7 @@ void main() {
     test('adds padding for portrait image', () {
       final mat = createSolidMat(100, 200, r: 0, g: 255, b: 0);
 
-      final result = convertImageToTensorFromMat(mat, outW: 200, outH: 200);
+      final result = convertImageToTensor(mat, outW: 200, outH: 200);
 
       expect(result.width, 200);
       expect(result.height, 200);
@@ -87,7 +87,7 @@ void main() {
     test('normalizes BGR to RGB in [-1, 1] range', () {
       final mat = createSolidMat(4, 4, r: 0, g: 0, b: 255);
 
-      final result = convertImageToTensorFromMat(mat, outW: 4, outH: 4);
+      final result = convertImageToTensor(mat, outW: 4, outH: 4);
 
       expect(result.tensorNHWC[0], closeTo(-1.0, 0.01));
       expect(result.tensorNHWC[1], closeTo(-1.0, 0.01));
@@ -101,7 +101,7 @@ void main() {
       final buffer = Float32List(10 * 10 * 3);
 
       final result =
-          convertImageToTensorFromMat(mat, outW: 10, outH: 10, buffer: buffer);
+          convertImageToTensor(mat, outW: 10, outH: 10, buffer: buffer);
 
       expect(identical(result.tensorNHWC, buffer), isTrue);
 
@@ -111,7 +111,7 @@ void main() {
     test('handles upscaling small image', () {
       final mat = createSolidMat(10, 10);
 
-      final result = convertImageToTensorFromMat(mat, outW: 100, outH: 100);
+      final result = convertImageToTensor(mat, outW: 100, outH: 100);
 
       expect(result.width, 100);
       expect(result.height, 100);
@@ -121,11 +121,11 @@ void main() {
     }, timeout: testTimeout);
   });
 
-  group('extractAlignedSquareFromMat', () {
+  group('extractAlignedSquare', () {
     test('extracts centered square with no rotation', () {
       final mat = createGradientMat(100, 100);
 
-      final result = extractAlignedSquareFromMat(mat, 50.0, 50.0, 40.0, 0.0);
+      final result = extractAlignedSquare(mat, 50.0, 50.0, 40.0, 0.0);
 
       expect(result, isNotNull);
       expect(result!.cols, 40);
@@ -138,8 +138,7 @@ void main() {
     test('extracts with 45 degree rotation', () {
       final mat = createSolidMat(100, 100, r: 128, g: 64, b: 32);
 
-      final result =
-          extractAlignedSquareFromMat(mat, 50.0, 50.0, 30.0, 3.14159 / 4);
+      final result = extractAlignedSquare(mat, 50.0, 50.0, 30.0, 3.14159 / 4);
 
       expect(result, isNotNull);
       expect(result!.cols, 30);
@@ -152,8 +151,7 @@ void main() {
     test('extracts with 90 degree rotation', () {
       final mat = createGradientMat(100, 100);
 
-      final result =
-          extractAlignedSquareFromMat(mat, 50.0, 50.0, 40.0, 3.14159 / 2);
+      final result = extractAlignedSquare(mat, 50.0, 50.0, 40.0, 3.14159 / 2);
 
       expect(result, isNotNull);
       expect(result!.cols, 40);
@@ -166,8 +164,7 @@ void main() {
     test('extracts with negative rotation', () {
       final mat = createSolidMat(100, 100);
 
-      final result =
-          extractAlignedSquareFromMat(mat, 50.0, 50.0, 30.0, -3.14159 / 6);
+      final result = extractAlignedSquare(mat, 50.0, 50.0, 30.0, -3.14159 / 6);
 
       expect(result, isNotNull);
       expect(result!.cols, 30);
@@ -180,8 +177,8 @@ void main() {
     test('returns null for size <= 0', () {
       final mat = createSolidMat(100, 100);
 
-      final result1 = extractAlignedSquareFromMat(mat, 50.0, 50.0, 0.0, 0.0);
-      final result2 = extractAlignedSquareFromMat(mat, 50.0, 50.0, -10.0, 0.0);
+      final result1 = extractAlignedSquare(mat, 50.0, 50.0, 0.0, 0.0);
+      final result2 = extractAlignedSquare(mat, 50.0, 50.0, -10.0, 0.0);
 
       expect(result1, isNull);
       expect(result2, isNull);
@@ -192,7 +189,7 @@ void main() {
     test('handles extraction near image boundary', () {
       final mat = createSolidMat(100, 100);
 
-      final result = extractAlignedSquareFromMat(mat, 10.0, 10.0, 30.0, 0.0);
+      final result = extractAlignedSquare(mat, 10.0, 10.0, 30.0, 0.0);
 
       expect(result, isNotNull);
       expect(result!.cols, 30);
@@ -205,7 +202,7 @@ void main() {
     test('handles extraction outside image boundary', () {
       final mat = createSolidMat(100, 100);
 
-      final result = extractAlignedSquareFromMat(mat, 90.0, 90.0, 40.0, 0.0);
+      final result = extractAlignedSquare(mat, 90.0, 90.0, 40.0, 0.0);
 
       expect(result, isNotNull);
       expect(result!.cols, 40);
@@ -278,11 +275,11 @@ void main() {
     }, timeout: testTimeout);
   });
 
-  group('AlignedFaceFromMat', () {
+  group('AlignedFace', () {
     test('stores cv.Mat reference correctly', () {
       final faceCrop = createSolidMat(112, 112, r: 200, g: 150, b: 100);
 
-      final aligned = AlignedFaceFromMat(
+      final aligned = AlignedFace(
         cx: 100.0,
         cy: 150.0,
         size: 112.0,
@@ -303,7 +300,7 @@ void main() {
     test('handles negative theta', () {
       final faceCrop = createSolidMat(96, 96);
 
-      final aligned = AlignedFaceFromMat(
+      final aligned = AlignedFace(
         cx: 50.0,
         cy: 60.0,
         size: 96.0,

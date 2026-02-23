@@ -124,7 +124,7 @@ await detector.initialize(
 
 ### Advanced: Direct Mat Input
 
-For live camera streams, you can bypass image encoding/decoding entirely by using `detectFacesFromMat()`:
+For live camera streams, you can bypass image encoding/decoding entirely by passing a `cv.Mat` directly to `detectFaces()`:
 
 ```dart
 import 'package:face_detection_tflite/face_detection_tflite.dart';
@@ -141,12 +141,12 @@ Future<void> processFrame(cv.Mat frame) async {
 }
 ```
 
-**When to use `detectFacesFromMat()`:**
+**When to use `cv.Mat` input:**
 - Live camera streams where frames are already in memory
 - When you need to preprocess images with OpenCV before detection
 - Maximum throughput scenarios (avoids JPEG encode/decode overhead)
 
-**For all other cases**, use the standard `detectFaces()` method with image bytes.
+**For all other cases**, pass image bytes (`Uint8List`) to `detectFaces()`.
 
 ## Bounding Boxes
 
@@ -251,10 +251,10 @@ precise face tracking and rendering.
   }
   ```
 
-### Accessing Points with Optional Depth Information
+### Accessing 3D Depth Information
 
-The `FaceMesh` points have x and y coordinates, and an optional z coordinate representing
-depth. 3D coordinates are always computed for mesh and iris landmarks.
+All face mesh points include x, y, and z coordinates. The z coordinate represents
+relative depth (scale-dependent). 3D coordinates are always computed for mesh and iris landmarks.
 
   ```dart
   import 'package:face_detection_tflite/face_detection_tflite.dart';
@@ -265,20 +265,14 @@ depth. 3D coordinates are always computed for mesh and iris landmarks.
     // Get all points
     final points = mesh.points;
 
-    // Iterate through all points
+    // Iterate through all points (all mesh points have x, y, and z)
     for (final point in points) {
-      if (point.is3D) {
-        print('Point with depth: (${point.x}, ${point.y}, ${point.z})');
-      } else {
-        print('Point: (${point.x}, ${point.y})');
-      }
+      print('Point: (${point.x}, ${point.y}, ${point.z})');
     }
 
     // Access individual points directly using index operator
     final noseTip = mesh[1];
-    if (noseTip.is3D) {
-      print('Nose tip depth: ${noseTip.z}');
-    }
+    print('Nose tip depth: ${noseTip.z}');
   }
   ```
 
@@ -355,7 +349,7 @@ for (final connection in eyeLandmarkConnections) {
 
 ## Face Detection Modes
 
-This app supports three detection modes that determine which facial features are detected:
+This package supports three detection modes that determine which facial features are detected:
 
 | Mode | Features | Est. Time per Face* |
 |------|----------|---------------------|
@@ -371,9 +365,10 @@ The Face Detection Mode can be set using the `mode` parameter. Defaults to FaceD
 
 ```dart
 // Full mode (default): bounding boxes, 6 basic landmarks + mesh + comprehensive eye tracking
-// note: full mode provides superior accuracy for left and right eye landmarks
-// compared to fast/standard modes. use full mode when precise eye tracking
-// (iris center, iris contour, eyelid shape) is required. trade-off: longer inference
+// note: in full mode, landmarks.leftEye and landmarks.rightEye are replaced with
+// iris-refined coordinates, providing significantly more accurate eye positions
+// compared to the raw detection keypoints used in fast/standard modes.
+// use full mode when precise eye tracking (iris center, contour, eyelid shape) is required.
 await faceDetector.detectFaces(bytes, mode: FaceDetectionMode.full);
 
 // Standard mode: bounding boxes, 6 basic landmarks + mesh. inference time
@@ -428,7 +423,7 @@ await faceDetector.initialize(model: FaceDetectionModel.fullSparse);
 
 ![Example Screenshot](assets/screenshots/livecamera_ex1.gif)
 
-For real-time face detection with a camera feed, use `detectFacesFromMat()` to avoid repeated JPEG encode/decode overhead. This provides the best performance for video streams.
+For real-time face detection with a camera feed, pass a `cv.Mat` directly to `detectFacesFromMat()` to avoid repeated JPEG encode/decode overhead. This provides the best performance for video streams.
 
 ```dart
 import 'package:camera/camera.dart';
@@ -458,8 +453,8 @@ camera.startImageStream((CameraImage image) async {
 });
 ```
 
-**Key differences from image detection:**
-- Use `detectFacesFromMat()` instead of `detectFaces()` to bypass JPEG encoding/decoding
+**Tips for camera detection:**
+- Pass `cv.Mat` directly to `detectFacesFromMat()` to bypass JPEG encoding/decoding
 - Convert YUV420 camera frames directly to BGR Mat format
 - Always call `mat.dispose()` after detection
 - Use `FaceDetectionMode.fast` for real-time performance
@@ -572,7 +567,7 @@ import 'package:face_detection_tflite/face_detection_tflite.dart';
 
 final segmenter = await SelfieSegmentation.create();
 
-final mask = await segmenter(imageBytes);
+final mask = await segmenter.callFromBytes(imageBytes);
 
 // mask.width, mask.height - mask dimensions (model resolution)
 // mask.at(x, y) - probability (0.0-1.0) that pixel is a person
@@ -594,6 +589,9 @@ segmenter.dispose();
 ```dart
 final detector = FaceDetector();
 await detector.initialize();
+
+// Defaults to SegmentationConfig.safe (CPU-only, 1024 max output).
+// On iOS/desktop, use SegmentationConfig.performance for hardware acceleration.
 await detector.initializeSegmentation();
 
 final mask = await detector.getSegmentationMask(imageBytes);
@@ -607,7 +605,7 @@ detector.dispose();
 ```dart
 final detector = await FaceDetectorIsolate.spawn(
   withSegmentation: true,
-  segmentationModel: SegmentationModel.general,
+  segmentationConfig: SegmentationConfig(model: SegmentationModel.general),
 );
 
 final mask = await detector.getSegmentationMask(imageBytes);
@@ -655,7 +653,7 @@ final segmenter = await SelfieSegmentation.create(
   config: SegmentationConfig(model: SegmentationModel.multiclass),
 );
 
-final mask = await segmenter(imageBytes);
+final mask = await segmenter.callFromBytes(imageBytes);
 
 // Check if we got a multiclass mask
 if (mask is MulticlassSegmentationMask) {
@@ -726,6 +724,132 @@ flutter test integration_test/face_detection_integration_test.dart -d macos
 # - all_model_variants_test.dart (18 tests)
 # - image_utils_test.dart (31 tests)
 # - concurrency_stress_test.dart (18 tests)
+# - combined_segmentation_test.dart (18 tests)
+# - helpers_unit_test.dart (29 tests)
+# - assertion_gaps_test.dart (18 tests)
+# - selfie_segmentation_test.dart (78 tests)
+# - isolate_mat_debug_test.dart (2 tests)
+```
+
+## Migrating to 5.0.0
+
+### What changed (and why)
+
+Version 5.0.0 removes the `package:image` dependency from `face_detection_tflite`.
+
+All image processing (decoding, resizing, cropping, etc.) now uses OpenCV internally, which is significantly faster. This makes the `image` package unnecessary, so it has been removed.
+
+In practice:
+
+- If you already pass image bytes (`Uint8List`): **no changes needed**
+- If you already pass a `cv.Mat`: **use the `FromMat` methods** (e.g. `detectFacesFromMat()`)
+- If you were passing `img.Image` objects: **those APIs were removed** (see fix below)
+
+### If you pass image bytes (`Uint8List`): nothing changes
+
+This is the most common usage and it works exactly the same as before.
+
+#### From a file
+
+```dart
+import 'dart:io';
+
+final bytes = await File('photo.jpg').readAsBytes();
+final faces = await detector.detectFaces(bytes);
+```
+
+#### From Flutter assets
+
+```dart
+import 'package:flutter/services.dart';
+
+final data = await rootBundle.load('assets/images/photo.jpg');
+final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+final faces = await detector.detectFaces(bytes);
+```
+
+#### From the network
+
+```dart
+import 'package:http/http.dart' as http;
+
+final response = await http.get(Uri.parse('https://example.com/photo.jpg'));
+final faces = await detector.detectFaces(response.bodyBytes);
+```
+
+### If you pass a `cv.Mat`: use the `FromMat` methods
+
+If your app already works with OpenCV matrices (for example, camera frames), use the `FromMat` variant of each method:
+
+```dart
+import 'package:face_detection_tflite/face_detection_tflite.dart';
+
+final mat = imdecode(bytes, IMREAD_COLOR);
+final faces = await detector.detectFacesFromMat(mat);
+mat.dispose(); // always dispose Mats when you're done
+```
+
+### If you were passing `img.Image` objects
+
+The methods that accepted `img.Image` (from `package:image`) have been removed in 5.0.0.
+
+The fix is simple: **pass the raw bytes directly** instead of decoding to `img.Image` first.
+
+#### Before (4.x — no longer works)
+
+```dart
+import 'package:image/image.dart' as img;
+
+final bytes = await File('photo.jpg').readAsBytes();
+final decoded = img.decodeImage(bytes)!;
+final faces = await detector.detectFaces(decoded); // removed in 5.0.0
+```
+
+#### After (5.0.0)
+
+```dart
+final bytes = await File('photo.jpg').readAsBytes();
+final faces = await detector.detectFaces(bytes); // just pass the bytes directly
+```
+
+#### Still want to use `package:image` for preprocessing?
+
+If you need to crop, rotate, or otherwise manipulate images with `package:image` before detection, you can still do that. Just encode the result back to bytes before passing it in:
+
+```dart
+import 'dart:typed_data';
+import 'package:image/image.dart' as img;
+
+final originalBytes = await File('photo.jpg').readAsBytes();
+final decoded = img.decodeImage(originalBytes)!;
+
+// Do your preprocessing
+final cropped = img.copyCrop(decoded, x: 0, y: 0, width: 300, height: 300);
+
+// Encode back to bytes, then pass to detectFaces
+final processedBytes = Uint8List.fromList(img.encodeJpg(cropped));
+final faces = await detector.detectFaces(processedBytes);
+```
+
+### Separate typed methods
+
+Methods now have typed overloads instead of accepting `Object`:
+
+| Uint8List variant | cv.Mat variant |
+|---|---|
+| `detectFaces(bytes)` | `detectFacesFromMat(mat)` |
+| `getFaceEmbedding(face, bytes)` | `getFaceEmbeddingFromMat(face, mat)` |
+| `getSegmentationMask(bytes)` | `getSegmentationMaskFromMat(mat)` |
+
+### OpenCV re-exports (no extra dependency needed)
+
+You do **not** need to add `opencv_dart` to your own `pubspec.yaml` to use OpenCV types with this package. `face_detection_tflite` re-exports `Mat`, `imdecode`, and `IMREAD_COLOR`, so this works out of the box:
+
+```dart
+import 'package:face_detection_tflite/face_detection_tflite.dart';
+
+final mat = imdecode(bytes, IMREAD_COLOR); // no extra import needed
+final faces = await detector.detectFacesFromMat(mat);
 ```
 
 ## Inspiration

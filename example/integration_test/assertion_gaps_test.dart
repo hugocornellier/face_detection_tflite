@@ -8,7 +8,7 @@
 /// - Public constants
 /// - Mixed concurrent detection + segmentation
 /// - Segmentation error recovery
-/// - SelfieSegmentation landscape model + callFromMat
+/// - SelfieSegmentation landscape model + call
 library;
 
 import 'dart:typed_data';
@@ -17,7 +17,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:face_detection_tflite/face_detection_tflite.dart';
-import 'package:image/image.dart' as img;
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 
 void main() {
@@ -41,13 +40,12 @@ void main() {
 
   Uint8List createTestImage(int width, int height,
       {int r = 128, int g = 128, int b = 128}) {
-    final image = img.Image(width: width, height: height);
-    for (int y = 0; y < height; y++) {
-      for (int x = 0; x < width; x++) {
-        image.setPixelRgba(x, y, r, g, b, 255);
-      }
-    }
-    return Uint8List.fromList(img.encodePng(image));
+    final mat =
+        cv.Mat.create(rows: height, cols: width, type: cv.MatType.CV_8UC3);
+    mat.setTo(cv.Scalar(b.toDouble(), g.toDouble(), r.toDouble(), 255));
+    final (_, bytes) = cv.imencode('.png', mat);
+    mat.dispose();
+    return bytes;
   }
 
   setUpAll(() async {
@@ -264,7 +262,7 @@ void main() {
 
       // Trigger SegmentationException with corrupted bytes
       try {
-        await segmenter.call(Uint8List.fromList([0, 1, 2, 3, 4]));
+        await segmenter.callFromBytes(Uint8List.fromList([0, 1, 2, 3, 4]));
         fail('Should have thrown SegmentationException');
       } on SegmentationException catch (e) {
         print('Got expected error: ${e.code}');
@@ -272,7 +270,7 @@ void main() {
 
       // Subsequent valid call should succeed
       final imageBytes = createTestImage(256, 256);
-      final mask = await segmenter.call(imageBytes);
+      final mask = await segmenter.callFromBytes(imageBytes);
 
       expect(mask.width, greaterThan(0));
       expect(mask.height, greaterThan(0));
@@ -287,16 +285,16 @@ void main() {
   });
 
   // ===========================================================================
-  // SelfieSegmentation landscape model + callFromMat
+  // SelfieSegmentation landscape model + call
   // ===========================================================================
-  group('SelfieSegmentation landscape model + callFromMat', () {
+  group('SelfieSegmentation landscape model + call', () {
     test('landscape model produces valid mask from Mat', () async {
       if (!modelsAvailable) {
         print('Skipping: models not available');
         return;
       }
 
-      print('\n--- Testing landscape model + callFromMat ---');
+      print('\n--- Testing landscape model + call ---');
       final segmenter = await SelfieSegmentation.create(
         config: SegmentationConfig(model: SegmentationModel.landscape),
       );
@@ -308,7 +306,7 @@ void main() {
       final mat = cv.Mat.zeros(360, 640, cv.MatType.CV_8UC3);
       mat.setTo(cv.Scalar(128, 128, 128, 255));
 
-      final mask = await segmenter.callFromMat(mat);
+      final mask = await segmenter.call(mat);
       mat.dispose();
 
       expect(mask.width, greaterThan(0));

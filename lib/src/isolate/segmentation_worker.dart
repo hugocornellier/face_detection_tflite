@@ -1,4 +1,4 @@
-part of '../face_detection_tflite.dart';
+part of '../../face_detection_tflite.dart';
 
 /// A dedicated background isolate for selfie segmentation inference.
 ///
@@ -501,7 +501,7 @@ class SegmentationWorker {
     final int originalWidth = image.cols;
     final int originalHeight = image.rows;
 
-    final ImageTensor pack = convertImageToTensorFromMat(
+    final ImageTensor pack = convertImageToTensor(
       image,
       outW: state.inputWidth,
       outH: state.inputHeight,

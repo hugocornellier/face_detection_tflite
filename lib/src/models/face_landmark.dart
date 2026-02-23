@@ -1,4 +1,4 @@
-part of '../face_detection_tflite.dart';
+part of '../../face_detection_tflite.dart';
 
 /// Predicts the full 468-point face mesh (x, y, z per point) for an aligned face crop.
 /// Coordinates are normalized before later mapping back to image space.
@@ -40,7 +40,7 @@ class FaceLandmark {
   /// ```dart
   /// // Default (no acceleration)
   /// final landmarkModel = await FaceLandmark.create();
-  /// final meshPoints = await landmarkModel(alignedFaceCrop);
+  /// final meshPoints = await landmarkModel.call(alignedFaceCropMat);
   ///
   /// // With XNNPACK acceleration
   /// final landmarkModel = await FaceLandmark.create(
@@ -159,69 +159,10 @@ class FaceLandmark {
     }
   }
 
-  /// Predicts the 468-point face mesh for an aligned face crop.
-  ///
-  /// The [faceCrop] parameter should contain an aligned, cropped face image.
-  /// For best results, the face should be centered, upright, and roughly fill
-  /// the image bounds.
-  ///
-  /// Returns a list of 468 3D landmark points, where each point is represented
-  /// as `[x, y, z]`:
-  /// - `x` and `y` are normalized coordinates (0.0 to 1.0) relative to the crop
-  /// - `z` represents relative depth (units are consistent but not metric)
-  ///
-  /// The 468 points follow MediaPipe's canonical face mesh topology, providing
-  /// detailed geometry for facial features including eyes, eyebrows, nose, mouth,
-  /// and face contours.
-  ///
-  /// **Input requirements:**
-  /// - Face should be aligned (rotated upright)
-  /// - Face should occupy most of the image
-  /// - Image will be resized to model input size automatically
-  ///
-  /// Example:
-  /// ```dart
-  /// final meshPoints = await faceLandmark(alignedFaceCrop);
-  /// print('Predicted ${meshPoints.length} mesh points'); // 468
-  /// ```
-  @Deprecated('Will be removed in 5.0.0. Use callFromMat instead.')
-  Future<List<List<double>>> call(
-    img.Image faceCrop, {
-    IsolateWorker? worker,
-  }) async {
-    final ImageTensor pack = await imageToTensorWithWorker(
-      faceCrop,
-      outW: _inW,
-      outH: _inH,
-      worker: worker,
-    );
-
-    if (_iso == null) {
-      _inputBuf.setAll(0, pack.tensorNHWC);
-      _itp.invoke();
-      return _unpackLandmarks(
-        _bestOutBuf,
-        _inW,
-        _inH,
-        pack.padding,
-        clamp: true,
-      );
-    } else {
-      fillNHWC4D(pack.tensorNHWC, _input4dCache, _inH, _inW);
-      final List<List<List<List<List<double>>>>> inputs = [_input4dCache];
-      await _iso!.runForMultipleInputs(inputs, _outputsCache);
-
-      final dynamic best = _outputsCache[_bestIdx];
-
-      final Float32List bestFlat = flattenDynamicTensor(best);
-      return _unpackLandmarks(bestFlat, _inW, _inH, pack.padding, clamp: true);
-    }
-  }
-
   /// Predicts the 468-point face mesh for an aligned face crop using cv.Mat.
   ///
-  /// This is the OpenCV-based variant of [call] that accepts a cv.Mat directly,
-  /// providing better performance by avoiding image format conversions.
+  /// Accepts a cv.Mat directly, providing better performance by avoiding
+  /// image format conversions.
   ///
   /// The [faceCrop] parameter should contain an aligned, cropped face as cv.Mat.
   /// The Mat is NOT disposed by this method - caller is responsible for disposal.
@@ -234,14 +175,14 @@ class FaceLandmark {
   /// Example:
   /// ```dart
   /// final faceCropMat = cv.imdecode(bytes, cv.IMREAD_COLOR);
-  /// final meshPoints = await faceLandmark.callFromMat(faceCropMat);
+  /// final meshPoints = await faceLandmark.call(faceCropMat);
   /// faceCropMat.dispose();
   /// ```
-  Future<List<List<double>>> callFromMat(
+  Future<List<List<double>>> call(
     cv.Mat faceCrop, {
     Float32List? buffer,
   }) async {
-    final ImageTensor pack = convertImageToTensorFromMat(
+    final ImageTensor pack = convertImageToTensor(
       faceCrop,
       outW: _inW,
       outH: _inH,

@@ -42,7 +42,7 @@ void main() {
       );
     });
 
-    test('detectFacesFromMat should throw StateError before initialize', () {
+    test('detectFaces should throw StateError before initialize', () {
       final detector = FaceDetector();
       final mat = cv.Mat.zeros(100, 100, cv.MatType.CV_8UC3);
 

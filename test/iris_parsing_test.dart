@@ -434,4 +434,51 @@ void main() {
       expect(eyes.rightEye!.mesh.length, 95);
     });
   });
+
+  group('Face.landmarks - Iris Center Replacement', () {
+    test(
+        'should replace eye landmarks with iris centers when iris data present',
+        () {
+      // 10 iris points = 5 left + 5 right, so eyes returns both
+      final irisPoints = [
+        // Left eye iris: center-ish at (100, 100)
+        const Point(100, 100),
+        const Point(95, 100),
+        const Point(105, 100),
+        const Point(100, 95),
+        const Point(100, 105),
+        // Right eye iris: center-ish at (200, 100)
+        const Point(200, 100),
+        const Point(195, 100),
+        const Point(205, 100),
+        const Point(200, 95),
+        const Point(200, 105),
+      ];
+      final face = createFaceWithIrisPoints(irisPoints);
+
+      final eyes = face.eyes;
+      expect(eyes, isNotNull);
+      expect(eyes!.leftEye, isNotNull);
+      expect(eyes.rightEye, isNotNull);
+
+      final landmarks = face.landmarks;
+
+      // The leftEye landmark should be replaced with the iris center
+      expect(landmarks.leftEye!.x, eyes.leftEye!.irisCenter.x);
+      expect(landmarks.leftEye!.y, eyes.leftEye!.irisCenter.y);
+
+      // The rightEye landmark should be replaced with the iris center
+      expect(landmarks.rightEye!.x, eyes.rightEye!.irisCenter.x);
+      expect(landmarks.rightEye!.y, eyes.rightEye!.irisCenter.y);
+    });
+
+    test('should not replace eye landmarks when no iris data', () {
+      final face = createFaceWithIrisPoints([]);
+      final landmarks = face.landmarks;
+
+      // Original detection keypoints should be used
+      expect(landmarks.leftEye, isNotNull);
+      expect(landmarks.rightEye, isNotNull);
+    });
+  });
 }

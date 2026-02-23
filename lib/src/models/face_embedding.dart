@@ -1,4 +1,4 @@
-part of '../face_detection_tflite.dart';
+part of '../../face_detection_tflite.dart';
 
 /// Model name for the MobileFaceNet embedding model.
 const _embeddingModel = 'mobilefacenet.tflite';
@@ -173,56 +173,10 @@ class FaceEmbedding {
   /// The dimension of the output embedding vector.
   int get embeddingDimension => _embeddingDim;
 
-  /// Generates a face embedding from an aligned face crop.
-  ///
-  /// The [faceCrop] parameter should contain an aligned face image.
-  /// For best results, the face should be:
-  /// - Centered in the image
-  /// - Eyes roughly horizontal
-  /// - Face filling most of the frame
-  ///
-  /// The image will be resized to the model's input size (112×112) automatically.
-  ///
-  /// Returns a [Float32List] containing the embedding vector. The vector
-  /// is L2-normalized (unit length) for use with cosine similarity.
-  ///
-  /// Example:
-  /// ```dart
-  /// final embedding = await faceEmbedding(alignedFaceCrop);
-  /// print('Got ${embedding.length}-dimensional embedding');
-  /// ```
-  @Deprecated('Will be removed in 5.0.0. Use callFromMat instead.')
-  Future<Float32List> call(img.Image faceCrop) async {
-    final ImageTensor pack = convertImageToTensor(
-      faceCrop,
-      outW: _inW,
-      outH: _inH,
-    );
-
-    if (_iso == null) {
-      _inputBuf.setAll(0, pack.tensorNHWC);
-      _itp.invoke();
-      return _normalizeEmbedding(Float32List.fromList(_outputBuf));
-    } else {
-      fillNHWC4D(pack.tensorNHWC, _input4dCache, _inH, _inW);
-      final List<List<List<List<List<double>>>>> inputs = [_input4dCache];
-
-      final List<int> outShape = _outputTensor.shape;
-      final Map<int, Object> outputs = <int, Object>{
-        0: allocTensorShape(outShape),
-      };
-
-      await _iso!.runForMultipleInputs(inputs, outputs);
-
-      final Float32List embedding = flattenDynamicTensor(outputs[0]);
-      return _normalizeEmbedding(embedding);
-    }
-  }
-
   /// Generates a face embedding from an aligned face crop using cv.Mat.
   ///
-  /// This is the OpenCV-based variant of [call] that accepts a cv.Mat directly,
-  /// providing better performance by avoiding image format conversions.
+  /// Accepts a cv.Mat directly, providing better performance by avoiding
+  /// image format conversions.
   ///
   /// The [faceCrop] parameter should contain an aligned face as cv.Mat.
   /// The Mat is NOT disposed by this method - caller is responsible for disposal.
@@ -235,14 +189,11 @@ class FaceEmbedding {
   /// Example:
   /// ```dart
   /// final faceCropMat = cv.imdecode(bytes, cv.IMREAD_COLOR);
-  /// final embedding = await faceEmbedding.callFromMat(faceCropMat);
+  /// final embedding = await faceEmbedding.call(faceCropMat);
   /// faceCropMat.dispose();
   /// ```
-  Future<Float32List> callFromMat(
-    cv.Mat faceCrop, {
-    Float32List? buffer,
-  }) async {
-    final ImageTensor pack = convertImageToTensorFromMat(
+  Future<Float32List> call(cv.Mat faceCrop, {Float32List? buffer}) async {
+    final ImageTensor pack = convertImageToTensor(
       faceCrop,
       outW: _inW,
       outH: _inH,
@@ -273,22 +224,8 @@ class FaceEmbedding {
   ///
   /// Normalized embeddings allow direct use of dot product as cosine similarity,
   /// since cos(θ) = a·b / (|a||b|) = a·b when |a| = |b| = 1.
-  Float32List _normalizeEmbedding(Float32List embedding) {
-    double norm = 0.0;
-    for (int i = 0; i < embedding.length; i++) {
-      norm += embedding[i] * embedding[i];
-    }
-    norm = math.sqrt(norm);
-
-    if (norm > 0) {
-      final Float32List normalized = Float32List(embedding.length);
-      for (int i = 0; i < embedding.length; i++) {
-        normalized[i] = embedding[i] / norm;
-      }
-      return normalized;
-    }
-    return embedding;
-  }
+  Float32List _normalizeEmbedding(Float32List embedding) =>
+      _normalizeEmbeddingImpl(embedding);
 
   /// Computes the cosine similarity between two embedding vectors.
   ///
@@ -450,3 +387,23 @@ AlignedFaceForEmbedding computeEmbeddingAlignment({
 
   return AlignedFaceForEmbedding(cx: cx, cy: cy, size: size, theta: theta);
 }
+
+Float32List _normalizeEmbeddingImpl(Float32List embedding) {
+  double norm = 0.0;
+  for (int i = 0; i < embedding.length; i++) {
+    norm += embedding[i] * embedding[i];
+  }
+  norm = math.sqrt(norm);
+  if (norm > 0) {
+    final Float32List normalized = Float32List(embedding.length);
+    for (int i = 0; i < embedding.length; i++) {
+      normalized[i] = embedding[i] / norm;
+    }
+    return normalized;
+  }
+  return embedding;
+}
+
+@visibleForTesting
+Float32List testNormalizeEmbedding(Float32List embedding) =>
+    _normalizeEmbeddingImpl(embedding);

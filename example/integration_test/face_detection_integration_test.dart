@@ -497,7 +497,7 @@ void main() {
     });
   });
 
-  group('FaceDetector - OpenCV API (detectFacesFromMat)', () {
+  group('FaceDetector - OpenCV API (detectFaces)', () {
     late FaceDetector detector;
 
     setUpAll(() async {
@@ -554,8 +554,7 @@ void main() {
       }
     });
 
-    test('detectFacesFromMat should produce same results as detectFaces',
-        () async {
+    test('detectFaces should produce same results as detectFaces', () async {
       final ByteData data =
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
@@ -583,8 +582,7 @@ void main() {
       }
     });
 
-    test(
-        'detectFacesFromMat should produce consistent eye keypoints and iris centers',
+    test('detectFaces should produce consistent eye keypoints and iris centers',
         () async {
       final ByteData data =
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
@@ -658,7 +656,7 @@ void main() {
       }
     });
 
-    test('should throw StateError when detectFacesFromMat called before init',
+    test('should throw StateError when detectFaces called before init',
         () async {
       final uninitDetector = FaceDetector();
       final mat = cv.Mat.zeros(100, 100, cv.MatType.CV_8UC3);
@@ -773,7 +771,7 @@ void main() {
       expect(ownDetector.isReady, false);
     });
 
-    test('detectFacesFromMat throws after dispose', () async {
+    test('detectFaces throws after dispose', () async {
       final ownDetector = await FaceDetectorIsolate.spawn();
       await ownDetector.dispose();
 
@@ -910,7 +908,7 @@ void main() {
       regularDetector.dispose();
     });
 
-    test('detectFacesFromMat works with cv.Mat input', () async {
+    test('detectFaces works with cv.Mat input', () async {
       final ByteData data =
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
@@ -928,8 +926,7 @@ void main() {
       mat.dispose();
     });
 
-    test(
-        'detectFacesFromMat produces same results as detectFacesFromMat on FaceDetector',
+    test('detectFaces produces same results as detectFaces on FaceDetector',
         () async {
       final regularDetector = FaceDetector();
       await regularDetector.initialize();
@@ -985,7 +982,7 @@ void main() {
       mat.dispose();
     });
 
-    test('detectFacesFromMat respects detection mode', () async {
+    test('detectFaces respects detection mode', () async {
       final ByteData data =
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
@@ -1166,7 +1163,7 @@ void main() {
       );
     });
 
-    test('getFaceEmbeddingFromMat should work with cv.Mat', () async {
+    test('getFaceEmbedding should work with cv.Mat', () async {
       final ByteData data =
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final bytes = data.buffer.asUint8List();
@@ -1559,9 +1556,9 @@ void main() {
       print('BENCHMARK: Mat-based Detection (full mode)');
       print('=' * 70);
       print(
-          'FaceDetector.detectFacesFromMat:        ${regularAvg.toStringAsFixed(2)} ms');
+          'FaceDetector.detectFaces:        ${regularAvg.toStringAsFixed(2)} ms');
       print(
-          'FaceDetectorIsolate.detectFacesFromMat: ${isolateAvg.toStringAsFixed(2)} ms');
+          'FaceDetectorIsolate.detectFaces: ${isolateAvg.toStringAsFixed(2)} ms');
       print(
           'Overhead:                               ${overhead.toStringAsFixed(2)} ms');
       print('=' * 70);

@@ -1,4 +1,4 @@
-part of '../face_detection_tflite.dart';
+part of '../../face_detection_tflite.dart';
 
 /// Transforms normalized iris landmarks to absolute pixel coordinates
 /// using the alignment parameters from an [AlignedRoi].
@@ -18,11 +18,7 @@ List<List<double>> _transformIrisToAbsolute(
     final double px = isRight ? (1.0 - p[0]) : p[0];
     final double lx2 = (px - 0.5) * s;
     final double ly2 = (p[1] - 0.5) * s;
-    out.add([
-      roi.cx + lx2 * ct - ly2 * st,
-      roi.cy + lx2 * st + ly2 * ct,
-      p[2],
-    ]);
+    out.add([roi.cx + lx2 * ct - ly2 * st, roi.cy + lx2 * st + ly2 * ct, p[2]]);
   }
   return out;
 }
@@ -65,7 +61,7 @@ class IrisLandmark {
   /// ```dart
   /// // Default (no acceleration)
   /// final irisModel = await IrisLandmark.create();
-  /// final irisPoints = await irisModel(eyeCropImage);
+  /// final irisPoints = await irisModel.call(eyeCropMat);
   ///
   /// // With XNNPACK acceleration
   /// final irisModel = await IrisLandmark.create(
@@ -211,110 +207,6 @@ class IrisLandmark {
     return obj;
   }
 
-  /// Predicts iris and eye contour landmarks for a cropped eye region.
-  ///
-  /// The [eyeCrop] parameter should contain a tight crop around a single eye,
-  /// including the iris, pupil, and surrounding eye contours.
-  ///
-  /// Returns a list of 3D landmark points in normalized coordinates, where each
-  /// point is represented as `[x, y, z]`:
-  /// - `x` and `y` are normalized coordinates (0.0 to 1.0) relative to the eye crop
-  /// - `z` represents relative depth
-  ///
-  /// The returned points include 76 landmarks in this order:
-  /// - First 71 points: Eye mesh landmarks (detailed eye region geometry)
-  /// - Last 5 points: Iris keypoints (center + 4 contour points)
-  ///
-  /// The iris center is not guaranteed to be at a fixed index; derive it from
-  /// the 5 iris keypoints if needed.
-  ///
-  /// **Input requirements:**
-  /// - Eye should be roughly centered in the crop
-  /// - Crop should be tight around the eye region
-  /// - Image will be resized to model input size automatically
-  ///
-  /// **Note:** For iris tracking in the full face detection pipeline, use
-  /// [FaceDetector.detectFaces] with [FaceDetectionMode.full] instead.
-  ///
-  /// Example:
-  /// ```dart
-  /// final irisPoints = await irisLandmark(leftEyeCrop);
-  /// // The last 5 points are iris keypoints; derive a center if needed.
-  /// ```
-  ///
-  /// See also:
-  /// - [callIrisOnly] to extract only the 5 iris keypoints
-  /// - [runOnImage] to run on a full image with an eye ROI
-  @Deprecated('Will be removed in 5.0.0. Use callFromMat instead.')
-  Future<List<List<double>>> call(
-    img.Image eyeCrop, {
-    IsolateWorker? worker,
-  }) async {
-    final ImageTensor pack = await imageToTensorWithWorker(
-      eyeCrop,
-      outW: _inW,
-      outH: _inH,
-      worker: worker,
-    );
-    return _inferAndUnpack(pack);
-  }
-
-  /// Runs iris detection on a full image using a specified eye region of interest.
-  ///
-  /// This method crops the eye region from the full image using the provided ROI,
-  /// runs iris landmark detection on the crop, and maps the normalized landmark
-  /// coordinates back to absolute pixel coordinates in the original image.
-  ///
-  /// The [src] parameter is the full decoded image containing the face.
-  ///
-  /// The [eyeRoi] parameter defines the eye region as a normalized rectangle
-  /// with coordinates relative to image dimensions.
-  ///
-  /// Returns a list of 3D landmark points in absolute image coordinates, where
-  /// each point is `[x, y, z]`:
-  /// - `x` and `y` are pixel coordinates in the original image
-  /// - `z` represents relative depth
-  ///
-  /// The returned points include 76 landmarks in this order:
-  /// - First 71 points: Eye mesh landmarks (detailed eye region geometry)
-  /// - Last 5 points: Iris keypoints (center + 4 contour points)
-  ///
-  /// Example:
-  /// ```dart
-  /// final eyeRoi = RectF(0.3, 0.4, 0.5, 0.55);
-  /// final irisPoints = await irisModel.runOnImage(fullImage, eyeRoi);
-  /// // irisPoints are in full image pixel coordinates
-  /// ```
-  ///
-  /// See also:
-  /// - [call] to run on a pre-cropped eye image
-  /// - [runOnImageAlignedIris] for aligned eye ROI processing
-  @Deprecated(
-    'Will be removed in 5.0.0. Use the Mat-based detection pipeline instead.',
-  )
-  Future<List<List<double>>> runOnImage(
-    img.Image src,
-    RectF eyeRoi, {
-    IsolateWorker? worker,
-  }) async {
-    final img.Image eyeCrop = await cropFromRoiWithWorker(src, eyeRoi, worker);
-    final List<List<double>> lmNorm = await call(eyeCrop, worker: worker);
-    final double imgW = src.width.toDouble();
-    final double imgH = src.height.toDouble();
-    final double dx = eyeRoi.xmin * imgW;
-    final double dy = eyeRoi.ymin * imgH;
-    final double sx = eyeRoi.w * imgW;
-    final double sy = eyeRoi.h * imgH;
-
-    final List<List<double>> mapped = <List<double>>[];
-    for (final List<double> p in lmNorm) {
-      final double x = dx + p[0] * sx;
-      final double y = dy + p[1] * sy;
-      mapped.add([x, y, p[2]]);
-    }
-    return mapped;
-  }
-
   /// Runs iris detection in a separate isolate for non-blocking inference.
   ///
   /// This static method spawns a dedicated isolate to perform iris landmark
@@ -328,10 +220,6 @@ class IrisLandmark {
   /// The [modelPath] parameter specifies the filesystem path to the iris model
   /// (.tflite file).
   ///
-  /// The [irisOnly] parameter determines the output:
-  /// - `true`: Returns only the 5 iris keypoints (center + 4 contour)
-  /// - `false`: Returns all landmarks including eye contour points (default)
-  ///
   /// Returns a list of 3D landmark points in normalized coordinates (0.0 to 1.0)
   /// relative to the eye crop, where each point is `[x, y, z]`.
   ///
@@ -343,27 +231,23 @@ class IrisLandmark {
   /// final irisPoints = await IrisLandmark.callWithIsolate(
   ///   eyeCropBytes,
   ///   '/path/to/iris_landmark.tflite',
-  ///   irisOnly: true,
   /// );
-  /// // Returns 5 iris keypoints in normalized coordinates
   /// ```
   ///
   /// Throws [StateError] if the model cannot be loaded or inference fails.
   ///
   /// See also:
   /// - [create] for persistent isolate inference
-  /// - [callIrisOnly] for the instance method alternative
+  /// - [call] for the instance method alternative
   static Future<List<List<double>>> callWithIsolate(
     Uint8List eyeCropBytes,
-    String modelPath, {
-    bool irisOnly = false,
-  }) async {
+    String modelPath,
+  ) async {
     final ReceivePort rp = ReceivePort();
     final Isolate iso = await Isolate.spawn(IrisLandmark._isolateEntry, {
       'sendPort': rp.sendPort,
       'modelPath': modelPath,
       'eyeCropBytes': eyeCropBytes,
-      'mode': irisOnly ? 'irisOnly' : 'full',
     });
     final Map<dynamic, dynamic> msg = await rp.first as Map;
     rp.close();
@@ -385,18 +269,16 @@ class IrisLandmark {
     final SendPort sendPort = params['sendPort'] as SendPort;
     final String modelPath = params['modelPath'] as String;
     final Uint8List eyeCropBytes = params['eyeCropBytes'] as Uint8List;
-    final String mode = params['mode'] as String;
 
     try {
       final IrisLandmark iris = await IrisLandmark.createFromFile(modelPath);
-      final img.Image? eye = img.decodeImage(eyeCropBytes);
-      if (eye == null) {
+      final cv.Mat eye = cv.imdecode(eyeCropBytes, cv.IMREAD_COLOR);
+      if (eye.isEmpty) {
         sendPort.send({'ok': false, 'err': 'decode_failed'});
         return;
       }
-      final List<List<double>> res = mode == 'irisOnly'
-          ? await iris.callIrisOnly(eye)
-          : await iris.call(eye);
+      final List<List<double>> res = await iris.call(eye);
+      eye.dispose();
       iris.dispose();
       sendPort.send({'ok': true, 'points': res});
     } catch (e) {
@@ -404,163 +286,10 @@ class IrisLandmark {
     }
   }
 
-  /// Predicts only the 5 iris keypoints for a cropped eye region.
-  ///
-  /// This is an optimized alternative to [call] that extracts only the core
-  /// iris landmarks (1 center + 4 contour points) instead of returning all
-  /// eye contour points.
-  ///
-  /// The [eyeCrop] parameter should contain a tight crop around a single eye,
-  /// including the iris, pupil, and surrounding eye contours.
-  ///
-  /// Returns exactly 5 points in normalized coordinates (0.0 to 1.0) relative
-  /// to the eye crop, where each point is `[x, y, z]`.
-  /// The points are in the model's output order; derive a center if needed.
-  ///
-  /// **Performance:** Faster than [call] since it skips extracting additional
-  /// eye contour landmarks.
-  ///
-  /// Example:
-  /// ```dart
-  /// final irisPoints = await irisLandmark.callIrisOnly(leftEyeCrop);
-  /// // Derive a center from the 5 points if needed.
-  /// ```
-  ///
-  /// See also:
-  /// - [call] to get all iris and eye contour landmarks
-  /// - [runOnImageAlignedIris] for aligned eye ROI processing
-  @Deprecated(
-    'Will be removed in 5.0.0. Use the Mat-based detection pipeline instead.',
-  )
-  Future<List<List<double>>> callIrisOnly(
-    img.Image eyeCrop, {
-    IsolateWorker? worker,
-  }) async {
-    final ImageTensor pack = await imageToTensorWithWorker(
-      eyeCrop,
-      outW: _inW,
-      outH: _inH,
-      worker: worker,
-    );
-
-    Float32List? irisFlat;
-
-    if (_iso == null) {
-      _inputBuf.setAll(0, pack.tensorNHWC);
-      _itp.invoke();
-      _outBuffers.forEach((_, buf) {
-        if (buf.length == 15) irisFlat = buf;
-      });
-    } else {
-      fillNHWC4D(pack.tensorNHWC, _input4dCache, _inH, _inW);
-      final List<List<List<List<List<double>>>>> inputs = [_input4dCache];
-      await _iso!.runForMultipleInputs(inputs, _outputsCache);
-      _outShapes.forEach((i, shape) {
-        final Float32List flat = flattenDynamicTensor(_outputsCache[i]);
-        if (flat.length == 15) irisFlat = flat;
-      });
-    }
-
-    if (irisFlat == null) return const <List<double>>[];
-
-    final pt = pack.padding[0],
-        pb = pack.padding[1],
-        pl = pack.padding[2],
-        pr = pack.padding[3];
-    final double sx = 1.0 - (pl + pr);
-    final double sy = 1.0 - (pt + pb);
-
-    final Float32List flat = irisFlat!;
-    final List<List<double>> lm = <List<double>>[];
-    for (int i = 0; i < 5; i++) {
-      double x = flat[i * 3 + 0] / _inW;
-      double y = flat[i * 3 + 1] / _inH;
-      final double z = flat[i * 3 + 2];
-      x = (x - pl) / sx;
-      y = (y - pt) / sy;
-      lm.add([x, y, z]);
-    }
-    return lm;
-  }
-
-  /// Runs iris detection on an aligned eye region of interest.
-  ///
-  /// This method extracts an aligned square crop centered on the eye using the
-  /// provided ROI parameters, runs iris landmark detection, and maps the results
-  /// back to absolute pixel coordinates in the original image.
-  ///
-  /// The [src] parameter is the full decoded image containing the face.
-  ///
-  /// The [roi] parameter defines the eye region with center position, size,
-  /// and rotation angle.
-  ///
-  /// When [isRight] is true, the extracted eye crop is horizontally flipped
-  /// before processing to normalize right eyes to left eye orientation.
-  ///
-  /// Returns iris and eye contour landmarks in absolute pixel coordinates, where
-  /// each point is `[x, y, z]`:
-  /// - First 71 points: Eye mesh landmarks (detailed eye region geometry)
-  /// - Last 5 points: Iris landmarks (center + 4 contour points)
-  ///
-  /// **Note:** This is an internal method used by [FaceDetector]. Most users
-  /// should use [FaceDetector.detectFaces] with [FaceDetectionMode.full] instead.
-  @Deprecated(
-    'Will be removed in 5.0.0. Use the Mat-based detection pipeline instead.',
-  )
-  Future<List<List<double>>> runOnImageAlignedIris(
-    img.Image src,
-    AlignedRoi roi, {
-    bool isRight = false,
-    IsolateWorker? worker,
-  }) async {
-    final img.Image crop = await extractAlignedSquareWithWorker(
-      src,
-      roi.cx,
-      roi.cy,
-      roi.size,
-      roi.theta,
-      worker,
-    );
-    final img.Image eye = isRight ? await _flipHorizontal(crop) : crop;
-    final List<List<double>> lmNorm = await call(eye, worker: worker);
-    return _transformIrisToAbsolute(lmNorm, roi, isRight);
-  }
-
-  /// Runs iris detection using a registered frame ID.
-  ///
-  /// This is an optimized variant that uses a pre-registered frame to avoid
-  /// transferring the full image data again.
-  ///
-  /// Returns iris and eye contour landmarks in absolute pixel coordinates.
-  @Deprecated(
-    'Will be removed in 5.0.0. Use the Mat-based detection pipeline instead.',
-  )
-  Future<List<List<double>>> runOnImageAlignedIrisWithFrameId(
-    int frameId,
-    AlignedRoi roi, {
-    bool isRight = false,
-    IsolateWorker? worker,
-  }) async {
-    if (worker == null || !worker.isInitialized) {
-      throw StateError('Worker must be initialized to use frame IDs');
-    }
-
-    final img.Image crop = await worker.extractAlignedSquareWithFrameId(
-      frameId,
-      roi.cx,
-      roi.cy,
-      roi.size,
-      roi.theta,
-    );
-    final img.Image eye = isRight ? await _flipHorizontal(crop) : crop;
-    final List<List<double>> lmNorm = await call(eye, worker: worker);
-    return _transformIrisToAbsolute(lmNorm, roi, isRight);
-  }
-
   /// Predicts iris and eye contour landmarks from a cv.Mat eye crop.
   ///
-  /// This is the OpenCV-based variant of [call] that accepts a cv.Mat directly,
-  /// providing better performance by avoiding image format conversions.
+  /// Accepts a cv.Mat directly, providing better performance by avoiding
+  /// image format conversions.
   ///
   /// The [eyeCrop] parameter should contain a tight crop around a single eye as cv.Mat.
   /// The Mat is NOT disposed by this method - caller is responsible for disposal.
@@ -573,14 +302,11 @@ class IrisLandmark {
   /// Example:
   /// ```dart
   /// final eyeCropMat = cv.imdecode(bytes, cv.IMREAD_COLOR);
-  /// final irisPoints = await irisLandmark.callFromMat(eyeCropMat);
+  /// final irisPoints = await irisLandmark.call(eyeCropMat);
   /// eyeCropMat.dispose();
   /// ```
-  Future<List<List<double>>> callFromMat(
-    cv.Mat eyeCrop, {
-    Float32List? buffer,
-  }) async {
-    final ImageTensor pack = convertImageToTensorFromMat(
+  Future<List<List<double>>> call(cv.Mat eyeCrop, {Float32List? buffer}) async {
+    final ImageTensor pack = convertImageToTensor(
       eyeCrop,
       outW: _inW,
       outH: _inH,
@@ -620,9 +346,8 @@ class IrisLandmark {
 
   /// Runs iris detection on a cv.Mat using an aligned eye ROI.
   ///
-  /// This is the OpenCV-based variant of [runOnImageAlignedIris] that uses
-  /// SIMD-accelerated warpAffine for the rotation crop, providing 10-50x
-  /// better performance than the Dart-based bilinear interpolation.
+  /// Uses SIMD-accelerated warpAffine for the rotation crop, providing 10-50x
+  /// better performance than pure Dart bilinear interpolation.
   ///
   /// The [src] parameter is the full image as cv.Mat.
   /// The [roi] parameter defines the eye region with center, size, and rotation.
@@ -631,13 +356,13 @@ class IrisLandmark {
   /// Returns iris landmarks in absolute pixel coordinates.
   ///
   /// Note: The input cv.Mat is NOT disposed by this method.
-  Future<List<List<double>>> runOnImageAlignedIrisFromMat(
+  Future<List<List<double>>> runOnImageAlignedIris(
     cv.Mat src,
     AlignedRoi roi, {
     bool isRight = false,
     Float32List? buffer,
   }) async {
-    final cv.Mat? crop = extractAlignedSquareFromMat(
+    final cv.Mat? crop = extractAlignedSquare(
       src,
       roi.cx,
       roi.cy,
@@ -656,7 +381,7 @@ class IrisLandmark {
       eye = crop;
     }
 
-    final List<List<double>> lmNorm = await callFromMat(eye, buffer: buffer);
+    final List<List<double>> lmNorm = await call(eye, buffer: buffer);
     eye.dispose();
     return _transformIrisToAbsolute(lmNorm, roi, isRight);
   }
@@ -686,8 +411,10 @@ class IrisLandmark {
   }
 }
 
-extension on IrisLandmark {
-  Future<img.Image> _flipHorizontal(img.Image src) async {
-    return img.flipHorizontal(src);
-  }
-}
+@visibleForTesting
+List<List<double>> testTransformIrisToAbsolute(
+  List<List<double>> lmNorm,
+  AlignedRoi roi,
+  bool isRight,
+) =>
+    _transformIrisToAbsolute(lmNorm, roi, isRight);

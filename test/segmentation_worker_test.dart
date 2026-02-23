@@ -32,10 +32,7 @@ void main() {
   group('SegmentationWorker.segment error handling', () {
     test('should throw StateError when not initialized', () async {
       final worker = SegmentationWorker();
-      expect(
-        () => worker.segment(Uint8List(10)),
-        throwsA(isA<StateError>()),
-      );
+      expect(() => worker.segment(Uint8List(10)), throwsA(isA<StateError>()));
     });
   });
 

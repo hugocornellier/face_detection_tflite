@@ -1,3 +1,10 @@
+## 5.0.0
+
+**Breaking changes:**
+
+- Remove all deprecated `image` package-based APIs across `FaceDetector`, `FaceDetectorIsolate`, `IsolateWorker`, model runners (`FaceDetectionModel`, `FaceLandmark`, `FaceEmbedding`, `IrisLandmark`, `SelfieSegmentation`), and helper functions
+- Remove `image` package dependency
+
 ## 4.6.4
 - Update flutter_litert to 0.1.12
 

@@ -2680,7 +2680,7 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
 
     try {
       final stopwatch = Stopwatch()..start();
-      final mask = await _segmenter!.call(_imageBytes!);
+      final mask = await _segmenter!.callFromBytes(_imageBytes!);
       stopwatch.stop();
 
       final Size originalSize =

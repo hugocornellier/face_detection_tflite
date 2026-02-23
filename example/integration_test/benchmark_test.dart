@@ -154,7 +154,7 @@ void main() {
 
           for (int i = 0; i < iterations; i++) {
             final stopwatch = Stopwatch()..start();
-            await segmenter.call(bytes);
+            await segmenter.callFromBytes(bytes);
             stopwatch.stop();
             timings.add(stopwatch.elapsedMilliseconds);
           }
@@ -213,7 +213,7 @@ void main() {
 
           for (int i = 0; i < iterations; i++) {
             final stopwatch = Stopwatch()..start();
-            await segmenter.call(bytes);
+            await segmenter.callFromBytes(bytes);
             stopwatch.stop();
             timings.add(stopwatch.elapsedMilliseconds);
           }
@@ -313,7 +313,7 @@ void main() {
     );
 
     test(
-      'Benchmark segmentation with cv.Mat input (callFromMat)',
+      'Benchmark segmentation with cv.Mat input (call)',
       () async {
         final segmenter = await SelfieSegmentation.create(
           config: SegmentationConfig(
@@ -322,7 +322,7 @@ void main() {
         );
 
         print('\n${'=' * 60}');
-        print('BENCHMARK: Segmentation with cv.Mat (callFromMat) + XNNPACK');
+        print('BENCHMARK: Segmentation with cv.Mat (call) + XNNPACK');
         print('Note: Each iteration decodes fresh Mat');
         print('=' * 60);
 
@@ -338,7 +338,7 @@ void main() {
             final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
 
             final stopwatch = Stopwatch()..start();
-            await segmenter.callFromMat(mat);
+            await segmenter.call(mat);
             stopwatch.stop();
 
             mat.dispose();
@@ -360,10 +360,10 @@ void main() {
         final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
         final benchmarkResults = BenchmarkResults(
           timestamp: timestamp,
-          testName: 'Segmentation with cv.Mat (callFromMat) + XNNPACK',
+          testName: 'Segmentation with cv.Mat (call) + XNNPACK',
           configuration: {
             'performance_config': 'xnnpack',
-            'api': 'callFromMat',
+            'api': 'call',
             'note': 'Excludes cv.imdecode time',
             'iterations': iterations,
             'sample_images': sampleImages.length,
@@ -400,7 +400,7 @@ void main() {
 
           for (int i = 0; i < iterations; i++) {
             final stopwatch = Stopwatch()..start();
-            await segmenter.call(bytes);
+            await segmenter.callFromBytes(bytes);
             stopwatch.stop();
             timings.add(stopwatch.elapsedMilliseconds);
           }
@@ -420,11 +420,10 @@ void main() {
         final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
         final benchmarkResults = BenchmarkResults(
           timestamp: timestamp,
-          testName: 'Segmentation with pure Dart decode (callWithImagePackage)',
+          testName: 'Segmentation with call (OpenCV decode)',
           configuration: {
             'performance_config': 'xnnpack',
-            'api': 'callWithImagePackage (pure Dart)',
-            'note': 'SLOW path - uses img.decodeImage()',
+            'api': 'call (OpenCV decode)',
             'iterations': iterations,
             'sample_images': sampleImages.length,
           },
@@ -448,7 +447,7 @@ void main() {
 
         print('\n${'=' * 60}');
         print('BENCHMARK: Segmentation Decode Overhead Comparison');
-        print('Compares: callFromMat (no decode) vs call (OpenCV decode)');
+        print('Compares: call (no decode) vs call (OpenCV decode)');
         print('=' * 60);
 
         for (final imagePath in sampleImages) {
@@ -457,15 +456,15 @@ void main() {
 
           // Warmup
           final warmupMat = cv.imdecode(bytes, cv.IMREAD_COLOR);
-          await segmenter.callFromMat(warmupMat);
+          await segmenter.call(warmupMat);
           warmupMat.dispose();
 
-          // 1. callFromMat (pipeline only, no decode)
+          // 1. call (pipeline only, no decode)
           final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
           final List<int> matTimings = [];
           for (int i = 0; i < iterations; i++) {
             final stopwatch = Stopwatch()..start();
-            await segmenter.callFromMat(mat);
+            await segmenter.call(mat);
             stopwatch.stop();
             matTimings.add(stopwatch.elapsedMilliseconds);
           }
@@ -475,7 +474,7 @@ void main() {
           final List<int> opencvTimings = [];
           for (int i = 0; i < iterations; i++) {
             final stopwatch = Stopwatch()..start();
-            await segmenter.call(bytes);
+            await segmenter.callFromBytes(bytes);
             stopwatch.stop();
             opencvTimings.add(stopwatch.elapsedMilliseconds);
           }
@@ -486,8 +485,7 @@ void main() {
               opencvTimings.reduce((a, b) => a + b) / opencvTimings.length;
 
           print('\n$imagePath:');
-          print(
-              '  callFromMat (no decode):      ${matMean.toStringAsFixed(1)} ms');
+          print('  call (no decode):      ${matMean.toStringAsFixed(1)} ms');
           print(
               '  call (OpenCV decode):         ${opencvMean.toStringAsFixed(1)} ms');
           print('  ---');
@@ -588,8 +586,7 @@ void main() {
         );
 
         print('\n${'=' * 60}');
-        print(
-            'BENCHMARK: Full Mode with cv.Mat (detectFacesFromMat) + XNNPACK');
+        print('BENCHMARK: Full Mode with cv.Mat (detectFaces) + XNNPACK');
         print(
             'Note: Each iteration decodes fresh Mat to avoid opencv_dart state issues');
         print('=' * 60);
@@ -645,12 +642,12 @@ void main() {
         final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
         final benchmarkResults = BenchmarkResults(
           timestamp: timestamp,
-          testName: 'Full Mode with cv.Mat (detectFacesFromMat) + XNNPACK',
+          testName: 'Full Mode with cv.Mat (detectFaces) + XNNPACK',
           configuration: {
             'mode': 'full',
             'model': 'backCamera (default)',
             'performance_config': 'xnnpack',
-            'api': 'opencv mat (detectFacesFromMat)',
+            'api': 'opencv mat (detectFaces)',
             'note': 'Includes cv.imdecode time',
             'iterations': iterations,
             'sample_images': sampleImages.length,

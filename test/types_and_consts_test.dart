@@ -204,10 +204,7 @@ void main() {
     });
 
     test('operator [] accesses correct point', () {
-      final points = List.generate(
-        468,
-        (i) => Point(i.toDouble(), i * 2.0),
-      );
+      final points = List.generate(468, (i) => Point(i.toDouble(), i * 2.0));
       final mesh = FaceMesh(points);
       expect(mesh[0].x, 0.0);
       expect(mesh[100].x, 100.0);
@@ -805,8 +802,10 @@ void main() {
   group('PixelFormat', () {
     test('should have all expected values', () {
       expect(PixelFormat.values.length, 3);
-      expect(PixelFormat.values.map((p) => p.name),
-          containsAll(['rgba', 'bgra', 'argb']));
+      expect(
+        PixelFormat.values.map((p) => p.name),
+        containsAll(['rgba', 'bgra', 'argb']),
+      );
     });
   });
 
@@ -815,8 +814,10 @@ void main() {
   // =========================================================================
   group('SegmentationConfig presets', () {
     test('performance preset', () {
-      expect(SegmentationConfig.performance.performanceConfig.mode,
-          PerformanceMode.auto);
+      expect(
+        SegmentationConfig.performance.performanceConfig.mode,
+        PerformanceMode.auto,
+      );
       expect(SegmentationConfig.performance.maxOutputSize, 2048);
     });
 

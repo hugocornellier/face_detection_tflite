@@ -1,4 +1,4 @@
-part of '../face_detection_tflite.dart';
+part of '../../face_detection_tflite.dart';
 
 /// Data passed to the detection isolate during startup.
 class _DetectionIsolateStartupData {
@@ -417,7 +417,7 @@ class FaceDetectorIsolate {
   ///
   /// All processing (image decoding, tensor conversion, face detection, mesh
   /// computation, and iris tracking) runs in the background isolate. The main
-  /// thread only handles sending the image bytes and receiving the results.
+  /// thread only handles sending the image data and receiving the results.
   ///
   /// Parameters:
   /// - [imageBytes]: Encoded image data (JPEG, PNG, etc.)
@@ -431,13 +431,6 @@ class FaceDetectorIsolate {
   /// Example:
   /// ```dart
   /// final faces = await detector.detectFaces(imageBytes);
-  /// for (final face in faces) {
-  ///   print('Bounding box: ${face.boundingBox}');
-  ///   print('Left eye: ${face.landmarks.leftEye}');
-  ///   if (face.mesh != null) {
-  ///     print('Mesh has ${face.mesh!.length} points');
-  ///   }
-  /// }
   /// ```
   Future<List<Face>> detectFaces(
     Uint8List imageBytes, {
@@ -456,44 +449,24 @@ class FaceDetectorIsolate {
         .toList();
   }
 
-  /// Detects faces from an OpenCV [cv.Mat] in the background isolate.
+  /// Detects faces in a pre-decoded [cv.Mat] image in the background isolate.
   ///
-  /// This method extracts the raw pixel data from the Mat, transfers it to the
-  /// background isolate using zero-copy [TransferableTypedData], reconstructs
-  /// the Mat in the isolate, and runs the full detection pipeline.
-  ///
-  /// This is ideal for live camera processing where you already have a cv.Mat
-  /// from camera frame conversion, and need guaranteed non-blocking UI.
-  ///
-  /// Parameters:
-  /// - [image]: An OpenCV Mat containing the image (typically BGR format)
-  /// - [mode]: Detection mode controlling which features to compute
-  ///
-  /// Returns a list of [Face] objects, one per detected face.
+  /// The raw pixel data is extracted and transferred using zero-copy
+  /// [TransferableTypedData]. The original Mat is NOT disposed by this method.
   ///
   /// Example:
   /// ```dart
-  /// // Convert camera frame to Mat
   /// final mat = cv.Mat.fromList(height, width, cv.MatType.CV_8UC3, bgrBytes);
-  ///
-  /// // Run detection in background isolate
   /// final faces = await detector.detectFacesFromMat(mat);
-  ///
-  /// // Don't forget to dispose the original Mat
   /// mat.dispose();
   /// ```
-  ///
-  /// Note: The Mat is reconstructed in the isolate and disposed there after
-  /// detection. You are still responsible for disposing the original Mat
-  /// in the main isolate.
   Future<List<Face>> detectFacesFromMat(
     cv.Mat image, {
     FaceDetectionMode mode = FaceDetectionMode.full,
-  }) async {
+  }) {
     final int rows = image.rows;
     final int cols = image.cols;
     final int type = image.type.value;
-
     final Uint8List data = image.data;
 
     return detectFacesFromMatBytes(
@@ -636,6 +609,9 @@ class FaceDetectorIsolate {
   /// This method runs the segmentation pipeline entirely in the background
   /// isolate, ensuring the UI thread is never blocked.
   ///
+  /// The [imageBytes] parameter should contain encoded image data (JPEG, PNG, etc.).
+  /// For pre-decoded [cv.Mat] input, use [getSegmentationMaskFromMat] instead.
+  ///
   /// Parameters:
   /// - [imageBytes]: Encoded image data (JPEG, PNG, etc.)
   /// - [outputFormat]: Controls the output format for transfer efficiency
@@ -676,25 +652,14 @@ class FaceDetectorIsolate {
     return _deserializeMask(result);
   }
 
-  /// Segments an OpenCV [cv.Mat] image in the background isolate.
+  /// Segments a pre-decoded [cv.Mat] image in the background isolate.
   ///
-  /// This method extracts the raw pixel data from the Mat, transfers it to the
-  /// background isolate using zero-copy [TransferableTypedData], reconstructs
-  /// the Mat in the isolate, and runs the segmentation pipeline.
+  /// This is the cv.Mat variant of [getSegmentationMask]. The raw pixel data
+  /// is extracted and transferred using zero-copy [TransferableTypedData].
+  /// The original Mat is NOT disposed by this method.
   ///
-  /// Parameters:
-  /// - [image]: An OpenCV Mat containing the image (typically BGR format)
-  /// - [outputFormat]: Controls the output format for transfer efficiency
-  /// - [binaryThreshold]: Threshold for binary output (default 0.5)
-  ///
-  /// Returns a [SegmentationMask] containing per-pixel foreground probabilities.
-  ///
-  /// Example:
-  /// ```dart
-  /// final mat = cv.Mat.fromList(height, width, cv.MatType.CV_8UC3, bgrBytes);
-  /// final mask = await detector.getSegmentationMaskFromMat(mat);
-  /// mat.dispose();
-  /// ```
+  /// Throws [StateError] if segmentation was not initialized during [spawn].
+  /// Throws [SegmentationException] on inference failure.
   Future<SegmentationMask> getSegmentationMaskFromMat(
     cv.Mat image, {
     IsolateOutputFormat outputFormat = IsolateOutputFormat.float32,
@@ -733,7 +698,7 @@ class FaceDetectorIsolate {
   /// Requires [withSegmentation: true] during [spawn].
   ///
   /// Parameters:
-  /// - [image]: An OpenCV Mat containing the image (typically BGR format)
+  /// - [imageBytes]: Encoded image data (JPEG, PNG, etc.)
   /// - [mode]: Detection mode controlling which features to compute
   /// - [outputFormat]: Controls the segmentation mask output format
   /// - [binaryThreshold]: Threshold for binary output format
@@ -748,11 +713,69 @@ class FaceDetectorIsolate {
   /// Example:
   /// ```dart
   /// final detector = await FaceDetectorIsolate.spawn(withSegmentation: true);
-  /// final result = await detector.detectFacesWithSegmentationFromMat(mat);
+  /// final result = await detector.detectFacesWithSegmentation(imageBytes);
   ///
   /// print('Found ${result.faces.length} faces');
   /// print('Mask: ${result.segmentationMask?.width}x${result.segmentationMask?.height}');
   /// print('Total time: ${result.totalTimeMs}ms (parallel processing)');
+  /// ```
+  Future<DetectionWithSegmentationResult> detectFacesWithSegmentation(
+    Uint8List imageBytes, {
+    FaceDetectionMode mode = FaceDetectionMode.full,
+    IsolateOutputFormat outputFormat = IsolateOutputFormat.float32,
+    double binaryThreshold = 0.5,
+  }) async {
+    if (!_initialized) {
+      throw StateError('FaceDetectorIsolate not initialized');
+    }
+    if (!_segmentationInitialized) {
+      throw StateError(
+        'Segmentation not initialized. Use spawn(withSegmentation: true).',
+      );
+    }
+
+    final detectionStopwatch = Stopwatch()..start();
+    final segmentationStopwatch = Stopwatch()..start();
+
+    final results = await Future.wait([
+      _sendDetectionRequest<List<dynamic>>('detect', {
+        'bytes': TransferableTypedData.fromList([imageBytes]),
+        'mode': mode.name,
+      }).then((result) {
+        detectionStopwatch.stop();
+        return result
+            .map((m) => Face.fromMap(Map<String, dynamic>.from(m as Map)))
+            .toList();
+      }),
+      _sendSegmentationRequest<Map<String, dynamic>>('segment', {
+        'bytes': TransferableTypedData.fromList([imageBytes]),
+        'outputFormat': outputFormat.index,
+        'binaryThreshold': binaryThreshold,
+      }).then((result) {
+        segmentationStopwatch.stop();
+        return _deserializeMask(result);
+      }),
+    ]);
+
+    return DetectionWithSegmentationResult(
+      faces: results[0] as List<Face>,
+      segmentationMask: results[1] as SegmentationMask,
+      detectionTimeMs: detectionStopwatch.elapsedMilliseconds,
+      segmentationTimeMs: segmentationStopwatch.elapsedMilliseconds,
+    );
+  }
+
+  /// Detects faces and generates segmentation mask in parallel from a [cv.Mat].
+  ///
+  /// This is the cv.Mat variant of [detectFacesWithSegmentation]. The raw pixel
+  /// data is extracted and transferred to both isolates. The original Mat is
+  /// NOT disposed by this method.
+  ///
+  /// Example:
+  /// ```dart
+  /// final detector = await FaceDetectorIsolate.spawn(withSegmentation: true);
+  /// final result = await detector.detectFacesWithSegmentationFromMat(mat);
+  /// mat.dispose();
   /// ```
   Future<DetectionWithSegmentationResult> detectFacesWithSegmentationFromMat(
     cv.Mat image, {
@@ -795,66 +818,6 @@ class FaceDetectorIsolate {
         'width': cols,
         'height': rows,
         'matType': type,
-        'outputFormat': outputFormat.index,
-        'binaryThreshold': binaryThreshold,
-      }).then((result) {
-        segmentationStopwatch.stop();
-        return _deserializeMask(result);
-      }),
-    ]);
-
-    return DetectionWithSegmentationResult(
-      faces: results[0] as List<Face>,
-      segmentationMask: results[1] as SegmentationMask,
-      detectionTimeMs: detectionStopwatch.elapsedMilliseconds,
-      segmentationTimeMs: segmentationStopwatch.elapsedMilliseconds,
-    );
-  }
-
-  /// Detects faces and generates segmentation mask in parallel from image bytes.
-  ///
-  /// This method runs face detection and segmentation simultaneously in
-  /// separate isolates, returning results as soon as both complete.
-  ///
-  /// Requires [withSegmentation: true] during [spawn].
-  ///
-  /// Parameters:
-  /// - [imageBytes]: Encoded image data (JPEG, PNG, etc.)
-  /// - [mode]: Detection mode controlling which features to compute
-  /// - [outputFormat]: Controls the segmentation mask output format
-  /// - [binaryThreshold]: Threshold for binary output format
-  ///
-  /// Returns a [DetectionWithSegmentationResult] containing both faces and mask.
-  Future<DetectionWithSegmentationResult> detectFacesWithSegmentation(
-    Uint8List imageBytes, {
-    FaceDetectionMode mode = FaceDetectionMode.full,
-    IsolateOutputFormat outputFormat = IsolateOutputFormat.float32,
-    double binaryThreshold = 0.5,
-  }) async {
-    if (!_initialized) {
-      throw StateError('FaceDetectorIsolate not initialized');
-    }
-    if (!_segmentationInitialized) {
-      throw StateError(
-        'Segmentation not initialized. Use spawn(withSegmentation: true).',
-      );
-    }
-
-    final detectionStopwatch = Stopwatch()..start();
-    final segmentationStopwatch = Stopwatch()..start();
-
-    final results = await Future.wait([
-      _sendDetectionRequest<List<dynamic>>('detect', {
-        'bytes': TransferableTypedData.fromList([imageBytes]),
-        'mode': mode.name,
-      }).then((result) {
-        detectionStopwatch.stop();
-        return result
-            .map((m) => Face.fromMap(Map<String, dynamic>.from(m as Map)))
-            .toList();
-      }),
-      _sendSegmentationRequest<Map<String, dynamic>>('segment', {
-        'bytes': TransferableTypedData.fromList([imageBytes]),
         'outputFormat': outputFormat.index,
         'binaryThreshold': binaryThreshold,
       }).then((result) {
@@ -1157,7 +1120,7 @@ class FaceDetectorIsolate {
             final double binaryThreshold = message['binaryThreshold'] as double;
 
             try {
-              final mask = await segmenter!.call(imageBytes);
+              final mask = await segmenter!.callFromBytes(imageBytes);
               final serialized = _serializeMask(
                 mask,
                 IsolateOutputFormat.values[outputFormatIndex],
@@ -1193,7 +1156,7 @@ class FaceDetectorIsolate {
             final mat = cv.Mat.fromList(height, width, matType, matBytes);
 
             try {
-              final mask = await segmenter!.callFromMat(mat);
+              final mask = await segmenter!.call(mat);
               final serialized = _serializeMask(
                 mask,
                 IsolateOutputFormat.values[outputFormatIndex],
@@ -1290,3 +1253,15 @@ class FaceDetectorIsolate {
     return baseMask;
   }
 }
+
+@visibleForTesting
+Map<String, dynamic> testSerializeMask(
+  SegmentationMask mask,
+  IsolateOutputFormat format,
+  double binaryThreshold,
+) =>
+    FaceDetectorIsolate._serializeMask(mask, format, binaryThreshold);
+
+@visibleForTesting
+SegmentationMask testDeserializeMask(Map<String, dynamic> map) =>
+    FaceDetectorIsolate._deserializeMask(map);

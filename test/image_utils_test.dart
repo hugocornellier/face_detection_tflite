@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:face_detection_tflite/src/image_utils.dart';
+import 'package:face_detection_tflite/src/util/image_utils.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 
 import 'test_config.dart';
@@ -14,10 +14,7 @@ void main() {
       height,
       width,
       cv.MatType.CV_8UC3,
-      List<int>.generate(
-        width * height * 3,
-        (i) => [b, g, r][i % 3],
-      ),
+      List<int>.generate(width * height * 3, (i) => [b, g, r][i % 3]),
     );
   }
 
@@ -38,8 +35,11 @@ void main() {
 
     test('should maintain aspect ratio for landscape image', () {
       final src = solidMat(200, 100, 0, 0, 255);
-      final (padded, resized) =
-          ImageUtils.keepAspectResizeAndPad(src, 100, 100);
+      final (padded, resized) = ImageUtils.keepAspectResizeAndPad(
+        src,
+        100,
+        100,
+      );
 
       expect(padded.cols, 100);
       expect(padded.rows, 100);
@@ -54,8 +54,11 @@ void main() {
 
     test('should maintain aspect ratio for portrait image', () {
       final src = solidMat(100, 200, 255, 0, 0);
-      final (padded, resized) =
-          ImageUtils.keepAspectResizeAndPad(src, 100, 100);
+      final (padded, resized) = ImageUtils.keepAspectResizeAndPad(
+        src,
+        100,
+        100,
+      );
 
       expect(padded.cols, 100);
       expect(padded.rows, 100);
@@ -193,8 +196,10 @@ void main() {
     test('should reuse provided buffer', () {
       final src = solidMat(2, 2, 128, 128, 128);
       final buffer = Float32List(12);
-      final tensor =
-          ImageUtils.matToFloat32TensorMediaPipe(src, buffer: buffer);
+      final tensor = ImageUtils.matToFloat32TensorMediaPipe(
+        src,
+        buffer: buffer,
+      );
 
       expect(identical(tensor, buffer), isTrue);
       src.dispose();

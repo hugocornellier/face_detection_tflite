@@ -64,10 +64,7 @@ void main() {
 
   group('DecodedBox', () {
     test('should store bounding box and keypoints', () {
-      final box = DecodedBox(
-        RectF(0.1, 0.2, 0.8, 0.9),
-        [0.3, 0.4, 0.5, 0.6],
-      );
+      final box = DecodedBox(RectF(0.1, 0.2, 0.8, 0.9), [0.3, 0.4, 0.5, 0.6]);
       expect(box.boundingBox.xmin, 0.1);
       expect(box.boundingBox.ymin, 0.2);
       expect(box.keypointsXY.length, 4);

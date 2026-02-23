@@ -331,13 +331,13 @@ enum SegmentationModel {
 ///
 /// - [SegmentationConfig.safe]: CPU-only, 1024 max output (recommended for Android)
 /// - [SegmentationConfig.performance]: Auto delegate, 2048 max output
+/// - [SegmentationConfig.fast]: Auto delegate, no isolate overhead (best for real-time video)
 ///
 /// ## Example
 ///
 /// ```dart
 /// final config = SegmentationConfig(
 ///   performanceConfig: PerformanceConfig.auto(),
-///   maxOutputSize: 1920,
 ///   maxOutputSize: 1920,
 /// );
 /// final segmenter = await SelfieSegmentation.create(config: config);
@@ -732,8 +732,7 @@ class SegmentationMask {
         'padding': padding,
       };
 
-  /// Creates a mask from a serialized map (isolate deserialization).
-  /// Creates a SegmentationMask from a serialized map.
+  /// Creates a SegmentationMask from a serialized map (isolate deserialization).
   ///
   /// Handles different data formats from isolate transfer:
   /// - 'float32': Direct float32 data (default)
@@ -901,14 +900,14 @@ class MulticlassSegmentationMask extends SegmentationMask {
 ///
 /// This class bundles the results of running face detection and selfie
 /// segmentation simultaneously in separate isolates. Use with
-/// [FaceDetectorIsolate.detectFacesWithSegmentationFromMat] for optimal
+/// [FaceDetectorIsolate.detectFacesWithSegmentation] for optimal
 /// performance when both features are needed.
 ///
 /// ## Example
 ///
 /// ```dart
 /// final detector = await FaceDetectorIsolate.spawn(withSegmentation: true);
-/// final result = await detector.detectFacesWithSegmentationFromMat(mat);
+/// final result = await detector.detectFacesWithSegmentation(mat);
 ///
 /// print('Found ${result.faces.length} faces');
 /// print('Mask: ${result.segmentationMask?.width}x${result.segmentationMask?.height}');
@@ -1563,7 +1562,7 @@ class Face {
   ///   final leftEyeMesh = eyes?.leftEye?.mesh;
   ///
   ///   // Access 3D depth information
-  ///   if (leftIrisCenter.is3D) {
+  ///   if (leftIrisCenter != null && leftIrisCenter.is3D) {
   ///     print('Iris depth: ${leftIrisCenter.z}');
   ///   }
   /// }
@@ -1869,45 +1868,11 @@ const _ssdFull = {
   'interpolated_scale_aspect_ratio': 0.0,
 };
 
-/// Holds an aligned face crop and metadata used for downstream landmark models.
-///
-/// An [AlignedFace] represents a face that has been rotated, scaled, and
-/// translated so that the eyes are horizontal and the face roughly fills the
-/// crop. Downstream models such as [FaceLandmark] and [IrisLandmark] expect
-/// this normalized orientation.
-@Deprecated('Will be removed in 5.0.0. Use AlignedFaceFromMat instead.')
-class AlignedFace {
-  /// X coordinate of the face center in absolute pixel coordinates.
-  final double cx;
-
-  /// Y coordinate of the face center in absolute pixel coordinates.
-  final double cy;
-
-  /// Length of the square crop edge in absolute pixels.
-  final double size;
-
-  /// Rotation applied to align the face, in radians.
-  final double theta;
-
-  /// The aligned face crop image provided to landmark models.
-  final img.Image faceCrop;
-
-  /// Creates an aligned face crop with pixel-based center, size, rotation,
-  /// and the cropped [faceCrop] image ready for landmark inference.
-  AlignedFace({
-    required this.cx,
-    required this.cy,
-    required this.size,
-    required this.theta,
-    required this.faceCrop,
-  });
-}
-
 /// Aligned face crop data holder for OpenCV-based processing.
 ///
-/// Similar to [AlignedFace] but holds a cv.Mat instead of img.Image.
+/// Holds a cv.Mat for the aligned face crop.
 /// Used internally by the OpenCV-accelerated detection pipeline.
-class AlignedFaceFromMat {
+class AlignedFace {
   /// X coordinate of the face center in absolute pixel coordinates.
   final double cx;
 
@@ -1923,8 +1888,8 @@ class AlignedFaceFromMat {
   /// The aligned face crop as cv.Mat. Caller must dispose when done.
   final cv.Mat faceCrop;
 
-  /// Creates an aligned face crop with cv.Mat instead of img.Image.
-  AlignedFaceFromMat({
+  /// Creates an aligned face crop with a cv.Mat face crop image.
+  AlignedFace({
     required this.cx,
     required this.cy,
     required this.size,

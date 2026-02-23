@@ -1,4 +1,4 @@
-part of '../face_detection_tflite.dart';
+part of '../../face_detection_tflite.dart';
 
 /// Minimum input image size (smaller images rejected).
 const int kMinSegmentationInputSize = 16;
@@ -288,11 +288,7 @@ class SelfieSegmentation {
           );
         }
       } else {
-        throw SegmentationException(
-          loadErrorCode,
-          '$loadErrorPrefix: $e',
-          e,
-        );
+        throw SegmentationException(loadErrorCode, '$loadErrorPrefix: $e', e);
       }
     }
 
@@ -321,9 +317,7 @@ class SelfieSegmentation {
   /// When [useIsolateInterpreter] is false, inference runs directly via
   /// `_itp.invoke()` instead of spawning a nested isolate. This should be
   /// used when the model is already running inside a background isolate.
-  Future<void> _initializeTensors({
-    bool useIsolateInterpreter = true,
-  }) async {
+  Future<void> _initializeTensors({bool useIsolateInterpreter = true}) async {
     _inputTensor = _itp.getInputTensor(0);
     _outputTensor = _itp.getOutputTensor(0);
     _inputBuf = _inputTensor.data.buffer.asFloat32List();
@@ -398,170 +392,28 @@ class SelfieSegmentation {
   /// Current configuration.
   SegmentationConfig get config => _config;
 
-  /// Segments encoded image bytes using OpenCV for fast decoding.
+  /// Segments an image to separate foreground (person) from background.
   ///
-  /// [imageBytes]: Encoded image (JPEG, PNG, or other supported format).
+  /// The [image] parameter is a [cv.Mat] in BGR or BGRA format.
+  /// It is NOT disposed by this method -- caller is responsible for disposal.
+  ///
+  /// The optional [buffer] parameter allows reusing a pre-allocated Float32List
+  /// for the tensor conversion to reduce GC pressure.
   ///
   /// Returns a [SegmentationMask] with per-pixel probabilities at model output resolution.
   ///
-  /// This method uses OpenCV's native `imdecode()` which is 5-10x faster than
-  /// pure Dart image decoding. For even better performance with video frames,
-  /// use [callFromMat] directly with pre-decoded cv.Mat images.
-  ///
   /// Throws [SegmentationException] on:
-  /// - Image decode failure ([SegmentationError.imageDecodeFailed])
+  /// - Empty Mat ([SegmentationError.imageDecodeFailed])
   /// - Image smaller than 16x16 ([SegmentationError.imageTooSmall])
   /// - Inference failure ([SegmentationError.inferenceFailed])
   ///
   /// Example:
   /// ```dart
-  /// final imageBytes = await File('selfie.jpg').readAsBytes();
-  /// final mask = await segmenter(imageBytes);
-  /// print('Mask: ${mask.width}x${mask.height}');
-  /// ```
-  Future<SegmentationMask> call(Uint8List imageBytes) async {
-    if (_disposed) {
-      throw StateError('Cannot use SelfieSegmentation after dispose()');
-    }
-
-    final cv.Mat image;
-    try {
-      image = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
-    } catch (e) {
-      throw SegmentationException(
-        SegmentationError.imageDecodeFailed,
-        'Failed to decode image bytes with OpenCV (length: ${imageBytes.length}): $e',
-        e,
-      );
-    }
-
-    if (image.isEmpty) {
-      throw SegmentationException(
-        SegmentationError.imageDecodeFailed,
-        'Failed to decode image bytes (length: ${imageBytes.length})',
-      );
-    }
-
-    try {
-      return await callFromMat(image);
-    } finally {
-      image.dispose();
-    }
-  }
-
-  /// Segments encoded image bytes using pure Dart decoding.
-  ///
-  /// This is a fallback method that uses `package:image` for decoding.
-  /// Prefer [call] which uses OpenCV and is 5-10x faster.
-  ///
-  /// [imageBytes]: Encoded image (JPEG, PNG, or other supported format).
-  @Deprecated(
-    'Will be removed in 5.0.0. Use call (which uses OpenCV internally) or callFromMat instead.',
-  )
-  Future<SegmentationMask> callWithImagePackage(Uint8List imageBytes) async {
-    img.Image? decoded;
-    try {
-      decoded = img.decodeImage(imageBytes);
-    } catch (e) {
-      throw SegmentationException(
-        SegmentationError.imageDecodeFailed,
-        'Failed to decode image bytes (length: ${imageBytes.length}): $e',
-        e,
-      );
-    }
-    if (decoded == null) {
-      throw SegmentationException(
-        SegmentationError.imageDecodeFailed,
-        'Failed to decode image bytes (length: ${imageBytes.length})',
-      );
-    }
-    return callWithDecoded(decoded);
-  }
-
-  /// Segments a pre-decoded image.
-  ///
-  /// [decoded]: Pre-decoded image (from `package:image`).
-  ///
-  /// Returns a [SegmentationMask] with per-pixel probabilities.
-  ///
-  /// Example:
-  /// ```dart
-  /// final image = img.decodeImage(bytes)!;
-  /// final mask = await segmenter.callWithDecoded(image);
-  /// ```
-  @Deprecated('Will be removed in 5.0.0. Use callFromMat instead.')
-  Future<SegmentationMask> callWithDecoded(img.Image decoded) async {
-    if (_disposed) {
-      throw StateError('Cannot use SelfieSegmentation after dispose()');
-    }
-
-    if (decoded.width < kMinSegmentationInputSize ||
-        decoded.height < kMinSegmentationInputSize) {
-      throw SegmentationException(
-        SegmentationError.imageTooSmall,
-        'Image ${decoded.width}x${decoded.height} is smaller than minimum '
-        '${kMinSegmentationInputSize}x$kMinSegmentationInputSize',
-      );
-    }
-
-    img.Image inputImage = decoded;
-    if (decoded.numChannels == 1) {
-      inputImage = _grayscaleToRgb(decoded);
-    } else if (decoded.numChannels == 4) {
-      inputImage = decoded;
-    }
-
-    final ImageTensor pack = convertImageToTensor(
-      inputImage,
-      outW: _inW,
-      outH: _inH,
-    );
-
-    final Float32List rawOutput;
-    try {
-      if (_iso == null) {
-        _inputBuf.setAll(0, pack.tensorNHWC);
-        _itp.invoke();
-        rawOutput = Float32List.fromList(_outputBuf);
-      } else {
-        fillNHWC4D(pack.tensorNHWC, _input4dCache, _inH, _inW);
-        final List<List<List<List<List<double>>>>> inputs = [_input4dCache];
-
-        final Map<int, Object> outputs = <int, Object>{0: _output4dCache};
-
-        await _iso!.runForMultipleInputs(inputs, outputs);
-        rawOutput = flattenDynamicTensor(outputs[0]);
-      }
-    } catch (e) {
-      if (!_delegateFailed && _delegate != null) {
-        _delegateFailed = true;
-      }
-      throw SegmentationException(
-        SegmentationError.inferenceFailed,
-        'Inference failed: $e',
-        e,
-      );
-    }
-
-    return _buildMask(rawOutput, decoded.width, decoded.height, pack.padding);
-  }
-
-  /// Segments a cv.Mat image (OpenCV pipeline).
-  ///
-  /// [image]: cv.Mat in BGR or BGRA format (OpenCV default).
-  /// [buffer]: Optional pre-allocated buffer for tensor conversion.
-  ///
-  /// The Mat is NOT disposed by this method - caller is responsible for disposal.
-  ///
-  /// Returns a [SegmentationMask] with per-pixel probabilities.
-  ///
-  /// Example:
-  /// ```dart
   /// final mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
-  /// final mask = await segmenter.callFromMat(mat);
+  /// final mask = await segmenter.call(mat);
   /// mat.dispose();
   /// ```
-  Future<SegmentationMask> callFromMat(
+  Future<SegmentationMask> call(
     cv.Mat image, {
     Float32List? buffer,
   }) async {
@@ -585,7 +437,7 @@ class SelfieSegmentation {
       );
     }
 
-    final ImageTensor pack = convertImageToTensorFromMat(
+    final ImageTensor pack = convertImageToTensor(
       image,
       outW: _inW,
       outH: _inH,
@@ -619,6 +471,44 @@ class SelfieSegmentation {
     }
 
     return _buildMask(rawOutput, image.cols, image.rows, pack.padding);
+  }
+
+  /// Segments an image from encoded bytes (JPEG, PNG, etc.).
+  ///
+  /// Decodes [imageBytes] to a [cv.Mat], runs segmentation, and disposes
+  /// the intermediate Mat automatically.
+  ///
+  /// Example:
+  /// ```dart
+  /// final mask = await segmenter.callFromBytes(imageBytes);
+  /// ```
+  Future<SegmentationMask> callFromBytes(
+    Uint8List imageBytes, {
+    Float32List? buffer,
+  }) async {
+    final cv.Mat mat;
+    try {
+      mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
+    } catch (e) {
+      throw SegmentationException(
+        SegmentationError.imageDecodeFailed,
+        'Failed to decode image bytes with OpenCV (length: ${imageBytes.length}): $e',
+        e,
+      );
+    }
+
+    if (mat.isEmpty) {
+      throw SegmentationException(
+        SegmentationError.imageDecodeFailed,
+        'Failed to decode image bytes (length: ${imageBytes.length})',
+      );
+    }
+
+    try {
+      return await call(mat, buffer: buffer);
+    } finally {
+      mat.dispose();
+    }
   }
 
   /// Builds the appropriate mask type based on the active model.
@@ -876,17 +766,32 @@ class SelfieSegmentation {
       return (options, null);
     }
   }
-
-  /// Converts a grayscale image to RGB by replicating channels.
-  img.Image _grayscaleToRgb(img.Image gray) {
-    final rgb = img.Image(width: gray.width, height: gray.height);
-    for (int y = 0; y < gray.height; y++) {
-      for (int x = 0; x < gray.width; x++) {
-        final pixel = gray.getPixel(x, y);
-        final luminance = pixel.luminance.toInt();
-        rgb.setPixelRgb(x, y, luminance, luminance, luminance);
-      }
-    }
-    return rgb;
-  }
 }
+
+@visibleForTesting
+Float32List testComputeClassProbabilities(
+  Float32List rawOutput,
+  int width,
+  int height,
+) =>
+    SelfieSegmentation._computeClassProbabilities(rawOutput, width, height);
+
+@visibleForTesting
+double testFastExp(double x) => SelfieSegmentation._fastExp(x);
+
+@visibleForTesting
+SegmentationModel testEffectiveModel(SegmentationModel requested) =>
+    _effectiveModel(requested);
+
+@visibleForTesting
+String testModelFileFor(SegmentationModel model) => _modelFileFor(model);
+
+@visibleForTesting
+int testInputWidthFor(SegmentationModel model) => _inputWidthFor(model);
+
+@visibleForTesting
+int testInputHeightFor(SegmentationModel model) => _inputHeightFor(model);
+
+@visibleForTesting
+int testExpectedOutputChannels(SegmentationModel model) =>
+    _expectedOutputChannels(model);

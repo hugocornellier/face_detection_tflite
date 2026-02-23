@@ -144,10 +144,7 @@ void main() {
       final detector = FaceDetector();
       final bytes = TestUtils.createDummyImageBytes();
 
-      expect(
-        () => detector.detectFaces(bytes),
-        throwsA(isA<StateError>()),
-      );
+      expect(() => detector.detectFaces(bytes), throwsA(isA<StateError>()));
       detector.dispose();
     });
   });
@@ -231,18 +228,22 @@ void main() {
       detector.dispose();
     });
 
-    test('detectFacesFromMat with standard mode throws when not initialized',
-        () {
-      final detector = FaceDetector();
-      final mat = cv.Mat.zeros(100, 100, cv.MatType.CV_8UC3);
-      expect(
-        () =>
-            detector.detectFacesFromMat(mat, mode: FaceDetectionMode.standard),
-        throwsA(isA<StateError>()),
-      );
-      mat.dispose();
-      detector.dispose();
-    });
+    test(
+      'detectFacesFromMat with standard mode throws when not initialized',
+      () {
+        final detector = FaceDetector();
+        final mat = cv.Mat.zeros(100, 100, cv.MatType.CV_8UC3);
+        expect(
+          () => detector.detectFacesFromMat(
+            mat,
+            mode: FaceDetectionMode.standard,
+          ),
+          throwsA(isA<StateError>()),
+        );
+        mat.dispose();
+        detector.dispose();
+      },
+    );
   });
 
   group('FaceDetector.compareFaces edge cases', () {
@@ -264,10 +265,7 @@ void main() {
       final a = Float32List.fromList([1.0, 0.0, 0.0]);
       final b = Float32List.fromList([0.0, 1.0, 0.0]);
       // sqrt(1 + 1) = sqrt(2)
-      expect(
-        FaceDetector.faceDistance(a, b),
-        closeTo(1.414, 0.01),
-      );
+      expect(FaceDetector.faceDistance(a, b), closeTo(1.414, 0.01));
     });
   });
 
