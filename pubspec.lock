@@ -69,10 +69,18 @@ packages:
     dependency: transitive
     description:
       name: dartcv4
-      sha256: d19ea8381b12edb8383140c944ac26413b3602ba19f516527e5ddd73625d181c
+      sha256: "2481c3a0b542c39c421512499be17314b7fcd6e6da43b2a1dde19a04c4eaa01f"
       url: "https://pub.dev"
     source: hosted
-    version: "2.2.1+3"
+    version: "2.1.0+1"
+  data_assets:
+    dependency: transitive
+    description:
+      name: data_assets
+      sha256: d8b93648a338f471e576e0ba05f6b5d63a4e0fa447ca839a500267421d9245ba
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.19.6"
   fake_async:
     dependency: transitive
     description:
@@ -114,10 +122,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_litert
-      sha256: "5cb2cd10a4e8459fc33e54af0198da30d193a6b0d508b47f9056d6c583402943"
+      sha256: "84fd97e9f343994a8505c19f436025bd0d04a8a864e02bd45c1b0a32ddc53b82"
       url: "https://pub.dev"
     source: hosted
-    version: "0.1.12"
+    version: "0.1.16"
   flutter_test:
     dependency: "direct dev"
     description: flutter
@@ -215,10 +223,10 @@ packages:
     dependency: "direct main"
     description:
       name: opencv_dart
-      sha256: "65f0e7703da5394b9b6c550649ba8c632177cea5c1997026a79e249ce94d3dd4"
+      sha256: "744899196c6275996c031b96d1ca176f7480c57d373b97dd2cf72b818ea28cda"
       url: "https://pub.dev"
     source: hosted
-    version: "2.2.1+3"
+    version: "2.1.0"
   path:
     dependency: transitive
     description:
