@@ -1,3 +1,13 @@
+## 5.0.3
+
+- Update `camera` 0.11.3 -> 0.12.0
+- Update `flutter_litert` 0.2.2 -> 1.0.1
+
+## 5.0.2
+
+- Update `flutter_litert` to 0.2.2 
+- Add original model cards for archival and documentation
+
 ## 5.0.1
 
 - Migrate iOS CocoaPods -> Swift Package Manager

@@ -25,6 +25,11 @@ List<List<double>> _transformIrisToAbsolute(
 
 /// Estimates dense iris keypoints within cropped eye regions and lets callers
 /// derive a robust iris center (with fallback if inference fails).
+///
+/// The underlying TFLite model (`iris_landmark.tflite`) is sourced from Google's MediaPipe
+/// framework. See the official model card for architecture details, training data, and
+/// intended use cases: https://mediapipe.page.link/iris-mc
+/// (local copy: `doc/model_cards/iris_landmark_model_card.pdf`)
 class IrisLandmark {
   IsolateInterpreter? _iso;
   final Interpreter _itp;

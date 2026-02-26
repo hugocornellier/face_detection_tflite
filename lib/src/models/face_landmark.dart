@@ -2,6 +2,11 @@ part of '../../face_detection_tflite.dart';
 
 /// Predicts the full 468-point face mesh (x, y, z per point) for an aligned face crop.
 /// Coordinates are normalized before later mapping back to image space.
+///
+/// The underlying TFLite model (`face_landmark.tflite`) is sourced from Google's MediaPipe
+/// framework. See the official model card for architecture details, training data, and
+/// intended use cases: https://mediapipe.page.link/facemesh-mc
+/// (local copy: `doc/model_cards/face_landmark_model_card.pdf`)
 class FaceLandmark {
   IsolateInterpreter? _iso;
   final Interpreter _itp;

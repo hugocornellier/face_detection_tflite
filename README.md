@@ -852,6 +852,15 @@ final mat = imdecode(bytes, IMREAD_COLOR); // no extra import needed
 final faces = await detector.detectFacesFromMat(mat);
 ```
 
+## Model Cards
+
+All TFLite models are sourced from Google's [MediaPipe](https://mediapipe.dev/) framework. Official model cards are archived in [`doc/model_cards/`](doc/model_cards/):
+
+| Model | File | Model Card |
+|-------|------|------------|
+| Face Mesh (468-point landmark) | `face_landmark.tflite` | [face_landmark_model_card.pdf](doc/model_cards/face_landmark_model_card.pdf) · [mediapipe.page.link/facemesh-mc](https://mediapipe.page.link/facemesh-mc) |
+| Iris Landmark (76-point) | `iris_landmark.tflite` | [iris_landmark_model_card.pdf](doc/model_cards/iris_landmark_model_card.pdf) · [mediapipe.page.link/iris-mc](https://mediapipe.page.link/iris-mc) |
+
 ## Inspiration
 
 At the time of development, there was no open-source solution for cross-platform, on-device face and landmark detection.
