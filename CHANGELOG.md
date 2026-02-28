@@ -1,3 +1,7 @@
+## 5.0.4
+
+- Update `flutter_litert` 1.0.1 -> 1.0.2
+
 ## 5.0.3
 
 - Update `camera` 0.11.3 -> 0.12.0

@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'dart:ui' as ui;
@@ -9,7 +8,6 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:camera/camera.dart';
-import 'package:camera_macos/camera_macos.dart';
 import 'package:face_detection_tflite/face_detection_tflite.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 
@@ -123,7 +121,6 @@ void _drawClassLabels(
 }
 
 Future<void> main() async {
-  // Ensure platform plugins (camera_macos, etc.) are registered before use.
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const MaterialApp(
     debugShowCheckedModeBanner: false,
@@ -1250,12 +1247,7 @@ class LiveCameraScreen extends StatefulWidget {
 }
 
 class _LiveCameraScreenState extends State<LiveCameraScreen> {
-  bool get _isMacOS => !kIsWeb && Platform.isMacOS;
-  bool get _isWindows => !kIsWeb && Platform.isWindows;
-
   CameraController? _cameraController;
-  CameraMacOSController? _macCameraController;
-  Size? _macPreviewSize;
   FaceDetectorIsolate? _faceDetectorIsolate;
   List<Face> _faces = [];
   Size? _imageSize;
@@ -1270,9 +1262,6 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   DateTime? _lastFpsUpdate;
   int _framesSinceLastUpdate = 0;
   bool _isImageStreamStarted = false;
-  Timer? _windowsFrameTimer;
-  bool _isWindowsFrameCaptureInProgress = false;
-  int _windowsLoopIntervalMs = 180;
 
   // Detection settings
   FaceDetectionMode _detectionMode = FaceDetectionMode.full;
@@ -1611,18 +1600,19 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
 
   Future<void> _initCamera() async {
     try {
-      await _reinitDetectorIsolate();
-
-      if (_isMacOS) {
-        if (mounted) {
-          setState(() {
-            _isInitialized = true;
-          });
-        }
-        return;
+      try {
+        await _reinitDetectorIsolate();
+      } catch (e) {
+        debugPrint('Detector isolate init failed (segmentation may be '
+            'unavailable): $e');
+        // Retry without segmentation so face detection still works.
+        _faceDetectorIsolate = await FaceDetectorIsolate.spawn(
+          model: _detectionModel,
+          withSegmentation: false,
+        );
       }
 
-      // Get available cameras
+      // Unified camera initialization for ALL platforms
       final cameras = await availableCameras();
       if (cameras.isEmpty) {
         if (mounted) {
@@ -1633,7 +1623,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         return;
       }
 
-      // Prefer the front camera on mobile; fall back to the first camera
+      // Prefer the front camera; fall back to the first camera
+      // (desktop cameras may report lensDirection=external, so fallback is important)
       final camera = cameras.firstWhere(
         (c) => c.lensDirection == CameraLensDirection.front,
         orElse: () => cameras.first,
@@ -1658,12 +1649,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
             CameraLensDirection.front;
       });
 
-      if (_isWindows) {
-        _startWindowsDetectionLoop();
-        return;
-      }
-
-      // Start image stream on platforms that support it.
+      // Start image stream on all platforms.
       await _cameraController!.startImageStream(_processCameraImage);
       _isImageStreamStarted = true;
     } catch (e, st) {
@@ -1675,132 +1661,6 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         );
       }
     }
-  }
-
-  void _startWindowsDetectionLoop() {
-    _windowsFrameTimer?.cancel();
-    _lastFpsUpdate = DateTime.now();
-    _windowsFrameTimer =
-        Timer.periodic(Duration(milliseconds: _windowsLoopIntervalMs), (_) {
-      _captureAndProcessWindowsFrame();
-    });
-  }
-
-  void _retuneWindowsDetectionLoop({
-    required bool segmentationEnabled,
-    required int processingTimeMs,
-  }) {
-    // Keep camera cadence adaptive:
-    // - Face-only: tighter interval for responsiveness.
-    // - Face+segmentation: slower interval to avoid CPU saturation/jank.
-    final int minInterval = segmentationEnabled ? 280 : 120;
-    final int maxInterval = segmentationEnabled ? 650 : 320;
-    final int safetyMargin = segmentationEnabled ? 90 : 40;
-
-    final int nextInterval =
-        (processingTimeMs + safetyMargin).clamp(minInterval, maxInterval);
-
-    // Avoid timer churn from tiny fluctuations.
-    if ((nextInterval - _windowsLoopIntervalMs).abs() < 40) return;
-
-    _windowsLoopIntervalMs = nextInterval;
-    _startWindowsDetectionLoop();
-  }
-
-  Future<void> _captureAndProcessWindowsFrame() async {
-    if (!_isWindows ||
-        !mounted ||
-        _cameraController == null ||
-        !_cameraController!.value.isInitialized ||
-        _isWindowsFrameCaptureInProgress) {
-      return;
-    }
-
-    _isWindowsFrameCaptureInProgress = true;
-    try {
-      final XFile frame = await _cameraController!.takePicture();
-      final Uint8List bytes = await frame.readAsBytes();
-      try {
-        final file = File(frame.path);
-        if (await file.exists()) {
-          await file.delete();
-        }
-      } catch (_) {}
-
-      await _processWindowsImageBytes(bytes);
-    } catch (_) {
-      // Ignore intermittent capture errors on Windows.
-    } finally {
-      _isWindowsFrameCaptureInProgress = false;
-    }
-  }
-
-  Future<void> _processWindowsImageBytes(Uint8List bytes) async {
-    _frameCounter++;
-    _updateFps();
-
-    if (_frameCounter % _processEveryNFrames != 0) return;
-    if (_isProcessing || _faceDetectorIsolate == null) return;
-
-    _isProcessing = true;
-    try {
-      final startTime = DateTime.now();
-      final bool segmentationEnabled =
-          (_showSegmentation || _showVirtualBackground) &&
-              _faceDetectorIsolate!.isSegmentationReady;
-
-      List<Face> faces;
-      SegmentationMask? segMask;
-      int processingTimeMs;
-
-      if (segmentationEnabled) {
-        final result = await _faceDetectorIsolate!.detectFacesWithSegmentation(
-          bytes,
-          mode: _detectionMode,
-        );
-        faces = result.faces;
-        segMask = result.segmentationMask;
-        processingTimeMs = result.totalTimeMs;
-      } else {
-        faces = await _faceDetectorIsolate!.detectFaces(
-          bytes,
-          mode: _detectionMode,
-        );
-        segMask = null;
-        processingTimeMs = DateTime.now().difference(startTime).inMilliseconds;
-      }
-
-      final Size imageSize = faces.isNotEmpty
-          ? faces.first.originalSize
-          : await _decodeImageSize(bytes);
-
-      if (mounted) {
-        setState(() {
-          _faces = faces;
-          _imageSize = imageSize;
-          _detectionTimeMs = processingTimeMs;
-          _segmentationMask = segMask;
-        });
-      }
-
-      _retuneWindowsDetectionLoop(
-        segmentationEnabled: segmentationEnabled,
-        processingTimeMs: processingTimeMs,
-      );
-    } catch (_) {
-      // Ignore frame-level processing errors.
-    } finally {
-      _isProcessing = false;
-    }
-  }
-
-  Future<Size> _decodeImageSize(Uint8List bytes) async {
-    final codec = await ui.instantiateImageCodec(bytes);
-    final frame = await codec.getNextFrame();
-    final size =
-        Size(frame.image.width.toDouble(), frame.image.height.toDouble());
-    frame.image.dispose();
-    return size;
   }
 
   DeviceOrientation _effectiveDeviceOrientation(BuildContext context) {
@@ -1854,12 +1714,30 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       final startTime = DateTime.now();
 
       // Convert CameraImage to cv.Mat for OpenCV-accelerated processing
-      final mat = await _convertCameraImageToMat(image);
+      cv.Mat? mat = await _convertCameraImageToMat(image);
 
       if (mat == null || _faceDetectorIsolate == null) {
         _isProcessing = false;
         return;
       }
+
+      // Downscale for performance — the detection model internally resizes
+      // to 128–256px, so full-res frames just waste IPC bandwidth.
+      const int maxDim = 640;
+      if (mat.cols > maxDim || mat.rows > maxDim) {
+        final double scale =
+            maxDim / (mat.cols > mat.rows ? mat.cols : mat.rows);
+        final cv.Mat resized = cv.resize(
+          mat,
+          ((mat.cols * scale).toInt(), (mat.rows * scale).toInt()),
+          interpolation: cv.INTER_LINEAR,
+        );
+        mat.dispose();
+        mat = resized;
+      }
+
+      // Track detection image size for overlay coordinate mapping.
+      final Size detectionSize = Size(mat.cols.toDouble(), mat.rows.toDouble());
 
       final result = await _detectFromMat(mat);
       mat.dispose();
@@ -1870,20 +1748,9 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       final detectionTime = endTime.difference(startTime).inMilliseconds;
 
       if (mounted) {
-        // Image size is the size after rotation (if any)
-        final rotationFlag = _rotationFlagForFrame(
-          width: image.width,
-          height: image.height,
-        );
-        final bool isRotated = rotationFlag != null;
-        // When rotated 90°, width and height swap
-        final Size processedSize = isRotated
-            ? Size(image.height.toDouble(), image.width.toDouble())
-            : Size(image.width.toDouble(), image.height.toDouble());
-
         setState(() {
           _faces = faces;
-          _imageSize = processedSize;
+          _imageSize = detectionSize;
           _detectionTimeMs = detectionTime;
           _segmentationMask = segMask;
         });
@@ -1895,13 +1762,52 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     }
   }
 
-  /// Converts CameraImage (YUV420) to cv.Mat (BGR) for OpenCV processing.
+  /// Converts CameraImage to cv.Mat (BGR) for OpenCV processing.
   ///
-  /// This avoids the JPEG encode/decode overhead by creating cv.Mat directly.
+  /// Handles multiple pixel formats:
+  /// - iOS NV12 (2 planes): YUV420 with interleaved UV
+  /// - Android I420 (3 planes): YUV420 with separate U/V planes
+  /// - Desktop BGRA/RGBA (1 plane): camera_desktop provides packed 4-channel
+  ///   (macOS = BGRA byte order, Linux = RGBA byte order)
   Future<cv.Mat?> _convertCameraImageToMat(CameraImage image) async {
     try {
       final int width = image.width;
       final int height = image.height;
+
+      // Desktop: camera_desktop provides single-plane 4-channel packed format
+      if (image.planes.length == 1 &&
+          (image.planes[0].bytesPerPixel ?? 1) >= 4) {
+        final bytes = image.planes[0].bytes;
+        final stride = image.planes[0].bytesPerRow;
+
+        // Create a 4-channel Mat directly from camera bytes (handles stride)
+        final matCols = stride ~/ 4;
+        final bgraOrRgba =
+            cv.Mat.fromList(height, matCols, cv.MatType.CV_8UC4, bytes);
+        // Crop out stride padding if present
+        final cropped = matCols != width
+            ? bgraOrRgba.region(cv.Rect(0, 0, width, height))
+            : bgraOrRgba;
+
+        // Native SIMD-accelerated color conversion
+        final colorCode =
+            Platform.isMacOS ? cv.COLOR_BGRA2BGR : cv.COLOR_RGBA2BGR;
+        cv.Mat mat = cv.cvtColor(cropped, colorCode);
+
+        if (!identical(cropped, bgraOrRgba)) cropped.dispose();
+        bgraOrRgba.dispose();
+
+        final rotationFlag =
+            _rotationFlagForFrame(width: width, height: height);
+        if (rotationFlag != null) {
+          final rotated = cv.rotate(mat, rotationFlag);
+          mat.dispose();
+          return rotated;
+        }
+        return mat;
+      }
+
+      // Mobile: YUV420 format
       final int yRowStride = image.planes[0].bytesPerRow;
       final int yPixelStride = image.planes[0].bytesPerPixel ?? 1;
 
@@ -1973,64 +1879,18 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     }
   }
 
-  /// Converts macOS CameraImageData (ARGB) to cv.Mat (BGR) for OpenCV processing.
-  cv.Mat? _convertMacImageToMat(CameraImageData image) {
-    try {
-      final bytes = image.bytes;
-      final stride = image.bytesPerRow;
-      final width = image.width;
-      final height = image.height;
-
-      // Allocate BGR buffer for OpenCV (3 bytes per pixel)
-      final bgrBytes = Uint8List(width * height * 3);
-
-      for (int y = 0; y < height; y++) {
-        final rowStart = y * stride;
-        for (int x = 0; x < width; x++) {
-          final pixelStart = rowStart + x * 4;
-          if (pixelStart + 3 >= bytes.length) break;
-
-          // macOS uses ARGB format
-          final r = bytes[pixelStart + 1];
-          final g = bytes[pixelStart + 2];
-          final b = bytes[pixelStart + 3];
-
-          // Write BGR (OpenCV format)
-          final int bgrIdx = (y * width + x) * 3;
-          bgrBytes[bgrIdx] = b;
-          bgrBytes[bgrIdx + 1] = g;
-          bgrBytes[bgrIdx + 2] = r;
-        }
-      }
-
-      return cv.Mat.fromList(height, width, cv.MatType.CV_8UC3, bgrBytes);
-    } catch (_) {
-      return null;
-    }
-  }
-
   @override
   void dispose() {
-    _windowsFrameTimer?.cancel();
-    if (_isMacOS) {
-      _macCameraController?.stopImageStream();
-      _macCameraController?.destroy();
-    } else {
-      if (_isImageStreamStarted) {
-        _cameraController?.stopImageStream();
-      }
-      _cameraController?.dispose();
+    if (_isImageStreamStarted) {
+      _cameraController?.stopImageStream();
     }
+    _cameraController?.dispose();
     _faceDetectorIsolate?.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isMacOS) {
-      return _buildMacOSCamera(context);
-    }
-
     if (!_isInitialized || _cameraController == null) {
       return Scaffold(
         appBar: AppBar(
@@ -2063,7 +1923,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
             cameraWidget: CameraPreview(_cameraController!),
             cameraAspectRatio: cameraAspectRatio,
             displayAspectRatio: displayAspectRatio,
-            mirrorHorizontally: _isWindows && _isFrontCamera,
+            mirrorHorizontally: false,
             sensorOrientation: _sensorOrientation ?? 0,
             deviceOrientation: deviceOrientation,
             isFrontCamera: _isFrontCamera,
@@ -2072,107 +1932,6 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         ],
       ),
     );
-  }
-
-  Widget _buildMacOSCamera(BuildContext context) {
-    if (!_isInitialized) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('Live Camera Detection'),
-          backgroundColor: Colors.green,
-          foregroundColor: Colors.white,
-        ),
-        body: const Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    final size = MediaQuery.of(context).size;
-    final double cameraAspectRatio = _macPreviewSize != null
-        ? _macPreviewSize!.width / _macPreviewSize!.height
-        : size.width / size.height;
-
-    return Scaffold(
-      appBar: _buildCameraAppBar(),
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          _buildCameraOverlays(
-            cameraWidget: CameraMacOSView(
-              cameraMode: CameraMacOSMode.photo,
-              fit: BoxFit.contain,
-              onCameraInizialized: _onMacCameraInitialized,
-              onCameraLoading: (_) =>
-                  const Center(child: CircularProgressIndicator()),
-            ),
-            cameraAspectRatio: cameraAspectRatio,
-            displayAspectRatio: cameraAspectRatio,
-            mirrorHorizontally: false,
-            sensorOrientation: 0,
-            deviceOrientation: Orientation.landscape,
-            isFrontCamera: true,
-          ),
-          _buildInfoPanel(),
-        ],
-      ),
-    );
-  }
-
-  void _onMacCameraInitialized(CameraMacOSController controller) {
-    _macCameraController = controller;
-    _macPreviewSize = controller.args.size;
-    setState(() {
-      _isInitialized = true;
-    });
-    _startMacImageStream();
-  }
-
-  void _startMacImageStream() {
-    if (_macCameraController == null) return;
-
-    _macCameraController!.startImageStream((image) async {
-      if (image == null) return;
-
-      _frameCounter++;
-      _updateFps();
-
-      if (_frameCounter % _processEveryNFrames != 0) return;
-      if (_isProcessing) return;
-
-      _isProcessing = true;
-
-      try {
-        final startTime = DateTime.now();
-        // Use OpenCV-based processing for better performance
-        final mat = _convertMacImageToMat(image);
-        if (mat == null || _faceDetectorIsolate == null) {
-          _isProcessing = false;
-          return;
-        }
-
-        final result = await _detectFromMat(mat);
-        mat.dispose();
-        final faces = result.faces;
-        final segMask = result.segMask;
-
-        final detectionTime =
-            DateTime.now().difference(startTime).inMilliseconds;
-
-        if (mounted) {
-          setState(() {
-            _faces = faces;
-            _imageSize = Size(image.width.toDouble(), image.height.toDouble());
-            _macPreviewSize ??=
-                Size(image.width.toDouble(), image.height.toDouble());
-            _detectionTimeMs = detectionTime;
-            _segmentationMask = segMask;
-          });
-        }
-      } catch (_) {
-        // Ignore frame errors to keep streaming
-      } finally {
-        _isProcessing = false;
-      }
-    });
   }
 }
 
