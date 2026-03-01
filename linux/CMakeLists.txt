@@ -54,8 +54,8 @@ set(face_detection_tflite_bundled_libraries
 # Only enable test builds when building the example (which sets this variable)
 # so that plugin clients aren't building the tests.
 if (${include_${PROJECT_NAME}_tests})
-if(${CMAKE_VERSION} VERSION_LESS "3.11.0")
-message("Unit tests require CMake 3.11.0 or later")
+if(${CMAKE_VERSION} VERSION_LESS "3.13.0")
+message("Unit tests require CMake 3.13.0 or later")
 else()
 set(TEST_RUNNER "${PROJECT_NAME}_test")
 enable_testing()
@@ -64,7 +64,8 @@ enable_testing()
 include(FetchContent)
 FetchContent_Declare(
   googletest
-  URL https://github.com/google/googletest/archive/release-1.11.0.zip
+  URL https://github.com/google/googletest/archive/v1.14.0.zip
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 # Prevent overriding the parent project's compiler/linker settings
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
