@@ -1833,7 +1833,8 @@ void main() {
       print('Test passed');
     });
 
-    test('stress switch binary <-> multiclass with inference (30x)', () async {
+    test('stress switch binary <-> multiclass with inference (30x)',
+        timeout: const Timeout(Duration(minutes: 2)), () async {
       final multiclassAvailable = await _isMulticlassModelAvailable();
       if (!modelsAvailable || !multiclassAvailable) {
         print('Skipping: required models not available');

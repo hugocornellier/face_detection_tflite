@@ -1,0 +1,390 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    name: Unit Tests (${{ matrix.flutter-channel }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        flutter-channel: [stable, beta]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ matrix.flutter-channel }}
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run unit tests with coverage
+        run: flutter test --coverage
+
+      - name: Upload coverage to Codecov
+        if: matrix.flutter-channel == 'stable'
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage/lcov.info
+          flags: unit-tests
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  integration-macos:
+    name: Integration macOS (${{ matrix.flutter-channel }})
+    runs-on: macos-14
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        flutter-channel: [stable, beta]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ matrix.flutter-channel }}
+          cache: true
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: example/macos/Pods
+          key: pods-macos-${{ hashFiles('example/macos/Podfile.lock') }}
+          restore-keys: pods-macos-
+
+      - name: Install example dependencies
+        run: flutter pub get
+        working-directory: example
+
+      # Due to a Flutter macOS test runner bug, tests must be run one file
+      # at a time with a process kill between runs. Running them together
+      # causes "Failed to foreground app" / "Error waiting for a debug
+      # connection" errors.
+      - name: Run integration tests (sequential, one file at a time)
+        working-directory: example
+        run: |
+          set -e
+          TEST_FILES=(
+            opencv_helpers_test.dart
+            performance_config_test.dart
+            face_detection_integration_test.dart
+            embedding_match_test.dart
+            gpu_delegate_test.dart
+            benchmark_test.dart
+            error_recovery_test.dart
+            edge_cases_test.dart
+            all_model_variants_test.dart
+            image_utils_test.dart
+            concurrency_stress_test.dart
+            combined_segmentation_test.dart
+            helpers_unit_test.dart
+            assertion_gaps_test.dart
+            selfie_segmentation_test.dart
+            isolate_mat_debug_test.dart
+            coverage_gaps_test.dart
+          )
+          FAILED=()
+          for f in "${TEST_FILES[@]}"; do
+            echo "========================================="
+            echo "Running: $f"
+            echo "========================================="
+            pkill -9 -f "face_detection_tflite_example" 2>/dev/null || true
+            sleep 2
+            if ! flutter test "integration_test/$f" -d macos; then
+              FAILED+=("$f")
+              echo "::error::FAILED: $f"
+            fi
+          done
+          if [ ${#FAILED[@]} -gt 0 ]; then
+            echo ""
+            echo "========================================="
+            echo "FAILED TESTS:"
+            printf '  - %s\n' "${FAILED[@]}"
+            echo "========================================="
+            exit 1
+          fi
+          echo "All ${#TEST_FILES[@]} test files passed."
+
+  integration-ios:
+    name: Integration iOS (${{ matrix.flutter-channel }})
+    runs-on: macos-14
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        flutter-channel: [stable, beta]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ matrix.flutter-channel }}
+          cache: true
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: example/ios/Pods
+          key: pods-ios-${{ hashFiles('example/ios/Podfile.lock') }}
+          restore-keys: pods-ios-
+
+      - name: Install example dependencies
+        run: flutter pub get
+        working-directory: example
+
+      - name: Precache iOS artifacts
+        run: flutter precache --ios
+
+      - name: Boot iOS simulator
+        run: |
+          RUNTIME=$(xcrun simctl list runtimes | grep -oE 'com.apple.CoreSimulator.SimRuntime.iOS-[0-9-]+' | tail -1)
+          echo "Using runtime: $RUNTIME"
+          UDID=$(xcrun simctl create "CI-iPhone" "iPhone 15" "$RUNTIME")
+          echo "Created simulator: $UDID"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          echo "SIMULATOR_UDID=$UDID" >> "$GITHUB_ENV"
+
+      # Pre-warm the Xcode build outside of any test timeout window.
+      # On Flutter beta the initial build can take 12-13 minutes, which
+      # exceeds the test framework's default 12-minute loading timeout.
+      # Building here first means the test run starts with a warm cache.
+      - name: Prewarm Xcode build
+        working-directory: example
+        run: flutter build ios --simulator --debug --no-codesign
+
+      - name: Run integration tests
+        working-directory: example
+        run: |
+          set -o pipefail
+          mkdir -p test-results
+          flutter test integration_test/ -d "$SIMULATOR_UDID" --reporter expanded --timeout 20m 2>&1 | tee test-results/all.log
+
+      - name: Upload test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-ios-${{ matrix.flutter-channel }}
+          path: example/test-results/
+
+      - name: Shutdown simulator
+        if: always()
+        run: xcrun simctl shutdown "$SIMULATOR_UDID" 2>/dev/null || true
+
+  integration-android:
+    name: Integration Android (${{ matrix.flutter-channel }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        flutter-channel: [stable, beta]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ matrix.flutter-channel }}
+          cache: true
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('example/android/**/*.gradle*', 'android/**/*.gradle*') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Install example dependencies
+        run: flutter pub get
+        working-directory: example
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run integration tests on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          disable-animations: true
+          working-directory: example
+          script: flutter test integration_test/ -d emulator-5554
+
+  integration-linux:
+    name: Integration Linux (${{ matrix.flutter-channel }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        flutter-channel: [stable, beta]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y ninja-build libgtk-3-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev xvfb
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ matrix.flutter-channel }}
+          cache: true
+
+      - name: Cache opencv_dart native build
+        uses: actions/cache@v4
+        with:
+          path: example/.dart_tool/hooks_runner/shared
+          key: opencv-native-linux-${{ hashFiles('pubspec.lock', 'example/pubspec.lock') }}
+          restore-keys: opencv-native-linux-
+
+      - name: Install example dependencies
+        run: flutter pub get
+        working-directory: example
+
+      # Linux has the same "Error waiting for a debug connection" bug as
+      # macOS/Windows when running multiple test files together. Run sequentially.
+      - name: Run integration tests (sequential, one file at a time)
+        working-directory: example
+        run: |
+          set -e
+          TEST_FILES=(
+            opencv_helpers_test.dart
+            performance_config_test.dart
+            face_detection_integration_test.dart
+            embedding_match_test.dart
+            gpu_delegate_test.dart
+            benchmark_test.dart
+            error_recovery_test.dart
+            edge_cases_test.dart
+            all_model_variants_test.dart
+            image_utils_test.dart
+            concurrency_stress_test.dart
+            combined_segmentation_test.dart
+            helpers_unit_test.dart
+            assertion_gaps_test.dart
+            selfie_segmentation_test.dart
+            isolate_mat_debug_test.dart
+            coverage_gaps_test.dart
+          )
+          FAILED=()
+          for f in "${TEST_FILES[@]}"; do
+            echo "========================================="
+            echo "Running: $f"
+            echo "========================================="
+            pkill -9 -f "face_detection_tflite_example" 2>/dev/null || true
+            sleep 2
+            if ! xvfb-run flutter test "integration_test/$f" -d linux; then
+              FAILED+=("$f")
+              echo "::error::FAILED: $f"
+            fi
+          done
+          if [ ${#FAILED[@]} -gt 0 ]; then
+            echo ""
+            echo "========================================="
+            echo "FAILED TESTS:"
+            printf '  - %s\n' "${FAILED[@]}"
+            echo "========================================="
+            exit 1
+          fi
+          echo "All ${#TEST_FILES[@]} test files passed."
+
+  integration-windows:
+    name: Integration Windows (${{ matrix.flutter-channel }})
+    runs-on: windows-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        flutter-channel: [stable, beta]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ matrix.flutter-channel }}
+          cache: true
+
+      - name: Cache opencv_dart native build
+        uses: actions/cache@v4
+        with:
+          path: example/.dart_tool/hooks_runner/shared
+          key: opencv-native-windows-${{ hashFiles('pubspec.lock', 'example/pubspec.lock') }}
+          restore-keys: opencv-native-windows-
+
+      - name: Install example dependencies
+        run: flutter pub get
+        working-directory: example
+
+      # Windows has the same "Error waiting for a debug connection" bug as
+      # macOS when running multiple test files together. Run sequentially.
+      - name: Run integration tests (sequential, one file at a time)
+        working-directory: example
+        shell: bash
+        run: |
+          set -e
+          TEST_FILES=(
+            opencv_helpers_test.dart
+            performance_config_test.dart
+            face_detection_integration_test.dart
+            embedding_match_test.dart
+            gpu_delegate_test.dart
+            benchmark_test.dart
+            error_recovery_test.dart
+            edge_cases_test.dart
+            all_model_variants_test.dart
+            image_utils_test.dart
+            concurrency_stress_test.dart
+            combined_segmentation_test.dart
+            helpers_unit_test.dart
+            assertion_gaps_test.dart
+            selfie_segmentation_test.dart
+            isolate_mat_debug_test.dart
+            coverage_gaps_test.dart
+          )
+          FAILED=()
+          for f in "${TEST_FILES[@]}"; do
+            echo "========================================="
+            echo "Running: $f"
+            echo "========================================="
+            taskkill //F //IM "face_detection_tflite_example.exe" 2>/dev/null || true
+            sleep 2
+            if ! flutter test "integration_test/$f" -d windows; then
+              FAILED+=("$f")
+              echo "::error::FAILED: $f"
+            fi
+          done
+          if [ ${#FAILED[@]} -gt 0 ]; then
+            echo ""
+            echo "========================================="
+            echo "FAILED TESTS:"
+            printf '  - %s\n' "${FAILED[@]}"
+            echo "========================================="
+            exit 1
+          fi
+          echo "All ${#TEST_FILES[@]} test files passed."

@@ -13,6 +13,8 @@ Pod::Spec.new do |s|
 
   s.source_files          = 'face_detection_tflite/Sources/face_detection_tflite/**/*'
 
+  s.resource_bundles      = { 'face_detection_tflite_privacy' => ['face_detection_tflite/Sources/face_detection_tflite/PrivacyInfo.xcprivacy'] }
+
   s.dependency            'FlutterMacOS'
   s.static_framework      = true
 

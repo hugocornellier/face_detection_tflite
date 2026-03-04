@@ -1,20 +1,38 @@
 PODS:
   - camera_desktop (0.1.0):
     - FlutterMacOS
+  - face_detection_tflite (0.0.1):
+    - FlutterMacOS
+  - file_selector_macos (0.0.1):
+    - FlutterMacOS
+  - flutter_litert (0.0.1):
+    - FlutterMacOS
   - FlutterMacOS (1.0.0)
 
 DEPENDENCIES:
   - camera_desktop (from `Flutter/ephemeral/.symlinks/plugins/camera_desktop/macos`)
+  - face_detection_tflite (from `Flutter/ephemeral/.symlinks/plugins/face_detection_tflite/macos`)
+  - file_selector_macos (from `Flutter/ephemeral/.symlinks/plugins/file_selector_macos/macos`)
+  - flutter_litert (from `Flutter/ephemeral/.symlinks/plugins/flutter_litert/macos`)
   - FlutterMacOS (from `Flutter/ephemeral`)
 
 EXTERNAL SOURCES:
   camera_desktop:
     :path: Flutter/ephemeral/.symlinks/plugins/camera_desktop/macos
+  face_detection_tflite:
+    :path: Flutter/ephemeral/.symlinks/plugins/face_detection_tflite/macos
+  file_selector_macos:
+    :path: Flutter/ephemeral/.symlinks/plugins/file_selector_macos/macos
+  flutter_litert:
+    :path: Flutter/ephemeral/.symlinks/plugins/flutter_litert/macos
   FlutterMacOS:
     :path: Flutter/ephemeral
 
 SPEC CHECKSUMS:
-  camera_desktop: 7c1a15c13c4ce804505260ea5efabdce58a1951e
+  camera_desktop: 700adae0c4ea11846138b7509099ee93800ee473
+  face_detection_tflite: 995c69e9ce0cd89788737548ec13bdd89a7929b7
+  file_selector_macos: 9e9e068e90ebee155097d00e89ae91edb2374db7
+  flutter_litert: 1bbe6e8757c574ab66044233b98353f34eaa7e29
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
 
 PODFILE CHECKSUM: 346bfb2deb41d4a6ebd6f6799f92188bde2d246f

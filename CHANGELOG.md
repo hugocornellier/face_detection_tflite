@@ -1,3 +1,8 @@
+## 5.0.5
+
+- Update `opencv_dart` 2.1.0 -> 2.2.1
+- Update `flutter_litert` 1.0.2 -> 1.0.3
+
 ## 5.0.4
 
 - Update `flutter_litert` 1.0.1 -> 1.0.2

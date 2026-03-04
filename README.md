@@ -6,7 +6,8 @@
 <br>
 <a href="https://pub.dev/packages/face_detection_tflite"><img src="https://img.shields.io/pub/v/face_detection_tflite?label=pub.dev&labelColor=333940&logo=dart" alt="Pub Version"></a>
 <a href="https://pub.dev/packages/face_detection_tflite/score"><img src="https://img.shields.io/pub/points/face_detection_tflite?color=2E8B57&label=pub%20points" alt="pub points"></a>
-<a href="https://github.com/hugocornellier/face_detection_tflite/actions/workflows/flutter-ci.yml"><img src="https://github.com/hugocornellier/face_detection_tflite/actions/workflows/flutter-ci.yml/badge.svg" alt="Flutter CI"></a>
+<a href="https://github.com/hugocornellier/face_detection_tflite/actions/workflows/build.yml"><img src="https://github.com/hugocornellier/face_detection_tflite/actions/workflows/build.yml/badge.svg" alt="CI"></a>
+<a href="https://github.com/hugocornellier/face_detection_tflite/actions/workflows/integration.yml"><img src="https://github.com/hugocornellier/face_detection_tflite/actions/workflows/integration.yml/badge.svg" alt="Tests"></a>
 <a href="https://github.com/hugocornellier/face_detection_tflite/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-007A88.svg?logo=apache" alt="License"></a>
 </p>
 

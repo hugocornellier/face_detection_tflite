@@ -10,7 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
-  opencv_dart: 2.1.0
+  opencv_dart: 2.2.1+4
   image_picker: ^1.2.1
   file_selector: ^1.1.0
   file_selector_macos: ^0.9.5
@@ -18,7 +18,7 @@ dependencies:
     path: ../
   flutter_colorpicker: ^1.1.0
   camera: ^0.12.0
-  camera_desktop: ^1.0.0
+  camera_desktop: ^1.0.1
 
 dev_dependencies:
   flutter_test:
@@ -26,7 +26,7 @@ dev_dependencies:
   integration_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  flutter_litert: ^1.0.2
+  flutter_litert: ^1.0.3
 
 flutter:
   uses-material-design: true

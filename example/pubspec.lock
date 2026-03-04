@@ -45,10 +45,10 @@ packages:
     dependency: "direct main"
     description:
       name: camera_desktop
-      sha256: aa5a8ee6a4c8d0a72cb8a3f64fd17089752661d4996beba8e0952765e990ced9
+      sha256: "7abe14963eaf96ae0e448de667a132380451b3cc598ee24524725f97e4bdc126"
       url: "https://pub.dev"
     source: hosted
-    version: "1.0.0"
+    version: "1.0.1"
   camera_platform_interface:
     dependency: transitive
     description:
@@ -133,25 +133,17 @@ packages:
     dependency: transitive
     description:
       name: dartcv4
-      sha256: "2481c3a0b542c39c421512499be17314b7fcd6e6da43b2a1dde19a04c4eaa01f"
+      sha256: "5764d13550055da3bb35ca28e6866b837579dfb4b594582b7a7753785ca5dfef"
       url: "https://pub.dev"
     source: hosted
-    version: "2.1.0+1"
-  data_assets:
-    dependency: transitive
-    description:
-      name: data_assets
-      sha256: d8b93648a338f471e576e0ba05f6b5d63a4e0fa447ca839a500267421d9245ba
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.19.6"
+    version: "2.2.1+4"
   face_detection_tflite:
     dependency: "direct main"
     description:
       path: ".."
       relative: true
     source: path
-    version: "5.0.4"
+    version: "5.0.5"
   fake_async:
     dependency: transitive
     description:
@@ -270,10 +262,10 @@ packages:
     dependency: "direct dev"
     description:
       name: flutter_litert
-      sha256: d0cea53cfe6539119c886950e8b477e6e8689f50477c43977a13c9b1a1d0c703
+      sha256: fccce4de29a6968e0186d8021a64607b55b5674d26788733b921de34e021fbbb
       url: "https://pub.dev"
     source: hosted
-    version: "1.0.2"
+    version: "1.0.3"
   flutter_plugin_android_lifecycle:
     dependency: transitive
     description:
@@ -482,10 +474,10 @@ packages:
     dependency: "direct main"
     description:
       name: opencv_dart
-      sha256: "744899196c6275996c031b96d1ca176f7480c57d373b97dd2cf72b818ea28cda"
+      sha256: b50ea4788e6d61df6369874e0244445d98ef9210dbb90b8d3c1df198b4ee2333
       url: "https://pub.dev"
     source: hosted
-    version: "2.1.0"
+    version: "2.2.1+4"
   path:
     dependency: transitive
     description:

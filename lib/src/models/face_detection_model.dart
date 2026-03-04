@@ -466,6 +466,10 @@ class FaceDetection {
       return _createGpuOptions(options, threadCount);
     }
 
+    if (effectiveConfig.mode == PerformanceMode.coreml) {
+      return _createCoremlOptions(options, threadCount);
+    }
+
     options.threads = threadCount;
     return (options, null);
   }
@@ -509,6 +513,29 @@ class FaceDetection {
     }
   }
 
+  /// Creates options with CoreML delegate (iOS/macOS).
+  static (InterpreterOptions, Delegate?) _createCoremlOptions(
+    InterpreterOptions options,
+    int threadCount,
+  ) {
+    options.threads = threadCount;
+
+    if (!Platform.isIOS && !Platform.isMacOS) {
+      return (options, null);
+    }
+
+    try {
+      // enabledDevices: 1 = AllDevices (Neural Engine + GPU + CPU fallback)
+      final coremlDelegate = CoreMlDelegate(
+        options: CoreMlDelegateOptions(enabledDevices: 1),
+      );
+      options.addDelegate(coremlDelegate);
+      return (options, coremlDelegate);
+    } catch (e) {
+      return (options, null);
+    }
+  }
+
   /// Creates options with GPU delegate.
   static (InterpreterOptions, Delegate?) _createGpuOptions(
     InterpreterOptions options,
@@ -516,13 +543,14 @@ class FaceDetection {
   ) {
     options.threads = threadCount;
 
-    if (!Platform.isIOS && !Platform.isAndroid) {
+    if (!Platform.isIOS && !Platform.isAndroid && !Platform.isMacOS) {
       return (options, null);
     }
 
     try {
-      final gpuDelegate =
-          Platform.isIOS ? GpuDelegate() : GpuDelegateV2() as Delegate;
+      final gpuDelegate = (Platform.isIOS || Platform.isMacOS)
+          ? GpuDelegate()
+          : GpuDelegateV2() as Delegate;
       options.addDelegate(gpuDelegate);
       return (options, gpuDelegate);
     } catch (e) {

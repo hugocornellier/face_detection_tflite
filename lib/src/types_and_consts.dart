@@ -84,6 +84,13 @@ enum PerformanceMode {
   /// Only use on Android if you've tested on your target devices.
   gpu,
 
+  /// CoreML delegate for Apple Neural Engine / GPU / CPU.
+  ///
+  /// - **macOS**: Uses CoreML (Apple Silicon Neural Engine)
+  /// - **iOS**: Uses CoreML (Neural Engine on A12+)
+  /// - **Other platforms**: Falls back to CPU-only
+  coreml,
+
   /// Automatically choose best delegate for current platform.
   ///
   /// Current behavior:
