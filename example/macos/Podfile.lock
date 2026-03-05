@@ -29,8 +29,8 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral
 
 SPEC CHECKSUMS:
-  camera_desktop: 700adae0c4ea11846138b7509099ee93800ee473
-  face_detection_tflite: 995c69e9ce0cd89788737548ec13bdd89a7929b7
+  camera_desktop: 8b0acf3142f8bdcfddd923edcb0d9e20f318f385
+  face_detection_tflite: 0f545c69bbd303664ce657a522b62dea11d3ce10
   file_selector_macos: 9e9e068e90ebee155097d00e89ae91edb2374db7
   flutter_litert: 1bbe6e8757c574ab66044233b98353f34eaa7e29
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1

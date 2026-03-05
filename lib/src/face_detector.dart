@@ -397,7 +397,7 @@ class FaceDetector {
   /// The [meshAbs] parameter is a list of 468 face mesh points in absolute
   /// pixel coordinates, typically from [detectFaces].
   ///
-  /// Returns a list of two [AlignedRoi] objects: [left eye, right eye].
+  /// Returns a list of two [AlignedRoi] objects: `[left eye, right eye]`.
   /// Each ROI contains center coordinates, size, and rotation angle suitable
   /// for extracting aligned eye crops for iris landmark detection.
   List<AlignedRoi> eyeRoisFromMesh(List<Point> meshAbs) {

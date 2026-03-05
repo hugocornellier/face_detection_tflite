@@ -8,7 +8,7 @@ class OutputTensorInfo {
   /// direct access to the tensor's underlying Float32 data.
   OutputTensorInfo(this.shape, this.buffer);
 
-  /// The dimensions of the tensor (e.g., [1, 896, 1] for a 1D output with 896 elements).
+  /// The dimensions of the tensor (e.g., `[1, 896, 1]` for a 1D output with 896 elements).
   final List<int> shape;
 
   /// The underlying Float32 buffer containing the tensor's raw data.
@@ -24,7 +24,7 @@ class OutputTensorInfo {
 ///
 /// - [height]: Tensor height dimension (H)
 /// - [width]: Tensor width dimension (W)
-/// - Returns: [1][height][width][3] nested list structure with double values
+/// - Returns: `[1][height][width][3]` nested list structure with double values
 List<List<List<List<double>>>> createNHWCTensor4D(int height, int width) {
   return List<List<List<List<double>>>>.generate(
     1,
@@ -51,7 +51,7 @@ List<List<List<List<double>>>> createNHWCTensor4D(int height, int width) {
 /// - C: Channel dimension (3 for RGB)
 ///
 /// [flat] - Flattened pixel data (length must be inH * inW * 3)
-/// [input4dCache] - Pre-allocated 4D structure [1][H][W][3]
+/// [input4dCache] - Pre-allocated 4D structure `[1][H][W][3]`
 /// [inH] - Input tensor height
 /// [inW] - Input tensor width
 @pragma('vm:prefer-inline')
@@ -570,7 +570,7 @@ String testNameFor(FaceDetectionModel m) => _nameFor(m);
 /// Converts a cv.Mat image to a normalized tensor with letterboxing.
 ///
 /// This function performs aspect-preserving resize with black padding
-/// and normalizes pixel values to the [-1.0, 1.0] range expected by
+/// and normalizes pixel values to the `[-1.0, 1.0]` range expected by
 /// MediaPipe TensorFlow Lite models.
 ///
 /// The [src] cv.Mat will be resized to fit within [outW]×[outH] dimensions

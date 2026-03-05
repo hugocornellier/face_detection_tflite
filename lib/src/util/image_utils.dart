@@ -162,7 +162,7 @@ class ImageUtils {
 
   /// Converts a cv.Mat to a flat Float32List tensor for MediaPipe TFLite models.
   ///
-  /// Converts pixel values from 0-255 range to normalized [-1.0, 1.0] range
+  /// Converts pixel values from 0-255 range to normalized `[-1.0, 1.0]` range
   /// as required by MediaPipe models.
   /// Also converts from BGR (OpenCV format) to RGB (TFLite expected format).
   ///
@@ -170,7 +170,7 @@ class ImageUtils {
   /// - [mat]: Source image in BGR format
   /// - [buffer]: Optional pre-allocated buffer to reuse
   ///
-  /// Returns a flat Float32List with normalized RGB pixel values in [-1, 1].
+  /// Returns a flat Float32List with normalized RGB pixel values in `[-1, 1]`.
   static Float32List matToFloat32TensorMediaPipe(
     cv.Mat mat, {
     Float32List? buffer,
@@ -188,7 +188,7 @@ class ImageUtils {
     return tensor;
   }
 
-  /// Converts a cv.Mat to a flat Float32List tensor with [0, 1] normalization.
+  /// Converts a cv.Mat to a flat Float32List tensor with `[0, 1]` normalization.
   ///
   /// Converts pixel values from 0-255 range to normalized 0.0-1.0 range.
   /// Also converts from BGR (OpenCV format) to RGB (TFLite expected format).
@@ -197,7 +197,7 @@ class ImageUtils {
   /// - [mat]: Source image in BGR format
   /// - [buffer]: Optional pre-allocated buffer to reuse
   ///
-  /// Returns a flat Float32List with normalized RGB pixel values in [0, 1].
+  /// Returns a flat Float32List with normalized RGB pixel values in `[0, 1]`.
   static Float32List matToFloat32Tensor(cv.Mat mat, {Float32List? buffer}) {
     final data = mat.data;
     final totalPixels = mat.rows * mat.cols;
@@ -262,9 +262,9 @@ class ImageUtils {
 
   /// Converts a cv.Mat to 4D tensor in NHWC format for TensorFlow Lite.
   ///
-  /// Converts pixel values from 0-255 range to normalized [-1.0, 1.0] range
+  /// Converts pixel values from 0-255 range to normalized `[-1.0, 1.0]` range
   /// as required by MediaPipe models.
-  /// The output format is [batch, height, width, channels] where batch=1 and channels=3.
+  /// The output format is `[batch, height, width, channels]` where batch=1 and channels=3.
   ///
   /// Parameters:
   /// - [mat]: Source image in BGR format
@@ -272,7 +272,7 @@ class ImageUtils {
   /// - [height]: Target height (must match mat.rows)
   /// - [reuse]: Optional tensor buffer to reuse (must match dimensions)
   ///
-  /// Returns a 4D tensor [1, height, width, 3] with normalized pixel values.
+  /// Returns a 4D tensor `[1, height, width, 3]` with normalized pixel values.
   static List<List<List<List<double>>>> matToNHWC4DMediaPipe(
     cv.Mat mat,
     int width,

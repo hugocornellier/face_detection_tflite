@@ -480,7 +480,7 @@ class SegmentationMask {
   /// Original source image height.
   final int originalHeight;
 
-  /// Padding applied during letterboxing [top, bottom, left, right].
+  /// Padding applied during letterboxing `[top, bottom, left, right]`.
   /// All zeros if no letterboxing was used.
   final List<double> padding;
 
@@ -521,7 +521,7 @@ class SegmentationMask {
 
   /// Returns a copy of the raw probability data (row-major order).
   ///
-  /// Values are in the range [0.0, 1.0] where higher values indicate
+  /// Values are in the range `[0.0, 1.0]` where higher values indicate
   /// greater foreground probability.
   ///
   /// Note: This returns a defensive copy to maintain immutability.
@@ -866,7 +866,7 @@ class MulticlassSegmentationMask extends SegmentationMask {
 
   /// Returns a single-channel probability mask for the given [SegmentationClass] index.
   ///
-  /// Values are in [0.0, 1.0] representing per-pixel probability for that class.
+  /// Values are in `[0.0, 1.0]` representing per-pixel probability for that class.
   /// Returns a new [Float32List] each call (defensive copy).
   Float32List classMask(int classIndex) {
     if (classIndex < 0 || classIndex > 5) {
@@ -2017,7 +2017,7 @@ class Detection {
 
 /// Image tensor plus padding metadata used to undo letterboxing.
 class ImageTensor {
-  /// NHWC float tensor normalized to [-1, 1] expected by MediaPipe models.
+  /// NHWC float tensor normalized to `[-1, 1]` expected by MediaPipe models.
   final Float32List tensorNHWC;
 
   /// Padding fractions `[top, bottom, left, right]` applied during resize.

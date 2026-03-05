@@ -695,7 +695,7 @@ class FaceDetectorIsolate {
   /// separate isolates, returning results as soon as both complete. This
   /// provides optimal performance when both features are needed.
   ///
-  /// Requires [withSegmentation: true] during [spawn].
+  /// Requires `withSegmentation: true` during [spawn].
   ///
   /// Parameters:
   /// - [imageBytes]: Encoded image data (JPEG, PNG, etc.)
