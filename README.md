@@ -42,6 +42,14 @@ Note: The Facial mesh and eye area mesh are separate.
 
 ![Example Screenshot](assets/screenshots/eyecontour-ex1.png)
 
+### Selfie Segmentation (Binary)
+
+![Example Screenshot](assets/screenshots/segmentation-binary-ex1.png)
+
+### Selfie Segmentation (6 Class)
+
+![Example Screenshot](assets/screenshots/segmentation-multiclass-ex1.png)
+
 ## Features
 
 - On-device face detection, runs fully offline
@@ -567,6 +575,10 @@ Also available: `FaceDetector.faceDistance()` for Euclidean distance, and batch 
 ## Selfie Segmentation
 
 Separate people from backgrounds using MediaPipe Selfie Segmentation. Useful for virtual backgrounds, portrait effects, and background blur.
+
+| Binary | Multiclass (6 Classes) |
+|--------|------------------------|
+| ![Segmentation Binary](assets/screenshots/segmentation-binary-ex1.png) | ![Segmentation Multiclass](assets/screenshots/segmentation-multiclass-ex1.png) |
 
 ### Standalone Usage 
 
