@@ -122,9 +122,14 @@ void _drawClassLabels(
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const MaterialApp(
+  runApp(MaterialApp(
     debugShowCheckedModeBanner: false,
-    home: HomeScreen(),
+    title: 'Face Detection Demo',
+    theme: ThemeData(
+      colorSchemeSeed: Colors.blue,
+      useMaterial3: true,
+    ),
+    home: const HomeScreen(),
   ));
 }
 
@@ -136,79 +141,104 @@ class HomeScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Face Detection Demo'),
-        backgroundColor: Colors.blue,
-        foregroundColor: Colors.white,
       ),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.face, size: 100, color: Colors.blue[300]),
-            const SizedBox(height: 40),
-            const Text(
+            Text(
               'Choose Detection Mode',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              style: Theme.of(context).textTheme.headlineMedium,
             ),
-            const SizedBox(height: 40),
-            ElevatedButton.icon(
-              onPressed: () {
+            const SizedBox(height: 48),
+            _buildModeCard(
+              context,
+              icon: Icons.image,
+              title: 'Still Image',
+              description: 'Detect faces in photos from gallery or camera',
+              onTap: () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (context) => const Example()),
                 );
               },
-              icon: const Icon(Icons.image, size: 32),
-              label: const Text('Still Image Detection',
-                  style: TextStyle(fontSize: 18)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
-                minimumSize: const Size(300, 70),
-              ),
             ),
-            const SizedBox(height: 20),
-            ElevatedButton.icon(
-              onPressed: () {
+            const SizedBox(height: 24),
+            _buildModeCard(
+              context,
+              icon: Icons.videocam,
+              title: 'Live Camera',
+              description: 'Real-time face detection from camera feed',
+              onTap: () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                       builder: (context) => const LiveCameraScreen()),
                 );
               },
-              icon: const Icon(Icons.videocam, size: 32),
-              label: const Text('Live Camera Detection',
-                  style: TextStyle(fontSize: 18)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
-                minimumSize: const Size(300, 70),
-              ),
             ),
-            const SizedBox(height: 20),
-            ElevatedButton.icon(
-              onPressed: () {
+            const SizedBox(height: 24),
+            _buildModeCard(
+              context,
+              icon: Icons.person_outline,
+              title: 'Selfie Segmentation',
+              description: 'Segment selfie foreground from background',
+              onTap: () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                       builder: (context) => const SegmentationDemoScreen()),
                 );
               },
-              icon: const Icon(Icons.person_outline, size: 32),
-              label: const Text('Selfie Segmentation',
-                  style: TextStyle(fontSize: 18)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.purple,
-                foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
-                minimumSize: const Size(300, 70),
-              ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModeCard(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String description,
+    required VoidCallback onTap,
+  }) {
+    return SizedBox(
+      width: 400,
+      child: Card(
+        elevation: 4,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Row(
+              children: [
+                Icon(icon, size: 64, color: Colors.blue),
+                const SizedBox(width: 24),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        description,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Colors.grey[600],
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.arrow_forward_ios),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -807,8 +837,6 @@ class _ExampleState extends State<Example> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Still Image Detection'),
-        backgroundColor: Colors.blue,
-        foregroundColor: Colors.white,
         actions: [
           // Pick Image button
           IconButton(
@@ -1358,7 +1386,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.purple : Colors.white24,
+          color: isSelected ? Colors.blue : Colors.white24,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Text(
@@ -1376,15 +1404,13 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   AppBar _buildCameraAppBar() {
     return AppBar(
       title: const Text('Live Camera Detection'),
-      backgroundColor: Colors.green,
-      foregroundColor: Colors.white,
       actions: [
         Center(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8.0),
             child: DropdownButton<FaceDetectionMode>(
               value: _detectionMode,
-              dropdownColor: Colors.green[800],
+              dropdownColor: Colors.blue[800],
               style: const TextStyle(color: Colors.white, fontSize: 14),
               underline: const SizedBox(),
               items: _kDetectionModeItems,
@@ -1401,7 +1427,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 8.0),
             child: DropdownButton<FaceDetectionModel>(
               value: _detectionModel,
-              dropdownColor: Colors.green[800],
+              dropdownColor: Colors.blue[800],
               style: const TextStyle(color: Colors.white, fontSize: 14),
               underline: const SizedBox(),
               items: _kDetectionModelItems,
@@ -1547,7 +1573,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                   ),
                   Switch(
                     value: _showSegmentation,
-                    activeTrackColor: Colors.green,
+                    activeTrackColor: Colors.blue,
                     onChanged: (value) {
                       setState(() {
                         _showSegmentation = value;
@@ -1895,8 +1921,6 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       return Scaffold(
         appBar: AppBar(
           title: const Text('Live Camera Detection'),
-          backgroundColor: Colors.green,
-          foregroundColor: Colors.white,
         ),
         body: const Center(
           child: CircularProgressIndicator(),
@@ -2559,7 +2583,7 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
                           spacing: 8,
                           runSpacing: 8,
                           children: [
-                            _classOption(null, 'All Classes', Colors.purple,
+                            _classOption(null, 'All Classes', Colors.blue,
                                 setModalState),
                             _classOption(
                                 0, 'Background', Colors.grey, setModalState),
@@ -2652,7 +2676,7 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
     return ListTile(
       leading: Icon(
         isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
-        color: isSelected ? Colors.purple : Colors.grey,
+        color: isSelected ? Colors.blue : Colors.grey,
       ),
       title: Text(title,
           style: TextStyle(
@@ -2754,8 +2778,6 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Selfie Segmentation'),
-        backgroundColor: Colors.purple,
-        foregroundColor: Colors.white,
         actions: [
           IconButton(
             onPressed: _pickAndSegment,
@@ -2776,7 +2798,7 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
                 ? const Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      CircularProgressIndicator(color: Colors.purple),
+                      CircularProgressIndicator(),
                       SizedBox(height: 16),
                       Text('Initializing segmentation model...'),
                     ],
@@ -2832,7 +2854,7 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(Icons.person_outline,
-                              size: 100, color: Colors.purple[200]),
+                              size: 100, color: Colors.blue[200]),
                           const SizedBox(height: 24),
                           const Text(
                             'Pick an image to segment',
@@ -2843,10 +2865,6 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
                             onPressed: _pickAndSegment,
                             icon: const Icon(Icons.add_photo_alternate),
                             label: const Text('Select Image'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.purple,
-                              foregroundColor: Colors.white,
-                            ),
                           ),
                         ],
                       ),
@@ -2859,7 +2877,7 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    CircularProgressIndicator(color: Colors.purple),
+                    CircularProgressIndicator(),
                     SizedBox(height: 16),
                     Text('Segmenting...',
                         style: TextStyle(color: Colors.white)),

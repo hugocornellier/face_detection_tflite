@@ -114,10 +114,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_litert
-      sha256: fccce4de29a6968e0186d8021a64607b55b5674d26788733b921de34e021fbbb
+      sha256: "40672bfc3f9bafdd2cb2646198a5f3ff923cf2444b94f76b4ee9aed82833e5ad"
       url: "https://pub.dev"
     source: hosted
-    version: "1.0.3"
+    version: "1.1.1"
   flutter_test:
     dependency: "direct dev"
     description: flutter

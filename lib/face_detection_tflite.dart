@@ -14,6 +14,8 @@ import 'package:flutter_litert/flutter_litert.dart';
 
 export 'src/dart_registration.dart';
 export 'src/util/image_utils.dart';
+export 'package:flutter_litert/flutter_litert.dart'
+    show PerformanceMode, PerformanceConfig;
 
 export 'package:opencv_dart/opencv_dart.dart' show Mat, imdecode, IMREAD_COLOR;
 

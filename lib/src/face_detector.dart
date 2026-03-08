@@ -144,7 +144,8 @@ class FaceDetector {
   FaceEmbedding? _embedding;
   SelfieSegmentation? _segmenter;
 
-  final List<Future<void>> _meshInferenceLocks = [];
+  final List<Future<void>> _meshLocks = [];
+  int _meshPoolCounter = 0;
   final _irisLeftLock = _InferenceLock();
   final _irisRightLock = _InferenceLock();
   final _embeddingLock = _InferenceLock();
@@ -230,7 +231,7 @@ class FaceDetector {
       );
 
       _meshPool.clear();
-      _meshInferenceLocks.clear();
+      _meshLocks.clear();
       for (int i = 0; i < meshPoolSize; i++) {
         _meshPool.add(
           await FaceLandmark.create(
@@ -238,7 +239,7 @@ class FaceDetector {
             performanceConfig: performanceConfig,
           ),
         );
-        _meshInferenceLocks.add(Future.value());
+        _meshLocks.add(Future.value());
       }
 
       _irisLeft = await IrisLandmark.create(
@@ -288,7 +289,7 @@ class FaceDetector {
       );
 
       _meshPool.clear();
-      _meshInferenceLocks.clear();
+      _meshLocks.clear();
       for (int i = 0; i < meshPoolSize; i++) {
         _meshPool.add(
           await FaceLandmark.createFromBuffer(
@@ -296,7 +297,7 @@ class FaceDetector {
             performanceConfig: performanceConfig,
           ),
         );
-        _meshInferenceLocks.add(Future.value());
+        _meshLocks.add(Future.value());
       }
 
       _irisLeft = await IrisLandmark.createFromBuffer(
@@ -334,7 +335,7 @@ class FaceDetector {
       } on StateError catch (_) {}
     }
     _meshPool.clear();
-    _meshInferenceLocks.clear();
+    _meshLocks.clear();
     try {
       _irisLeft?.dispose();
     } on StateError catch (_) {}
@@ -358,7 +359,6 @@ class FaceDetector {
   /// allowing different faces to use different models in parallel.
   ///
   /// Uses round-robin selection to distribute load across the pool.
-  int _meshPoolCounter = 0;
   Future<T> _withMeshLock<T>(Future<T> Function(FaceLandmark) fn) async {
     if (_meshPool.isEmpty) {
       throw StateError('Mesh pool is empty. Call initialize() first.');
@@ -367,9 +367,9 @@ class FaceDetector {
     final int poolIndex = _meshPoolCounter % _meshPool.length;
     _meshPoolCounter = (_meshPoolCounter + 1) % _meshPool.length;
 
-    final previous = _meshInferenceLocks[poolIndex];
+    final previous = _meshLocks[poolIndex];
     final completer = Completer<void>();
-    _meshInferenceLocks[poolIndex] = completer.future;
+    _meshLocks[poolIndex] = completer.future;
 
     try {
       await previous;
@@ -1102,7 +1102,7 @@ class FaceDetector {
       mesh.dispose();
     }
     _meshPool.clear();
-    _meshInferenceLocks.clear();
+    _meshLocks.clear();
     _irisLeft?.dispose();
     _irisLeft = null;
     _irisRight?.dispose();

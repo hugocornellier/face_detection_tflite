@@ -252,8 +252,9 @@ class SelfieSegmentation {
     bool delegateFailed = false;
 
     try {
-      final result = _createSegmentationInterpreterOptions(
+      final result = InterpreterFactory.create(
         config.performanceConfig,
+        addMediaPipeCustomOps: true,
       );
       options = result.$1;
       delegate = result.$2;
@@ -658,113 +659,6 @@ class SelfieSegmentation {
     _itp.close();
     _delegate?.delete();
     _delegate = null;
-  }
-
-  /// Creates interpreter options with delegates based on performance configuration.
-  ///
-  /// Binary models (general/landscape) require custom ops, which are registered
-  /// on all platforms. Multiclass uses only standard TFLite ops.
-  ///
-  /// ## Platform Behavior
-  ///
-  /// | Mode | macOS/Linux | Windows | iOS | Android |
-  /// |------|-------------|---------|-----|---------|
-  /// | disabled | CPU | CPU | CPU | CPU |
-  /// | xnnpack | XNNPACK | CPU* | CPU* | CPU* |
-  /// | gpu | CPU | CPU | Metal | OpenGL/CL** |
-  /// | auto | XNNPACK | CPU | Metal | CPU |
-  ///
-  /// *Falls back to CPU (XNNPACK not supported on this platform)
-  /// **Experimental, may crash on some devices
-  static (InterpreterOptions, Delegate?) _createSegmentationInterpreterOptions(
-    PerformanceConfig? config,
-  ) {
-    final options = InterpreterOptions();
-    options.addMediaPipeCustomOps();
-    final effectiveConfig = config ?? const PerformanceConfig();
-
-    final threadCount = effectiveConfig.numThreads?.clamp(0, 8) ??
-        math.min(4, Platform.numberOfProcessors);
-
-    if (effectiveConfig.mode == PerformanceMode.disabled) {
-      options.threads = threadCount;
-      return (options, null);
-    }
-
-    if (effectiveConfig.mode == PerformanceMode.auto) {
-      return _createAutoModeOptions(options, threadCount);
-    }
-
-    if (effectiveConfig.mode == PerformanceMode.xnnpack) {
-      return _createXnnpackOptions(options, threadCount);
-    }
-
-    if (effectiveConfig.mode == PerformanceMode.gpu) {
-      return _createGpuOptions(options, threadCount);
-    }
-
-    options.threads = threadCount;
-    return (options, null);
-  }
-
-  /// Creates options for auto mode - selects best delegate per platform.
-  static (InterpreterOptions, Delegate?) _createAutoModeOptions(
-    InterpreterOptions options,
-    int threadCount,
-  ) {
-    if (Platform.isMacOS || Platform.isLinux) {
-      return _createXnnpackOptions(options, threadCount);
-    }
-
-    if (Platform.isIOS) {
-      return _createGpuOptions(options, threadCount);
-    }
-
-    options.threads = threadCount;
-    return (options, null);
-  }
-
-  /// Creates options with XNNPACK delegate (desktop only).
-  static (InterpreterOptions, Delegate?) _createXnnpackOptions(
-    InterpreterOptions options,
-    int threadCount,
-  ) {
-    options.threads = threadCount;
-
-    if (!Platform.isMacOS && !Platform.isLinux) {
-      return (options, null);
-    }
-
-    try {
-      final xnnpackDelegate = XNNPackDelegate(
-        options: XNNPackDelegateOptions(numThreads: threadCount),
-      );
-      options.addDelegate(xnnpackDelegate);
-      return (options, xnnpackDelegate);
-    } catch (e) {
-      return (options, null);
-    }
-  }
-
-  /// Creates options with GPU delegate.
-  static (InterpreterOptions, Delegate?) _createGpuOptions(
-    InterpreterOptions options,
-    int threadCount,
-  ) {
-    options.threads = threadCount;
-
-    if (!Platform.isIOS && !Platform.isAndroid) {
-      return (options, null);
-    }
-
-    try {
-      final gpuDelegate =
-          Platform.isIOS ? GpuDelegate() : GpuDelegateV2() as Delegate;
-      options.addDelegate(gpuDelegate);
-      return (options, gpuDelegate);
-    } catch (e) {
-      return (options, null);
-    }
   }
 }
 

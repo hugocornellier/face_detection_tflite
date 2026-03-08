@@ -194,7 +194,7 @@ class IrisLandmark {
     if (options != null) {
       opts = options;
     } else {
-      final result = _createInterpreterOptions(performanceConfig);
+      final result = InterpreterFactory.create(performanceConfig);
       opts = result.$1;
       delegate = result.$2;
     }
@@ -403,16 +403,6 @@ class IrisLandmark {
     _delegate = null;
     _iso?.close();
     _itp.close();
-  }
-
-  /// Creates interpreter options with delegates based on performance configuration.
-  ///
-  /// Delegates to [FaceDetection._createInterpreterOptions] for consistent
-  /// platform-aware delegate selection across all model types.
-  static (InterpreterOptions, Delegate?) _createInterpreterOptions(
-    PerformanceConfig? config,
-  ) {
-    return FaceDetection._createInterpreterOptions(config);
   }
 }
 

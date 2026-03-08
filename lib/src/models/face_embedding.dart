@@ -95,7 +95,7 @@ class FaceEmbedding {
     if (options != null) {
       interpreterOptions = options;
     } else {
-      final result = _createInterpreterOptions(performanceConfig);
+      final result = InterpreterFactory.create(performanceConfig);
       interpreterOptions = result.$1;
       delegate = result.$2;
     }
@@ -126,7 +126,7 @@ class FaceEmbedding {
     Uint8List modelBytes, {
     PerformanceConfig? performanceConfig,
   }) async {
-    final result = _createInterpreterOptions(performanceConfig);
+    final result = InterpreterFactory.create(performanceConfig);
     final interpreterOptions = result.$1;
     final delegate = result.$2;
 
@@ -313,16 +313,6 @@ class FaceEmbedding {
       iso.close();
     }
     _itp.close();
-  }
-
-  /// Creates interpreter options with delegates based on performance configuration.
-  ///
-  /// Delegates to [FaceDetection._createInterpreterOptions] for consistent
-  /// platform-aware delegate selection across all model types.
-  static (InterpreterOptions, Delegate?) _createInterpreterOptions(
-    PerformanceConfig? config,
-  ) {
-    return FaceDetection._createInterpreterOptions(config);
   }
 }
 

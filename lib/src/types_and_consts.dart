@@ -35,161 +35,6 @@ enum FaceDetectionModel {
 /// - [full]: All features including bounding boxes, landmarks, mesh, and iris tracking
 enum FaceDetectionMode { fast, standard, full }
 
-/// Performance modes for TensorFlow Lite delegate selection.
-///
-/// Determines which hardware acceleration delegates are used for inference.
-///
-/// ## Platform Support
-///
-/// | Mode | macOS | Linux | Windows | iOS | Android |
-/// |------|-------|-------|---------|-----|---------|
-/// | [disabled] | ✅ | ✅ | ✅ | ✅ | ✅ |
-/// | [xnnpack] | ✅ | ✅ | ❌ | ❌ | ❌ |
-/// | [gpu] | ❌ | ❌ | ❌ | ✅ | ⚠️ |
-/// | [auto] | ✅ | ✅ | ✅ | ✅ | ✅ |
-///
-/// ⚠️ = Experimental, may crash on some devices
-enum PerformanceMode {
-  /// No acceleration delegates (CPU-only, backward compatible).
-  ///
-  /// - Most compatible (works on all platforms)
-  /// - No additional memory overhead
-  /// - Baseline performance
-  disabled,
-
-  /// XNNPACK delegate for CPU optimization.
-  ///
-  /// - **Desktop only**: macOS, Linux (crashes on Windows, Android, iOS)
-  /// - 2-5x faster than disabled mode
-  /// - Uses SIMD vectorization (NEON on ARM, AVX on x86)
-  /// - Minimal memory overhead (+2-3MB per interpreter)
-  ///
-  /// On unsupported platforms, automatically falls back to CPU-only execution.
-  xnnpack,
-
-  /// GPU delegate for hardware acceleration.
-  ///
-  /// - **iOS**: Uses Metal (reliable, recommended)
-  /// - **Android**: Uses OpenGL/OpenCL (experimental, may crash on some devices)
-  /// - **Desktop**: Not supported (falls back to CPU)
-  ///
-  /// ## Android GPU Delegate Warning
-  ///
-  /// The Android GPU delegate has known compatibility issues:
-  /// - OpenCL unavailable on many devices (Pixel 6, Android 12+)
-  /// - OpenGL ES 3.1+ required for fallback
-  /// - Memory issues on some Samsung devices
-  /// - Partial op support can cause slower performance than CPU
-  ///
-  /// Only use on Android if you've tested on your target devices.
-  gpu,
-
-  /// CoreML delegate for Apple Neural Engine / GPU / CPU.
-  ///
-  /// - **macOS**: Uses CoreML (Apple Silicon Neural Engine)
-  /// - **iOS**: Uses CoreML (Neural Engine on A12+)
-  /// - **Other platforms**: Falls back to CPU-only
-  coreml,
-
-  /// Automatically choose best delegate for current platform.
-  ///
-  /// Current behavior:
-  /// - **macOS/Linux**: XNNPACK (2-5x speedup)
-  /// - **Windows**: CPU-only (XNNPACK crashes)
-  /// - **iOS**: Metal GPU delegate
-  /// - **Android**: CPU-only (GPU/XNNPACK unreliable)
-  ///
-  /// This is the recommended default for cross-platform apps.
-  auto,
-}
-
-/// Configuration for TensorFlow Lite interpreter performance.
-///
-/// Controls delegate usage and threading for CPU/GPU acceleration.
-///
-/// ## Recommended Usage
-///
-/// For cross-platform apps, use `PerformanceConfig.auto()` (the default):
-///
-/// ```dart
-/// // Auto mode - optimal settings per platform (recommended)
-/// final detector = FaceDetector();
-/// await detector.initialize(); // Uses PerformanceConfig.auto() by default
-/// ```
-///
-/// ## Platform-Specific Examples
-///
-/// ```dart
-/// // Desktop (macOS/Linux): XNNPACK for 2-5x speedup
-/// await detector.initialize(
-///   performanceConfig: PerformanceConfig.xnnpack(numThreads: 4),
-/// );
-///
-/// // iOS: GPU delegate via Metal (fast and reliable)
-/// await detector.initialize(
-///   performanceConfig: PerformanceConfig.gpu(),
-/// );
-///
-/// // Android: CPU-only recommended (GPU is experimental)
-/// await detector.initialize(
-///   performanceConfig: PerformanceConfig.disabled,
-/// );
-///
-/// // Android: GPU delegate (experimental - test on target devices first!)
-/// await detector.initialize(
-///   performanceConfig: PerformanceConfig.gpu(),
-/// );
-/// ```
-class PerformanceConfig {
-  /// Performance mode controlling delegate selection.
-  final PerformanceMode mode;
-
-  /// Number of threads for CPU execution.
-  ///
-  /// - null: Auto-detect optimal count (min(4, Platform.numberOfProcessors))
-  /// - 0: No thread pool (single-threaded, good for tiny models)
-  /// - 1-8: Explicit thread count
-  ///
-  /// Diminishing returns after 4 threads for typical models.
-  /// Applies to XNNPACK delegate and CPU-only execution.
-  final int? numThreads;
-
-  /// Creates a performance configuration.
-  ///
-  /// Parameters:
-  /// - [mode]: Performance mode. Default: [PerformanceMode.auto]
-  /// - [numThreads]: Number of threads (null for auto-detection)
-  const PerformanceConfig({this.mode = PerformanceMode.auto, this.numThreads});
-
-  /// Creates config with XNNPACK enabled (desktop only).
-  ///
-  /// XNNPACK provides 2-5x speedup on macOS and Linux.
-  /// On unsupported platforms (Windows, Android, iOS), falls back to CPU-only.
-  const PerformanceConfig.xnnpack({this.numThreads})
-      : mode = PerformanceMode.xnnpack;
-
-  /// Creates config with GPU delegate enabled.
-  ///
-  /// - **iOS**: Uses Metal (reliable, recommended)
-  /// - **Android**: Uses OpenGL/OpenCL (experimental, may crash)
-  /// - **Desktop**: Falls back to CPU-only
-  const PerformanceConfig.gpu({this.numThreads}) : mode = PerformanceMode.gpu;
-
-  /// Creates config with auto mode (recommended for cross-platform apps).
-  ///
-  /// Automatically selects the best delegate for each platform:
-  /// - macOS/Linux: XNNPACK
-  /// - Windows: CPU-only
-  /// - iOS: Metal GPU
-  /// - Android: CPU-only
-  const PerformanceConfig.auto({this.numThreads}) : mode = PerformanceMode.auto;
-
-  /// CPU-only configuration (no delegates, maximum compatibility).
-  static const PerformanceConfig disabled = PerformanceConfig(
-    mode: PerformanceMode.disabled,
-  );
-}
-
 /// Pixel format for RGBA output from segmentation masks.
 ///
 /// Use this to match the expected format of your rendering pipeline.
@@ -1838,42 +1683,62 @@ const double _rawScoreLimit = 80.0;
 const double _minScore = 0.5;
 const double _minSuppressionThreshold = 0.3;
 
-const _ssdFront = {
-  'num_layers': 4,
-  'input_size_height': 128,
-  'input_size_width': 128,
-  'anchor_offset_x': 0.5,
-  'anchor_offset_y': 0.5,
-  'strides': [8, 16, 16, 16],
-  'interpolated_scale_aspect_ratio': 1.0,
-};
-const _ssdBack = {
-  'num_layers': 4,
-  'input_size_height': 256,
-  'input_size_width': 256,
-  'anchor_offset_x': 0.5,
-  'anchor_offset_y': 0.5,
-  'strides': [16, 32, 32, 32],
-  'interpolated_scale_aspect_ratio': 1.0,
-};
-const _ssdShort = {
-  'num_layers': 4,
-  'input_size_height': 128,
-  'input_size_width': 128,
-  'anchor_offset_x': 0.5,
-  'anchor_offset_y': 0.5,
-  'strides': [8, 16, 16, 16],
-  'interpolated_scale_aspect_ratio': 1.0,
-};
-const _ssdFull = {
-  'num_layers': 1,
-  'input_size_height': 192,
-  'input_size_width': 192,
-  'anchor_offset_x': 0.5,
-  'anchor_offset_y': 0.5,
-  'strides': [4],
-  'interpolated_scale_aspect_ratio': 0.0,
-};
+const _ssdFront = SSDAnchorOptions(
+  numLayers: 4,
+  minScale: 0.1464,
+  maxScale: 0.9,
+  inputSizeHeight: 128,
+  inputSizeWidth: 128,
+  anchorOffsetX: 0.5,
+  anchorOffsetY: 0.5,
+  strides: [8, 16, 16, 16],
+  aspectRatios: [1.0],
+  reduceBoxesInLowestLayer: false,
+  interpolatedScaleAspectRatio: 1.0,
+  fixedAnchorSize: true,
+);
+const _ssdBack = SSDAnchorOptions(
+  numLayers: 4,
+  minScale: 0.1464,
+  maxScale: 0.9,
+  inputSizeHeight: 256,
+  inputSizeWidth: 256,
+  anchorOffsetX: 0.5,
+  anchorOffsetY: 0.5,
+  strides: [16, 32, 32, 32],
+  aspectRatios: [1.0],
+  reduceBoxesInLowestLayer: false,
+  interpolatedScaleAspectRatio: 1.0,
+  fixedAnchorSize: true,
+);
+const _ssdShort = SSDAnchorOptions(
+  numLayers: 4,
+  minScale: 0.1464,
+  maxScale: 0.9,
+  inputSizeHeight: 128,
+  inputSizeWidth: 128,
+  anchorOffsetX: 0.5,
+  anchorOffsetY: 0.5,
+  strides: [8, 16, 16, 16],
+  aspectRatios: [1.0],
+  reduceBoxesInLowestLayer: false,
+  interpolatedScaleAspectRatio: 1.0,
+  fixedAnchorSize: true,
+);
+const _ssdFull = SSDAnchorOptions(
+  numLayers: 1,
+  minScale: 0.1171875,
+  maxScale: 0.75,
+  inputSizeHeight: 192,
+  inputSizeWidth: 192,
+  anchorOffsetX: 0.5,
+  anchorOffsetY: 0.5,
+  strides: [4],
+  aspectRatios: [1.0],
+  reduceBoxesInLowestLayer: false,
+  interpolatedScaleAspectRatio: 0.0,
+  fixedAnchorSize: false,
+);
 
 /// Aligned face crop data holder for OpenCV-based processing.
 ///

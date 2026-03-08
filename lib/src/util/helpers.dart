@@ -426,45 +426,7 @@ List<Detection> _nmsCore(
   return kept;
 }
 
-Float32List _ssdGenerateAnchors(Map<String, Object> opts) {
-  final List<int> strides = (opts['strides'] as List).cast<int>();
-  final int numLayers = opts['num_layers'] as int;
-  final int inputH = opts['input_size_height'] as int;
-  final int inputW = opts['input_size_width'] as int;
-
-  final double ax = (opts['anchor_offset_x'] as num).toDouble();
-  final double ay = (opts['anchor_offset_y'] as num).toDouble();
-  final double interp =
-      (opts['interpolated_scale_aspect_ratio'] as num).toDouble();
-  final List<double> anchors = <double>[];
-  int layerId = 0;
-  while (layerId < numLayers) {
-    int lastSameStride = layerId;
-    int repeats = 0;
-    while (lastSameStride < numLayers &&
-        strides[lastSameStride] == strides[layerId]) {
-      lastSameStride++;
-      repeats += (interp == 1.0) ? 2 : 1;
-    }
-    final int stride = strides[layerId];
-    final int fmH = inputH ~/ stride;
-    final int fmW = inputW ~/ stride;
-    for (int y = 0; y < fmH; y++) {
-      final double yCenter = (y + ay) / fmH;
-      for (int x = 0; x < fmW; x++) {
-        final double xCenter = (x + ax) / fmW;
-        for (int r = 0; r < repeats; r++) {
-          anchors.add(xCenter);
-          anchors.add(yCenter);
-        }
-      }
-    }
-    layerId = lastSameStride;
-  }
-  return Float32List.fromList(anchors);
-}
-
-Map<String, Object> _optsFor(FaceDetectionModel m) {
+SSDAnchorOptions _optsFor(FaceDetectionModel m) {
   switch (m) {
     case FaceDetectionModel.frontCamera:
       return _ssdFront;
@@ -558,11 +520,18 @@ List<Detection> testNms(
     _nms(dets, iouThresh, scoreThresh, weighted: weighted);
 
 @visibleForTesting
-Float32List testSsdGenerateAnchors(Map<String, Object> opts) =>
-    _ssdGenerateAnchors(opts);
+Float32List testSsdGenerateAnchors(SSDAnchorOptions opts) {
+  final anchors = generateAnchors(opts);
+  final result = Float32List(anchors.length * 2);
+  for (int i = 0; i < anchors.length; i++) {
+    result[i * 2] = anchors[i][0];
+    result[i * 2 + 1] = anchors[i][1];
+  }
+  return result;
+}
 
 @visibleForTesting
-Map<String, Object> testOptsFor(FaceDetectionModel m) => _optsFor(m);
+SSDAnchorOptions testOptsFor(FaceDetectionModel m) => _optsFor(m);
 
 @visibleForTesting
 String testNameFor(FaceDetectionModel m) => _nameFor(m);

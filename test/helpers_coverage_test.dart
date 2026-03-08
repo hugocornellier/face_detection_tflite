@@ -362,17 +362,16 @@ void main() {
     test('should return config for each model variant', () {
       for (final model in FaceDetectionModel.values) {
         final opts = testOptsFor(model);
-        expect(opts.containsKey('num_layers'), isTrue);
-        expect(opts.containsKey('strides'), isTrue);
-        expect(opts.containsKey('input_size_height'), isTrue);
-        expect(opts.containsKey('input_size_width'), isTrue);
+        expect(opts.strides, isNotEmpty);
+        expect(opts.inputSizeHeight, greaterThan(0));
+        expect(opts.inputSizeWidth, greaterThan(0));
       }
     });
 
     test('full and fullSparse should share same config', () {
       final fullOpts = testOptsFor(FaceDetectionModel.full);
       final sparseOpts = testOptsFor(FaceDetectionModel.fullSparse);
-      expect(fullOpts, equals(sparseOpts));
+      expect(identical(fullOpts, sparseOpts), isTrue);
     });
   });
 

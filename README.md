@@ -53,13 +53,11 @@ Note: The Facial mesh and eye area mesh are separate.
 ## Features
 
 - On-device face detection, runs fully offline
-- **Face recognition**: 192-dim embeddings to identify/compare faces across images
-- **Selfie segmentation**: separate person from background, or use multiclass model for 6-class body part segmentation (hair, face, body, clothes, etc.)
-- 468 point mesh with **3D depth information** (x, y, z coordinates)
-- Face landmarks, comprehensive eye tracking (iris + 71-point eye mesh), and bounding boxes
-- All coordinates are in absolute pixel coordinates
+- Face landmarks, bounding boxes & eye tracking (iris + 71-point eye mesh)
+- 468 point mesh with 3D depth information (x, y, z coordinates)
+- Selfie segmentation: separate person from background, or use multiclass model for 6-class body part segmentation (hair, face, body, clothes, etc.)
+- Face recognition (embeddings): identify/compare faces across images
 - Truly cross-platform: compatible with Android, iOS, macOS, Windows, and Linux
-- Native OpenCV preprocessing (resize/letterbox/crops) for 2x+ throughput vs pure Dart
 - The [example](https://pub.dev/packages/face_detection_tflite/example) app illustrates how to detect and render results on images
   - Includes demo for bounding boxes, the 468-point mesh, facial landmarks and comprehensive eye tracking.
 
@@ -86,83 +84,6 @@ Future main() async {
   detector.dispose();
 }
 ```
-
-## Performance
-
-Version 4.1 moved image preprocessing to native OpenCV (via `opencv_dart`) for ~2x faster performance with SIMD acceleration. The standard `detectFaces()` method now uses OpenCV internally, so all existing code automatically gets the performance boost.
-
-### Hardware Acceleration
-
-The package automatically selects the best acceleration strategy for each platform:
-
-| Platform | Default Delegate | Speedup | Notes |
-|----------|-----------------|---------|-------|
-| **macOS** | XNNPACK | 2-5x | SIMD vectorization (NEON on ARM, AVX on x86) |
-| **Linux** | XNNPACK | 2-5x | SIMD vectorization |
-| **iOS** | Metal GPU | 2-4x | Hardware GPU acceleration |
-| **Android** | CPU | 1x | GPU delegate unreliable (see below) |
-| **Windows** | CPU | 1x | XNNPACK crashes on Windows |
-
-No configuration needed - just call `initialize()` and you get the optimal performance for your platform.
-
-### Android Performance Note
-
-The Android GPU delegate has known compatibility issues across different devices and Android versions:
-- OpenCL unavailable on many devices (Pixel 6+, Android 12+)
-- OpenGL ES 3.1+ required for fallback
-- Some devices crash during GPU delegate initialization
-
-For maximum compatibility, Android defaults to CPU-only execution. If you want to experiment with GPU acceleration on Android (at your own risk), see the [Advanced Configuration](#advanced-performance-configuration) section.
-
-### Advanced Performance Configuration
-
-```dart
-// Auto mode (default) - optimal for each platform
-await detector.initialize();
-// Equivalent to:
-await detector.initialize(performanceConfig: PerformanceConfig.auto());
-
-// Force XNNPACK (desktop only - macOS/Linux)
-await detector.initialize(
-  performanceConfig: PerformanceConfig.xnnpack(numThreads: 4),
-);
-
-// Force GPU delegate (iOS recommended, Android experimental)
-await detector.initialize(
-  performanceConfig: PerformanceConfig.gpu(),
-);
-
-// CPU-only (maximum compatibility)
-await detector.initialize(
-  performanceConfig: PerformanceConfig.disabled,
-);
-```
-
-### Advanced: Direct Mat Input
-
-For live camera streams, you can bypass image encoding/decoding entirely by passing a `cv.Mat` directly to `detectFaces()`:
-
-```dart
-import 'package:face_detection_tflite/face_detection_tflite.dart';
-
-Future<void> processFrame(cv.Mat frame) async {
-  final detector = FaceDetector();
-  await detector.initialize(model: FaceDetectionModel.frontCamera);
-
-  // Direct Mat input - fastest for video streams
-  final faces = await detector.detectFacesFromMat(frame, mode: FaceDetectionMode.fast);
-
-  frame.dispose(); // always dispose Mats after use
-  detector.dispose();
-}
-```
-
-**When to use `cv.Mat` input:**
-- Live camera streams where frames are already in memory
-- When you need to preprocess images with OpenCV before detection
-- Maximum throughput scenarios (avoids JPEG encode/decode overhead)
-
-**For all other cases**, pass image bytes (`Uint8List`) to `detectFaces()`.
 
 ## Bounding Boxes
 
@@ -694,6 +615,81 @@ if (mask is MulticlassSegmentationMask) {
 
 segmenter.dispose();
 ```
+
+## Performance
+
+### Hardware Acceleration
+
+The package automatically selects the best acceleration strategy for each platform:
+
+| Platform | Default Delegate | Speedup | Notes |
+|----------|-----------------|---------|-------|
+| **macOS** | XNNPACK | 2-5x | SIMD vectorization (NEON on ARM, AVX on x86) |
+| **Linux** | XNNPACK | 2-5x | SIMD vectorization |
+| **iOS** | Metal GPU | 2-4x | Hardware GPU acceleration |
+| **Android** | CPU | 1x | GPU delegate unreliable (see below) |
+| **Windows** | CPU | 1x | XNNPACK crashes on Windows |
+
+No configuration needed - just call `initialize()` and you get the optimal performance for your platform.
+
+### Android Performance Note
+
+The Android GPU delegate has known compatibility issues across different devices and Android versions:
+- OpenCL unavailable on many devices (Pixel 6+, Android 12+)
+- OpenGL ES 3.1+ required for fallback
+- Some devices crash during GPU delegate initialization
+
+For maximum compatibility, Android defaults to CPU-only execution. If you want to experiment with GPU acceleration on Android (at your own risk), see the [Advanced Configuration](#advanced-performance-configuration) section.
+
+### Advanced Performance Configuration
+
+```dart
+// Auto mode (default) - optimal for each platform
+await detector.initialize();
+// Equivalent to:
+await detector.initialize(performanceConfig: PerformanceConfig.auto());
+
+// Force XNNPACK (desktop only - macOS/Linux)
+await detector.initialize(
+  performanceConfig: PerformanceConfig.xnnpack(numThreads: 4),
+);
+
+// Force GPU delegate (iOS recommended, Android experimental)
+await detector.initialize(
+  performanceConfig: PerformanceConfig.gpu(),
+);
+
+// CPU-only (maximum compatibility)
+await detector.initialize(
+  performanceConfig: PerformanceConfig.disabled,
+);
+```
+
+### Advanced: Direct Mat Input
+
+For live camera streams, you can bypass image encoding/decoding entirely by passing a `cv.Mat` directly to `detectFaces()`:
+
+```dart
+import 'package:face_detection_tflite/face_detection_tflite.dart';
+
+Future<void> processFrame(cv.Mat frame) async {
+  final detector = FaceDetector();
+  await detector.initialize(model: FaceDetectionModel.frontCamera);
+
+  // Direct Mat input - fastest for video streams
+  final faces = await detector.detectFacesFromMat(frame, mode: FaceDetectionMode.fast);
+
+  frame.dispose(); // always dispose Mats after use
+  detector.dispose();
+}
+```
+
+**When to use `cv.Mat` input:**
+- Live camera streams where frames are already in memory
+- When you need to preprocess images with OpenCV before detection
+- Maximum throughput scenarios (avoids JPEG encode/decode overhead)
+
+**For all other cases**, pass image bytes (`Uint8List`) to `detectFaces()`.
 
 ### Memory Considerations
 
