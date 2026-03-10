@@ -62,6 +62,13 @@ class SegmentationClass {
 /// Generates a per-pixel probability mask separating foreground (person)
 /// from background. Works on full images - no face detection required.
 ///
+/// See the official model cards for architecture details, training data, and
+/// intended use cases:
+/// - Selfie segmentation: https://mediapipe.page.link/selfiesegmentation-mc
+///   (local copy: `doc/model_cards/selfie_segmentation_model_card.pdf`)
+/// - Multiclass segmentation:
+///   (local copy: `doc/model_cards/multiclass_segmentation_model_card.pdf`)
+///
 /// ## Model Variants
 ///
 /// Three model variants are available via [SegmentationConfig.model]:

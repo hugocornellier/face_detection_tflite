@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'package:flutter_litert/flutter_litert.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 
 /// Utility functions for image preprocessing and transformations using OpenCV.
@@ -21,40 +22,25 @@ class ImageUtils {
     int resizeWidth,
     int resizeHeight,
   ) {
-    final imageHeight = image.rows;
-    final imageWidth = image.cols;
-
-    final ash = resizeHeight / imageHeight;
-    final asw = resizeWidth / imageWidth;
-
-    int newWidth, newHeight;
-    if (asw < ash) {
-      newWidth = (imageWidth * asw).toInt();
-      newHeight = (imageHeight * asw).toInt();
-    } else {
-      newWidth = (imageWidth * ash).toInt();
-      newHeight = (imageHeight * ash).toInt();
-    }
+    final AspectPadParams params = computeAspectPadParams(
+      srcWidth: image.cols,
+      srcHeight: image.rows,
+      targetWidth: resizeWidth,
+      targetHeight: resizeHeight,
+    );
 
     final resizedImage = cv.resize(
-        image,
-        (
-          newWidth,
-          newHeight,
-        ),
-        interpolation: cv.INTER_LINEAR);
-
-    final padTop = (resizeHeight - newHeight) ~/ 2;
-    final padBottom = resizeHeight - newHeight - padTop;
-    final padLeft = (resizeWidth - newWidth) ~/ 2;
-    final padRight = resizeWidth - newWidth - padLeft;
+      image,
+      (params.newWidth, params.newHeight),
+      interpolation: cv.INTER_LINEAR,
+    );
 
     final paddedImage = cv.copyMakeBorder(
       resizedImage,
-      padTop,
-      padBottom,
-      padLeft,
-      padRight,
+      params.padTop,
+      params.padBottom,
+      params.padLeft,
+      params.padRight,
       cv.BORDER_CONSTANT,
       value: cv.Scalar.black,
     );
@@ -175,17 +161,11 @@ class ImageUtils {
     cv.Mat mat, {
     Float32List? buffer,
   }) {
-    final data = mat.data;
-    final totalPixels = mat.rows * mat.cols;
-    final size = totalPixels * 3;
-    final tensor = buffer ?? Float32List(size);
-
-    for (int i = 0, j = 0; i < totalPixels * 3 && j < size; i += 3, j += 3) {
-      tensor[j] = (data[i + 2] / 127.5) - 1.0;
-      tensor[j + 1] = (data[i + 1] / 127.5) - 1.0;
-      tensor[j + 2] = (data[i] / 127.5) - 1.0;
-    }
-    return tensor;
+    return bgrBytesToSignedFloat32(
+      bytes: mat.data,
+      totalPixels: mat.rows * mat.cols,
+      buffer: buffer,
+    );
   }
 
   /// Converts a cv.Mat to a flat Float32List tensor with `[0, 1]` normalization.
@@ -199,18 +179,11 @@ class ImageUtils {
   ///
   /// Returns a flat Float32List with normalized RGB pixel values in `[0, 1]`.
   static Float32List matToFloat32Tensor(cv.Mat mat, {Float32List? buffer}) {
-    final data = mat.data;
-    final totalPixels = mat.rows * mat.cols;
-    final size = totalPixels * 3;
-    final tensor = buffer ?? Float32List(size);
-    const scale = 1.0 / 255.0;
-
-    for (int i = 0, j = 0; i < totalPixels * 3 && j < size; i += 3, j += 3) {
-      tensor[j] = data[i + 2] * scale;
-      tensor[j + 1] = data[i + 1] * scale;
-      tensor[j + 2] = data[i] * scale;
-    }
-    return tensor;
+    return bgrBytesToRgbFloat32(
+      bytes: mat.data,
+      totalPixels: mat.rows * mat.cols,
+      buffer: buffer,
+    );
   }
 
   /// Applies letterbox preprocessing to fit an image into target dimensions.
@@ -233,31 +206,36 @@ class ImageUtils {
     int tw,
     int th,
   ) {
-    final int w = src.cols;
-    final int h = src.rows;
-    final double scale = math.min(th / h, tw / w);
-    final int nw = (w * scale).round();
-    final int nh = (h * scale).round();
-    final int padLeft = (tw - nw) ~/ 2;
-    final int padTop = (th - nh) ~/ 2;
+    final LetterboxParams lbp = computeLetterboxParams(
+      srcWidth: src.cols,
+      srcHeight: src.rows,
+      targetWidth: tw,
+      targetHeight: th,
+    );
 
-    final resized = cv.resize(src, (nw, nh), interpolation: cv.INTER_LINEAR);
-
-    final padRight = tw - nw - padLeft;
-    final padBottom = th - nh - padTop;
+    final resized = cv.resize(
+      src,
+      (lbp.newWidth, lbp.newHeight),
+      interpolation: cv.INTER_LINEAR,
+    );
 
     final padded = cv.copyMakeBorder(
       resized,
-      padTop,
-      padBottom,
-      padLeft,
-      padRight,
+      lbp.padTop,
+      lbp.padBottom,
+      lbp.padLeft,
+      lbp.padRight,
       cv.BORDER_CONSTANT,
       value: cv.Scalar.black,
     );
     resized.dispose();
 
-    return (padded: padded, scale: scale, padLeft: padLeft, padTop: padTop);
+    return (
+      padded: padded,
+      scale: lbp.scale,
+      padLeft: lbp.padLeft,
+      padTop: lbp.padTop
+    );
   }
 
   /// Converts a cv.Mat to 4D tensor in NHWC format for TensorFlow Lite.
@@ -279,34 +257,16 @@ class ImageUtils {
     int height, {
     List<List<List<List<double>>>>? reuse,
   }) {
-    final List<List<List<List<double>>>> out = reuse ??
-        List.generate(
-          1,
-          (_) => List.generate(
-            height,
-            (_) => List.generate(
-              width,
-              (_) => List<double>.filled(3, 0.0),
-              growable: false,
-            ),
-            growable: false,
-          ),
-          growable: false,
-        );
-
-    final bytes = mat.data;
-    int byteIndex = 0;
-
-    for (int y = 0; y < height; y++) {
-      final List<List<double>> row = out[0][y];
-      for (int x = 0; x < width; x++) {
-        final List<double> pixel = row[x];
-        pixel[0] = (bytes[byteIndex + 2] / 127.5) - 1.0;
-        pixel[1] = (bytes[byteIndex + 1] / 127.5) - 1.0;
-        pixel[2] = (bytes[byteIndex] / 127.5) - 1.0;
-        byteIndex += 3;
-      }
-    }
+    final List<List<List<List<double>>>> out =
+        reuse ?? createNHWCTensor4D(height, width);
+    fillNHWC4DFromBgrBytes(
+      bytes: mat.data,
+      tensor: out,
+      width: width,
+      height: height,
+      scale: 1.0 / 127.5,
+      offset: -1.0,
+    );
     return out;
   }
 

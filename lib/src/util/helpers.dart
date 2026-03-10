@@ -17,143 +17,6 @@ class OutputTensorInfo {
   final Float32List buffer;
 }
 
-/// Creates a 4D tensor in NHWC format (batch=1, height, width, channels=3).
-///
-/// This pre-allocates a nested list structure used as input buffers for
-/// TensorFlow Lite models to avoid repeated allocations during inference.
-///
-/// - [height]: Tensor height dimension (H)
-/// - [width]: Tensor width dimension (W)
-/// - Returns: `[1][height][width][3]` nested list structure with double values
-List<List<List<List<double>>>> createNHWCTensor4D(int height, int width) {
-  return List<List<List<List<double>>>>.generate(
-    1,
-    (_) => List.generate(
-      height,
-      (_) => List.generate(
-        width,
-        (_) => List<double>.filled(3, 0.0, growable: false),
-        growable: false,
-      ),
-      growable: false,
-    ),
-    growable: false,
-  );
-}
-
-/// Fills a 4D NHWC tensor cache from a flat Float32List.
-///
-/// Converts a flat array of pixel data into the nested list structure
-/// expected by TensorFlow Lite models in NHWC format:
-/// - N: Batch dimension (assumed to be 1, index 0)
-/// - H: Height dimension (inH)
-/// - W: Width dimension (inW)
-/// - C: Channel dimension (3 for RGB)
-///
-/// [flat] - Flattened pixel data (length must be inH * inW * 3)
-/// [input4dCache] - Pre-allocated 4D structure `[1][H][W][3]`
-/// [inH] - Input tensor height
-/// [inW] - Input tensor width
-@pragma('vm:prefer-inline')
-void fillNHWC4D(
-  Float32List flat,
-  List<List<List<List<double>>>> input4dCache,
-  int inH,
-  int inW,
-) {
-  double sanitize(double value) => (value * 1e6).roundToDouble() / 1e6;
-
-  int k = 0;
-  for (int y = 0; y < inH; y++) {
-    for (int x = 0; x < inW; x++) {
-      final List<double> px = input4dCache[0][y][x];
-      px[0] = sanitize(flat[k++]);
-      px[1] = sanitize(flat[k++]);
-      px[2] = sanitize(flat[k++]);
-    }
-  }
-}
-
-/// Allocates a nested list structure matching the given tensor shape.
-///
-/// Recursively builds nested lists where the innermost dimension contains
-/// doubles initialized to 0.0. Used for pre-allocating output buffers for
-/// TensorFlow Lite inference.
-///
-/// The [shape] parameter defines the dimensions of the tensor.
-///
-/// Returns an [Object] that is a nested list structure matching the shape.
-/// The actual type depends on the number of dimensions (e.g., `List<double>`
-/// for 1D, `List<List<double>>` for 2D, etc.).
-///
-/// Example:
-/// ```dart
-/// allocTensorShape([3]) → [0.0, 0.0, 0.0]
-/// allocTensorShape([2, 3]) → [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
-/// allocTensorShape([1, 2, 3]) → [[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]]
-/// ```
-Object allocTensorShape(List<int> shape) {
-  if (shape.isEmpty) return <double>[];
-
-  Object build(int depth) {
-    final int size = shape[depth];
-
-    if (depth == shape.length - 1) {
-      return List<double>.filled(size, 0.0, growable: false);
-    }
-
-    switch (shape.length - depth) {
-      case 2:
-        return List<List<double>>.generate(
-          size,
-          (_) => build(depth + 1) as List<double>,
-          growable: false,
-        );
-      case 3:
-        return List<List<List<double>>>.generate(
-          size,
-          (_) => build(depth + 1) as List<List<double>>,
-          growable: false,
-        );
-      case 4:
-        return List<List<List<List<double>>>>.generate(
-          size,
-          (_) => build(depth + 1) as List<List<List<double>>>,
-          growable: false,
-        );
-      default:
-        return List.generate(size, (_) => build(depth + 1), growable: false);
-    }
-  }
-
-  return build(0);
-}
-
-/// Flattens a nested numeric tensor (dynamic output) into a Float32List.
-///
-/// Supports arbitrarily nested `List` structures containing `num` leaves.
-/// Throws a [StateError] if an unexpected type is encountered or if [out] is null.
-Float32List flattenDynamicTensor(Object? out) {
-  if (out == null) {
-    throw TypeError();
-  }
-  final List<double> flat = <double>[];
-  void walk(dynamic x) {
-    if (x is num) {
-      flat.add(x.toDouble());
-    } else if (x is List) {
-      for (final e in x) {
-        walk(e);
-      }
-    } else {
-      throw StateError('Unexpected output element type: ${x.runtimeType}');
-    }
-  }
-
-  walk(out);
-  return Float32List.fromList(flat);
-}
-
 /// Collects output tensor shapes (and their backing buffers) for an interpreter.
 ///
 /// Iterates output indices until `getOutputTensor` throws, mirroring existing
@@ -179,11 +42,8 @@ Map<int, OutputTensorInfo> collectOutputTensorInfo(Interpreter itp) {
 Map<int, OutputTensorInfo> testCollectOutputTensorInfo(Interpreter itp) =>
     collectOutputTensorInfo(itp);
 
-double _clip(double v, double lo, double hi) => v < lo ? lo : (v > hi ? hi : v);
-
 double _sigmoidClipped(double x, {double limit = _rawScoreLimit}) {
-  final double v = _clip(x, -limit, limit);
-  return 1.0 / (1.0 + math.exp(-v));
+  return sigmoid(clip(x, -limit, limit));
 }
 
 List<Detection> _detectionLetterboxRemoval(
@@ -223,8 +83,6 @@ List<Detection> _detectionLetterboxRemoval(
       .toList();
 }
 
-double _clamp01(double v) => v < 0 ? 0 : (v > 1 ? 1 : v);
-
 List<List<double>> _unpackLandmarks(
   Float32List flat,
   int inW,
@@ -248,8 +106,8 @@ List<List<double>> _unpackLandmarks(
     x = (x - pl) / sx;
     y = (y - pt) / sy;
     if (clamp) {
-      x = _clamp01(x);
-      y = _clamp01(y);
+      x = clamp01(x);
+      y = clamp01(y);
     }
     out.add([x, y, z]);
   }
@@ -482,12 +340,12 @@ RectF faceDetectionToRoi(RectF boundingBox, {double expandFraction = 0.6}) {
   return RectF(cx - s, cy - s, cx + s, cy + s);
 }
 
-/// Test-only access to [_clip] for verifying value clamping behavior.
+/// Test-only access to [clip] for verifying value clamping behavior.
 ///
-/// This function exposes the private [_clip] for unit testing.
+/// This function exposes [clip] for unit testing.
 /// It clamps [v] to the range [[lo], [hi]].
 @visibleForTesting
-double testClip(double v, double lo, double hi) => _clip(v, lo, hi);
+double testClip(double v, double lo, double hi) => clip(v, lo, hi);
 
 @visibleForTesting
 double testSigmoidClipped(double x, {double limit = _rawScoreLimit}) =>
@@ -560,58 +418,45 @@ ImageTensor convertImageToTensor(
   final int inW = src.cols;
   final int inH = src.rows;
 
-  final double s1 = outW / inW;
-  final double s2 = outH / inH;
-  final double scale = s1 < s2 ? s1 : s2;
-  final int newW = (inW * scale).round();
-  final int newH = (inH * scale).round();
+  final LetterboxParams lbp = computeLetterboxParams(
+    srcWidth: inW,
+    srcHeight: inH,
+    targetWidth: outW,
+    targetHeight: outH,
+  );
 
   final cv.Mat resized = cv.resize(
-      src,
-      (
-        newW,
-        newH,
-      ),
-      interpolation: cv.INTER_LINEAR);
-
-  final int dx = (outW - newW) ~/ 2;
-  final int dy = (outH - newH) ~/ 2;
-
-  final int padRight = outW - newW - dx;
-  final int padBottom = outH - newH - dy;
+    src,
+    (lbp.newWidth, lbp.newHeight),
+    interpolation: cv.INTER_LINEAR,
+  );
 
   final cv.Mat padded = cv.copyMakeBorder(
     resized,
-    dy,
-    padBottom,
-    dx,
-    padRight,
+    lbp.padTop,
+    lbp.padBottom,
+    lbp.padLeft,
+    lbp.padRight,
     cv.BORDER_CONSTANT,
     value: cv.Scalar.black,
   );
   resized.dispose();
 
-  final Float32List tensor = buffer ?? Float32List(outW * outH * 3);
-
-  final Uint8List data = padded.data;
-  final int totalPixels = outW * outH;
-  for (int i = 0, j = 0;
-      i < totalPixels * 3 && j < totalPixels * 3;
-      i += 3, j += 3) {
-    tensor[j] = (data[i + 2] / 127.5) - 1.0;
-    tensor[j + 1] = (data[i + 1] / 127.5) - 1.0;
-    tensor[j + 2] = (data[i] / 127.5) - 1.0;
-  }
+  final Float32List tensor = bgrBytesToSignedFloat32(
+    bytes: padded.data,
+    totalPixels: outW * outH,
+    buffer: buffer,
+  );
   padded.dispose();
 
-  final double padTop = dy / outH;
-  final double padBottomNorm = (outH - dy - newH) / outH;
-  final double padLeft = dx / outW;
-  final double padRightNorm = (outW - dx - newW) / outW;
+  final double padTopNorm = lbp.padTop / outH;
+  final double padBottomNorm = lbp.padBottom / outH;
+  final double padLeftNorm = lbp.padLeft / outW;
+  final double padRightNorm = lbp.padRight / outW;
 
   return ImageTensor(
     tensor,
-    [padTop, padBottomNorm, padLeft, padRightNorm],
+    [padTopNorm, padBottomNorm, padLeftNorm, padRightNorm],
     outW,
     outH,
   );

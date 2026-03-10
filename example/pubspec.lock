@@ -45,10 +45,10 @@ packages:
     dependency: "direct main"
     description:
       name: camera_desktop
-      sha256: "7abe14963eaf96ae0e448de667a132380451b3cc598ee24524725f97e4bdc126"
+      sha256: "131cbc2b5ee7d873caa96dd895551f074385791692466d1961ad18f2d9ce54c3"
       url: "https://pub.dev"
     source: hosted
-    version: "1.0.1"
+    version: "1.0.3"
   camera_platform_interface:
     dependency: transitive
     description:
@@ -143,7 +143,7 @@ packages:
       path: ".."
       relative: true
     source: path
-    version: "5.0.6"
+    version: "5.0.7"
   fake_async:
     dependency: transitive
     description:
@@ -262,10 +262,10 @@ packages:
     dependency: "direct dev"
     description:
       name: flutter_litert
-      sha256: "40672bfc3f9bafdd2cb2646198a5f3ff923cf2444b94f76b4ee9aed82833e5ad"
+      sha256: cb84ea3c49d6aadcf3e269071d04bb443daf360e5f5cc30e821583e9d5a182f4
       url: "https://pub.dev"
     source: hosted
-    version: "1.1.1"
+    version: "1.2.0"
   flutter_plugin_android_lifecycle:
     dependency: transitive
     description:

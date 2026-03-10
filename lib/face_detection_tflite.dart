@@ -15,7 +15,24 @@ import 'package:flutter_litert/flutter_litert.dart';
 export 'src/dart_registration.dart';
 export 'src/util/image_utils.dart';
 export 'package:flutter_litert/flutter_litert.dart'
-    show PerformanceMode, PerformanceConfig;
+    show
+        PerformanceMode,
+        PerformanceConfig,
+        createNHWCTensor4D,
+        fillNHWC4D,
+        allocTensorShape,
+        flattenDynamicTensor,
+        sigmoid,
+        sigmoidClipped,
+        clamp01,
+        clip,
+        computeLetterboxParams,
+        LetterboxParams,
+        computeAspectPadParams,
+        AspectPadParams,
+        bgrBytesToRgbFloat32,
+        bgrBytesToSignedFloat32,
+        fillNHWC4DFromBgrBytes;
 
 export 'package:opencv_dart/opencv_dart.dart' show Mat, imdecode, IMREAD_COLOR;
 

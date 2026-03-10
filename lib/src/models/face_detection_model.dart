@@ -2,6 +2,16 @@ part of '../../face_detection_tflite.dart';
 
 /// Runs face box detection and predicts a small set of facial keypoints
 /// (eyes, nose, mouth, tragions) on the detected face(s).
+///
+/// The underlying TFLite models are sourced from Google's MediaPipe framework
+/// (BlazeFace). See the official model cards for architecture details, training
+/// data, and intended use cases:
+/// - Front camera / short range: https://mediapipe.page.link/blazeface-mc
+///   (local copy: `doc/model_cards/blazeface_short_range_model_card.pdf`)
+/// - Back camera / full range: https://mediapipe.page.link/blazeface-back-mc
+///   (local copy: `doc/model_cards/blazeface_full_range_model_card.pdf`)
+/// - Full range sparse: https://mediapipe.page.link/blazeface-back-sparse-mc
+///   (local copy: `doc/model_cards/blazeface_full_range_sparse_model_card.pdf`)
 class FaceDetection {
   IsolateInterpreter? _iso;
   final Interpreter _itp;

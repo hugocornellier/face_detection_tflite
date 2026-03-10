@@ -30,23 +30,6 @@ const List<String> _kSegmentationClassLabels = [
   'Other',
 ];
 
-// Shared detection model dropdown items.
-const List<DropdownMenuItem<FaceDetectionModel>> _kDetectionModelItems = [
-  DropdownMenuItem(value: FaceDetectionModel.frontCamera, child: Text('Front')),
-  DropdownMenuItem(value: FaceDetectionModel.backCamera, child: Text('Back')),
-  DropdownMenuItem(value: FaceDetectionModel.shortRange, child: Text('Short')),
-  DropdownMenuItem(value: FaceDetectionModel.full, child: Text('Full Range')),
-  DropdownMenuItem(
-      value: FaceDetectionModel.fullSparse, child: Text('Full Sparse')),
-];
-
-// Shared detection mode dropdown items.
-const List<DropdownMenuItem<FaceDetectionMode>> _kDetectionModeItems = [
-  DropdownMenuItem(value: FaceDetectionMode.fast, child: Text('Fast')),
-  DropdownMenuItem(value: FaceDetectionMode.standard, child: Text('Standard')),
-  DropdownMenuItem(value: FaceDetectionMode.full, child: Text('Full')),
-];
-
 // Performance classification based on processing time.
 ({String label, Color color, IconData icon}) _performanceLevel(int ms) {
   if (ms < 200) {
@@ -118,6 +101,15 @@ void _drawClassLabels(
       );
     }
   }
+}
+
+// Widget shown for the selected dropdown item (inherits parent text style).
+class _DropdownSelected extends StatelessWidget {
+  final String text;
+  const _DropdownSelected(this.text);
+  @override
+  Widget build(BuildContext context) =>
+      Align(alignment: Alignment.centerLeft, child: Text(text));
 }
 
 Future<void> main() async {
@@ -264,6 +256,7 @@ class _ExampleState extends State<Example> {
   bool _showIrises = true;
   bool _showEyeContours = true;
   bool _showEyeMesh = true;
+  bool _showLandmarkLabels = false;
   bool _hasProcessedMesh = false;
   bool _hasProcessedIris = false;
 
@@ -405,26 +398,6 @@ class _ExampleState extends State<Example> {
       return FaceDetectionMode.standard;
     } else {
       return FaceDetectionMode.fast;
-    }
-  }
-
-  Future<void> _onFeatureToggle(String feature, bool newValue) async {
-    final FaceDetectionMode oldMode = _determineMode();
-
-    if (feature == 'mesh') {
-      setState(() => _showMesh = newValue);
-    } else if (feature == 'iris') {
-      setState(() => _showIrises = newValue);
-    } else if (feature == 'eyeContour') {
-      setState(() => _showEyeContours = newValue);
-    } else if (feature == 'eyeMesh') {
-      setState(() => _showEyeMesh = newValue);
-    }
-
-    final FaceDetectionMode newMode = _determineMode();
-
-    if (_imageBytes != null && oldMode != newMode) {
-      await _processImage(_imageBytes!);
     }
   }
 
@@ -572,141 +545,195 @@ class _ExampleState extends State<Example> {
         initialChildSize: 0.6,
         minChildSize: 0.3,
         maxChildSize: 0.9,
-        builder: (context, scrollController) => Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-          ),
-          child: Column(
-            children: [
-              // Drag handle
-              Container(
-                margin: const EdgeInsets.symmetric(vertical: 8),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
-                ),
+        builder: (context, scrollController) => StatefulBuilder(
+          builder: (context, setSheetState) {
+            void updateState(VoidCallback fn) {
+              fn();
+              setSheetState(() {});
+              setState(() {});
+            }
+
+            Future<void> onSheetFeatureToggle(
+                String feature, bool newValue) async {
+              final FaceDetectionMode oldMode = _determineMode();
+
+              if (feature == 'mesh') {
+                _showMesh = newValue;
+              } else if (feature == 'iris') {
+                _showIrises = newValue;
+              } else if (feature == 'eyeContour') {
+                _showEyeContours = newValue;
+              } else if (feature == 'eyeMesh') {
+                _showEyeMesh = newValue;
+              }
+              setSheetState(() {});
+              setState(() {});
+
+              final FaceDetectionMode newMode = _determineMode();
+              if (_imageBytes != null && oldMode != newMode) {
+                await _processImage(_imageBytes!);
+              }
+            }
+
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
               ),
-              Expanded(
-                child: ListView(
-                  controller: scrollController,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  children: [
-                    // Display Options
-                    ExpansionTile(
-                      title: const Text('Display Options',
-                          style: TextStyle(fontWeight: FontWeight.bold)),
-                      initiallyExpanded: true,
+              child: Column(
+                children: [
+                  // Drag handle
+                  Container(
+                    margin: const EdgeInsets.symmetric(vertical: 8),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView(
+                      controller: scrollController,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
                       children: [
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 4,
+                        // Display Options
+                        ExpansionTile(
+                          title: const Text('Display Options',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          initiallyExpanded: true,
                           children: [
-                            _buildCheckbox(
-                                'Bounding Boxes',
-                                _showBoundingBoxes,
-                                (value) => setState(
-                                    () => _showBoundingBoxes = value ?? false)),
-                            _buildCheckbox(
-                                'Mesh',
-                                _showMesh,
-                                (value) =>
-                                    _onFeatureToggle('mesh', value ?? false)),
-                            _buildCheckbox(
-                                'Landmarks',
-                                _showLandmarks,
-                                (value) => setState(
-                                    () => _showLandmarks = value ?? false)),
-                            _buildCheckbox(
-                                'Irises',
-                                _showIrises,
-                                (value) =>
-                                    _onFeatureToggle('iris', value ?? false)),
-                            _buildCheckbox(
-                                'Eye Contour',
-                                _showEyeContours,
-                                (value) => _onFeatureToggle(
-                                    'eyeContour', value ?? false)),
-                            _buildCheckbox(
-                                'Eye Mesh',
-                                _showEyeMesh,
-                                (value) => _onFeatureToggle(
-                                    'eyeMesh', value ?? false)),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 4,
+                              children: [
+                                _buildCheckbox(
+                                    'Bounding Boxes',
+                                    _showBoundingBoxes,
+                                    (value) => updateState(() =>
+                                        _showBoundingBoxes = value ?? false)),
+                                _buildCheckbox(
+                                    'Mesh',
+                                    _showMesh,
+                                    (value) => onSheetFeatureToggle(
+                                        'mesh', value ?? false)),
+                                _buildCheckbox(
+                                    'Landmarks',
+                                    _showLandmarks,
+                                    (value) => updateState(
+                                        () => _showLandmarks = value ?? false)),
+                                _buildCheckbox(
+                                    'Irises',
+                                    _showIrises,
+                                    (value) => onSheetFeatureToggle(
+                                        'iris', value ?? false)),
+                                _buildCheckbox(
+                                    'Eye Contour',
+                                    _showEyeContours,
+                                    (value) => onSheetFeatureToggle(
+                                        'eyeContour', value ?? false)),
+                                _buildCheckbox(
+                                    'Eye Mesh',
+                                    _showEyeMesh,
+                                    (value) => onSheetFeatureToggle(
+                                        'eyeMesh', value ?? false)),
+                                _buildCheckbox(
+                                    'Landmark Labels',
+                                    _showLandmarkLabels,
+                                    (value) => updateState(() =>
+                                        _showLandmarkLabels = value ?? false)),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
                           ],
                         ),
-                        const SizedBox(height: 8),
-                      ],
-                    ),
-                    // Colors
-                    ExpansionTile(
-                      title: const Text('Colors',
-                          style: TextStyle(fontWeight: FontWeight.bold)),
-                      children: [
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
+                        // Colors
+                        ExpansionTile(
+                          title: const Text('Colors',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
                           children: [
-                            _buildColorButton(
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: [
+                                _buildColorButton(
+                                    'BBox',
+                                    _boundingBoxColor,
+                                    (color) => updateState(
+                                        () => _boundingBoxColor = color)),
+                                _buildColorButton(
+                                    'Landmarks',
+                                    _landmarkColor,
+                                    (color) => updateState(
+                                        () => _landmarkColor = color)),
+                                _buildColorButton(
+                                    'Mesh',
+                                    _meshColor,
+                                    (color) =>
+                                        updateState(() => _meshColor = color)),
+                                _buildColorButton(
+                                    'Irises',
+                                    _irisColor,
+                                    (color) =>
+                                        updateState(() => _irisColor = color)),
+                                _buildColorButton(
+                                    'Eye Contour',
+                                    _eyeContourColor,
+                                    (color) => updateState(
+                                        () => _eyeContourColor = color)),
+                                _buildColorButton(
+                                    'Eye Mesh',
+                                    _eyeMeshColor,
+                                    (color) => updateState(
+                                        () => _eyeMeshColor = color)),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                          ],
+                        ),
+                        // Sizes
+                        ExpansionTile(
+                          title: const Text('Sizes',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          children: [
+                            _buildCompactSlider(
                                 'BBox',
-                                _boundingBoxColor,
-                                (color) =>
-                                    setState(() => _boundingBoxColor = color)),
-                            _buildColorButton(
-                                'Landmarks',
-                                _landmarkColor,
-                                (color) =>
-                                    setState(() => _landmarkColor = color)),
-                            _buildColorButton('Mesh', _meshColor,
-                                (color) => setState(() => _meshColor = color)),
-                            _buildColorButton('Irises', _irisColor,
-                                (color) => setState(() => _irisColor = color)),
-                            _buildColorButton(
-                                'Eye Contour',
-                                _eyeContourColor,
-                                (color) =>
-                                    setState(() => _eyeContourColor = color)),
-                            _buildColorButton(
+                                _boundingBoxThickness,
+                                0.5,
+                                10.0,
+                                (value) => updateState(
+                                    () => _boundingBoxThickness = value)),
+                            _buildCompactSlider(
+                                'Landmark',
+                                _landmarkSize,
+                                0.5,
+                                15.0,
+                                (value) =>
+                                    updateState(() => _landmarkSize = value)),
+                            _buildCompactSlider(
+                                'Mesh',
+                                _meshSize,
+                                0.1,
+                                10.0,
+                                (value) =>
+                                    updateState(() => _meshSize = value)),
+                            _buildCompactSlider(
                                 'Eye Mesh',
-                                _eyeMeshColor,
-                                (color) =>
-                                    setState(() => _eyeMeshColor = color)),
+                                _eyeMeshSize,
+                                0.1,
+                                10.0,
+                                (value) =>
+                                    updateState(() => _eyeMeshSize = value)),
+                            const SizedBox(height: 8),
                           ],
                         ),
-                        const SizedBox(height: 8),
                       ],
                     ),
-                    // Sizes
-                    ExpansionTile(
-                      title: const Text('Sizes',
-                          style: TextStyle(fontWeight: FontWeight.bold)),
-                      children: [
-                        _buildCompactSlider(
-                            'BBox',
-                            _boundingBoxThickness,
-                            0.5,
-                            10.0,
-                            (value) =>
-                                setState(() => _boundingBoxThickness = value)),
-                        _buildCompactSlider(
-                            'Landmark',
-                            _landmarkSize,
-                            0.5,
-                            15.0,
-                            (value) => setState(() => _landmarkSize = value)),
-                        _buildCompactSlider('Mesh', _meshSize, 0.1, 10.0,
-                            (value) => setState(() => _meshSize = value)),
-                        _buildCompactSlider('Eye Mesh', _eyeMeshSize, 0.1, 10.0,
-                            (value) => setState(() => _eyeMeshSize = value)),
-                        const SizedBox(height: 8),
-                      ],
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
@@ -847,43 +874,71 @@ class _ExampleState extends State<Example> {
           // Model dropdown
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4.0),
-            child: DropdownButton<FaceDetectionModel>(
-              value: _detectionModel,
-              dropdownColor: Colors.blue[800],
-              style: const TextStyle(color: Colors.white, fontSize: 14),
-              underline: const SizedBox(),
-              icon: const Icon(Icons.arrow_drop_down, color: Colors.white),
-              items: const [
-                DropdownMenuItem(
-                  value: FaceDetectionModel.frontCamera,
-                  child: Text('Front'),
-                ),
-                DropdownMenuItem(
-                  value: FaceDetectionModel.backCamera,
-                  child: Text('Back'),
-                ),
-                DropdownMenuItem(
-                  value: FaceDetectionModel.shortRange,
-                  child: Text('Short'),
-                ),
-                DropdownMenuItem(
-                  value: FaceDetectionModel.full,
-                  child: Text('Full'),
-                ),
-                DropdownMenuItem(
-                  value: FaceDetectionModel.fullSparse,
-                  child: Text('Sparse'),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('MODEL',
+                    style: TextStyle(
+                        color: Colors.grey[500],
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 1.0)),
+                const SizedBox(width: 4),
+                DropdownButton<FaceDetectionModel>(
+                  value: _detectionModel,
+                  dropdownColor: Colors.blue[800],
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface,
+                    fontSize: 14,
+                  ),
+                  underline: const SizedBox(),
+                  icon: Icon(Icons.arrow_drop_down,
+                      color: Theme.of(context).colorScheme.onSurface),
+                  selectedItemBuilder: (context) => const [
+                    _DropdownSelected('Front'),
+                    _DropdownSelected('Back'),
+                    _DropdownSelected('Short'),
+                    _DropdownSelected('Full'),
+                    _DropdownSelected('Sparse'),
+                  ],
+                  items: const [
+                    DropdownMenuItem(
+                      value: FaceDetectionModel.frontCamera,
+                      child:
+                          Text('Front', style: TextStyle(color: Colors.white)),
+                    ),
+                    DropdownMenuItem(
+                      value: FaceDetectionModel.backCamera,
+                      child:
+                          Text('Back', style: TextStyle(color: Colors.white)),
+                    ),
+                    DropdownMenuItem(
+                      value: FaceDetectionModel.shortRange,
+                      child:
+                          Text('Short', style: TextStyle(color: Colors.white)),
+                    ),
+                    DropdownMenuItem(
+                      value: FaceDetectionModel.full,
+                      child:
+                          Text('Full', style: TextStyle(color: Colors.white)),
+                    ),
+                    DropdownMenuItem(
+                      value: FaceDetectionModel.fullSparse,
+                      child:
+                          Text('Sparse', style: TextStyle(color: Colors.white)),
+                    ),
+                  ],
+                  onChanged: (value) async {
+                    if (value != null && value != _detectionModel) {
+                      setState(() => _detectionModel = value);
+                      await _initFaceDetector();
+                      if (_imageBytes != null) {
+                        await _processImage(_imageBytes!);
+                      }
+                    }
+                  },
                 ),
               ],
-              onChanged: (value) async {
-                if (value != null && value != _detectionModel) {
-                  setState(() => _detectionModel = value);
-                  await _initFaceDetector();
-                  if (_imageBytes != null) {
-                    await _processImage(_imageBytes!);
-                  }
-                }
-              },
             ),
           ),
           // Settings button
@@ -940,6 +995,7 @@ class _ExampleState extends State<Example> {
                                 showBoundingBoxes: _showBoundingBoxes,
                                 showMesh: _showMesh,
                                 showLandmarks: _showLandmarks,
+                                showLandmarkLabels: _showLandmarkLabels,
                                 showIrises: _showIrises,
                                 showEyeContours: _showEyeContours,
                                 showEyeMesh: _showEyeMesh,
@@ -1058,6 +1114,7 @@ class _DetectionsPainter extends CustomPainter {
   final bool showBoundingBoxes;
   final bool showMesh;
   final bool showLandmarks;
+  final bool showLandmarkLabels;
   final bool showIrises;
   final bool showEyeContours;
   final bool showEyeMesh;
@@ -1079,6 +1136,7 @@ class _DetectionsPainter extends CustomPainter {
     required this.showBoundingBoxes,
     required this.showMesh,
     required this.showLandmarks,
+    required this.showLandmarkLabels,
     required this.showIrises,
     required this.showEyeContours,
     required this.showEyeMesh,
@@ -1139,15 +1197,70 @@ class _DetectionsPainter extends CustomPainter {
       }
 
       if (showLandmarks) {
-        // Iterate over all landmarks using .values
-        // You can also access specific landmarks using named properties:
-        // face.landmarks.leftEye, face.landmarks.rightEye, etc.
-        for (final p in face.landmarks.values) {
-          canvas.drawCircle(
-            Offset(ox + p.x * scaleX, oy + p.y * scaleY),
-            landmarkSize,
-            detKpPaint,
-          );
+        const labelNames = {
+          FaceLandmarkType.leftEye: 'Left Eye',
+          FaceLandmarkType.rightEye: 'Right Eye',
+          FaceLandmarkType.noseTip: 'Nose Tip',
+          FaceLandmarkType.mouth: 'Mouth',
+          FaceLandmarkType.leftEyeTragion: 'L Tragion',
+          FaceLandmarkType.rightEyeTragion: 'R Tragion',
+        };
+
+        for (final entry in face.landmarks.toMap().entries) {
+          final p = entry.value;
+          final center = Offset(ox + p.x * scaleX, oy + p.y * scaleY);
+          canvas.drawCircle(center, landmarkSize, detKpPaint);
+
+          if (showLandmarkLabels) {
+            final label = labelNames[entry.key] ?? entry.key.name;
+            final textPainter = TextPainter(
+              text: TextSpan(
+                text: label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              textDirection: TextDirection.ltr,
+            )..layout();
+
+            const double paddingH = 6;
+            const double paddingV = 3;
+            const double arrowHeight = 5;
+            const double arrowHalfWidth = 4;
+            const double gap = 2;
+
+            final double boxWidth = textPainter.width + paddingH * 2;
+            final double boxHeight = textPainter.height + paddingV * 2;
+            final double tipY = center.dy - landmarkSize - gap;
+            final double boxBottom = tipY - arrowHeight;
+            final double boxTop = boxBottom - boxHeight;
+            final double boxLeft = center.dx - boxWidth / 2;
+            final double boxRight = center.dx + boxWidth / 2;
+
+            final bgPaint = Paint()..color = landmarkColor;
+            final rrect = RRect.fromLTRBR(
+              boxLeft,
+              boxTop,
+              boxRight,
+              boxBottom,
+              const Radius.circular(4),
+            );
+            canvas.drawRRect(rrect, bgPaint);
+
+            final arrowPath = Path()
+              ..moveTo(center.dx - arrowHalfWidth, boxBottom)
+              ..lineTo(center.dx, tipY)
+              ..lineTo(center.dx + arrowHalfWidth, boxBottom)
+              ..close();
+            canvas.drawPath(arrowPath, bgPaint);
+
+            textPainter.paint(
+              canvas,
+              Offset(boxLeft + paddingH, boxTop + paddingV),
+            );
+          }
         }
       }
 
@@ -1251,6 +1364,7 @@ class _DetectionsPainter extends CustomPainter {
         old.showBoundingBoxes != showBoundingBoxes ||
         old.showMesh != showMesh ||
         old.showLandmarks != showLandmarks ||
+        old.showLandmarkLabels != showLandmarkLabels ||
         old.showIrises != showIrises ||
         old.showEyeContours != showEyeContours ||
         old.showEyeMesh != showEyeMesh ||
@@ -1408,44 +1522,140 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         Center(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8.0),
-            child: DropdownButton<FaceDetectionMode>(
-              value: _detectionMode,
-              dropdownColor: Colors.blue[800],
-              style: const TextStyle(color: Colors.white, fontSize: 14),
-              underline: const SizedBox(),
-              items: _kDetectionModeItems,
-              onChanged: (value) {
-                if (value != null) {
-                  setState(() => _detectionMode = value);
-                }
-              },
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('SPEED',
+                    style: TextStyle(
+                        color: Colors.grey[500],
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 1.0)),
+                const SizedBox(width: 4),
+                DropdownButton<FaceDetectionMode>(
+                  value: _detectionMode,
+                  dropdownColor: Colors.blue[800],
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface,
+                    fontSize: 14,
+                  ),
+                  underline: const SizedBox(),
+                  selectedItemBuilder: (context) => const [
+                    _DropdownSelected('Fast'),
+                    _DropdownSelected('Standard'),
+                    _DropdownSelected('Full'),
+                  ],
+                  items: const [
+                    DropdownMenuItem(
+                        value: FaceDetectionMode.fast,
+                        child: Text('Fast',
+                            style: TextStyle(color: Colors.white))),
+                    DropdownMenuItem(
+                        value: FaceDetectionMode.standard,
+                        child: Text('Standard',
+                            style: TextStyle(color: Colors.white))),
+                    DropdownMenuItem(
+                        value: FaceDetectionMode.full,
+                        child: Text('Full',
+                            style: TextStyle(color: Colors.white))),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() => _detectionMode = value);
+                    }
+                  },
+                ),
+              ],
             ),
           ),
         ),
         Center(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8.0),
-            child: DropdownButton<FaceDetectionModel>(
-              value: _detectionModel,
-              dropdownColor: Colors.blue[800],
-              style: const TextStyle(color: Colors.white, fontSize: 14),
-              underline: const SizedBox(),
-              items: _kDetectionModelItems,
-              onChanged: (value) async {
-                if (value != null && value != _detectionModel) {
-                  setState(() => _detectionModel = value);
-                  await _reinitDetectorIsolate();
-                }
-              },
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('MODEL',
+                    style: TextStyle(
+                        color: Colors.grey[500],
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 1.0)),
+                const SizedBox(width: 4),
+                DropdownButton<FaceDetectionModel>(
+                  value: _detectionModel,
+                  dropdownColor: Colors.blue[800],
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface,
+                    fontSize: 14,
+                  ),
+                  underline: const SizedBox(),
+                  selectedItemBuilder: (context) => const [
+                    _DropdownSelected('Front'),
+                    _DropdownSelected('Back'),
+                    _DropdownSelected('Short'),
+                    _DropdownSelected('Full Range'),
+                    _DropdownSelected('Full Sparse'),
+                  ],
+                  items: const [
+                    DropdownMenuItem(
+                        value: FaceDetectionModel.frontCamera,
+                        child: Text('Front',
+                            style: TextStyle(color: Colors.white))),
+                    DropdownMenuItem(
+                        value: FaceDetectionModel.backCamera,
+                        child: Text('Back',
+                            style: TextStyle(color: Colors.white))),
+                    DropdownMenuItem(
+                        value: FaceDetectionModel.shortRange,
+                        child: Text('Short',
+                            style: TextStyle(color: Colors.white))),
+                    DropdownMenuItem(
+                        value: FaceDetectionModel.full,
+                        child: Text('Full Range',
+                            style: TextStyle(color: Colors.white))),
+                    DropdownMenuItem(
+                        value: FaceDetectionModel.fullSparse,
+                        child: Text('Full Sparse',
+                            style: TextStyle(color: Colors.white))),
+                  ],
+                  onChanged: (value) async {
+                    if (value != null && value != _detectionModel) {
+                      setState(() => _detectionModel = value);
+                      await _reinitDetectorIsolate();
+                    }
+                  },
+                ),
+              ],
             ),
           ),
         ),
         Center(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Text(
-              'FPS: $_fps | ${_detectionTimeMs}ms',
-              style: const TextStyle(fontSize: 14),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 70,
+                  child: Text(
+                    'FPS: $_fps',
+                    style: const TextStyle(fontSize: 14),
+                    textAlign: TextAlign.right,
+                  ),
+                ),
+                const Text(
+                  ' | ',
+                  style: TextStyle(fontSize: 14),
+                ),
+                SizedBox(
+                  width: 70,
+                  child: Text(
+                    '${_detectionTimeMs}ms',
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -1583,40 +1793,42 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'Seg Model: ',
-                    style: TextStyle(color: Colors.white70, fontSize: 14),
-                  ),
-                  const SizedBox(width: 8),
-                  _segModelButton(SegmentationModel.general, 'Binary'),
-                  const SizedBox(width: 4),
-                  _segModelButton(SegmentationModel.multiclass, '6-Class'),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'Virtual Background: ',
-                    style: TextStyle(color: Colors.white70, fontSize: 14),
-                  ),
-                  Switch(
-                    value: _showVirtualBackground,
-                    activeTrackColor: Colors.blue,
-                    onChanged: (value) {
-                      setState(() {
-                        _showVirtualBackground = value;
-                        if (!value) _segmentationMask = null;
-                      });
-                    },
-                  ),
-                ],
-              ),
+              if (_showSegmentation) ...[
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Seg Model: ',
+                      style: TextStyle(color: Colors.white70, fontSize: 14),
+                    ),
+                    const SizedBox(width: 8),
+                    _segModelButton(SegmentationModel.general, 'Binary'),
+                    const SizedBox(width: 4),
+                    _segModelButton(SegmentationModel.multiclass, '6-Class'),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Virtual Background: ',
+                      style: TextStyle(color: Colors.white70, fontSize: 14),
+                    ),
+                    Switch(
+                      value: _showVirtualBackground,
+                      activeTrackColor: Colors.blue,
+                      onChanged: (value) {
+                        setState(() {
+                          _showVirtualBackground = value;
+                          if (!value) _segmentationMask = null;
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
