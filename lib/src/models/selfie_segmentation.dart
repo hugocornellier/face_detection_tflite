@@ -3,13 +3,6 @@ part of '../../face_detection_tflite.dart';
 /// Minimum input image size (smaller images rejected).
 const int kMinSegmentationInputSize = 16;
 
-/// Returns the effective model to use.
-///
-/// All platforms now support all models with custom ops.
-SegmentationModel _effectiveModel(SegmentationModel requested) {
-  return requested;
-}
-
 /// Returns the model filename for a given [SegmentationModel] variant.
 String _modelFileFor(SegmentationModel model) => switch (model) {
       SegmentationModel.general => 'selfie_segmenter.tflite',
@@ -17,8 +10,8 @@ String _modelFileFor(SegmentationModel model) => switch (model) {
       SegmentationModel.multiclass => 'selfie_multiclass.tflite',
     };
 
-/// Returns the model input width for a given [SegmentationModel] variant.
-int _inputWidthFor(SegmentationModel model) => 256;
+/// Model input width for all segmentation variants.
+const int _segmentationInputWidth = 256;
 
 /// Returns the model input height for a given [SegmentationModel] variant.
 int _inputHeightFor(SegmentationModel model) => switch (model) {
@@ -131,17 +124,15 @@ class SegmentationClass {
 /// final faces = await detector.detectFaces(imageBytes);
 /// final mask = await detector.getSegmentationMask(imageBytes);
 /// ```
-class SelfieSegmentation {
-  IsolateInterpreter? _iso;
+class SelfieSegmentation with _TfliteModelDisposable {
+  @override
   final Interpreter _itp;
   final int _inW;
   final int _inH;
   final int _outChannels;
   final SegmentationConfig _config;
   final SegmentationModel _model;
-  Delegate? _delegate;
   bool _delegateFailed = false;
-  bool _disposed = false;
 
   late final Tensor _inputTensor;
   late final Tensor _outputTensor;
@@ -190,7 +181,7 @@ class SelfieSegmentation {
   static Future<SelfieSegmentation> create({
     SegmentationConfig config = const SegmentationConfig(),
   }) async {
-    final effectiveModel = _effectiveModel(config.model);
+    final effectiveModel = config.model;
     final modelFile = _modelFileFor(effectiveModel);
 
     final obj = await _createWithLoader(
@@ -249,8 +240,8 @@ class SelfieSegmentation {
     required SegmentationError loadErrorCode,
     required String loadErrorPrefix,
   }) async {
-    final effectiveModel = _effectiveModel(config.model);
-    final inW = _inputWidthFor(effectiveModel);
+    final effectiveModel = config.model;
+    final inW = _segmentationInputWidth;
     final inH = _inputHeightFor(effectiveModel);
     final outChannels = _expectedOutputChannels(effectiveModel);
 
@@ -341,8 +332,8 @@ class SelfieSegmentation {
 
     _matTensorBuffer = Float32List(_inW * _inH * 3);
 
-    if (useIsolateInterpreter && _config.useIsolate && _delegate == null) {
-      _iso = await IsolateInterpreter.create(address: _itp.address);
+    if (useIsolateInterpreter && _config.useIsolate) {
+      _iso = await InterpreterFactory.createIsolateIfNeeded(_itp, _delegate);
     }
   }
 
@@ -532,10 +523,7 @@ class SelfieSegmentation {
     if (_model == SegmentationModel.multiclass) {
       final classProbs = _computeClassProbabilities(rawOutput, _outW, _outH);
       final int numPixels = _outW * _outH;
-      final personMask = Float32List(numPixels);
-      for (int i = 0; i < numPixels; i++) {
-        personMask[i] = 1.0 - classProbs[i * 6];
-      }
+      final personMask = _buildPersonMask(rawOutput, numPixels, classProbs);
       return MulticlassSegmentationMask(
         data: personMask,
         width: _outW,
@@ -547,10 +535,7 @@ class SelfieSegmentation {
       );
     } else {
       final int numPixels = _outW * _outH;
-      final personMask = Float32List(numPixels);
-      for (int i = 0; i < numPixels; i++) {
-        personMask[i] = rawOutput[i];
-      }
+      final personMask = _buildPersonMask(rawOutput, numPixels, null);
       return SegmentationMask(
         data: personMask,
         width: _outW,
@@ -591,12 +576,12 @@ class SelfieSegmentation {
       if (l4 > maxLogit) maxLogit = l4;
       if (l5 > maxLogit) maxLogit = l5;
 
-      final double e0 = _fastExp(l0 - maxLogit);
-      final double e1 = _fastExp(l1 - maxLogit);
-      final double e2 = _fastExp(l2 - maxLogit);
-      final double e3 = _fastExp(l3 - maxLogit);
-      final double e4 = _fastExp(l4 - maxLogit);
-      final double e5 = _fastExp(l5 - maxLogit);
+      final double e0 = math.exp(l0 - maxLogit);
+      final double e1 = math.exp(l1 - maxLogit);
+      final double e2 = math.exp(l2 - maxLogit);
+      final double e3 = math.exp(l3 - maxLogit);
+      final double e4 = math.exp(l4 - maxLogit);
+      final double e5 = math.exp(l5 - maxLogit);
 
       final double sumExp = e0 + e1 + e2 + e3 + e4 + e5;
 
@@ -611,15 +596,26 @@ class SelfieSegmentation {
     return result;
   }
 
-  /// Fast exponential approximation for softmax.
+  /// Builds the per-pixel person mask from raw output.
   ///
-  /// Uses range reduction + polynomial approximation.
-  /// ~2x faster than math.exp() with <1% relative error for [-20, 20] range.
-  static double _fastExp(double x) {
-    if (x < -20.0) return 0.0;
-    if (x > 20.0) return 485165195.4;
-
-    return math.exp(x);
+  /// If [classProbs] is provided (multiclass), uses `1 - background` probability.
+  /// Otherwise (binary), copies the raw sigmoid output directly.
+  static Float32List _buildPersonMask(
+    Float32List rawOutput,
+    int numPixels,
+    Float32List? classProbs,
+  ) {
+    final personMask = Float32List(numPixels);
+    if (classProbs != null) {
+      for (int i = 0; i < numPixels; i++) {
+        personMask[i] = 1.0 - classProbs[i * 6];
+      }
+    } else {
+      for (int i = 0; i < numPixels; i++) {
+        personMask[i] = rawOutput[i];
+      }
+    }
+    return personMask;
   }
 
   /// Releases all TensorFlow Lite resources held by this model.
@@ -632,19 +628,7 @@ class SelfieSegmentation {
   /// **Important:** If you are switching models (disposing one and immediately
   /// creating another), prefer [disposeAsync] which ensures the background
   /// isolate is fully terminated before freeing the native interpreter.
-  void dispose() {
-    if (_disposed) return;
-    _disposed = true;
-
-    final IsolateInterpreter? iso = _iso;
-    if (iso != null) {
-      iso.close();
-      _iso = null;
-    }
-    _itp.close();
-    _delegate?.delete();
-    _delegate = null;
-  }
+  void dispose() => _doDispose();
 
   /// Asynchronously releases all resources, ensuring the background isolate
   /// is fully terminated before freeing the native interpreter.
@@ -654,19 +638,7 @@ class SelfieSegmentation {
   /// being freed while the background isolate still references it.
   ///
   /// It is safe to call this multiple times.
-  Future<void> disposeAsync() async {
-    if (_disposed) return;
-    _disposed = true;
-
-    final IsolateInterpreter? iso = _iso;
-    if (iso != null) {
-      await iso.close();
-      _iso = null;
-    }
-    _itp.close();
-    _delegate?.delete();
-    _delegate = null;
-  }
+  Future<void> disposeAsync() => _doDisposeAsync();
 }
 
 @visibleForTesting
@@ -678,17 +650,10 @@ Float32List testComputeClassProbabilities(
     SelfieSegmentation._computeClassProbabilities(rawOutput, width, height);
 
 @visibleForTesting
-double testFastExp(double x) => SelfieSegmentation._fastExp(x);
-
-@visibleForTesting
-SegmentationModel testEffectiveModel(SegmentationModel requested) =>
-    _effectiveModel(requested);
-
-@visibleForTesting
 String testModelFileFor(SegmentationModel model) => _modelFileFor(model);
 
 @visibleForTesting
-int testInputWidthFor(SegmentationModel model) => _inputWidthFor(model);
+int testInputWidthFor(SegmentationModel model) => _segmentationInputWidth;
 
 @visibleForTesting
 int testInputHeightFor(SegmentationModel model) => _inputHeightFor(model);

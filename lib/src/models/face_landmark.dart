@@ -7,11 +7,10 @@ part of '../../face_detection_tflite.dart';
 /// framework. See the official model card for architecture details, training data, and
 /// intended use cases: https://mediapipe.page.link/facemesh-mc
 /// (local copy: `doc/model_cards/face_landmark_model_card.pdf`)
-class FaceLandmark {
-  IsolateInterpreter? _iso;
+class FaceLandmark with _TfliteModelDisposable {
+  @override
   final Interpreter _itp;
   final int _inW, _inH;
-  Delegate? _delegate;
   late final int _bestIdx;
   late final Tensor _inputTensor;
   late final Tensor _bestTensor;
@@ -57,32 +56,15 @@ class FaceLandmark {
   static Future<FaceLandmark> create({
     InterpreterOptions? options,
     PerformanceConfig? performanceConfig,
-  }) async {
-    Delegate? delegate;
-    final InterpreterOptions interpreterOptions;
-    if (options != null) {
-      interpreterOptions = options;
-    } else {
-      final result = InterpreterFactory.create(performanceConfig);
-      interpreterOptions = result.$1;
-      delegate = result.$2;
-    }
-
-    final Interpreter itp = await Interpreter.fromAsset(
-      'packages/face_detection_tflite/assets/models/$_faceLandmarkModel',
-      options: interpreterOptions,
-    );
-    final List<int> ishape = itp.getInputTensor(0).shape;
-    final int inH = ishape[1];
-    final int inW = ishape[2];
-    itp.resizeInputTensor(0, [1, inH, inW, 3]);
-    itp.allocateTensors();
-
-    final FaceLandmark obj = FaceLandmark._(itp, inW, inH);
-    obj._delegate = delegate;
-    await obj._initializeTensors();
-    return obj;
-  }
+  }) =>
+      _createWithLoader(
+        load: (opts) => Interpreter.fromAsset(
+          'packages/face_detection_tflite/assets/models/$_faceLandmarkModel',
+          options: opts,
+        ),
+        options: options,
+        performanceConfig: performanceConfig,
+      );
 
   /// Creates a face landmark model from pre-loaded model bytes.
   ///
@@ -93,26 +75,28 @@ class FaceLandmark {
   static Future<FaceLandmark> createFromBuffer(
     Uint8List modelBytes, {
     PerformanceConfig? performanceConfig,
-  }) async {
-    final result = InterpreterFactory.create(performanceConfig);
-    final interpreterOptions = result.$1;
-    final delegate = result.$2;
+  }) =>
+      _createWithLoader(
+        load: (opts) => Interpreter.fromBuffer(modelBytes, options: opts),
+        performanceConfig: performanceConfig,
+        useIsolateInterpreter: false,
+      );
 
-    final Interpreter itp = Interpreter.fromBuffer(
-      modelBytes,
-      options: interpreterOptions,
-    );
-    final List<int> ishape = itp.getInputTensor(0).shape;
-    final int inH = ishape[1];
-    final int inW = ishape[2];
-    itp.resizeInputTensor(0, [1, inH, inW, 3]);
-    itp.allocateTensors();
-
-    final FaceLandmark obj = FaceLandmark._(itp, inW, inH);
-    obj._delegate = delegate;
-    await obj._initializeTensors(useIsolateInterpreter: false);
-    return obj;
-  }
+  static Future<FaceLandmark> _createWithLoader({
+    required FutureOr<Interpreter> Function(InterpreterOptions) load,
+    InterpreterOptions? options,
+    PerformanceConfig? performanceConfig,
+    bool useIsolateInterpreter = true,
+  }) =>
+      _buildModel(
+        load: load,
+        options: options,
+        performanceConfig: performanceConfig,
+        useIsolateInterpreter: useIsolateInterpreter,
+        construct: FaceLandmark._,
+        initTensors: (obj, iso) =>
+            obj._initializeTensors(useIsolateInterpreter: iso),
+      );
 
   /// Shared tensor initialization logic.
   ///
@@ -159,8 +143,8 @@ class FaceLandmark {
       }
     }
 
-    if (useIsolateInterpreter && _delegate == null) {
-      _iso = await IsolateInterpreter.create(address: _itp.address);
+    if (useIsolateInterpreter) {
+      _iso = await InterpreterFactory.createIsolateIfNeeded(_itp, _delegate);
     }
   }
 
@@ -223,13 +207,5 @@ class FaceLandmark {
   ///
   /// **Note:** Most users should call [FaceDetector.dispose] instead, which
   /// automatically disposes all internal models (detection, mesh, and iris).
-  void dispose() {
-    _delegate?.delete();
-    _delegate = null;
-    final IsolateInterpreter? iso = _iso;
-    if (iso != null) {
-      iso.close();
-    }
-    _itp.close();
-  }
+  void dispose() => _doDispose();
 }

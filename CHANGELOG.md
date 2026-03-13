@@ -1,6 +1,10 @@
 ## 5.0.7
 
 - Update `camera_desktop` 1.0.1 -> 1.0.3
+- Use shared `Point` and `BoundingBox` from `flutter_litert` 2.0.0
+- Refactor isolate worker to use `IsolateWorkerBase` from flutter_litert
+- Consolidate NMS helpers, extract shared `_buildPersonMask` and `_irisCenterFromPoints`
+- Deduplicate `FaceDetector` and `FaceDetectorIsolate` internals
 
 ## 5.0.6
 

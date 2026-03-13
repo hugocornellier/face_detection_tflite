@@ -3,12 +3,6 @@ part of '../../face_detection_tflite.dart';
 /// Model name for the MobileFaceNet embedding model.
 const _embeddingModel = 'mobilefacenet.tflite';
 
-/// Default input size for MobileFaceNet (112x112).
-const int kEmbeddingInputSize = 112;
-
-/// Default embedding vector dimension (192-dim for MobileFaceNet).
-const int kEmbeddingDimension = 192;
-
 /// Generates face embeddings (identity vectors) from aligned face crops.
 ///
 /// Uses the MobileFaceNet model to produce 192-dimensional embedding vectors
@@ -49,11 +43,10 @@ const int kEmbeddingDimension = 192;
 /// final faces = await detector.detectFaces(imageBytes);
 /// final embedding = await detector.getFaceEmbedding(faces.first, imageBytes);
 /// ```
-class FaceEmbedding {
-  IsolateInterpreter? _iso;
+class FaceEmbedding with _TfliteModelDisposable {
+  @override
   final Interpreter _itp;
   final int _inW, _inH;
-  Delegate? _delegate;
   late final Tensor _inputTensor;
   late final Tensor _outputTensor;
   late final Float32List _inputBuf;
@@ -89,32 +82,15 @@ class FaceEmbedding {
   static Future<FaceEmbedding> create({
     InterpreterOptions? options,
     PerformanceConfig? performanceConfig,
-  }) async {
-    Delegate? delegate;
-    final InterpreterOptions interpreterOptions;
-    if (options != null) {
-      interpreterOptions = options;
-    } else {
-      final result = InterpreterFactory.create(performanceConfig);
-      interpreterOptions = result.$1;
-      delegate = result.$2;
-    }
-
-    final Interpreter itp = await Interpreter.fromAsset(
-      'packages/face_detection_tflite/assets/models/$_embeddingModel',
-      options: interpreterOptions,
-    );
-    final List<int> ishape = itp.getInputTensor(0).shape;
-    final int inH = ishape[1];
-    final int inW = ishape[2];
-    itp.resizeInputTensor(0, [1, inH, inW, 3]);
-    itp.allocateTensors();
-
-    final FaceEmbedding obj = FaceEmbedding._(itp, inW, inH);
-    obj._delegate = delegate;
-    await obj._initializeTensors();
-    return obj;
-  }
+  }) =>
+      _createWithLoader(
+        load: (opts) => Interpreter.fromAsset(
+          'packages/face_detection_tflite/assets/models/$_embeddingModel',
+          options: opts,
+        ),
+        options: options,
+        performanceConfig: performanceConfig,
+      );
 
   /// Creates a face embedding model from pre-loaded model bytes.
   ///
@@ -125,26 +101,28 @@ class FaceEmbedding {
   static Future<FaceEmbedding> createFromBuffer(
     Uint8List modelBytes, {
     PerformanceConfig? performanceConfig,
-  }) async {
-    final result = InterpreterFactory.create(performanceConfig);
-    final interpreterOptions = result.$1;
-    final delegate = result.$2;
+  }) =>
+      _createWithLoader(
+        load: (opts) => Interpreter.fromBuffer(modelBytes, options: opts),
+        performanceConfig: performanceConfig,
+        useIsolateInterpreter: false,
+      );
 
-    final Interpreter itp = Interpreter.fromBuffer(
-      modelBytes,
-      options: interpreterOptions,
-    );
-    final List<int> ishape = itp.getInputTensor(0).shape;
-    final int inH = ishape[1];
-    final int inW = ishape[2];
-    itp.resizeInputTensor(0, [1, inH, inW, 3]);
-    itp.allocateTensors();
-
-    final FaceEmbedding obj = FaceEmbedding._(itp, inW, inH);
-    obj._delegate = delegate;
-    await obj._initializeTensors(useIsolateInterpreter: false);
-    return obj;
-  }
+  static Future<FaceEmbedding> _createWithLoader({
+    required FutureOr<Interpreter> Function(InterpreterOptions) load,
+    InterpreterOptions? options,
+    PerformanceConfig? performanceConfig,
+    bool useIsolateInterpreter = true,
+  }) =>
+      _buildModel(
+        load: load,
+        options: options,
+        performanceConfig: performanceConfig,
+        useIsolateInterpreter: useIsolateInterpreter,
+        construct: FaceEmbedding._,
+        initTensors: (obj, iso) =>
+            obj._initializeTensors(useIsolateInterpreter: iso),
+      );
 
   /// Shared tensor initialization logic.
   ///
@@ -159,8 +137,8 @@ class FaceEmbedding {
     _outputBuf = _outputTensor.data.buffer.asFloat32List();
     _embeddingDim = _outputTensor.shape.last;
     _input4dCache = createNHWCTensor4D(_inH, _inW);
-    if (useIsolateInterpreter && _delegate == null) {
-      _iso = await IsolateInterpreter.create(address: _itp.address);
+    if (useIsolateInterpreter) {
+      _iso = await InterpreterFactory.createIsolateIfNeeded(_itp, _delegate);
     }
   }
 
@@ -203,7 +181,7 @@ class FaceEmbedding {
     if (_iso == null) {
       _inputBuf.setAll(0, pack.tensorNHWC);
       _itp.invoke();
-      return _normalizeEmbedding(Float32List.fromList(_outputBuf));
+      return _normalizeEmbeddingImpl(Float32List.fromList(_outputBuf));
     } else {
       fillNHWC4D(pack.tensorNHWC, _input4dCache, _inH, _inW);
       final List<List<List<List<List<double>>>>> inputs = [_input4dCache];
@@ -216,16 +194,9 @@ class FaceEmbedding {
       await _iso!.runForMultipleInputs(inputs, outputs);
 
       final Float32List embedding = flattenDynamicTensor(outputs[0]);
-      return _normalizeEmbedding(embedding);
+      return _normalizeEmbeddingImpl(embedding);
     }
   }
-
-  /// L2-normalizes an embedding vector to unit length.
-  ///
-  /// Normalized embeddings allow direct use of dot product as cosine similarity,
-  /// since cos(θ) = a·b / (|a||b|) = a·b when |a| = |b| = 1.
-  Float32List _normalizeEmbedding(Float32List embedding) =>
-      _normalizeEmbeddingImpl(embedding);
 
   /// Computes the cosine similarity between two embedding vectors.
   ///
@@ -305,41 +276,7 @@ class FaceEmbedding {
   ///
   /// **Note:** Most users should call [FaceDetector.dispose] instead, which
   /// automatically disposes all internal models (detection, mesh, iris, and embedding).
-  void dispose() {
-    _delegate?.delete();
-    _delegate = null;
-    final IsolateInterpreter? iso = _iso;
-    if (iso != null) {
-      iso.close();
-    }
-    _itp.close();
-  }
-}
-
-/// Holds the alignment parameters for extracting a face crop for embedding.
-///
-/// Similar to [AlignedFace] but optimized for the 112×112 input size
-/// required by face embedding models.
-class AlignedFaceForEmbedding {
-  /// X coordinate of the face center in absolute pixel coordinates.
-  final double cx;
-
-  /// Y coordinate of the face center in absolute pixel coordinates.
-  final double cy;
-
-  /// Length of the square crop edge in absolute pixels.
-  final double size;
-
-  /// Rotation applied to align the face, in radians.
-  final double theta;
-
-  /// Creates alignment parameters for face embedding extraction.
-  const AlignedFaceForEmbedding({
-    required this.cx,
-    required this.cy,
-    required this.size,
-    required this.theta,
-  });
+  void dispose() => _doDispose();
 }
 
 /// Computes alignment parameters for extracting a face crop suitable for embedding.
@@ -353,8 +290,8 @@ class AlignedFaceForEmbedding {
 /// The [leftEye] and [rightEye] parameters are the eye center positions in
 /// absolute pixel coordinates.
 ///
-/// Returns [AlignedFaceForEmbedding] with center, size, and rotation parameters.
-AlignedFaceForEmbedding computeEmbeddingAlignment({
+/// Returns [AlignedRoi] with center, size, and rotation parameters.
+AlignedRoi computeEmbeddingAlignment({
   required Point leftEye,
   required Point rightEye,
 }) {
@@ -375,7 +312,7 @@ AlignedFaceForEmbedding computeEmbeddingAlignment({
   final double cx = eyeCx - offsetY * st;
   final double cy = eyeCy + offsetY * ct;
 
-  return AlignedFaceForEmbedding(cx: cx, cy: cy, size: size, theta: theta);
+  return AlignedRoi(cx, cy, size, theta);
 }
 
 Float32List _normalizeEmbeddingImpl(Float32List embedding) {

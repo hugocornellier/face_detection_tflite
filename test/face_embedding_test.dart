@@ -335,14 +335,9 @@ void main() {
     });
   });
 
-  group('AlignedFaceForEmbedding', () {
+  group('AlignedRoi', () {
     test('should store alignment parameters correctly', () {
-      const aligned = AlignedFaceForEmbedding(
-        cx: 100.0,
-        cy: 150.0,
-        size: 200.0,
-        theta: 0.5,
-      );
+      const aligned = AlignedRoi(100.0, 150.0, 200.0, 0.5);
 
       expect(aligned.cx, 100.0);
       expect(aligned.cy, 150.0);

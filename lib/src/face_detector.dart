@@ -1,5 +1,13 @@
 part of '../face_detection_tflite.dart';
 
+// Iris point slice indices within the concatenated iris landmark output.
+// Left eye:  indices [_kLeftIrisStart, _kLeftIrisEnd)  → 5 iris keypoints at positions 71-75
+// Right eye: indices [_kRightIrisStart, _kRightIrisEnd) → 5 iris keypoints at positions 147-151
+const int _kLeftIrisStart = 71;
+const int _kLeftIrisEnd = 76;
+const int _kRightIrisStart = 147;
+const int _kRightIrisEnd = 152;
+
 /// A lightweight sequential lock that chains futures to prevent concurrent access
 /// to shared mutable buffers (e.g., TFLite interpreter buffers).
 class _InferenceLock {
@@ -138,14 +146,13 @@ class FaceDetector {
   FaceDetector();
 
   FaceDetection? _detector;
-  final List<FaceLandmark> _meshPool = [];
+  RoundRobinPool<FaceLandmark>? _meshPool;
+  List<FaceLandmark> _meshItems = [];
   IrisLandmark? _irisLeft;
   IrisLandmark? _irisRight;
   FaceEmbedding? _embedding;
   SelfieSegmentation? _segmenter;
 
-  final List<Future<void>> _meshLocks = [];
-  int _meshPoolCounter = 0;
   final _irisLeftLock = _InferenceLock();
   final _irisRightLock = _InferenceLock();
   final _embeddingLock = _InferenceLock();
@@ -163,24 +170,12 @@ class FaceDetector {
   /// landmark points. Useful for monitoring detection reliability.
   int irisFailCount = 0;
 
-  /// Counts how many times fallback eye positions were used.
-  ///
-  /// Incremented when iris detection falls back to original eye keypoint
-  /// positions due to invalid ROI size (e.g., when eye region collapses).
-  int irisUsedFallbackCount = 0;
-
-  /// Duration of the most recent iris landmark detection operation.
-  ///
-  /// Updated after each iris center computation.
-  /// Useful for profiling iris detection performance. Initialized to [Duration.zero].
-  Duration lastIrisTime = Duration.zero;
-
   /// Returns true if all models are loaded and ready for inference.
   ///
   /// You must call [initialize] before this returns true.
   bool get isReady =>
       _detector != null &&
-      _meshPool.isNotEmpty &&
+      _meshItems.isNotEmpty &&
       _irisLeft != null &&
       _irisRight != null;
 
@@ -222,44 +217,27 @@ class FaceDetector {
     InterpreterOptions? options,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
     int meshPoolSize = 3,
-  }) async {
-    try {
-      _detector = await FaceDetection.create(
-        model,
-        options: options,
-        performanceConfig: performanceConfig,
+  }) =>
+      _initializeWith(
+        meshPoolSize: meshPoolSize,
+        detectorLoader: () => FaceDetection.create(
+          model,
+          options: options,
+          performanceConfig: performanceConfig,
+        ),
+        landmarkLoader: () => FaceLandmark.create(
+          options: options,
+          performanceConfig: performanceConfig,
+        ),
+        irisLoader: () => IrisLandmark.create(
+          options: options,
+          performanceConfig: performanceConfig,
+        ),
+        embeddingLoader: () => FaceEmbedding.create(
+          options: options,
+          performanceConfig: performanceConfig,
+        ),
       );
-
-      _meshPool.clear();
-      _meshLocks.clear();
-      for (int i = 0; i < meshPoolSize; i++) {
-        _meshPool.add(
-          await FaceLandmark.create(
-            options: options,
-            performanceConfig: performanceConfig,
-          ),
-        );
-        _meshLocks.add(Future.value());
-      }
-
-      _irisLeft = await IrisLandmark.create(
-        options: options,
-        performanceConfig: performanceConfig,
-      );
-      _irisRight = await IrisLandmark.create(
-        options: options,
-        performanceConfig: performanceConfig,
-      );
-
-      _embedding = await FaceEmbedding.create(
-        options: options,
-        performanceConfig: performanceConfig,
-      );
-    } catch (e) {
-      _cleanupOnInitError();
-      rethrow;
-    }
-  }
 
   /// Initializes the face detector from pre-loaded model bytes.
   ///
@@ -280,40 +258,51 @@ class FaceDetector {
     required FaceDetectionModel model,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
     int meshPoolSize = 3,
+  }) =>
+      _initializeWith(
+        meshPoolSize: meshPoolSize,
+        detectorLoader: () => FaceDetection.createFromBuffer(
+          faceDetectionBytes,
+          model,
+          performanceConfig: performanceConfig,
+        ),
+        landmarkLoader: () => FaceLandmark.createFromBuffer(
+          faceLandmarkBytes,
+          performanceConfig: performanceConfig,
+        ),
+        irisLoader: () => IrisLandmark.createFromBuffer(
+          irisLandmarkBytes,
+          performanceConfig: performanceConfig,
+        ),
+        embeddingLoader: embeddingBytes != null
+            ? () => FaceEmbedding.createFromBuffer(
+                  embeddingBytes,
+                  performanceConfig: performanceConfig,
+                )
+            : null,
+      );
+
+  Future<void> _initializeWith({
+    required int meshPoolSize,
+    required Future<FaceDetection> Function() detectorLoader,
+    required Future<FaceLandmark> Function() landmarkLoader,
+    required Future<IrisLandmark> Function() irisLoader,
+    Future<FaceEmbedding> Function()? embeddingLoader,
   }) async {
     try {
-      _detector = await FaceDetection.createFromBuffer(
-        faceDetectionBytes,
-        model,
-        performanceConfig: performanceConfig,
-      );
+      _detector = await detectorLoader();
 
-      _meshPool.clear();
-      _meshLocks.clear();
+      _meshItems = [];
       for (int i = 0; i < meshPoolSize; i++) {
-        _meshPool.add(
-          await FaceLandmark.createFromBuffer(
-            faceLandmarkBytes,
-            performanceConfig: performanceConfig,
-          ),
-        );
-        _meshLocks.add(Future.value());
+        _meshItems.add(await landmarkLoader());
       }
+      _meshPool = RoundRobinPool(_meshItems);
 
-      _irisLeft = await IrisLandmark.createFromBuffer(
-        irisLandmarkBytes,
-        performanceConfig: performanceConfig,
-      );
-      _irisRight = await IrisLandmark.createFromBuffer(
-        irisLandmarkBytes,
-        performanceConfig: performanceConfig,
-      );
+      _irisLeft = await irisLoader();
+      _irisRight = await irisLoader();
 
-      if (embeddingBytes != null) {
-        _embedding = await FaceEmbedding.createFromBuffer(
-          embeddingBytes,
-          performanceConfig: performanceConfig,
-        );
+      if (embeddingLoader != null) {
+        _embedding = await embeddingLoader();
       }
     } catch (e) {
       _cleanupOnInitError();
@@ -321,63 +310,40 @@ class FaceDetector {
     }
   }
 
-  /// Disposes all partially-initialized resources after a failed initialization.
+  /// Disposes all model fields and clears references.
   ///
-  /// Uses try-catch around each disposal to ensure all fields are cleaned up
-  /// even if one model was already disposed (e.g. dispose→reinitialize failure).
-  void _cleanupOnInitError() {
-    try {
-      _detector?.dispose();
-    } on StateError catch (_) {}
-    for (final mesh in _meshPool) {
-      try {
-        mesh.dispose();
-      } on StateError catch (_) {}
+  /// When [safe] is true, each disposal is wrapped in try-catch to tolerate
+  /// already-disposed models (used during failed initialization cleanup).
+  void _disposeFields({bool safe = false}) {
+    void d(void Function() fn) {
+      if (safe) {
+        try {
+          fn();
+        } on StateError catch (_) {}
+      } else {
+        fn();
+      }
     }
-    _meshPool.clear();
-    _meshLocks.clear();
-    try {
-      _irisLeft?.dispose();
-    } on StateError catch (_) {}
-    try {
-      _irisRight?.dispose();
-    } on StateError catch (_) {}
-    try {
-      _embedding?.dispose();
-    } on StateError catch (_) {}
+
+    d(() => _detector?.dispose());
+    for (final mesh in _meshItems) {
+      d(() => mesh.dispose());
+    }
+    _meshItems = [];
+    _meshPool = null;
+    d(() => _irisLeft?.dispose());
+    d(() => _irisRight?.dispose());
+    d(() => _embedding?.dispose());
+    d(() => _segmenter?.dispose());
     _detector = null;
     _irisLeft = null;
     _irisRight = null;
     _embedding = null;
+    _segmenter = null;
   }
 
-  /// Serializes mesh model inference using a pool of models for parallel processing.
-  ///
-  /// Each FaceLandmark model uses shared mutable buffers that cannot be safely
-  /// accessed concurrently. This method selects an available model from the pool
-  /// and ensures only one inference runs per model instance at a time, while
-  /// allowing different faces to use different models in parallel.
-  ///
-  /// Uses round-robin selection to distribute load across the pool.
-  Future<T> _withMeshLock<T>(Future<T> Function(FaceLandmark) fn) async {
-    if (_meshPool.isEmpty) {
-      throw StateError('Mesh pool is empty. Call initialize() first.');
-    }
-
-    final int poolIndex = _meshPoolCounter % _meshPool.length;
-    _meshPoolCounter = (_meshPoolCounter + 1) % _meshPool.length;
-
-    final previous = _meshLocks[poolIndex];
-    final completer = Completer<void>();
-    _meshLocks[poolIndex] = completer.future;
-
-    try {
-      await previous;
-      return await fn(_meshPool[poolIndex]);
-    } finally {
-      completer.complete();
-    }
-  }
+  /// Disposes all partially-initialized resources after a failed initialization.
+  void _cleanupOnInitError() => _disposeFields(safe: true);
 
   /// Extracts aligned eye regions of interest from face mesh landmarks.
   ///
@@ -575,7 +541,7 @@ class FaceDetector {
         try {
           irisResults[i] = await _irisFromMesh(image, meshPx);
         } catch (_) {
-          // Iris detection is best-effort; failures are silently ignored.
+          // Iris detection failed for this face; skip.
         }
       }
     }
@@ -592,15 +558,16 @@ class FaceDetector {
       List<double> kp = det.keypointsXY;
       if (computeIris && irisPx.isNotEmpty) {
         kp = List<double>.from(det.keypointsXY);
-        if (irisPx.length >= 76) {
-          final leftIrisPoints = irisPx.sublist(71, 76);
-          final leftCenter = _findIrisCenterFromPoints(leftIrisPoints);
+        if (irisPx.length >= _kLeftIrisEnd) {
+          final leftIrisPoints = irisPx.sublist(_kLeftIrisStart, _kLeftIrisEnd);
+          final leftCenter = _irisCenterFromPoints(leftIrisPoints);
           kp[FaceLandmarkType.leftEye.index * 2] = leftCenter.x / width;
           kp[FaceLandmarkType.leftEye.index * 2 + 1] = leftCenter.y / height;
         }
-        if (irisPx.length >= 152) {
-          final rightIrisPoints = irisPx.sublist(147, 152);
-          final rightCenter = _findIrisCenterFromPoints(rightIrisPoints);
+        if (irisPx.length >= _kRightIrisEnd) {
+          final rightIrisPoints =
+              irisPx.sublist(_kRightIrisStart, _kRightIrisEnd);
+          final rightCenter = _irisCenterFromPoints(rightIrisPoints);
           kp[FaceLandmarkType.rightEye.index * 2] = rightCenter.x / width;
           kp[FaceLandmarkType.rightEye.index * 2 + 1] = rightCenter.y / height;
         }
@@ -675,9 +642,9 @@ class FaceDetector {
     double size,
     double theta,
   ) async {
-    if (_meshPool.isEmpty) return <Point>[];
+    if (_meshPool == null || _meshPool!.isEmpty) return <Point>[];
 
-    final lmNorm = await _withMeshLock((fl) => fl.call(faceCrop));
+    final lmNorm = await _meshPool!.withItem((fl) => fl.call(faceCrop));
 
     return _transformMeshToAbsolute(lmNorm, cx, cy, size, theta);
   }
@@ -687,11 +654,17 @@ class FaceDetector {
   /// Eye crop extraction (warpAffine) is done serially to avoid opencv_dart
   /// freeze issues, but TFLite inference runs in parallel for performance.
   Future<List<Point>> _irisFromMesh(cv.Mat image, List<Point> meshAbs) async {
-    if (_irisLeft == null || _irisRight == null) return <Point>[];
-    if (meshAbs.length < 468) return <Point>[];
+    if (_irisLeft == null || _irisRight == null) {
+      return <Point>[];
+    }
+    if (meshAbs.length < 468) {
+      return <Point>[];
+    }
 
     final List<AlignedRoi> rois = eyeRoisFromMesh(meshAbs);
-    if (rois.length < 2) return <Point>[];
+    if (rois.length < 2) {
+      return <Point>[];
+    }
 
     final cv.Mat? leftCrop = extractAlignedSquare(
       image,
@@ -744,37 +717,6 @@ class FaceDetector {
     }
 
     return pts;
-  }
-
-  /// Finds the iris center from a list of iris contour points.
-  ///
-  /// Finds the point closest to the centroid of all iris points, which
-  /// geometrically identifies the center of the iris contour.
-  /// This can be computed in O(n) instead of O(n²).
-  Point _findIrisCenterFromPoints(List<Point> irisPoints) {
-    if (irisPoints.isEmpty) return const Point(0, 0, 0);
-    if (irisPoints.length == 1) return irisPoints[0];
-
-    double cx = 0, cy = 0;
-    for (final Point p in irisPoints) {
-      cx += p.x;
-      cy += p.y;
-    }
-    cx /= irisPoints.length;
-    cy /= irisPoints.length;
-
-    int bestIdx = 0;
-    double bestDist = double.infinity;
-    for (int i = 0; i < irisPoints.length; i++) {
-      final double dx = irisPoints[i].x - cx;
-      final double dy = irisPoints[i].y - cy;
-      final double dist = dx * dx + dy * dy;
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestIdx = i;
-      }
-    }
-    return irisPoints[bestIdx];
   }
 
   /// Whether the face embedding model is loaded and ready.
@@ -878,29 +820,9 @@ class FaceDetector {
     }
 
     try {
-      final cv.Mat resized;
-      if (faceCrop.cols != _embedding!.inputWidth ||
-          faceCrop.rows != _embedding!.inputHeight) {
-        resized = cv.resize(
-            faceCrop,
-            (
-              _embedding!.inputWidth,
-              _embedding!.inputHeight,
-            ),
-            interpolation: cv.INTER_LINEAR);
-        faceCrop.dispose();
-      } else {
-        resized = faceCrop;
-      }
-
-      try {
-        return await _embeddingLock.run(() => _embedding!.call(resized));
-      } finally {
-        resized.dispose();
-      }
-    } catch (e) {
+      return await _embeddingLock.run(() => _embedding!.call(faceCrop));
+    } finally {
       faceCrop.dispose();
-      rethrow;
     }
   }
 
@@ -1095,23 +1017,7 @@ class FaceDetector {
   /// Call this when you're done using the detector to free up memory.
   /// After calling dispose, you must call [initialize] again before
   /// running any detections.
-  void dispose() {
-    _detector?.dispose();
-    _detector = null;
-    for (final mesh in _meshPool) {
-      mesh.dispose();
-    }
-    _meshPool.clear();
-    _meshLocks.clear();
-    _irisLeft?.dispose();
-    _irisLeft = null;
-    _irisRight?.dispose();
-    _irisRight = null;
-    _embedding?.dispose();
-    _embedding = null;
-    _segmenter?.dispose();
-    _segmenter = null;
-  }
+  void dispose() => _disposeFields();
 }
 
 @visibleForTesting
@@ -1140,4 +1046,4 @@ Future<T> Function<T>(Future<T> Function() fn) testCreateInferenceLockRunner() {
 
 @visibleForTesting
 Point testFindIrisCenterFromPoints(List<Point> irisPoints) =>
-    FaceDetector()._findIrisCenterFromPoints(irisPoints);
+    _irisCenterFromPoints(irisPoints);

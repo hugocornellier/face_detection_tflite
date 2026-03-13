@@ -147,40 +147,6 @@ void main() {
     });
   });
 
-  group('testFastExp', () {
-    test('should return 0.0 for x < -20', () {
-      expect(testFastExp(-21.0), 0.0);
-      expect(testFastExp(-100.0), 0.0);
-      expect(testFastExp(-20.1), 0.0);
-    });
-
-    test('should return clamped value for x > 20', () {
-      expect(testFastExp(21.0), closeTo(485165195.4, 0.1));
-      expect(testFastExp(100.0), closeTo(485165195.4, 0.1));
-    });
-
-    test('should match math.exp for normal range', () {
-      for (double x = -20.0; x <= 20.0; x += 0.5) {
-        expect(testFastExp(x), closeTo(math.exp(x), math.exp(x) * 0.01));
-      }
-    });
-
-    test('should return 1.0 for x = 0', () {
-      expect(testFastExp(0.0), closeTo(1.0, 0.0001));
-    });
-
-    test('boundary at exactly -20', () {
-      // x = -20 is NOT < -20, so it should use math.exp
-      expect(testFastExp(-20.0), closeTo(math.exp(-20.0), 1e-15));
-    });
-
-    test('boundary at exactly 20', () {
-      // x = 20 is NOT > 20, so it should use math.exp
-      expect(
-          testFastExp(20.0), closeTo(math.exp(20.0), math.exp(20.0) * 0.001));
-    });
-  });
-
   group('testComputeClassProbabilities', () {
     test('equal logits should produce uniform probabilities', () {
       // 1 pixel, 6 channels all zero

@@ -30,16 +30,10 @@ part of '../../face_detection_tflite.dart';
 ///
 /// Model memory usage depends on the selected model variant
 /// (see [SegmentationModel]). Call [dispose] when done to free resources.
-class SegmentationWorker {
+class SegmentationWorker extends IsolateWorkerBase {
   /// Creates an uninitialized worker; call [initialize] before use.
   SegmentationWorker();
 
-  Isolate? _isolate;
-  SendPort? _sendPort;
-  final ReceivePort _receivePort = ReceivePort();
-  final Map<int, Completer<dynamic>> _pending = {};
-  int _nextId = 0;
-  bool _initialized = false;
   int _inputWidth = 256;
   int _inputHeight = 256;
   int _outputWidth = 256;
@@ -47,7 +41,7 @@ class SegmentationWorker {
   SegmentationModel _model = SegmentationModel.general;
 
   /// Returns true if the worker has been initialized and is ready for inference.
-  bool get isInitialized => _initialized;
+  bool get isInitialized => isReady;
 
   /// Model input width in pixels.
   int get inputWidth => _inputWidth;
@@ -73,11 +67,11 @@ class SegmentationWorker {
   Future<void> initialize({
     SegmentationConfig config = const SegmentationConfig(),
   }) async {
-    if (_initialized) {
+    if (isReady) {
       throw StateError('SegmentationWorker already initialized');
     }
 
-    _model = _effectiveModel(config.model);
+    _model = config.model;
     final modelFile = _modelFileFor(_model);
 
     final ByteData modelData = await rootBundle.load(
@@ -86,38 +80,23 @@ class SegmentationWorker {
     final Uint8List modelBytes = modelData.buffer.asUint8List();
 
     try {
-      _isolate = await Isolate.spawn(
-        _isolateEntry,
-        _receivePort.sendPort,
-        debugName: 'SegmentationWorker',
+      await initWorker(
+        (sendPort) => Isolate.spawn(
+          _isolateEntry,
+          sendPort,
+          debugName: 'SegmentationWorker',
+        ),
+        onResponse: (msg) => rpc.handleResponse(
+          msg,
+          errorWrapper: (e) =>
+              SegmentationException(SegmentationError.inferenceFailed, e),
+        ),
+        timeout: const Duration(seconds: 10),
+        timeoutMessage: 'Worker initialization timed out',
+        markReady: false,
       );
 
-      final Completer<SendPort> initCompleter = Completer<SendPort>();
-      late final StreamSubscription subscription;
-
-      subscription = _receivePort.listen((message) {
-        if (!initCompleter.isCompleted) {
-          if (message is SendPort) {
-            initCompleter.complete(message);
-          } else {
-            initCompleter.completeError(
-              StateError('Expected SendPort, got ${message.runtimeType}'),
-            );
-          }
-          return;
-        }
-        _handleResponse(message);
-      });
-
-      _sendPort = await initCompleter.future.timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          subscription.cancel();
-          throw TimeoutException('Worker initialization timed out');
-        },
-      );
-
-      final Map result = await _sendRequest<Map>('init', {
+      final Map result = await sendRequestUnchecked<Map>('init', {
         'modelBytes': TransferableTypedData.fromList([modelBytes]),
         'numThreads': config.performanceConfig.numThreads ?? 4,
         'mode': config.performanceConfig.mode.index,
@@ -129,64 +108,16 @@ class SegmentationWorker {
       _outputWidth = result['outputWidth'] as int;
       _outputHeight = result['outputHeight'] as int;
 
-      _initialized = true;
+      markInitialized();
     } catch (e) {
-      _isolate?.kill(priority: Isolate.immediate);
-      _receivePort.close();
-      _initialized = false;
+      // Clean up any partially-spawned isolate.
+      await super.dispose();
       if (e is SegmentationException) rethrow;
       throw SegmentationException(
         SegmentationError.interpreterCreationFailed,
         'Failed to initialize SegmentationWorker: $e',
         e,
       );
-    }
-  }
-
-  void _handleResponse(dynamic message) {
-    if (message is! Map) return;
-
-    final int? id = message['id'] as int?;
-    if (id == null) return;
-
-    final Completer? completer = _pending.remove(id);
-    if (completer == null) return;
-
-    if (message['error'] != null) {
-      completer.completeError(
-        SegmentationException(
-          SegmentationError.inferenceFailed,
-          message['error'] as String,
-        ),
-      );
-    } else {
-      completer.complete(message['result']);
-    }
-  }
-
-  Future<T> _sendRequest<T>(
-    String operation,
-    Map<String, dynamic> params,
-  ) async {
-    if (!_initialized && operation != 'init') {
-      throw StateError(
-        'SegmentationWorker not initialized. Call initialize() first.',
-      );
-    }
-    if (_sendPort == null) {
-      throw StateError('Worker not ready');
-    }
-
-    final int id = _nextId++;
-    final Completer<T> completer = Completer<T>();
-    _pending[id] = completer;
-
-    try {
-      _sendPort!.send({'id': id, 'op': operation, ...params});
-      return await completer.future;
-    } catch (e) {
-      _pending.remove(id);
-      rethrow;
     }
   }
 
@@ -200,7 +131,7 @@ class SegmentationWorker {
   ///
   /// Throws [SegmentationException] on decode or inference failure.
   Future<SegmentationMask> segment(Uint8List imageBytes) async {
-    final Map result = await _sendRequest<Map>('segment', {
+    final Map result = await sendRequest<Map>('segment', {
       'imageBytes': TransferableTypedData.fromList([imageBytes]),
     });
 
@@ -227,7 +158,7 @@ class SegmentationWorker {
     final Uint8List matBytes = mat.data;
     final int channels = mat.channels;
 
-    final Map result = await _sendRequest<Map>('segmentMat', {
+    final Map result = await sendRequest<Map>('segmentMat', {
       'matBytes': TransferableTypedData.fromList([matBytes]),
       'width': mat.cols,
       'height': mat.rows,
@@ -279,21 +210,8 @@ class SegmentationWorker {
   ///
   /// This kills the background isolate and frees model memory.
   /// After calling dispose, this instance cannot be used for inference.
-  void dispose() {
-    for (final completer in _pending.values) {
-      if (!completer.isCompleted) {
-        completer.completeError(StateError('Worker disposed'));
-      }
-    }
-    _pending.clear();
-
-    _isolate?.kill(priority: Isolate.immediate);
-    _receivePort.close();
-
-    _isolate = null;
-    _sendPort = null;
-    _initialized = false;
-  }
+  @override
+  Future<void> dispose() => super.dispose();
 
   @pragma('vm:entry-point')
   static void _isolateEntry(SendPort mainSendPort) {
@@ -369,51 +287,19 @@ class SegmentationWorker {
     final int modelIndex = params['modelIndex'] as int;
     final SegmentationModel model = SegmentationModel.values[modelIndex];
 
-    final int inW = _inputWidthFor(model);
+    final int inW = _segmentationInputWidth;
     final int inH = _inputHeightFor(model);
 
-    final options = InterpreterOptions();
-    options.addMediaPipeCustomOps();
-    options.threads = numThreads;
-
-    Delegate? delegate;
-
-    if (mode == PerformanceMode.auto) {
-      if (Platform.isMacOS || Platform.isLinux) {
-        try {
-          delegate = XNNPackDelegate(
-            options: XNNPackDelegateOptions(numThreads: numThreads),
-          );
-          options.addDelegate(delegate);
-        } catch (_) {}
-      } else if (Platform.isIOS) {
-        try {
-          delegate = GpuDelegate();
-          options.addDelegate(delegate);
-        } catch (_) {}
-      }
-    } else if (mode == PerformanceMode.xnnpack) {
-      if (Platform.isMacOS || Platform.isLinux) {
-        try {
-          delegate = XNNPackDelegate(
-            options: XNNPackDelegateOptions(numThreads: numThreads),
-          );
-          options.addDelegate(delegate);
-        } catch (_) {}
-      }
-    } else if (mode == PerformanceMode.gpu) {
-      if (Platform.isIOS) {
-        try {
-          delegate = GpuDelegate();
-          options.addDelegate(delegate);
-        } catch (_) {}
-      } else if (Platform.isAndroid) {
-        try {
-          delegate = GpuDelegateV2();
-          options.addDelegate(delegate);
-        } catch (_) {}
-      }
-    }
+    final performanceConfig = PerformanceConfig(
+      mode: mode,
+      numThreads: numThreads,
+    );
+    final factoryResult = InterpreterFactory.create(
+      performanceConfig,
+      addMediaPipeCustomOps: true,
+    );
+    final options = factoryResult.$1;
+    final _ = factoryResult.$2;
 
     final Interpreter interpreter = Interpreter.fromBuffer(
       modelBytes,
@@ -429,7 +315,6 @@ class SegmentationWorker {
 
     return _SegmentationWorkerState(
       interpreter: interpreter,
-      delegate: delegate,
       model: model,
       inputWidth: inW,
       inputHeight: inH,
@@ -528,10 +413,8 @@ class SegmentationWorker {
         state.outputHeight,
       );
       final int numPixels = state.outputWidth * state.outputHeight;
-      final personMask = Float32List(numPixels);
-      for (int i = 0; i < numPixels; i++) {
-        personMask[i] = 1.0 - classProbs[i * 6];
-      }
+      final personMask =
+          SelfieSegmentation._buildPersonMask(rawOutput, numPixels, classProbs);
       result['mask'] = TransferableTypedData.fromList([
         personMask.buffer.asUint8List(),
       ]);
@@ -540,10 +423,8 @@ class SegmentationWorker {
       ]);
     } else {
       final int numPixels = state.outputWidth * state.outputHeight;
-      final personMask = Float32List(numPixels);
-      for (int i = 0; i < numPixels; i++) {
-        personMask[i] = rawOutput[i];
-      }
+      final personMask =
+          SelfieSegmentation._buildPersonMask(rawOutput, numPixels, null);
       result['mask'] = TransferableTypedData.fromList([
         personMask.buffer.asUint8List(),
       ]);
@@ -556,7 +437,6 @@ class SegmentationWorker {
 /// Internal state for the segmentation worker isolate.
 class _SegmentationWorkerState {
   final Interpreter interpreter;
-  final Delegate? delegate;
   final SegmentationModel model;
   final int inputWidth;
   final int inputHeight;
@@ -567,7 +447,6 @@ class _SegmentationWorkerState {
 
   _SegmentationWorkerState({
     required this.interpreter,
-    required this.delegate,
     required this.model,
     required this.inputWidth,
     required this.inputHeight,

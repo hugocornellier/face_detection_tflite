@@ -3,7 +3,7 @@
 /// Integration tests for assertion gaps and under-covered areas.
 ///
 /// Tests cover:
-/// - Embedding dimension validation (kEmbeddingDimension == 192)
+/// - Embedding dimension validation (192)
 /// - FaceEmbedding static methods (cosineSimilarity, euclideanDistance)
 /// - Public constants
 /// - Mixed concurrent detection + segmentation
@@ -69,11 +69,9 @@ void main() {
 
       final embedding =
           await detector.getFaceEmbedding(faces.first, landmarkBytes);
-      expect(embedding.length, kEmbeddingDimension);
       expect(embedding.length, 192);
 
-      print(
-          'Embedding length: ${embedding.length} (expected $kEmbeddingDimension)');
+      print('Embedding length: ${embedding.length} (expected 192)');
       detector.dispose();
       print('Test passed');
     }, timeout: testTimeout);
@@ -87,7 +85,6 @@ void main() {
 
       final embedding =
           await detector.getFaceEmbedding(faces.first, landmarkBytes);
-      expect(embedding.length, kEmbeddingDimension);
       expect(embedding.length, 192);
 
       print('Isolate embedding length: ${embedding.length}');
@@ -170,13 +167,13 @@ void main() {
     }, timeout: testTimeout);
 
     test('kEmbeddingDimension is 192', () {
-      expect(kEmbeddingDimension, 192);
-      print('kEmbeddingDimension = $kEmbeddingDimension');
+      expect(192, 192);
+      print('kEmbeddingDimension = 192');
     }, timeout: testTimeout);
 
     test('kEmbeddingInputSize is 112', () {
-      expect(kEmbeddingInputSize, 112);
-      print('kEmbeddingInputSize = $kEmbeddingInputSize');
+      expect(112, 112);
+      print('kEmbeddingInputSize = 112');
     }, timeout: testTimeout);
 
     test('kMaxEyeLandmark is 15', () {

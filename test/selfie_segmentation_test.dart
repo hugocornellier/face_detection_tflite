@@ -60,14 +60,6 @@ void main() {
     });
   });
 
-  group('testEffectiveModel', () {
-    test('should return the requested model unchanged', () {
-      for (final model in SegmentationModel.values) {
-        expect(testEffectiveModel(model), model);
-      }
-    });
-  });
-
   group('testModelFileFor', () {
     test('general returns selfie_segmenter.tflite', () {
       expect(testModelFileFor(SegmentationModel.general),

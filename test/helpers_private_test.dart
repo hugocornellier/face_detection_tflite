@@ -66,11 +66,8 @@ void main() {
         ),
       ];
 
-      final keptWeighted = testNms(dets, 0.3, 0.0, weighted: true);
-      expect(keptWeighted.length, 2);
-
-      final keptUnweighted = testNms(dets, 0.3, 0.0, weighted: false);
-      expect(keptUnweighted.length, 2);
+      final kept = testNms(dets, 0.3, 0.0);
+      expect(kept.length, 2);
     });
 
     test('testCollectOutputTensorInfo stops on exception', () {

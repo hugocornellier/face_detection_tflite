@@ -42,8 +42,37 @@ Map<int, OutputTensorInfo> collectOutputTensorInfo(Interpreter itp) {
 Map<int, OutputTensorInfo> testCollectOutputTensorInfo(Interpreter itp) =>
     collectOutputTensorInfo(itp);
 
-double _sigmoidClipped(double x, {double limit = _rawScoreLimit}) {
-  return sigmoid(clip(x, -limit, limit));
+/// Shared dispose logic for TFLite model classes.
+///
+/// Provides [_doDispose] (synchronous) and [_doDisposeAsync] (asynchronous)
+/// helpers that handle the [_disposed] guard, delegate cleanup, isolate
+/// shutdown, and interpreter close. Consuming classes provide [_itp] as a
+/// `final` field, which satisfies the abstract getter.
+mixin _TfliteModelDisposable {
+  IsolateInterpreter? _iso;
+  Delegate? _delegate;
+  bool _disposed = false;
+
+  Interpreter get _itp;
+
+  void _doDispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _delegate?.delete();
+    _delegate = null;
+    _iso?.close();
+    _itp.close();
+  }
+
+  Future<void> _doDisposeAsync() async {
+    if (_disposed) return;
+    _disposed = true;
+    final IsolateInterpreter? iso = _iso;
+    if (iso != null) await iso.close();
+    _itp.close();
+    _delegate?.delete();
+    _delegate = null;
+  }
 }
 
 List<Detection> _detectionLetterboxRemoval(
@@ -114,174 +143,48 @@ List<List<double>> _unpackLandmarks(
   return out;
 }
 
-double _iou(RectF a, RectF b) {
-  final double x1 = math.max(a.xmin, b.xmin);
-  final double y1 = math.max(a.ymin, b.ymin);
-  final double x2 = math.min(a.xmax, b.xmax);
-  final double y2 = math.min(a.ymax, b.ymax);
-  final double iw = math.max(0.0, x2 - x1);
-  final double ih = math.max(0.0, y2 - y1);
-  final double inter = iw * ih;
-  final double areaA = math.max(0.0, a.w) * math.max(0.0, a.h);
-  final double areaB = math.max(0.0, b.w) * math.max(0.0, b.h);
-  final double uni = areaA + areaB - inter;
-  return uni <= 0 ? 0.0 : inter / uni;
-}
-
-/// Optimized NMS using spatial indexing to reduce IoU comparisons.
+/// Weighted NMS over [Detection] objects using [weightedNms] from flutter_litert.
 ///
-/// Uses a grid-based spatial index to skip comparisons between boxes that
-/// cannot possibly overlap, reducing complexity from O(M²) to O(M × k) where
-/// k is the average number of candidates per overlapping cell region.
+/// Pre-filters by [scoreThresh] (>= threshold), then delegates to
+/// [weightedNms] which uses a strict IoU comparison (> [iouThresh]).
+/// Note: the old local NMS used >= iouThresh; this is a one-ULP difference
+/// unlikely to affect results in practice.
 ///
-/// For small candidate counts (≤8), falls back to simple O(M²) approach
-/// since grid construction overhead exceeds the savings.
-List<Detection> _nms(
+/// Keypoints from the highest-scoring detection in each cluster are preserved
+/// via [r.index], which refers to the index in the pre-filtered sorted list.
+List<Detection> _weightedNmsDetections(
   List<Detection> dets,
   double iouThresh,
   double scoreThresh, {
-  bool weighted = true,
+  int maxDetections = 100,
 }) {
-  final List<Detection> sorted = <Detection>[];
-  for (final Detection d in dets) {
-    if (d.score >= scoreThresh) {
-      sorted.add(d);
-    }
-  }
-  if (sorted.isEmpty) return const <Detection>[];
+  final List<Detection> filtered = dets
+      .where((d) => d.score >= scoreThresh)
+      .toList()
+    ..sort((a, b) => b.score.compareTo(a.score));
+  if (filtered.isEmpty) return const <Detection>[];
 
-  sorted.sort((a, b) => b.score.compareTo(a.score));
+  final boxes = filtered
+      .map((d) => [
+            d.boundingBox.xmin,
+            d.boundingBox.ymin,
+            d.boundingBox.xmax,
+            d.boundingBox.ymax
+          ])
+      .toList();
+  final scores = filtered.map((d) => d.score).toList();
 
-  final int n = sorted.length;
+  final results =
+      weightedNms(boxes, scores, iouThres: iouThresh, maxDet: maxDetections);
 
-  if (n <= 8) {
-    return _nmsCore(sorted, iouThresh, weighted, null);
-  }
-
-  const int gridSize = 10;
-  const double cellSize = 1.0 / gridSize;
-
-  final Map<int, List<int>> cellToIndices = <int, List<int>>{};
-
-  for (int i = 0; i < n; i++) {
-    final RectF box = sorted[i].boundingBox;
-    final int minCol = (box.xmin / cellSize).floor().clamp(0, gridSize - 1);
-    final int maxCol = (box.xmax / cellSize).floor().clamp(0, gridSize - 1);
-    final int minRow = (box.ymin / cellSize).floor().clamp(0, gridSize - 1);
-    final int maxRow = (box.ymax / cellSize).floor().clamp(0, gridSize - 1);
-
-    for (int row = minRow; row <= maxRow; row++) {
-      for (int col = minCol; col <= maxCol; col++) {
-        final int cellKey = row * gridSize + col;
-        (cellToIndices[cellKey] ??= <int>[]).add(i);
-      }
-    }
-  }
-
-  return _nmsCore(sorted, iouThresh, weighted, cellToIndices);
-}
-
-/// Core NMS logic shared between spatial and non-spatial paths.
-///
-/// When [cellToIndices] is null, performs O(M²) pairwise comparison.
-/// When provided, uses spatial index to reduce comparisons.
-List<Detection> _nmsCore(
-  List<Detection> sorted,
-  double iouThresh,
-  bool weighted,
-  Map<int, List<int>>? cellToIndices,
-) {
-  const int gridSize = 10;
-  const double cellSize = 1.0 / gridSize;
-
-  final int n = sorted.length;
-  final List<bool> active = List<bool>.filled(n, true);
-  final List<Detection> kept = <Detection>[];
-
-  for (int i = 0; i < n; i++) {
-    if (!active[i]) continue;
-
-    final Detection base = sorted[i];
-    final RectF baseBox = base.boundingBox;
-
-    Iterable<int> candidateIndices;
-    if (cellToIndices == null) {
-      candidateIndices = Iterable<int>.generate(n - i - 1, (k) => i + 1 + k);
-    } else {
-      final int minCol = (baseBox.xmin / cellSize).floor().clamp(
-            0,
-            gridSize - 1,
-          );
-      final int maxCol = (baseBox.xmax / cellSize).floor().clamp(
-            0,
-            gridSize - 1,
-          );
-      final int minRow = (baseBox.ymin / cellSize).floor().clamp(
-            0,
-            gridSize - 1,
-          );
-      final int maxRow = (baseBox.ymax / cellSize).floor().clamp(
-            0,
-            gridSize - 1,
-          );
-
-      final Set<int> candidates = <int>{};
-      for (int row = minRow; row <= maxRow; row++) {
-        for (int col = minCol; col <= maxCol; col++) {
-          final int cellKey = row * gridSize + col;
-          final List<int>? indices = cellToIndices[cellKey];
-          if (indices != null) {
-            for (final int idx in indices) {
-              if (idx > i) candidates.add(idx);
-            }
-          }
-        }
-      }
-      candidateIndices = candidates;
-    }
-
-    if (!weighted) {
-      kept.add(base);
-      for (final int j in candidateIndices) {
-        if (active[j] && _iou(baseBox, sorted[j].boundingBox) >= iouThresh) {
-          active[j] = false;
-        }
-      }
-    } else {
-      double sw = base.score;
-      double xmin = baseBox.xmin * base.score;
-      double ymin = baseBox.ymin * base.score;
-      double xmax = baseBox.xmax * base.score;
-      double ymax = baseBox.ymax * base.score;
-
-      for (final int j in candidateIndices) {
-        if (!active[j]) continue;
-        final Detection d = sorted[j];
-        if (_iou(baseBox, d.boundingBox) >= iouThresh) {
-          active[j] = false;
-          sw += d.score;
-          xmin += d.boundingBox.xmin * d.score;
-          ymin += d.boundingBox.ymin * d.score;
-          xmax += d.boundingBox.xmax * d.score;
-          ymax += d.boundingBox.ymax * d.score;
-        }
-      }
-
-      if (sw == base.score) {
-        kept.add(base);
-      } else {
-        kept.add(
-          Detection(
-            boundingBox: RectF(xmin / sw, ymin / sw, xmax / sw, ymax / sw),
-            score: base.score,
-            keypointsXY: base.keypointsXY,
-          ),
-        );
-      }
-    }
-  }
-
-  return kept;
+  return results.map((r) {
+    final Detection src = filtered[r.index];
+    return Detection(
+      boundingBox: RectF(r.box[0], r.box[1], r.box[2], r.box[3]),
+      score: r.score,
+      keypointsXY: src.keypointsXY,
+    );
+  }).toList();
 }
 
 SSDAnchorOptions _optsFor(FaceDetectionModel m) {
@@ -291,7 +194,7 @@ SSDAnchorOptions _optsFor(FaceDetectionModel m) {
     case FaceDetectionModel.backCamera:
       return _ssdBack;
     case FaceDetectionModel.shortRange:
-      return _ssdShort;
+      return _ssdFront;
     case FaceDetectionModel.full:
       return _ssdFull;
     case FaceDetectionModel.fullSparse:
@@ -332,6 +235,7 @@ String _nameFor(FaceDetectionModel m) {
 ///
 /// This is typically used to prepare face regions for mesh landmark detection,
 /// which requires a square input with some padding around the face.
+@visibleForTesting
 RectF faceDetectionToRoi(RectF boundingBox, {double expandFraction = 0.6}) {
   final RectF e = boundingBox.expand(expandFraction);
   final double cx = (e.xmin + e.xmax) * 0.5;
@@ -349,7 +253,7 @@ double testClip(double v, double lo, double hi) => clip(v, lo, hi);
 
 @visibleForTesting
 double testSigmoidClipped(double x, {double limit = _rawScoreLimit}) =>
-    _sigmoidClipped(x, limit: limit);
+    sigmoidClipped(x, limit: limit);
 
 @visibleForTesting
 List<Detection> testDetectionLetterboxRemoval(
@@ -372,10 +276,9 @@ List<List<double>> testUnpackLandmarks(
 List<Detection> testNms(
   List<Detection> dets,
   double iouThresh,
-  double scoreThresh, {
-  bool weighted = true,
-}) =>
-    _nms(dets, iouThresh, scoreThresh, weighted: weighted);
+  double scoreThresh,
+) =>
+    _weightedNmsDetections(dets, iouThresh, scoreThresh);
 
 @visibleForTesting
 Float32List testSsdGenerateAnchors(SSDAnchorOptions opts) {
@@ -536,6 +439,7 @@ cv.Mat? extractAlignedSquare(
 /// // Use cropped...
 /// cropped.dispose();
 /// ```
+@visibleForTesting
 cv.Mat cropFromRoiMat(cv.Mat src, RectF roi) {
   final int w = src.cols;
   final int h = src.rows;
@@ -550,4 +454,61 @@ cv.Mat cropFromRoiMat(cv.Mat src, RectF roi) {
 
   final cv.Rect rect = cv.Rect(x1, y1, cropW, cropH);
   return src.region(rect);
+}
+
+/// Shared interpreter setup used by [FaceLandmark], [IrisLandmark], and
+/// [FaceEmbedding] factory methods.
+///
+/// Creates [InterpreterOptions] (via [InterpreterFactory] unless [options] is
+/// provided), loads the interpreter with [load], reads the NHWC input shape,
+/// resizes the input tensor, and calls [allocateTensors].
+///
+/// Returns a record of `(interpreter, inputWidth, inputHeight, delegate)`.
+Future<(Interpreter, int, int, Delegate?)> _loadModelInterpreter({
+  required FutureOr<Interpreter> Function(InterpreterOptions) load,
+  InterpreterOptions? options,
+  PerformanceConfig? performanceConfig,
+}) async {
+  Delegate? delegate;
+  final InterpreterOptions opts;
+  if (options != null) {
+    opts = options;
+  } else {
+    final result = InterpreterFactory.create(performanceConfig);
+    opts = result.$1;
+    delegate = result.$2;
+  }
+
+  final Interpreter itp = await load(opts);
+  final List<int> ishape = itp.getInputTensor(0).shape;
+  final int inH = ishape[1];
+  final int inW = ishape[2];
+  itp.resizeInputTensor(0, [1, inH, inW, 3]);
+  itp.allocateTensors();
+
+  return (itp, inW, inH, delegate);
+}
+
+/// Shared factory body used by [FaceLandmark], [IrisLandmark], and
+/// [FaceEmbedding]'s `_createWithLoader` methods.
+///
+/// Calls [_loadModelInterpreter], constructs the model via [construct],
+/// sets the delegate, and calls [initTensors].
+Future<T> _buildModel<T extends _TfliteModelDisposable>({
+  required FutureOr<Interpreter> Function(InterpreterOptions) load,
+  InterpreterOptions? options,
+  PerformanceConfig? performanceConfig,
+  bool useIsolateInterpreter = true,
+  required T Function(Interpreter, int, int) construct,
+  required Future<void> Function(T, bool) initTensors,
+}) async {
+  final (itp, inW, inH, delegate) = await _loadModelInterpreter(
+    load: load,
+    options: options,
+    performanceConfig: performanceConfig,
+  );
+  final T obj = construct(itp, inW, inH);
+  obj._delegate = delegate;
+  await initTensors(obj, useIsolateInterpreter);
+  return obj;
 }

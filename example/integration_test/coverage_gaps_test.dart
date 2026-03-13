@@ -150,7 +150,7 @@ void main() {
           await detector.detectFaces(imageBytes, mode: FaceDetectionMode.fast);
       expect(faces1, isNotEmpty);
       final emb1 = await detector.getFaceEmbedding(faces1.first, imageBytes);
-      expect(emb1.length, kEmbeddingDimension);
+      expect(emb1.length, 192);
 
       detector.dispose();
       await detector.initialize();
@@ -160,7 +160,7 @@ void main() {
           await detector.detectFaces(imageBytes, mode: FaceDetectionMode.fast);
       expect(faces2, isNotEmpty);
       final emb2 = await detector.getFaceEmbedding(faces2.first, imageBytes);
-      expect(emb2.length, kEmbeddingDimension);
+      expect(emb2.length, 192);
 
       // Embeddings from the same face should be similar
       final similarity = FaceDetector.compareFaces(emb1, emb2);

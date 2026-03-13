@@ -25,7 +25,6 @@ TEST_FILES=(
     "error_recovery_test.dart"
     "edge_cases_test.dart"
     "all_model_variants_test.dart"
-    "image_utils_test.dart"
     "concurrency_stress_test.dart"
 )
 

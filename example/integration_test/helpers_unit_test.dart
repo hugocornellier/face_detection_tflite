@@ -379,15 +379,15 @@ void main() {
       print('nms: multi-cluster passed, kept ${result.length} detections');
     }, timeout: testTimeout);
 
-    test('weighted=false uses standard NMS', () {
+    test('overlapping boxes merge via weighted NMS', () {
       final det1 = makeDetection(0.1, 0.1, 0.5, 0.5, 0.9);
       final det2 = makeDetection(0.12, 0.12, 0.52, 0.52, 0.7);
-      final result = testNms([det1, det2], 0.3, 0.5, weighted: false);
+      final result = testNms([det1, det2], 0.3, 0.5);
 
       expect(result.length, 1);
-      // Without weighting, should keep exact highest-scoring box
-      expect(result[0].boundingBox.xmin, closeTo(0.1, 0.001));
-      print('nms: weighted=false passed');
+      // Weighted NMS blends the two boxes, so xmin is between 0.1 and 0.12
+      expect(result[0].boundingBox.xmin, greaterThan(0.1));
+      print('nms: overlapping boxes merge passed');
     }, timeout: testTimeout);
 
     test('score threshold filters before NMS', () {

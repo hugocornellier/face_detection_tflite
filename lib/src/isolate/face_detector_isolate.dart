@@ -95,26 +95,12 @@ class _SegmentationIsolateStartupData {
 /// - [FaceDetector] for the underlying detection implementation
 /// - [FaceDetectionMode] for controlling detection features
 /// - [FaceDetectionModel] for model selection
-class FaceDetectorIsolate {
+class FaceDetectorIsolate extends IsolateWorkerBase {
   FaceDetectorIsolate._();
 
-  Isolate? _detectionIsolate;
-  SendPort? _detectionSendPort;
-  final ReceivePort _detectionReceivePort = ReceivePort();
-  final Map<int, Completer<dynamic>> _detectionPending = {};
-  int _detectionNextId = 0;
+  final _segmentationRpc = IsolateRpcClient();
 
-  Isolate? _segmentationIsolate;
-  SendPort? _segmentationSendPort;
-  final ReceivePort _segmentationReceivePort = ReceivePort();
-  final Map<int, Completer<dynamic>> _segmentationPending = {};
-  int _segmentationNextId = 0;
-
-  bool _initialized = false;
   bool _segmentationInitialized = false;
-
-  /// Returns true if the isolate is initialized and ready for detection.
-  bool get isReady => _initialized;
 
   /// Returns true if segmentation model is loaded and ready.
   bool get isSegmentationReady => _segmentationInitialized;
@@ -169,7 +155,7 @@ class FaceDetectorIsolate {
     bool withSegmentation,
     SegmentationConfig? segmentationConfig,
   ) async {
-    if (_initialized) {
+    if (isReady) {
       throw StateError('FaceDetectorIsolate already initialized');
     }
 
@@ -191,9 +177,8 @@ class FaceDetectorIsolate {
       ];
 
       if (withSegmentation) {
-        final effectiveSegModel = _effectiveModel(
-          segmentationConfig?.model ?? SegmentationModel.general,
-        );
+        final effectiveSegModel =
+            segmentationConfig?.model ?? SegmentationModel.general;
         final segModelFile = _modelFileFor(effectiveSegModel);
         final segmentationModelPath =
             'packages/face_detection_tflite/assets/models/$segModelFile';
@@ -224,13 +209,10 @@ class FaceDetectorIsolate {
         _segmentationInitialized = true;
       }
 
-      _initialized = true;
+      markInitialized();
     } catch (e) {
-      _detectionIsolate?.kill(priority: Isolate.immediate);
-      _segmentationIsolate?.kill(priority: Isolate.immediate);
-      _detectionReceivePort.close();
-      _segmentationReceivePort.close();
-      _initialized = false;
+      _segmentationRpc.isolate?.kill(priority: Isolate.immediate);
+      _segmentationRpc.receivePort.close();
       _segmentationInitialized = false;
       rethrow;
     }
@@ -246,29 +228,31 @@ class FaceDetectorIsolate {
     required PerformanceConfig performanceConfig,
     required int meshPoolSize,
   }) async {
-    _detectionIsolate = await Isolate.spawn(
-      _detectionIsolateEntry,
-      _DetectionIsolateStartupData(
-        sendPort: _detectionReceivePort.sendPort,
-        faceDetectionBytes: TransferableTypedData.fromList([
-          faceDetectionBytes,
-        ]),
-        faceLandmarkBytes: TransferableTypedData.fromList([faceLandmarkBytes]),
-        irisLandmarkBytes: TransferableTypedData.fromList([irisLandmarkBytes]),
-        embeddingBytes: TransferableTypedData.fromList([embeddingBytes]),
-        modelName: model.name,
-        performanceModeName: performanceConfig.mode.name,
-        numThreads: performanceConfig.numThreads,
-        meshPoolSize: meshPoolSize,
+    await initWorker(
+      (sendPort) => Isolate.spawn(
+        _detectionIsolateEntry,
+        _DetectionIsolateStartupData(
+          sendPort: sendPort,
+          faceDetectionBytes: TransferableTypedData.fromList([
+            faceDetectionBytes,
+          ]),
+          faceLandmarkBytes: TransferableTypedData.fromList([
+            faceLandmarkBytes,
+          ]),
+          irisLandmarkBytes: TransferableTypedData.fromList([
+            irisLandmarkBytes,
+          ]),
+          embeddingBytes: TransferableTypedData.fromList([embeddingBytes]),
+          modelName: model.name,
+          performanceModeName: performanceConfig.mode.name,
+          numThreads: performanceConfig.numThreads,
+          meshPoolSize: meshPoolSize,
+        ),
+        debugName: 'FaceDetectorIsolate.detection',
       ),
-      debugName: 'FaceDetectorIsolate.detection',
-    );
-
-    _detectionSendPort = await _setupIsolateListener(
-      receivePort: _detectionReceivePort,
-      responseHandler: _handleDetectionResponse,
       timeout: const Duration(seconds: 30),
-      timeoutMsg: 'Detection isolate initialization timed out',
+      timeoutMessage: 'Detection isolate initialization timed out',
+      markReady: false,
     );
   }
 
@@ -277,11 +261,11 @@ class FaceDetectorIsolate {
     required Uint8List modelBytes,
     required SegmentationConfig config,
   }) async {
-    final effectiveModel = _effectiveModel(config.model);
-    _segmentationIsolate = await Isolate.spawn(
+    final effectiveModel = config.model;
+    _segmentationRpc.isolate = await Isolate.spawn(
       _segmentationIsolateEntry,
       _SegmentationIsolateStartupData(
-        sendPort: _segmentationReceivePort.sendPort,
+        sendPort: _segmentationRpc.receivePort.sendPort,
         modelBytes: TransferableTypedData.fromList([modelBytes]),
         performanceModeName: config.performanceConfig.mode.name,
         numThreads: config.performanceConfig.numThreads,
@@ -293,99 +277,19 @@ class FaceDetectorIsolate {
       debugName: 'FaceDetectorIsolate.segmentation',
     );
 
-    _segmentationSendPort = await _setupIsolateListener(
-      receivePort: _segmentationReceivePort,
-      responseHandler: _handleSegmentationResponse,
+    _segmentationRpc.sendPort = await setupIsolateHandshake(
+      receivePort: _segmentationRpc.receivePort,
+      onResponse: (msg) => _segmentationRpc.handleResponse(msg),
       timeout: const Duration(seconds: 15),
-      timeoutMsg: 'Segmentation isolate initialization timed out',
+      timeoutMessage: 'Segmentation isolate initialization timed out',
     );
-  }
-
-  /// Sets up init handshake and message routing for an isolate.
-  static Future<SendPort> _setupIsolateListener({
-    required ReceivePort receivePort,
-    required void Function(dynamic) responseHandler,
-    required Duration timeout,
-    required String timeoutMsg,
-  }) async {
-    final Completer<SendPort> initCompleter = Completer<SendPort>();
-    late final StreamSubscription<dynamic> subscription;
-
-    subscription = receivePort.listen((message) {
-      if (!initCompleter.isCompleted) {
-        if (message is SendPort) {
-          initCompleter.complete(message);
-        } else if (message is Map && message['error'] != null) {
-          initCompleter.completeError(StateError(message['error'] as String));
-        } else {
-          initCompleter.completeError(
-            StateError('Expected SendPort, got ${message.runtimeType}'),
-          );
-        }
-        return;
-      }
-      responseHandler(message);
-    });
-
-    return initCompleter.future.timeout(
-      timeout,
-      onTimeout: () {
-        subscription.cancel();
-        throw TimeoutException(timeoutMsg);
-      },
-    );
-  }
-
-  void _handleDetectionResponse(dynamic msg) =>
-      _handleIsolateResponse(msg, _detectionPending);
-
-  void _handleSegmentationResponse(dynamic msg) =>
-      _handleIsolateResponse(msg, _segmentationPending);
-
-  static void _handleIsolateResponse(
-    dynamic message,
-    Map<int, Completer<dynamic>> pending,
-  ) {
-    if (message is! Map) return;
-
-    final int? id = message['id'] as int?;
-    if (id == null) return;
-
-    final Completer<dynamic>? completer = pending.remove(id);
-    if (completer == null) return;
-
-    if (message['error'] != null) {
-      completer.completeError(StateError(message['error'] as String));
-    } else {
-      completer.complete(message['result']);
-    }
   }
 
   Future<T> _sendDetectionRequest<T>(
     String operation,
     Map<String, dynamic> params,
-  ) async {
-    if (!_initialized) {
-      throw StateError(
-        'FaceDetectorIsolate not initialized. Use FaceDetectorIsolate.spawn().',
-      );
-    }
-    if (_detectionSendPort == null) {
-      throw StateError('Detection isolate SendPort not available.');
-    }
-
-    final int id = _detectionNextId++;
-    final Completer<T> completer = Completer<T>();
-    _detectionPending[id] = completer;
-
-    try {
-      _detectionSendPort!.send({'id': id, 'op': operation, ...params});
-      return await completer.future;
-    } catch (e) {
-      _detectionPending.remove(id);
-      rethrow;
-    }
-  }
+  ) =>
+      sendRequest<T>(operation, params);
 
   Future<T> _sendSegmentationRequest<T>(
     String operation,
@@ -396,22 +300,40 @@ class FaceDetectorIsolate {
         'Segmentation not initialized. Use spawn(withSegmentation: true).',
       );
     }
-    if (_segmentationSendPort == null) {
-      throw StateError('Segmentation isolate SendPort not available.');
-    }
+    return _segmentationRpc.sendRequest<T>(operation, params);
+  }
 
-    final int id = _segmentationNextId++;
-    final Completer<T> completer = Completer<T>();
-    _segmentationPending[id] = completer;
+  static List<Face> _deserializeFaces(List<dynamic> result) => result
+      .map((map) => Face.fromMap(Map<String, dynamic>.from(map as Map)))
+      .toList();
 
-    try {
-      _segmentationSendPort!.send({'id': id, 'op': operation, ...params});
-      return await completer.future;
-    } catch (e) {
-      _segmentationPending.remove(id);
-      rethrow;
+  void _requireSegmentationReady() {
+    if (!_segmentationInitialized) {
+      throw StateError(
+        'Segmentation not initialized. Use FaceDetectorIsolate.spawn(withSegmentation: true).',
+      );
     }
   }
+
+  static Uint8List _extractBytes(dynamic message) =>
+      (message['bytes'] as TransferableTypedData).materialize().asUint8List();
+
+  static cv.Mat _matFromMessage(Map message, Uint8List bytes) {
+    final int width = message['width'] as int;
+    final int height = message['height'] as int;
+    final int matTypeValue = message['matType'] as int;
+    return cv.Mat.fromList(height, width, cv.MatType(matTypeValue), bytes);
+  }
+
+  ({Uint8List data, int width, int height, int matType}) _extractMatFields(
+    cv.Mat image,
+  ) =>
+      (
+        data: image.data,
+        width: image.cols,
+        height: image.rows,
+        matType: image.type.value,
+      );
 
   /// Detects faces in the given image entirely within the background isolate.
   ///
@@ -444,9 +366,7 @@ class FaceDetectorIsolate {
       },
     );
 
-    return result
-        .map((map) => Face.fromMap(Map<String, dynamic>.from(map as Map)))
-        .toList();
+    return _deserializeFaces(result);
   }
 
   /// Detects faces in a pre-decoded [cv.Mat] image in the background isolate.
@@ -464,16 +384,12 @@ class FaceDetectorIsolate {
     cv.Mat image, {
     FaceDetectionMode mode = FaceDetectionMode.full,
   }) {
-    final int rows = image.rows;
-    final int cols = image.cols;
-    final int type = image.type.value;
-    final Uint8List data = image.data;
-
+    final f = _extractMatFields(image);
     return detectFacesFromMatBytes(
-      data,
-      width: cols,
-      height: rows,
-      matType: type,
+      f.data,
+      width: f.width,
+      height: f.height,
+      matType: f.matType,
       mode: mode,
     );
   }
@@ -525,9 +441,7 @@ class FaceDetectorIsolate {
       },
     );
 
-    return result
-        .map((map) => Face.fromMap(Map<String, dynamic>.from(map as Map)))
-        .toList();
+    return _deserializeFaces(result);
   }
 
   /// Generates a face embedding for a detected face in the background isolate.
@@ -636,11 +550,7 @@ class FaceDetectorIsolate {
     IsolateOutputFormat outputFormat = IsolateOutputFormat.float32,
     double binaryThreshold = 0.5,
   }) async {
-    if (!_segmentationInitialized) {
-      throw StateError(
-        'Segmentation not initialized. Use FaceDetectorIsolate.spawn(withSegmentation: true).',
-      );
-    }
+    _requireSegmentationReady();
 
     final Map<String, dynamic> result =
         await _sendSegmentationRequest<Map<String, dynamic>>('segment', {
@@ -665,28 +575,51 @@ class FaceDetectorIsolate {
     IsolateOutputFormat outputFormat = IsolateOutputFormat.float32,
     double binaryThreshold = 0.5,
   }) async {
-    if (!_segmentationInitialized) {
-      throw StateError(
-        'Segmentation not initialized. Use FaceDetectorIsolate.spawn(withSegmentation: true).',
-      );
-    }
+    _requireSegmentationReady();
 
-    final int rows = image.rows;
-    final int cols = image.cols;
-    final int type = image.type.value;
-    final Uint8List data = image.data;
+    final f = _extractMatFields(image);
 
     final Map<String, dynamic> result =
         await _sendSegmentationRequest<Map<String, dynamic>>('segmentMat', {
-      'bytes': TransferableTypedData.fromList([data]),
-      'width': cols,
-      'height': rows,
-      'matType': type,
+      'bytes': TransferableTypedData.fromList([f.data]),
+      'width': f.width,
+      'height': f.height,
+      'matType': f.matType,
       'outputFormat': outputFormat.index,
       'binaryThreshold': binaryThreshold,
     });
 
     return _deserializeMask(result);
+  }
+
+  Future<DetectionWithSegmentationResult> _detectAndSegmentImpl({
+    required String detectOp,
+    required Map<String, dynamic> detectFields,
+    required String segmentOp,
+    required Map<String, dynamic> segmentFields,
+  }) async {
+    if (!isReady) throw StateError('FaceDetectorIsolate not initialized');
+    _requireSegmentationReady();
+    final detectionStopwatch = Stopwatch()..start();
+    final segmentationStopwatch = Stopwatch()..start();
+    final results = await Future.wait([
+      _sendDetectionRequest<List<dynamic>>(detectOp, detectFields)
+          .then((result) {
+        detectionStopwatch.stop();
+        return _deserializeFaces(result);
+      }),
+      _sendSegmentationRequest<Map<String, dynamic>>(segmentOp, segmentFields)
+          .then((result) {
+        segmentationStopwatch.stop();
+        return _deserializeMask(result);
+      }),
+    ]);
+    return DetectionWithSegmentationResult(
+      faces: results[0] as List<Face>,
+      segmentationMask: results[1] as SegmentationMask,
+      detectionTimeMs: detectionStopwatch.elapsedMilliseconds,
+      segmentationTimeMs: segmentationStopwatch.elapsedMilliseconds,
+    );
   }
 
   /// Detects faces and generates segmentation mask in parallel.
@@ -724,46 +657,20 @@ class FaceDetectorIsolate {
     FaceDetectionMode mode = FaceDetectionMode.full,
     IsolateOutputFormat outputFormat = IsolateOutputFormat.float32,
     double binaryThreshold = 0.5,
-  }) async {
-    if (!_initialized) {
-      throw StateError('FaceDetectorIsolate not initialized');
-    }
-    if (!_segmentationInitialized) {
-      throw StateError(
-        'Segmentation not initialized. Use spawn(withSegmentation: true).',
+  }) =>
+      _detectAndSegmentImpl(
+        detectOp: 'detect',
+        detectFields: {
+          'bytes': TransferableTypedData.fromList([imageBytes]),
+          'mode': mode.name,
+        },
+        segmentOp: 'segment',
+        segmentFields: {
+          'bytes': TransferableTypedData.fromList([imageBytes]),
+          'outputFormat': outputFormat.index,
+          'binaryThreshold': binaryThreshold,
+        },
       );
-    }
-
-    final detectionStopwatch = Stopwatch()..start();
-    final segmentationStopwatch = Stopwatch()..start();
-
-    final results = await Future.wait([
-      _sendDetectionRequest<List<dynamic>>('detect', {
-        'bytes': TransferableTypedData.fromList([imageBytes]),
-        'mode': mode.name,
-      }).then((result) {
-        detectionStopwatch.stop();
-        return result
-            .map((m) => Face.fromMap(Map<String, dynamic>.from(m as Map)))
-            .toList();
-      }),
-      _sendSegmentationRequest<Map<String, dynamic>>('segment', {
-        'bytes': TransferableTypedData.fromList([imageBytes]),
-        'outputFormat': outputFormat.index,
-        'binaryThreshold': binaryThreshold,
-      }).then((result) {
-        segmentationStopwatch.stop();
-        return _deserializeMask(result);
-      }),
-    ]);
-
-    return DetectionWithSegmentationResult(
-      faces: results[0] as List<Face>,
-      segmentationMask: results[1] as SegmentationMask,
-      detectionTimeMs: detectionStopwatch.elapsedMilliseconds,
-      segmentationTimeMs: segmentationStopwatch.elapsedMilliseconds,
-    );
-  }
 
   /// Detects faces and generates segmentation mask in parallel from a [cv.Mat].
   ///
@@ -782,55 +689,26 @@ class FaceDetectorIsolate {
     FaceDetectionMode mode = FaceDetectionMode.full,
     IsolateOutputFormat outputFormat = IsolateOutputFormat.float32,
     double binaryThreshold = 0.5,
-  }) async {
-    if (!_initialized) {
-      throw StateError('FaceDetectorIsolate not initialized');
-    }
-    if (!_segmentationInitialized) {
-      throw StateError(
-        'Segmentation not initialized. Use spawn(withSegmentation: true).',
-      );
-    }
-
-    final int rows = image.rows;
-    final int cols = image.cols;
-    final int type = image.type.value;
-    final Uint8List data = image.data;
-
-    final detectionStopwatch = Stopwatch()..start();
-    final segmentationStopwatch = Stopwatch()..start();
-
-    final results = await Future.wait([
-      _sendDetectionRequest<List<dynamic>>('detectMat', {
-        'bytes': TransferableTypedData.fromList([data]),
-        'width': cols,
-        'height': rows,
-        'matType': type,
+  }) {
+    final f = _extractMatFields(image);
+    return _detectAndSegmentImpl(
+      detectOp: 'detectMat',
+      detectFields: {
+        'bytes': TransferableTypedData.fromList([f.data]),
+        'width': f.width,
+        'height': f.height,
+        'matType': f.matType,
         'mode': mode.name,
-      }).then((result) {
-        detectionStopwatch.stop();
-        return result
-            .map((m) => Face.fromMap(Map<String, dynamic>.from(m as Map)))
-            .toList();
-      }),
-      _sendSegmentationRequest<Map<String, dynamic>>('segmentMat', {
-        'bytes': TransferableTypedData.fromList([data]),
-        'width': cols,
-        'height': rows,
-        'matType': type,
+      },
+      segmentOp: 'segmentMat',
+      segmentFields: {
+        'bytes': TransferableTypedData.fromList([f.data]),
+        'width': f.width,
+        'height': f.height,
+        'matType': f.matType,
         'outputFormat': outputFormat.index,
         'binaryThreshold': binaryThreshold,
-      }).then((result) {
-        segmentationStopwatch.stop();
-        return _deserializeMask(result);
-      }),
-    ]);
-
-    return DetectionWithSegmentationResult(
-      faces: results[0] as List<Face>,
-      segmentationMask: results[1] as SegmentationMask,
-      detectionTimeMs: detectionStopwatch.elapsedMilliseconds,
-      segmentationTimeMs: segmentationStopwatch.elapsedMilliseconds,
+      },
     );
   }
 
@@ -844,44 +722,14 @@ class FaceDetectorIsolate {
   ///
   /// After calling dispose, the instance cannot be reused. Create a new
   /// instance with [spawn] if needed.
+  @override
+  String get workerDisposeOp => 'dispose';
+
+  @override
   Future<void> dispose() async {
-    for (final completer in _detectionPending.values) {
-      if (!completer.isCompleted) {
-        completer.completeError(StateError('FaceDetectorIsolate disposed'));
-      }
-    }
-    _detectionPending.clear();
-
-    for (final completer in _segmentationPending.values) {
-      if (!completer.isCompleted) {
-        completer.completeError(StateError('FaceDetectorIsolate disposed'));
-      }
-    }
-    _segmentationPending.clear();
-
-    if (_detectionSendPort != null) {
-      try {
-        _detectionSendPort!.send({'id': -1, 'op': 'dispose'});
-      } catch (_) {}
-    }
-    if (_segmentationSendPort != null) {
-      try {
-        _segmentationSendPort!.send({'id': -1, 'op': 'dispose'});
-      } catch (_) {}
-    }
-
-    _detectionIsolate?.kill(priority: Isolate.immediate);
-    _segmentationIsolate?.kill(priority: Isolate.immediate);
-
-    _detectionReceivePort.close();
-    _segmentationReceivePort.close();
-
-    _detectionIsolate = null;
-    _segmentationIsolate = null;
-    _detectionSendPort = null;
-    _segmentationSendPort = null;
-    _initialized = false;
+    _segmentationRpc.failAllAndDispose(disposeOp: 'dispose');
     _segmentationInitialized = false;
+    await super.dispose();
   }
 
   /// Detection isolate entry point - handles face detection and embeddings.
@@ -949,9 +797,7 @@ class FaceDetectorIsolate {
               return;
             }
 
-            final ByteBuffer bb =
-                (message['bytes'] as TransferableTypedData).materialize();
-            final Uint8List imageBytes = bb.asUint8List();
+            final Uint8List imageBytes = _extractBytes(message);
             final modeName = message['mode'] as String;
             final mode = FaceDetectionMode.values.firstWhere(
               (m) => m.name == modeName,
@@ -971,19 +817,12 @@ class FaceDetectorIsolate {
               return;
             }
 
-            final ByteBuffer bb =
-                (message['bytes'] as TransferableTypedData).materialize();
-            final Uint8List matBytes = bb.asUint8List();
-            final int width = message['width'] as int;
-            final int height = message['height'] as int;
-            final int matTypeValue = message['matType'] as int;
+            final Uint8List matBytes = _extractBytes(message);
             final modeName = message['mode'] as String;
             final mode = FaceDetectionMode.values.firstWhere(
               (m) => m.name == modeName,
             );
-
-            final matType = cv.MatType(matTypeValue);
-            final mat = cv.Mat.fromList(height, width, matType, matBytes);
+            final mat = _matFromMessage(message, matBytes);
 
             try {
               final faces = await detector!.detectFacesFromMat(mat, mode: mode);
@@ -1002,9 +841,7 @@ class FaceDetectorIsolate {
               return;
             }
 
-            final ByteBuffer bb =
-                (message['bytes'] as TransferableTypedData).materialize();
-            final Uint8List imageBytes = bb.asUint8List();
+            final Uint8List imageBytes = _extractBytes(message);
             final Map<String, dynamic> faceMap = Map<String, dynamic>.from(
               message['face'] as Map,
             );
@@ -1025,13 +862,9 @@ class FaceDetectorIsolate {
               return;
             }
 
-            final ByteBuffer bb =
-                (message['bytes'] as TransferableTypedData).materialize();
-            final Uint8List imageBytes = bb.asUint8List();
+            final Uint8List imageBytes = _extractBytes(message);
             final List<dynamic> faceMaps = message['faces'] as List;
-            final List<Face> faces = faceMaps
-                .map((m) => Face.fromMap(Map<String, dynamic>.from(m as Map)))
-                .toList();
+            final List<Face> faces = _deserializeFaces(faceMaps);
 
             final embeddings = await detector!.getFaceEmbeddings(
               faces,
@@ -1113,9 +946,7 @@ class FaceDetectorIsolate {
               return;
             }
 
-            final ByteBuffer bb =
-                (message['bytes'] as TransferableTypedData).materialize();
-            final Uint8List imageBytes = bb.asUint8List();
+            final Uint8List imageBytes = _extractBytes(message);
             final int outputFormatIndex = message['outputFormat'] as int;
             final double binaryThreshold = message['binaryThreshold'] as double;
 
@@ -1143,17 +974,10 @@ class FaceDetectorIsolate {
               return;
             }
 
-            final ByteBuffer bb =
-                (message['bytes'] as TransferableTypedData).materialize();
-            final Uint8List matBytes = bb.asUint8List();
-            final int width = message['width'] as int;
-            final int height = message['height'] as int;
-            final int matTypeValue = message['matType'] as int;
+            final Uint8List matBytes = _extractBytes(message);
             final int outputFormatIndex = message['outputFormat'] as int;
             final double binaryThreshold = message['binaryThreshold'] as double;
-
-            final matType = cv.MatType(matTypeValue);
-            final mat = cv.Mat.fromList(height, width, matType, matBytes);
+            final mat = _matFromMessage(message, matBytes);
 
             try {
               final mask = await segmenter!.call(mat);

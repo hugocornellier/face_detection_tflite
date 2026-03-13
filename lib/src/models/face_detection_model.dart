@@ -12,22 +12,18 @@ part of '../../face_detection_tflite.dart';
 ///   (local copy: `doc/model_cards/blazeface_full_range_model_card.pdf`)
 /// - Full range sparse: https://mediapipe.page.link/blazeface-back-sparse-mc
 ///   (local copy: `doc/model_cards/blazeface_full_range_sparse_model_card.pdf`)
-class FaceDetection {
-  IsolateInterpreter? _iso;
+class FaceDetection with _TfliteModelDisposable {
+  @override
   final Interpreter _itp;
   final int _inW, _inH;
   final int _boundingBoxIndex = 0, _scoreIndex = 1;
   final List<List<double>> _anchors;
-  final bool _assumeMirrored;
-  Delegate? _delegate;
   late final int _inputIdx;
   late final List<int> _boxesShape;
   late final List<int> _scoresShape;
   late final Tensor _inputTensor;
   late final Tensor _boxesTensor;
   late final Tensor _scoresTensor;
-  late final int _boxesLen;
-  late final int _scoresLen;
   late final Float32List _inputBuf;
   late final Float32List _boxesBuf;
   late final Float32List _scoresBuf;
@@ -35,8 +31,7 @@ class FaceDetection {
   late final List<List<List<double>>> _boxesOutCache;
   late final Object _scoresOutCache;
 
-  FaceDetection._(this._itp, this._inW, this._inH, this._anchors)
-      : _assumeMirrored = false;
+  FaceDetection._(this._itp, this._inW, this._inH, this._anchors);
 
   /// The model input width in pixels.
   int get inputWidth => _inW;
@@ -81,6 +76,42 @@ class FaceDetection {
     FaceDetectionModel model, {
     InterpreterOptions? options,
     PerformanceConfig? performanceConfig,
+  }) =>
+      _createWithLoader(
+        model: model,
+        load: (opts) => Interpreter.fromAsset(
+          'packages/face_detection_tflite/assets/models/${_nameFor(model)}',
+          options: opts,
+        ),
+        options: options,
+        performanceConfig: performanceConfig,
+      );
+
+  /// Creates a face detection model from pre-loaded model bytes.
+  ///
+  /// This is primarily used by [FaceDetectorIsolate] to initialize models
+  /// in a background isolate where asset loading is not available.
+  ///
+  /// The [modelBytes] parameter should contain the raw TFLite model file contents.
+  /// The [model] parameter specifies which model variant this is (for anchor generation).
+  static Future<FaceDetection> createFromBuffer(
+    Uint8List modelBytes,
+    FaceDetectionModel model, {
+    PerformanceConfig? performanceConfig,
+  }) =>
+      _createWithLoader(
+        model: model,
+        load: (opts) => Interpreter.fromBuffer(modelBytes, options: opts),
+        performanceConfig: performanceConfig,
+        useIsolateInterpreter: false,
+      );
+
+  static Future<FaceDetection> _createWithLoader({
+    required FaceDetectionModel model,
+    required FutureOr<Interpreter> Function(InterpreterOptions) load,
+    InterpreterOptions? options,
+    PerformanceConfig? performanceConfig,
+    bool useIsolateInterpreter = true,
   }) async {
     final SSDAnchorOptions opts = _optsFor(model);
     final int inW = opts.inputSizeWidth;
@@ -96,49 +127,12 @@ class FaceDetection {
       delegate = result.$2;
     }
 
-    final Interpreter itp = await Interpreter.fromAsset(
-      'packages/face_detection_tflite/assets/models/${_nameFor(model)}',
-      options: interpreterOptions,
-    );
-
+    final Interpreter itp = await load(interpreterOptions);
     final List<List<double>> anchors = generateAnchors(opts);
     final FaceDetection obj = FaceDetection._(itp, inW, inH, anchors);
     obj._delegate = delegate;
 
-    await obj._initializeTensors();
-    return obj;
-  }
-
-  /// Creates a face detection model from pre-loaded model bytes.
-  ///
-  /// This is primarily used by [FaceDetectorIsolate] to initialize models
-  /// in a background isolate where asset loading is not available.
-  ///
-  /// The [modelBytes] parameter should contain the raw TFLite model file contents.
-  /// The [model] parameter specifies which model variant this is (for anchor generation).
-  static Future<FaceDetection> createFromBuffer(
-    Uint8List modelBytes,
-    FaceDetectionModel model, {
-    PerformanceConfig? performanceConfig,
-  }) async {
-    final SSDAnchorOptions opts = _optsFor(model);
-    final int inW = opts.inputSizeWidth;
-    final int inH = opts.inputSizeHeight;
-
-    final result = InterpreterFactory.create(performanceConfig);
-    final interpreterOptions = result.$1;
-    final delegate = result.$2;
-
-    final Interpreter itp = Interpreter.fromBuffer(
-      modelBytes,
-      options: interpreterOptions,
-    );
-
-    final List<List<double>> anchors = generateAnchors(opts);
-    final FaceDetection obj = FaceDetection._(itp, inW, inH, anchors);
-    obj._delegate = delegate;
-
-    await obj._initializeTensors(useIsolateInterpreter: false);
+    await obj._initializeTensors(useIsolateInterpreter: useIsolateInterpreter);
     return obj;
   }
 
@@ -176,9 +170,6 @@ class FaceDetection {
     _inputTensor = _itp.getInputTensor(_inputIdx);
     _boxesTensor = _itp.getOutputTensor(_boundingBoxIndex);
     _scoresTensor = _itp.getOutputTensor(_scoreIndex);
-    _boxesLen = _boxesShape.fold(1, (a, b) => a * b);
-    _scoresLen = _scoresShape.fold(1, (a, b) => a * b);
-
     _inputBuf = _inputTensor.data.buffer.asFloat32List();
     _boxesBuf = _boxesTensor.data.buffer.asFloat32List();
     _scoresBuf = _scoresTensor.data.buffer.asFloat32List();
@@ -218,28 +209,8 @@ class FaceDetection {
       );
     }
 
-    if (useIsolateInterpreter && _delegate == null) {
-      _iso = await IsolateInterpreter.create(address: _itp.address);
-    }
-  }
-
-  void _flatten3D(List<List<List<num>>> src, Float32List dst) {
-    int k = 0;
-    for (final List<List<num>> a in src) {
-      for (final List<num> b in a) {
-        for (final num c in b) {
-          dst[k++] = c.toDouble();
-        }
-      }
-    }
-  }
-
-  void _flatten2D(List<List<num>> src, Float32List dst) {
-    int k = 0;
-    for (final List<num> a in src) {
-      for (final num b in a) {
-        dst[k++] = b.toDouble();
-      }
+    if (useIsolateInterpreter) {
+      _iso = await InterpreterFactory.createIsolateIfNeeded(_itp, _delegate);
     }
   }
 
@@ -273,15 +244,8 @@ class FaceDetection {
 
       await _iso!.runForMultipleInputs(inputs.cast<Object>(), outputs);
 
-      final Float32List outBoxes = Float32List(_boxesLen);
-      _flatten3D(_boxesOutCache as List<List<List<num>>>, outBoxes);
-
-      final Float32List outScores = Float32List(_scoresLen);
-      if (_scoresShape.length == 3) {
-        _flatten3D(_scoresOutCache as List<List<List<num>>>, outScores);
-      } else {
-        _flatten2D(_scoresOutCache as List<List<num>>, outScores);
-      }
+      final Float32List outBoxes = flattenDynamicTensor(_boxesOutCache);
+      final Float32List outScores = flattenDynamicTensor(_scoresOutCache);
 
       boxesBuf = outBoxes;
       scoresBuf = outScores;
@@ -311,38 +275,17 @@ class FaceDetection {
 
     final List<Detection> dets = _toDetectionsFiltered(boxes, candidateScores);
 
-    final List<Detection> pruned = _nms(
+    final List<Detection> pruned = _weightedNmsDetections(
       dets,
       _minSuppressionThreshold,
       _minScore,
-      weighted: true,
     );
     final List<Detection> fixed = _detectionLetterboxRemoval(
       pruned,
       pack.padding,
     );
 
-    List<Detection> mapped = fixed;
-
-    if (_assumeMirrored) {
-      mapped = mapped.map((d) {
-        final double xmin = 1.0 - d.boundingBox.xmax;
-        final double xmax = 1.0 - d.boundingBox.xmin;
-        final double ymin = d.boundingBox.ymin;
-        final double ymax = d.boundingBox.ymax;
-        final List<double> kp = List<double>.from(d.keypointsXY);
-        for (int i = 0; i < kp.length; i += 2) {
-          kp[i] = 1.0 - kp[i];
-        }
-        return Detection(
-          boundingBox: RectF(xmin, ymin, xmax, ymax),
-          score: d.score,
-          keypointsXY: kp,
-        );
-      }).toList();
-    }
-
-    return mapped;
+    return fixed;
   }
 
   /// Decodes boxes only for the specified anchor indices.
@@ -391,7 +334,7 @@ class FaceDetection {
     final int n = shape[1];
     final Float32List scores = Float32List(n);
     for (int i = 0; i < n; i++) {
-      scores[i] = _sigmoidClipped(raw[i]);
+      scores[i] = sigmoidClipped(raw[i]);
     }
     return scores;
   }
@@ -427,10 +370,5 @@ class FaceDetection {
   ///
   /// **Note:** Most users should call [FaceDetector.dispose] instead, which
   /// automatically disposes all internal models (detection, mesh, and iris).
-  void dispose() {
-    _delegate?.delete();
-    _delegate = null;
-    _iso?.close();
-    _itp.close();
-  }
+  void dispose() => _doDispose();
 }

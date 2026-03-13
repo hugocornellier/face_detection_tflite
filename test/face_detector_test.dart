@@ -16,8 +16,6 @@ void main() {
       expect(detector.isSegmentationReady, isFalse);
       expect(detector.irisOkCount, 0);
       expect(detector.irisFailCount, 0);
-      expect(detector.irisUsedFallbackCount, 0);
-      expect(detector.lastIrisTime, Duration.zero);
     });
 
     test('should safely dispose without initialization', () {

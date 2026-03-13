@@ -30,11 +30,10 @@ List<List<double>> _transformIrisToAbsolute(
 /// framework. See the official model card for architecture details, training data, and
 /// intended use cases: https://mediapipe.page.link/iris-mc
 /// (local copy: `doc/model_cards/iris_landmark_model_card.pdf`)
-class IrisLandmark {
-  IsolateInterpreter? _iso;
+class IrisLandmark with _TfliteModelDisposable {
+  @override
   final Interpreter _itp;
   final int _inW, _inH;
-  Delegate? _delegate;
   late final Tensor _inputTensor;
   late final Float32List _inputBuf;
   late final Map<int, List<int>> _outShapes;
@@ -130,8 +129,8 @@ class IrisLandmark {
       _outputsCache[i] = allocTensorShape(shape);
     });
 
-    if (useIsolateInterpreter && _delegate == null) {
-      _iso = await IsolateInterpreter.create(address: _itp.address);
+    if (useIsolateInterpreter) {
+      _iso = await InterpreterFactory.createIsolateIfNeeded(_itp, _delegate);
     }
   }
 
@@ -188,29 +187,16 @@ class IrisLandmark {
     InterpreterOptions? options,
     PerformanceConfig? performanceConfig,
     bool useIsolateInterpreter = true,
-  }) async {
-    Delegate? delegate;
-    final InterpreterOptions opts;
-    if (options != null) {
-      opts = options;
-    } else {
-      final result = InterpreterFactory.create(performanceConfig);
-      opts = result.$1;
-      delegate = result.$2;
-    }
-
-    final Interpreter itp = await load(opts);
-    final List<int> ishape = itp.getInputTensor(0).shape;
-    final int inH = ishape[1];
-    final int inW = ishape[2];
-    itp.resizeInputTensor(0, [1, inH, inW, 3]);
-    itp.allocateTensors();
-
-    final IrisLandmark obj = IrisLandmark._(itp, inW, inH);
-    obj._delegate = delegate;
-    await obj._initializeTensors(useIsolateInterpreter: useIsolateInterpreter);
-    return obj;
-  }
+  }) =>
+      _buildModel(
+        load: load,
+        options: options,
+        performanceConfig: performanceConfig,
+        useIsolateInterpreter: useIsolateInterpreter,
+        construct: IrisLandmark._,
+        initTensors: (obj, iso) =>
+            obj._initializeTensors(useIsolateInterpreter: iso),
+      );
 
   /// Runs iris detection in a separate isolate for non-blocking inference.
   ///
@@ -349,48 +335,6 @@ class IrisLandmark {
     }
   }
 
-  /// Runs iris detection on a cv.Mat using an aligned eye ROI.
-  ///
-  /// Uses SIMD-accelerated warpAffine for the rotation crop, providing 10-50x
-  /// better performance than pure Dart bilinear interpolation.
-  ///
-  /// The [src] parameter is the full image as cv.Mat.
-  /// The [roi] parameter defines the eye region with center, size, and rotation.
-  /// When [isRight] is true, the eye crop is flipped before processing.
-  ///
-  /// Returns iris landmarks in absolute pixel coordinates.
-  ///
-  /// Note: The input cv.Mat is NOT disposed by this method.
-  Future<List<List<double>>> runOnImageAlignedIris(
-    cv.Mat src,
-    AlignedRoi roi, {
-    bool isRight = false,
-    Float32List? buffer,
-  }) async {
-    final cv.Mat? crop = extractAlignedSquare(
-      src,
-      roi.cx,
-      roi.cy,
-      roi.size,
-      roi.theta,
-    );
-    if (crop == null) {
-      return const <List<double>>[];
-    }
-
-    cv.Mat eye;
-    if (isRight) {
-      eye = cv.flip(crop, 1);
-      crop.dispose();
-    } else {
-      eye = crop;
-    }
-
-    final List<List<double>> lmNorm = await call(eye, buffer: buffer);
-    eye.dispose();
-    return _transformIrisToAbsolute(lmNorm, roi, isRight);
-  }
-
   /// Releases all TensorFlow Lite resources held by this model.
   ///
   /// Call this when you're done using the iris landmark model to free up memory.
@@ -398,12 +342,7 @@ class IrisLandmark {
   ///
   /// **Note:** Most users should call [FaceDetector.dispose] instead, which
   /// automatically disposes all internal models (detection, mesh, and iris).
-  void dispose() {
-    _delegate?.delete();
-    _delegate = null;
-    _iso?.close();
-    _itp.close();
-  }
+  void dispose() => _doDispose();
 }
 
 @visibleForTesting

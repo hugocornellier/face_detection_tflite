@@ -19,7 +19,7 @@ dependencies:
   flutter:
     sdk: flutter
   opencv_dart: ^2.2.1+4
-  flutter_litert: ^1.2.0
+  flutter_litert: ^2.0.5
   meta: ^1.17.0
 
 dev_dependencies:

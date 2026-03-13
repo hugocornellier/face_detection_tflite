@@ -877,62 +877,6 @@ const List<List<int>> eyeLandmarkConnections = [
 /// additional tracking halos around the eye region.
 const int kMaxEyeLandmark = 15;
 
-/// A point with x, y, and optional z coordinates.
-///
-/// Used to represent landmarks with optional depth information.
-/// The x and y coordinates are in absolute pixel positions relative to the original image.
-/// The z coordinate represents relative depth (scale-dependent) when 3D computation is enabled.
-///
-/// When [z] is null, this represents a 2D point. When [z] is non-null, it represents
-/// a 3D point with depth information.
-class Point {
-  /// The x-coordinate in absolute pixels.
-  final double x;
-
-  /// The y-coordinate in absolute pixels.
-  final double y;
-
-  /// The z-coordinate representing relative depth, or null for 2D points.
-  ///
-  /// This is a scale-dependent depth value. The magnitude depends on the face size
-  /// and alignment used during detection. Negative values indicate points closer to
-  /// the camera, positive values indicate points further away.
-  ///
-  /// Will be null for 2D-only landmarks (such as face detection keypoints).
-  /// Face mesh and iris landmarks always include z-coordinates.
-  final double? z;
-
-  /// Creates a point with the given x, y, and optional z coordinates.
-  const Point(this.x, this.y, [this.z]);
-
-  /// Whether this point has depth information (z-coordinate).
-  ///
-  /// Returns true if z-coordinate is non-null, false otherwise.
-  bool get is3D => z != null;
-
-  @override
-  String toString() => z != null ? 'Point($x, $y, $z)' : 'Point($x, $y)';
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is Point &&
-          runtimeType == other.runtimeType &&
-          x == other.x &&
-          y == other.y &&
-          z == other.z;
-
-  @override
-  int get hashCode => Object.hash(x, y, z);
-
-  /// Converts this point to a map for isolate serialization.
-  Map<String, dynamic> toMap() => {'x': x, 'y': y, if (z != null) 'z': z};
-
-  /// Creates a point from a map (isolate deserialization).
-  factory Point.fromMap(Map<String, dynamic> map) =>
-      Point(map['x'] as double, map['y'] as double, map['z'] as double?);
-}
-
 /// A 468-point face mesh with optional depth information.
 ///
 /// Encapsulates the MediaPipe face mesh data. Each point has x and y coordinates
@@ -990,6 +934,10 @@ class FaceMesh {
   factory FaceMesh.fromMap(Map<String, dynamic> map) =>
       FaceMesh((map['points'] as List).map((p) => Point.fromMap(p)).toList());
 }
+
+/// Returns the first [kMaxEyeLandmark] points of [mesh], or [mesh] itself if shorter.
+List<Point> _clampedContour(List<Point> mesh) =>
+    mesh.length >= kMaxEyeLandmark ? mesh.sublist(0, kMaxEyeLandmark) : mesh;
 
 /// Comprehensive eye tracking data including iris center, iris contour, and eye mesh.
 ///
@@ -1075,9 +1023,7 @@ class Eye {
     required List<Point> irisContour,
     List<Point> mesh = const <Point>[],
   }) {
-    final contour = mesh.length >= kMaxEyeLandmark
-        ? mesh.sublist(0, kMaxEyeLandmark)
-        : mesh;
+    final contour = _clampedContour(mesh);
     return Eye._withContour(
       irisCenter: irisCenter,
       irisContour: irisContour,
@@ -1104,11 +1050,8 @@ class Eye {
   ///   canvas.drawLine(p1, p2, paint);
   /// }
   /// ```
-  List<Point> get contour => _contourCache.isNotEmpty
-      ? _contourCache
-      : (mesh.length >= kMaxEyeLandmark
-          ? mesh.sublist(0, kMaxEyeLandmark)
-          : mesh);
+  List<Point> get contour =>
+      _contourCache.isNotEmpty ? _contourCache : _clampedContour(mesh);
 
   /// Converts this eye to a map for isolate serialization.
   Map<String, dynamic> toMap() => {
@@ -1266,84 +1209,40 @@ class FaceLandmarks {
   }
 }
 
-/// Face bounding box with corner points in pixel coordinates.
-///
-/// Represents a rectangular bounding box around a detected face with convenient
-/// access to corner points, dimensions, and center coordinates.
-///
-/// All coordinates are in absolute pixel positions relative to the original image.
-///
-/// Example:
-/// ```dart
-/// final boundingBox = face.boundingBox;
-/// print('Width: ${boundingBox.width}, Height: ${boundingBox.height}');
-/// print('Top-left corner: (${boundingBox.topLeft.x}, ${boundingBox.topLeft.y})');
-/// print('Center: (${boundingBox.center.x}, ${boundingBox.center.y})');
-/// ```
-class BoundingBox {
-  /// Top-left corner point in absolute pixel coordinates.
-  final Point topLeft;
-
-  /// Top-right corner point in absolute pixel coordinates.
-  final Point topRight;
-
-  /// Bottom-right corner point in absolute pixel coordinates.
-  final Point bottomRight;
-
-  /// Bottom-left corner point in absolute pixel coordinates.
-  final Point bottomLeft;
-
-  /// Creates a bounding box with four corner points.
-  ///
-  /// Points should be in order: top-left, top-right, bottom-right, bottom-left.
-  const BoundingBox({
-    required this.topLeft,
-    required this.topRight,
-    required this.bottomRight,
-    required this.bottomLeft,
-  });
-
-  /// The four corner points as a list in order: top-left, top-right,
-  /// bottom-right, bottom-left.
-  ///
-  /// Useful for iteration or when you need all corners at once.
-  List<Point> get corners => [topLeft, topRight, bottomRight, bottomLeft];
-
-  /// Width of the bounding box in pixels.
-  double get width => topRight.x - topLeft.x;
-
-  /// Height of the bounding box in pixels.
-  double get height => bottomLeft.y - topLeft.y;
-
-  /// Center point of the bounding box in absolute pixel coordinates.
-  Point get center => Point(
-        (topLeft.x + topRight.x + bottomRight.x + bottomLeft.x) / 4,
-        (topLeft.y + topRight.y + bottomRight.y + bottomLeft.y) / 4,
-      );
-
-  /// Converts this bounding box to a map for isolate serialization.
-  Map<String, dynamic> toMap() => {
-        'topLeft': topLeft.toMap(),
-        'topRight': topRight.toMap(),
-        'bottomRight': bottomRight.toMap(),
-        'bottomLeft': bottomLeft.toMap(),
-      };
-
-  /// Creates a bounding box from a map (isolate deserialization).
-  factory BoundingBox.fromMap(Map<String, dynamic> map) => BoundingBox(
-        topLeft: Point.fromMap(map['topLeft']),
-        topRight: Point.fromMap(map['topRight']),
-        bottomRight: Point.fromMap(map['bottomRight']),
-        bottomLeft: Point.fromMap(map['bottomLeft']),
-      );
-}
-
 /// Outputs for a single detected face.
 ///
 /// [boundingBox] is the face bounding box in pixel coordinates.
 /// [landmarks] provides convenient access to 6 key facial landmarks (eyes, nose, mouth).
 /// [mesh] contains 468 facial landmarks as pixel coordinates.
 /// [eyes] contains iris center, iris contour, and eye mesh landmarks for both eyes.
+/// Returns the iris point closest to the centroid of the iris point set.
+///
+/// Identifies the iris center geometrically in O(n) time.
+Point _irisCenterFromPoints(List<Point> pts) {
+  if (pts.isEmpty) return const Point(0, 0, 0);
+  if (pts.length == 1) return pts[0];
+  double cx = 0, cy = 0;
+  for (final p in pts) {
+    cx += p.x;
+    cy += p.y;
+  }
+  cx /= pts.length;
+  cy /= pts.length;
+
+  int bestIdx = 0;
+  double bestDist = double.infinity;
+  for (int i = 0; i < pts.length; i++) {
+    final dx = pts[i].x - cx;
+    final dy = pts[i].y - cy;
+    final d = dx * dx + dy * dy;
+    if (d < bestDist) {
+      bestDist = d;
+      bestIdx = i;
+    }
+  }
+  return pts[bestIdx];
+}
+
 class Face {
   final Detection _detection;
 
@@ -1480,31 +1379,11 @@ class Face {
       eyeMesh = const <Point>[];
       irisPoints = points;
     }
-    double cx = 0, cy = 0;
-    for (int i = 0; i < 5; i++) {
-      cx += irisPoints[i].x;
-      cy += irisPoints[i].y;
-    }
-    cx /= 5;
-    cy /= 5;
-
-    int centerIdx = 0;
-    double minDist = double.infinity;
-    for (int i = 0; i < 5; i++) {
-      final dx = irisPoints[i].x - cx;
-      final dy = irisPoints[i].y - cy;
-      final dist = dx * dx + dy * dy;
-      if (dist < minDist) {
-        minDist = dist;
-        centerIdx = i;
-      }
-    }
-
-    final center = irisPoints[centerIdx];
-    final contour = <Point>[];
-    for (int i = 0; i < 5; i++) {
-      if (i != centerIdx) contour.add(irisPoints[i]);
-    }
+    final center = _irisCenterFromPoints(irisPoints);
+    final contour = [
+      for (final p in irisPoints)
+        if (!identical(p, center)) p
+    ];
 
     return Eye.optimized(
       irisCenter: center,
@@ -1706,20 +1585,6 @@ const _ssdBack = SSDAnchorOptions(
   anchorOffsetX: 0.5,
   anchorOffsetY: 0.5,
   strides: [16, 32, 32, 32],
-  aspectRatios: [1.0],
-  reduceBoxesInLowestLayer: false,
-  interpolatedScaleAspectRatio: 1.0,
-  fixedAnchorSize: true,
-);
-const _ssdShort = SSDAnchorOptions(
-  numLayers: 4,
-  minScale: 0.1464,
-  maxScale: 0.9,
-  inputSizeHeight: 128,
-  inputSizeWidth: 128,
-  anchorOffsetX: 0.5,
-  anchorOffsetY: 0.5,
-  strides: [8, 16, 16, 16],
   aspectRatios: [1.0],
   reduceBoxesInLowestLayer: false,
   interpolatedScaleAspectRatio: 1.0,

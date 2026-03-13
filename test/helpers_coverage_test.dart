@@ -202,26 +202,15 @@ void main() {
       expect(result.length, 1);
     });
 
-    test('should use weighted averaging in weighted mode', () {
+    test('should use weighted averaging for overlapping detections', () {
       final dets = [
         det(0.0, 0.0, 0.5, 0.5, 0.9),
         det(0.05, 0.05, 0.55, 0.55, 0.8),
       ];
-      final result = testNms(dets, 0.3, 0.5, weighted: true);
+      final result = testNms(dets, 0.3, 0.5);
       expect(result.length, 1);
       // Weighted average should shift box slightly from highest-score box
       expect(result[0].boundingBox.xmin, greaterThan(0.0));
-    });
-
-    test('should not average in non-weighted mode', () {
-      final dets = [
-        det(0.0, 0.0, 0.5, 0.5, 0.9),
-        det(0.05, 0.05, 0.55, 0.55, 0.8),
-      ];
-      final result = testNms(dets, 0.3, 0.5, weighted: false);
-      expect(result.length, 1);
-      // Should keep highest-score box unchanged
-      expect(result[0].boundingBox.xmin, closeTo(0.0, 0.0001));
       expect(result[0].score, 0.9);
     });
 
@@ -234,7 +223,7 @@ void main() {
       expect(result[0].score, 0.95);
     });
 
-    test('should use grid-based NMS for >8 detections', () {
+    test('should handle more than 8 detections', () {
       // Create 10 non-overlapping detections spread across the image
       final dets = List.generate(
         10,
