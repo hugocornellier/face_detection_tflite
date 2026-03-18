@@ -13,7 +13,7 @@ A new Flutter plugin project.
   s.license          = { :file => '../LICENSE' }
   s.author           = { 'Your Company' => 'email@example.com' }
   s.source           = { :path => '.' }
-  s.source_files = 'face_detection_tflite/Sources/face_detection_tflite/**/*'
+  s.source_files = 'face_detection_tflite/Sources/face_detection_tflite/**/*.{swift,h,m}'
   s.dependency 'Flutter'
   s.dependency 'TensorFlowLiteC', '~> 2.17.0'
   s.platform = :ios, '13.0'

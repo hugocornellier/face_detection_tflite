@@ -18,7 +18,7 @@ dependencies:
     path: ../
   flutter_colorpicker: ^1.1.0
   camera: ^0.12.0
-  camera_desktop: ^1.0.4
+  camera_desktop: ^1.0.6
 
 dev_dependencies:
   flutter_test:

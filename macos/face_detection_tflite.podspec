@@ -11,7 +11,7 @@ Pod::Spec.new do |s|
   s.platform              = :osx, '11.0'
   s.swift_version         = '5.0'
 
-  s.source_files          = 'face_detection_tflite/Sources/face_detection_tflite/**/*'
+  s.source_files          = 'face_detection_tflite/Sources/face_detection_tflite/**/*.{swift,h,m}'
 
   s.resource_bundles      = { 'face_detection_tflite_privacy' => ['face_detection_tflite/Sources/face_detection_tflite/PrivacyInfo.xcprivacy'] }
 

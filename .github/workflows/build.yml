@@ -76,7 +76,7 @@ jobs:
 
   build-ios:
     name: Build iOS (${{ matrix.flutter-channel }})
-    runs-on: macos-14
+    runs-on: macos-15
     strategy:
       matrix:
         flutter-channel: [stable, beta]
@@ -105,7 +105,7 @@ jobs:
 
   build-macos:
     name: Build macOS (${{ matrix.flutter-channel }})
-    runs-on: macos-14
+    runs-on: macos-15
     strategy:
       matrix:
         flutter-channel: [stable, beta]

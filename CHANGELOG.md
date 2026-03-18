@@ -1,3 +1,7 @@
+## 5.0.8
+
+* Fix Xcode build warnings by declaring PrivacyInfo.xcprivacy as a resource bundle in iOS and macOS podspecs
+  
 ## 5.0.7
 
 - Update `camera_desktop` 1.0.1 -> 1.0.3
