@@ -200,8 +200,16 @@ jobs:
         run: flutter pub get
         working-directory: example
 
-      # Linux has the same "Error waiting for a debug connection" bug as
-      # macOS/Windows when running multiple test files together. Run sequentially.
+      - name: Start Xvfb
+        run: |
+          /usr/bin/Xvfb :99 -screen 0 1280x1024x24 -ac +extension GLX +render -noreset &
+          echo "DISPLAY=:99" >> "$GITHUB_ENV"
+          echo "LIBGL_ALWAYS_SOFTWARE=1" >> "$GITHUB_ENV"
+          echo "GDK_BACKEND=x11" >> "$GITHUB_ENV"
+
+      # Flutter desktop integration tests may exit non-zero even when all
+      # tests pass (app process teardown issue). Pipe output through tee and
+      # check the actual test output instead of relying on the exit code.
       - name: Run integration tests (sequential, one file at a time)
         working-directory: example
         run: |
@@ -231,7 +239,9 @@ jobs:
             echo "========================================="
             pkill -9 -f "face_detection_tflite_example" 2>/dev/null || true
             sleep 2
-            if ! xvfb-run flutter test "integration_test/$f" -d linux; then
+            flutter test "integration_test/$f" -d linux 2>&1 | tee "$RUNNER_TEMP/$f.log" || true
+            if grep -q "Some tests failed" "$RUNNER_TEMP/$f.log" || \
+               ! grep -qE "tests passed" "$RUNNER_TEMP/$f.log"; then
               FAILED+=("$f")
               echo "::error::FAILED: $f"
             fi
