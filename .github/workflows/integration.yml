@@ -241,7 +241,7 @@ jobs:
             sleep 2
             flutter test "integration_test/$f" -d linux 2>&1 | tee "$RUNNER_TEMP/$f.log" || true
             if grep -q "Some tests failed" "$RUNNER_TEMP/$f.log" || \
-               ! grep -qE "tests passed" "$RUNNER_TEMP/$f.log"; then
+               ! grep -qE "(All tests passed|[0-9]+ tests? passed)" "$RUNNER_TEMP/$f.log"; then
               FAILED+=("$f")
               echo "::error::FAILED: $f"
             fi
@@ -252,6 +252,11 @@ jobs:
             echo "FAILED TESTS:"
             printf '  - %s\n' "${FAILED[@]}"
             echo "========================================="
+            for f in "${FAILED[@]}"; do
+              echo ""
+              echo "--- Output for $f ---"
+              cat "$RUNNER_TEMP/$f.log"
+            done
             exit 1
           fi
           echo "All ${#TEST_FILES[@]} test files passed."
