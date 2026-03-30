@@ -42,7 +42,7 @@ class FaceLandmark with _TfliteModelDisposable {
   ///
   /// Example:
   /// ```dart
-  /// // Default (no acceleration)
+  /// // Default (auto mode)
   /// final landmarkModel = await FaceLandmark.create();
   /// final meshPoints = await landmarkModel.call(alignedFaceCropMat);
   ///

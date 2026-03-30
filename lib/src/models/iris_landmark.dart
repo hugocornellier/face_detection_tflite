@@ -63,7 +63,7 @@ class IrisLandmark with _TfliteModelDisposable {
   ///
   /// Example:
   /// ```dart
-  /// // Default (no acceleration)
+  /// // Default (auto mode)
   /// final irisModel = await IrisLandmark.create();
   /// final irisPoints = await irisModel.call(eyeCropMat);
   ///
@@ -152,7 +152,7 @@ class IrisLandmark with _TfliteModelDisposable {
   ///
   /// Example:
   /// ```dart
-  /// // Default (no acceleration)
+  /// // Default (auto mode)
   /// final customModel = await IrisLandmark.createFromFile(
   ///   '/path/to/custom_iris_model.tflite',
   /// );

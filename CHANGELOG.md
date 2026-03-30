@@ -1,3 +1,16 @@
+## 5.0.12
+
+* Update documentation
+
+## 5.0.11
+
+* Update flutter_litert 2.0.8 -> 2.0.10
+
+## 5.0.10
+
+* Add Windows XNNPack delegate support (2-5x inference speedup)
+* Update flutter_litert 2.0.6 -> 2.0.8
+
 ## 5.0.9
 
 * Update flutter_litert 2.0.5 -> 2.0.6 

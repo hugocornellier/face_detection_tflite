@@ -195,9 +195,8 @@ class FaceDetector {
   ///
   /// The [performanceConfig] parameter controls hardware acceleration delegates.
   /// By default, auto mode selects the optimal delegate per platform:
-  /// - macOS/Linux: XNNPACK (2-5x CPU speedup)
   /// - iOS: Metal GPU delegate
-  /// - Windows/Android: CPU-only (for stability)
+  /// - Android/macOS/Linux/Windows: XNNPACK (2-5x SIMD acceleration)
   /// If both [options] and [performanceConfig] are provided, [options] takes precedence.
   ///
   /// Example:

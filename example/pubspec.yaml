@@ -26,7 +26,7 @@ dev_dependencies:
   integration_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  flutter_litert: ^2.0.5
+  flutter_litert: ^2.0.9
 
 flutter:
   uses-material-design: true

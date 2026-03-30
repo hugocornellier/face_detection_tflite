@@ -59,7 +59,7 @@ class FaceDetection with _TfliteModelDisposable {
   ///
   /// Example:
   /// ```dart
-  /// // Default (no acceleration)
+  /// // Default (auto mode)
   /// final detector = await FaceDetection.create(
   ///   FaceDetectionModel.frontCamera,
   /// );

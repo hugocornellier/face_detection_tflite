@@ -119,7 +119,7 @@ void main() {
   });
 
   group('PerformanceConfig.xnnpack', () {
-    test('should work on supported platforms (macOS/Linux)', () async {
+    test('should work on supported platforms (macOS/Linux/Windows)', () async {
       final detector = FaceDetector();
       await detector.initialize(
         performanceConfig: PerformanceConfig.xnnpack(),

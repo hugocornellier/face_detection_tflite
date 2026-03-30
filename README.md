@@ -606,19 +606,10 @@ The package automatically selects the best acceleration strategy for each platfo
 | **macOS** | XNNPACK | 2-5x | SIMD vectorization (NEON on ARM, AVX on x86) |
 | **Linux** | XNNPACK | 2-5x | SIMD vectorization |
 | **iOS** | Metal GPU | 2-4x | Hardware GPU acceleration |
-| **Android** | CPU | 1x | GPU delegate unreliable (see below) |
-| **Windows** | CPU | 1x | XNNPACK crashes on Windows |
+| **Android** | XNNPACK | 2-5x | ARM NEON SIMD acceleration |
+| **Windows** | XNNPACK | 2-5x | SIMD vectorization (AVX on x86) |
 
 No configuration needed - just call `initialize()` and you get the optimal performance for your platform.
-
-### Android Performance Note
-
-The Android GPU delegate has known compatibility issues across different devices and Android versions:
-- OpenCL unavailable on many devices (Pixel 6+, Android 12+)
-- OpenGL ES 3.1+ required for fallback
-- Some devices crash during GPU delegate initialization
-
-For maximum compatibility, Android defaults to CPU-only execution. If you want to experiment with GPU acceleration on Android (at your own risk), see the [Advanced Configuration](#advanced-performance-configuration) section.
 
 ### Advanced Performance Configuration
 
@@ -628,7 +619,7 @@ await detector.initialize();
 // Equivalent to:
 await detector.initialize(performanceConfig: PerformanceConfig.auto());
 
-// Force XNNPACK (desktop only - macOS/Linux)
+// Force XNNPACK (all native platforms)
 await detector.initialize(
   performanceConfig: PerformanceConfig.xnnpack(numThreads: 4),
 );
