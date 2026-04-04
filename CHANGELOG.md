@@ -1,3 +1,7 @@
+## 5.0.13
+
+* Update flutter_litert 2.0.10 -> 2.0.11
+
 ## 5.0.12
 
 * Update documentation

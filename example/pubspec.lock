@@ -143,7 +143,7 @@ packages:
       path: ".."
       relative: true
     source: path
-    version: "5.0.12"
+    version: "5.0.13"
   fake_async:
     dependency: transitive
     description:
@@ -262,10 +262,10 @@ packages:
     dependency: "direct dev"
     description:
       name: flutter_litert
-      sha256: "272f33d6f49b162800ff4f2cc724b2e44b36ebad582eba523c8953edab24411b"
+      sha256: e36841c446bb4eb576e30df71a84563b7c5ce146af98ae88d7ad5f29793c8c81
       url: "https://pub.dev"
     source: hosted
-    version: "2.0.10"
+    version: "2.0.11"
   flutter_plugin_android_lifecycle:
     dependency: transitive
     description:
@@ -297,6 +297,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.3"
+  google_mlkit_commons:
+    dependency: transitive
+    description:
+      name: google_mlkit_commons
+      sha256: "3e69fea4211727732cc385104e675ad1e40b29f12edd492ee52fa108423a6124"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.11.1"
+  google_mlkit_face_detection:
+    dependency: "direct main"
+    description:
+      name: google_mlkit_face_detection
+      sha256: "7b6ddcc69dbd6fbfa313fb2d974ad0f0c3a0d1657560f0da6be465baf1889687"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.13.2"
   hooks:
     dependency: transitive
     description:

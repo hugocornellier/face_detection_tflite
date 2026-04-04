@@ -1959,7 +1959,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         return;
       }
 
-      // Downscale for performance — the detection model internally resizes
+      // Downscale for performance, the detection model internally resizes
       // to 128–256px, so full-res frames just waste IPC bandwidth.
       const int maxDim = 640;
       if (mat.cols > maxDim || mat.rows > maxDim) {

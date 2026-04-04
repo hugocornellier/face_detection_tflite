@@ -466,9 +466,9 @@ detector.dispose();
 ```
 
 **Similarity thresholds:**
-- `> 0.6` — Very likely same person
-- `> 0.5` — Probably same person
-- `< 0.3` — Different people
+- `> 0.6`, Very likely same person
+- `> 0.5`, Probably same person
+- `< 0.3`, Different people
 
 Also available: `FaceDetector.faceDistance()` for Euclidean distance, and batch processing with `getFaceEmbeddings()`.
 

@@ -638,7 +638,7 @@ class SegmentationMask {
 /// Extended segmentation mask with per-class probabilities.
 ///
 /// Only returned when using [SegmentationModel.multiclass].
-/// Inherits all [SegmentationMask] methods — the base [data] field contains
+/// Inherits all [SegmentationMask] methods, the base [data] field contains
 /// the combined person probability, same as other models.
 ///
 /// Access individual class masks via [classMask] or the convenience getters.
