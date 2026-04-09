@@ -244,7 +244,7 @@ class Example extends StatefulWidget {
 }
 
 class _ExampleState extends State<Example> {
-  FaceDetectorIsolate? _faceDetectorIsolate;
+  FaceDetector? _faceDetector;
   Uint8List? _imageBytes;
   List<Face> _faces = [];
   Size? _originalSize;
@@ -290,17 +290,16 @@ class _ExampleState extends State<Example> {
 
   Future<void> _initFaceDetector() async {
     try {
-      _faceDetectorIsolate?.dispose();
-      _faceDetectorIsolate = await FaceDetectorIsolate.spawn(
-        model: _detectionModel,
-      );
+      await _faceDetector?.dispose();
+      _faceDetector = FaceDetector();
+      await _faceDetector!.initialize(model: _detectionModel);
     } catch (_) {}
     setState(() {});
   }
 
   @override
   void dispose() {
-    _faceDetectorIsolate?.dispose();
+    _faceDetector?.dispose();
     super.dispose();
   }
 
@@ -323,7 +322,7 @@ class _ExampleState extends State<Example> {
 
     final Uint8List bytes = await picked.readAsBytes();
 
-    if (_faceDetectorIsolate == null || !_faceDetectorIsolate!.isReady) {
+    if (_faceDetector == null || !_faceDetector!.isReady) {
       setState(() => _isLoading = false);
       return;
     }
@@ -339,7 +338,7 @@ class _ExampleState extends State<Example> {
 
     final DateTime detectionStart = DateTime.now();
     final List<Face> faces =
-        await _faceDetectorIsolate!.detectFaces(bytes, mode: mode);
+        await _faceDetector!.detectFaces(bytes, mode: mode);
     final DateTime detectionEnd = DateTime.now();
 
     // Get image size from Face or decode it
@@ -1390,7 +1389,7 @@ class LiveCameraScreen extends StatefulWidget {
 
 class _LiveCameraScreenState extends State<LiveCameraScreen> {
   CameraController? _cameraController;
-  FaceDetectorIsolate? _faceDetectorIsolate;
+  FaceDetector? _faceDetector;
   List<Face> _faces = [];
   Size? _imageSize;
   int? _sensorOrientation;
@@ -1458,25 +1457,25 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   }
 
   Future<void> _reinitDetectorIsolate() async {
-    final old = _faceDetectorIsolate;
-    _faceDetectorIsolate = null;
-    old?.dispose();
-    _faceDetectorIsolate = await FaceDetectorIsolate.spawn(
-      model: _detectionModel,
-      withSegmentation: true,
-      segmentationConfig: SegmentationConfig(model: _liveSegmentationModel),
+    final old = _faceDetector;
+    _faceDetector = null;
+    await old?.dispose();
+    _faceDetector = FaceDetector();
+    await _faceDetector!.initialize(model: _detectionModel);
+    await _faceDetector!.initializeSegmentation(
+      config: SegmentationConfig(model: _liveSegmentationModel),
     );
   }
 
   Future<({List<Face> faces, SegmentationMask? segMask})> _detectFromMat(
       cv.Mat mat) async {
     if ((_showSegmentation || _showVirtualBackground) &&
-        _faceDetectorIsolate!.isSegmentationReady) {
-      final result = await _faceDetectorIsolate!
+        _faceDetector!.isSegmentationReady) {
+      final result = await _faceDetector!
           .detectFacesWithSegmentationFromMat(mat, mode: _detectionMode);
       return (faces: result.faces, segMask: result.segmentationMask);
     } else {
-      final faces = await _faceDetectorIsolate!.detectFacesFromMat(
+      final faces = await _faceDetector!.detectFacesFromMat(
         mat,
         mode: _detectionMode,
       );
@@ -1844,10 +1843,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         debugPrint('Detector isolate init failed (segmentation may be '
             'unavailable): $e');
         // Retry without segmentation so face detection still works.
-        _faceDetectorIsolate = await FaceDetectorIsolate.spawn(
-          model: _detectionModel,
-          withSegmentation: false,
-        );
+        _faceDetector = FaceDetector();
+        await _faceDetector!.initialize(model: _detectionModel);
       }
 
       // Unified camera initialization for ALL platforms
@@ -1954,7 +1951,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       // Convert CameraImage to cv.Mat for OpenCV-accelerated processing
       cv.Mat? mat = await _convertCameraImageToMat(image);
 
-      if (mat == null || _faceDetectorIsolate == null) {
+      if (mat == null || _faceDetector == null) {
         _isProcessing = false;
         return;
       }
@@ -2123,7 +2120,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       _cameraController?.stopImageStream();
     }
     _cameraController?.dispose();
-    _faceDetectorIsolate?.dispose();
+    _faceDetector?.dispose();
     super.dispose();
   }
 

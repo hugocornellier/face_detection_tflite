@@ -260,6 +260,7 @@ void main() {
   group('FaceDetectorIsolate Error Handling', () {
     test('should throw StateError when detectFaces called after dispose',
         () async {
+      // ignore: deprecated_member_use
       final detector = await FaceDetectorIsolate.spawn();
       await detector.dispose();
 
@@ -273,6 +274,7 @@ void main() {
 
     test('should throw StateError when getFaceEmbedding called after dispose',
         () async {
+      // ignore: deprecated_member_use
       final detector = await FaceDetectorIsolate.spawn();
 
       final faces = await detector.detectFaces(validImageBytes);
@@ -287,6 +289,7 @@ void main() {
     });
 
     test('should handle multiple dispose calls without crashing', () async {
+      // ignore: deprecated_member_use
       final detector = await FaceDetectorIsolate.spawn();
 
       await detector.dispose();
@@ -297,6 +300,7 @@ void main() {
     });
 
     test('should handle invalid image gracefully', () async {
+      // ignore: deprecated_member_use
       final detector = await FaceDetectorIsolate.spawn();
 
       final invalidBytes = Uint8List.fromList([1, 2, 3, 4, 5]);
@@ -366,28 +370,6 @@ void main() {
 
       final faces = await detector.detectFaces(validImageBytes);
       expect(faces, isNotEmpty);
-
-      detector.dispose();
-    });
-
-    test('iris statistics should accumulate correctly', () async {
-      final detector = FaceDetector();
-      await detector.initialize();
-
-      final data =
-          await rootBundle.load('assets/samples/iris-detection-ex1.jpg');
-      final irisImage = data.buffer.asUint8List();
-
-      for (int i = 0; i < 5; i++) {
-        await detector.detectFaces(irisImage, mode: FaceDetectionMode.full);
-      }
-
-      final totalAttempts = detector.irisOkCount + detector.irisFailCount;
-      expect(totalAttempts, greaterThan(0),
-          reason: 'Iris statistics should be tracked');
-
-      print(
-          'Iris stats: ${detector.irisOkCount} ok, ${detector.irisFailCount} fail');
 
       detector.dispose();
     });

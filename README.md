@@ -11,8 +11,10 @@
 <a href="https://github.com/hugocornellier/face_detection_tflite/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-007A88.svg?logo=apache" alt="License"></a>
 </p>
 
-Flutter implementation of Google's MediaPipe face and facial landmark detection models using TensorFlow Lite.
+Flutter implementation of Google's MediaPipe face and facial landmark detection models using LiteRT (formerly TensorFlow Lite).
 Completely local: no remote API, just pure on-device, offline detection.
+
+> **~5.5x faster than Google ML Kit** on equivalent face detection tasks ([benchmark source](example/integration_test/mlkit_benchmark_test.dart))
 
 | Face Mesh, Iris Detection, Eye Tracking | Multi-Face Detection |
 |---|---|
@@ -49,7 +51,7 @@ Future main() async {
     final eyes = face.eyes;
   }
 
-  detector.dispose();
+  await detector.dispose();
 }
 ```
 
@@ -339,7 +341,7 @@ await faceDetector.initialize(model: FaceDetectionModel.fullSparse);
 
 <img src="assets/screenshots/livecamera_ex1.gif" width="600" alt="Live Camera Detection">
 
-For real-time face detection with a camera feed, pass a `cv.Mat` directly to `detectFacesFromMat()` to avoid repeated JPEG encode/decode overhead. This provides the best performance for video streams.
+For real-time face detection with a camera feed, pass a `cv.Mat` directly to `detectFacesFromMat()` to avoid repeated JPEG encode/decode overhead. This provides the best performance for video streams. All processing runs automatically in a background isolate, so the UI thread is never blocked.
 
 ```dart
 import 'package:camera/camera.dart';
@@ -377,70 +379,9 @@ camera.startImageStream((CameraImage image) async {
 
 See the full [example app](https://pub.dev/packages/face_detection_tflite/example) for complete implementation including YUV-to-Mat conversion and frame throttling.
 
-## Background Isolate Detection
+## Background Processing
 
-For applications that require guaranteed non-blocking UI, use `FaceDetectorIsolate`. This runs the **entire** detection pipeline in a background isolate, ensuring all processing happens off the main thread.
-
-```dart
-import 'package:face_detection_tflite/face_detection_tflite.dart';
-
-// Spawn isolate (loads models in background)
-final detector = await FaceDetectorIsolate.spawn();
-
-// All detection runs in background isolate - UI never blocked
-final faces = await detector.detectFaces(imageBytes);
-
-for (final face in faces) {
-  print('Face at: ${face.boundingBox.center}');
-  print('Mesh points: ${face.mesh?.length ?? 0}');
-}
-
-// Cleanup when done
-await detector.dispose();
-```
-
-### When to Use FaceDetectorIsolate
-
-| Use Case | Recommended |
-|----------|-------------|
-| Live camera with 60fps UI requirement | `FaceDetectorIsolate` |
-| Processing images in a batch queue | `FaceDetectorIsolate` |
-| Simple single-image detection | `FaceDetector` |
-| Maximum control over pipeline stages | `FaceDetector` |
-
-### Configuration
-
-`FaceDetectorIsolate.spawn()` accepts the same configuration options as `FaceDetector.initialize()`, except for `InterpreterOptions`:
-
-```dart
-final detector = await FaceDetectorIsolate.spawn(
-  model: FaceDetectionModel.frontCamera,
-  performanceConfig: PerformanceConfig.auto(), // Or .gpu() for iOS
-  meshPoolSize: 2,
-);
-```
-
-### OpenCV Mat Support
-
-`FaceDetectorIsolate` fully supports OpenCV `cv.Mat` input, ideal for live camera processing:
-
-```dart
-import 'package:opencv_dart/opencv_dart.dart' as cv;
-
-// From cv.Mat (e.g., decoded image or camera frame)
-final mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
-final faces = await detector.detectFacesFromMat(mat);
-mat.dispose();
-
-// From raw BGR bytes (e.g., converted camera YUV)
-final faces = await detector.detectFacesFromMatBytes(
-  bgrBytes,
-  width: frameWidth,
-  height: frameHeight,
-);
-```
-
-The Mat is reconstructed in the background isolate using zero-copy transfer, so there's no encoding/decoding overhead.
+All inference runs automatically in a background isolate — the UI thread is never blocked during detection, mesh computation, iris tracking, or embedding generation. No special configuration is needed; `FaceDetector` handles isolate management internally.
 
 ## Face Recognition (Embeddings) 
 
@@ -462,7 +403,7 @@ for (final face in faces) {
   print('Similarity: ${similarity.toStringAsFixed(2)}'); // -1.0 to 1.0
 }
 
-detector.dispose();
+await detector.dispose();
 ```
 
 **Similarity thresholds:**
@@ -516,21 +457,6 @@ await detector.initializeSegmentation();
 
 final mask = await detector.getSegmentationMask(imageBytes);
 // Use mask for background replacement...
-
-detector.dispose();
-```
-
-### With FaceDetectorIsolate
-
-```dart
-final detector = await FaceDetectorIsolate.spawn(
-  withSegmentation: true,
-  segmentationConfig: SegmentationConfig(model: SegmentationModel.general),
-);
-
-final mask = await detector.getSegmentationMask(imageBytes);
-// Or from cv.Mat for camera streams:
-final mask = await detector.getSegmentationMaskFromMat(mat);
 
 await detector.dispose();
 ```
@@ -650,7 +576,7 @@ Future<void> processFrame(cv.Mat frame) async {
   final faces = await detector.detectFacesFromMat(frame, mode: FaceDetectionMode.fast);
 
   frame.dispose(); // always dispose Mats after use
-  detector.dispose();
+  await detector.dispose();
 }
 ```
 
@@ -663,7 +589,7 @@ Future<void> processFrame(cv.Mat frame) async {
 
 ### Memory Considerations
 
-The background isolate holds all TFLite models (~26-40MB for full pipeline). Always call `dispose()` when finished to release these resources. Image data is transferred using zero-copy `TransferableTypedData`, minimizing memory overhead.
+`FaceDetector` holds all TFLite models (~26-40MB for full pipeline) in a background isolate. Always call `dispose()` when finished to release these resources. Image data is transferred using zero-copy `TransferableTypedData`, minimizing memory overhead.
 
 ## Example
 

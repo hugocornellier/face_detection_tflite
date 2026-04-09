@@ -78,6 +78,7 @@ void main() {
 
     test('FaceDetectorIsolate embedding has exactly 192 elements', () async {
       print('\n--- Testing isolate embedding dimension ---');
+      // ignore: deprecated_member_use
       final detector = await FaceDetectorIsolate.spawn();
 
       final faces = await detector.detectFaces(landmarkBytes);
@@ -209,6 +210,7 @@ void main() {
       }
 
       print('\n--- Testing mixed concurrent operations ---');
+      // ignore: deprecated_member_use
       final detector = await FaceDetectorIsolate.spawn(
         withSegmentation: true,
       );

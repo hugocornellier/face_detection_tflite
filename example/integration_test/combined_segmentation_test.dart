@@ -124,10 +124,12 @@ void main() {
   // FaceDetectorIsolate.getSegmentationMask
   // ===========================================================================
   group('FaceDetectorIsolate.getSegmentationMask', () {
+    // ignore: deprecated_member_use
     late FaceDetectorIsolate detector;
 
     setUpAll(() async {
       if (modelsAvailable) {
+        // ignore: deprecated_member_use
         detector = await FaceDetectorIsolate.spawn(withSegmentation: true);
       }
     });
@@ -206,6 +208,7 @@ void main() {
 
     test('throws StateError when spawned without segmentation', () async {
       print('\n--- Testing Isolate.getSegmentationMask StateError ---');
+      // ignore: deprecated_member_use
       final noSegDetector = await FaceDetectorIsolate.spawn(
         withSegmentation: false,
       );
@@ -229,10 +232,12 @@ void main() {
   // FaceDetectorIsolate.detectFacesWithSegmentation
   // ===========================================================================
   group('FaceDetectorIsolate.detectFacesWithSegmentation', () {
+    // ignore: deprecated_member_use
     late FaceDetectorIsolate detector;
 
     setUpAll(() async {
       if (modelsAvailable) {
+        // ignore: deprecated_member_use
         detector = await FaceDetectorIsolate.spawn(withSegmentation: true);
       }
     });
@@ -344,6 +349,7 @@ void main() {
 
     test('throws StateError when spawned without segmentation', () async {
       print('\n--- Testing detectFacesWithSegmentation StateError ---');
+      // ignore: deprecated_member_use
       final noSegDetector = await FaceDetectorIsolate.spawn(
         withSegmentation: false,
       );
@@ -364,10 +370,12 @@ void main() {
   // FaceDetectorIsolate.detectFacesWithSegmentation
   // ===========================================================================
   group('FaceDetectorIsolate.detectFacesWithSegmentation', () {
+    // ignore: deprecated_member_use
     late FaceDetectorIsolate detector;
 
     setUpAll(() async {
       if (modelsAvailable) {
+        // ignore: deprecated_member_use
         detector = await FaceDetectorIsolate.spawn(withSegmentation: true);
       }
     });
@@ -439,6 +447,7 @@ void main() {
       print(
         '\n--- Testing detectFacesWithSegmentation StateError ---',
       );
+      // ignore: deprecated_member_use
       final noSegDetector = await FaceDetectorIsolate.spawn(
         withSegmentation: false,
       );

@@ -482,19 +482,6 @@ void main() {
         expect(face.boundingBox, isNotNull);
       }
     });
-
-    test('should track iris statistics', () async {
-      final ByteData data =
-          await rootBundle.load('assets/samples/iris-detection-ex1.jpg');
-      final Uint8List bytes = data.buffer.asUint8List();
-
-      for (int i = 0; i < 3; i++) {
-        await detector.detectFaces(bytes, mode: FaceDetectionMode.full);
-      }
-
-      final totalIrisAttempts = detector.irisOkCount + detector.irisFailCount;
-      expect(totalIrisAttempts, greaterThan(0));
-    });
   });
 
   group('FaceDetector - OpenCV API (detectFaces)', () {
@@ -721,9 +708,11 @@ void main() {
   });
 
   group('FaceDetectorIsolate - Background Isolate Detection', () {
+    // ignore: deprecated_member_use
     late FaceDetectorIsolate detector;
 
     setUpAll(() async {
+      // ignore: deprecated_member_use
       detector = await FaceDetectorIsolate.spawn();
     });
 
@@ -734,6 +723,7 @@ void main() {
     // --- Lifecycle tests that need their own detectors ---
 
     test('spawn creates initialized instance', () async {
+      // ignore: deprecated_member_use
       final ownDetector = await FaceDetectorIsolate.spawn();
 
       expect(ownDetector.isReady, true);
@@ -742,6 +732,7 @@ void main() {
     });
 
     test('isReady returns false after dispose', () async {
+      // ignore: deprecated_member_use
       final ownDetector = await FaceDetectorIsolate.spawn();
       expect(ownDetector.isReady, true);
 
@@ -751,6 +742,7 @@ void main() {
     });
 
     test('detectFaces throws after dispose', () async {
+      // ignore: deprecated_member_use
       final ownDetector = await FaceDetectorIsolate.spawn();
       await ownDetector.dispose();
 
@@ -763,6 +755,7 @@ void main() {
     });
 
     test('dispose can be called multiple times safely', () async {
+      // ignore: deprecated_member_use
       final ownDetector = await FaceDetectorIsolate.spawn();
 
       await ownDetector.dispose();
@@ -772,6 +765,7 @@ void main() {
     });
 
     test('detectFaces throws after dispose', () async {
+      // ignore: deprecated_member_use
       final ownDetector = await FaceDetectorIsolate.spawn();
       await ownDetector.dispose();
 
@@ -795,6 +789,7 @@ void main() {
     });
 
     test('spawn with custom configuration', () async {
+      // ignore: deprecated_member_use
       final customDetector = await FaceDetectorIsolate.spawn(
         model: FaceDetectionModel.frontCamera,
         performanceConfig: PerformanceConfig.xnnpack(numThreads: 2),
@@ -1185,9 +1180,11 @@ void main() {
   });
 
   group('FaceDetectorIsolate - Face Embedding', () {
+    // ignore: deprecated_member_use
     late FaceDetectorIsolate detector;
 
     setUpAll(() async {
+      // ignore: deprecated_member_use
       detector = await FaceDetectorIsolate.spawn();
     });
 
@@ -1275,6 +1272,7 @@ void main() {
     });
 
     test('getFaceEmbedding throws after dispose', () async {
+      // ignore: deprecated_member_use
       final ownDetector = await FaceDetectorIsolate.spawn();
 
       final ByteData data =
@@ -1358,11 +1356,13 @@ void main() {
 
   group('Benchmark - FaceDetector vs FaceDetectorIsolate', () {
     late FaceDetector regularDetector;
+    // ignore: deprecated_member_use
     late FaceDetectorIsolate isolateDetector;
 
     setUpAll(() async {
       regularDetector = FaceDetector();
       await regularDetector.initialize();
+      // ignore: deprecated_member_use
       isolateDetector = await FaceDetectorIsolate.spawn();
     });
 

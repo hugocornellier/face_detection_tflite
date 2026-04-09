@@ -381,6 +381,7 @@ void main() {
 
   group('FaceDetectorIsolate with different models', () {
     test('should work with frontCamera model', () async {
+      // ignore: deprecated_member_use
       final detector = await FaceDetectorIsolate.spawn(
         model: FaceDetectionModel.frontCamera,
       );
@@ -399,6 +400,7 @@ void main() {
     });
 
     test('should work with shortRange model', () async {
+      // ignore: deprecated_member_use
       final detector = await FaceDetectorIsolate.spawn(
         model: FaceDetectionModel.shortRange,
       );
@@ -417,6 +419,7 @@ void main() {
     });
 
     test('should work with fullSparse model', () async {
+      // ignore: deprecated_member_use
       final detector = await FaceDetectorIsolate.spawn(
         model: FaceDetectionModel.fullSparse,
       );

@@ -494,6 +494,7 @@ void main() {
 
   group('FaceDetectorIsolate Edge Cases', () {
     test('should handle tiny image', () async {
+      // ignore: deprecated_member_use
       final isolate = await FaceDetectorIsolate.spawn();
 
       final bytes = ImageGenerator.create1x1Png();
@@ -506,6 +507,7 @@ void main() {
     });
 
     test('should handle detectFaces then getFaceEmbedding', () async {
+      // ignore: deprecated_member_use
       final isolate = await FaceDetectorIsolate.spawn();
 
       final faces = await isolate.detectFaces(
@@ -523,6 +525,7 @@ void main() {
     });
 
     test('should throw after dispose', () async {
+      // ignore: deprecated_member_use
       final isolate = await FaceDetectorIsolate.spawn();
       await isolate.dispose();
 

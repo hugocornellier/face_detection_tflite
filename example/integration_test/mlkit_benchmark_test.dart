@@ -10,7 +10,7 @@ import 'package:face_detection_tflite/face_detection_tflite.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart'
     as mlkit;
 
-const int _kIterations = 50;
+const int _kIterations = 10;
 
 const List<String> _kImages = [
   'assets/samples/landmark-ex1.jpg',

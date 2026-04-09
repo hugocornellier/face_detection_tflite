@@ -161,7 +161,9 @@ void main() {
     }, timeout: stressTimeout);
 
     test('should work with multiple isolate detectors', () async {
+      // ignore: deprecated_member_use
       final isolate1 = await FaceDetectorIsolate.spawn();
+      // ignore: deprecated_member_use
       final isolate2 = await FaceDetectorIsolate.spawn();
 
       final bytes = testImages['assets/samples/landmark-ex1.jpg']!;
@@ -367,6 +369,7 @@ void main() {
 
   group('FaceDetectorIsolate Concurrency', () {
     test('should handle concurrent calls on isolate detector', () async {
+      // ignore: deprecated_member_use
       final detector = await FaceDetectorIsolate.spawn();
 
       final bytes = testImages['assets/samples/landmark-ex1.jpg']!;
@@ -391,6 +394,7 @@ void main() {
       const cycles = 3;
 
       for (int i = 0; i < cycles; i++) {
+        // ignore: deprecated_member_use
         final detector = await FaceDetectorIsolate.spawn();
 
         final bytes = testImages['assets/samples/landmark-ex1.jpg']!;
@@ -480,6 +484,7 @@ void main() {
     test('FaceDetector vs FaceDetectorIsolate under load', () async {
       final regularDetector = FaceDetector();
       await regularDetector.initialize();
+      // ignore: deprecated_member_use
       final isolateDetector = await FaceDetectorIsolate.spawn();
 
       final bytes = testImages['assets/samples/landmark-ex1.jpg']!;

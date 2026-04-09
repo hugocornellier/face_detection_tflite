@@ -909,10 +909,12 @@ void main() {
   // Isolate Support
   // ===========================================================================
   group('Isolate Support', () {
+    // ignore: deprecated_member_use
     late FaceDetectorIsolate detector;
 
     setUpAll(() async {
       if (modelsAvailable) {
+        // ignore: deprecated_member_use
         detector = await FaceDetectorIsolate.spawn(withSegmentation: true);
       }
     });
@@ -996,6 +998,7 @@ void main() {
 
     test('isolate segmentation throws if not enabled', () async {
       print('\n--- Testing isolate without segmentation ---');
+      // ignore: deprecated_member_use
       final noSegDetector = await FaceDetectorIsolate.spawn(
         withSegmentation: false,
       );
@@ -2080,6 +2083,7 @@ void main() {
       }
 
       print('\n--- Testing FaceDetectorIsolate with default model ---');
+      // ignore: deprecated_member_use
       final detector = await FaceDetectorIsolate.spawn(
         withSegmentation: true,
       );
@@ -2102,6 +2106,7 @@ void main() {
       }
 
       print('\n--- Testing FaceDetectorIsolate with multiclass model ---');
+      // ignore: deprecated_member_use
       final detector = await FaceDetectorIsolate.spawn(
         withSegmentation: true,
         segmentationConfig: SegmentationConfig(
@@ -2127,6 +2132,7 @@ void main() {
       }
 
       print('\n--- Testing FaceDetectorIsolate with landscape model ---');
+      // ignore: deprecated_member_use
       final detector = await FaceDetectorIsolate.spawn(
         withSegmentation: true,
         segmentationConfig: SegmentationConfig(

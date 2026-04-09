@@ -323,6 +323,7 @@ void main() {
 
   group('PerformanceConfig with FaceDetectorIsolate', () {
     test('should work with auto config', () async {
+      // ignore: deprecated_member_use
       final detector = await FaceDetectorIsolate.spawn(
         performanceConfig: PerformanceConfig.auto(),
       );
@@ -339,6 +340,7 @@ void main() {
     }, timeout: configTimeout);
 
     test('should work with xnnpack config', () async {
+      // ignore: deprecated_member_use
       final detector = await FaceDetectorIsolate.spawn(
         performanceConfig: PerformanceConfig.xnnpack(numThreads: 2),
       );
@@ -354,6 +356,7 @@ void main() {
     }, timeout: configTimeout);
 
     test('should work with disabled config', () async {
+      // ignore: deprecated_member_use
       final detector = await FaceDetectorIsolate.spawn(
         performanceConfig: PerformanceConfig.disabled,
       );

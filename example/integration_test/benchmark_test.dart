@@ -546,12 +546,16 @@ void main() {
 
         print('\n${'=' * 60}');
         print('Iris Detection Statistics:');
-        print('  Successful: ${detector.irisOkCount}');
-        print('  Failed: ${detector.irisFailCount}');
-        final totalIris = detector.irisOkCount + detector.irisFailCount;
+        // ignore: deprecated_member_use
+        final irisOk = detector.irisOkCount;
+        // ignore: deprecated_member_use
+        final irisFail = detector.irisFailCount;
+        print('  Successful: $irisOk');
+        print('  Failed: $irisFail');
+        final totalIris = irisOk + irisFail;
         if (totalIris > 0) {
           print(
-              '  Success rate: ${(detector.irisOkCount / totalIris * 100).toStringAsFixed(1)}%');
+              '  Success rate: ${(irisOk / totalIris * 100).toStringAsFixed(1)}%');
         }
         print('=' * 60);
 
@@ -628,12 +632,16 @@ void main() {
 
         print('\n${'=' * 60}');
         print('Iris Detection Statistics:');
-        print('  Successful: ${detector.irisOkCount}');
-        print('  Failed: ${detector.irisFailCount}');
-        final totalIris = detector.irisOkCount + detector.irisFailCount;
+        // ignore: deprecated_member_use
+        final irisOk = detector.irisOkCount;
+        // ignore: deprecated_member_use
+        final irisFail = detector.irisFailCount;
+        print('  Successful: $irisOk');
+        print('  Failed: $irisFail');
+        final totalIris = irisOk + irisFail;
         if (totalIris > 0) {
           print(
-              '  Success rate: ${(detector.irisOkCount / totalIris * 100).toStringAsFixed(1)}%');
+              '  Success rate: ${(irisOk / totalIris * 100).toStringAsFixed(1)}%');
         }
         print('=' * 60);
 

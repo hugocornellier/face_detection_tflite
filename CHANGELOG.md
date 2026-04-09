@@ -1,3 +1,11 @@
+## 5.1.0
+
+* `FaceDetector` now runs all inference in a background isolate automatically, matching `FaceDetectorIsolate` performance
+* `dispose()` is now `Future<void>` (was `void`) — existing code compiles but should be awaited
+* Deprecate `FaceDetectorIsolate` — use `FaceDetector` instead
+* Deprecate `irisOkCount` and `irisFailCount` (not trackable across isolate boundaries)
+* Add `detectFacesWithSegmentation` and `detectFacesWithSegmentationFromMat` to `FaceDetector`
+
 ## 5.0.13
 
 * Update flutter_litert 2.0.10 -> 2.0.11

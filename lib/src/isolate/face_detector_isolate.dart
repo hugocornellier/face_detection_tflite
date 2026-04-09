@@ -95,6 +95,14 @@ class _SegmentationIsolateStartupData {
 /// - [FaceDetector] for the underlying detection implementation
 /// - [FaceDetectionMode] for controlling detection features
 /// - [FaceDetectionModel] for model selection
+// TODO(v6.0.0): Rename this class to FaceDetector and remove the old
+// FaceDetector delegation wrapper. The deprecated typedef below can then
+// be removed as well.
+@Deprecated(
+  'Use FaceDetector instead. FaceDetector now runs all inference in a '
+  'background isolate automatically. FaceDetectorIsolate will be removed '
+  'in v6.0.0.',
+)
 class FaceDetectorIsolate extends IsolateWorkerBase {
   FaceDetectorIsolate._();
 
@@ -789,7 +797,7 @@ class FaceDetectorIsolate extends IsolateWorkerBase {
       try {
         switch (op) {
           case 'detect':
-            if (detector == null || !detector!.isReady) {
+            if (detector == null || !detector!._isDirectMode) {
               mainSendPort.send({
                 'id': id,
                 'error': 'FaceDetector not initialized in isolate',
@@ -803,13 +811,17 @@ class FaceDetectorIsolate extends IsolateWorkerBase {
               (m) => m.name == modeName,
             );
 
-            final faces = await detector!.detectFaces(imageBytes, mode: mode);
-            final serialized = faces.map((f) => f.toMap()).toList();
-
-            mainSendPort.send({'id': id, 'result': serialized});
+            final cv.Mat mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
+            try {
+              final faces = await detector!._detectFacesDirect(mat, mode: mode);
+              final serialized = faces.map((f) => f.toMap()).toList();
+              mainSendPort.send({'id': id, 'result': serialized});
+            } finally {
+              mat.dispose();
+            }
 
           case 'detectMat':
-            if (detector == null || !detector!.isReady) {
+            if (detector == null || !detector!._isDirectMode) {
               mainSendPort.send({
                 'id': id,
                 'error': 'FaceDetector not initialized in isolate',
@@ -825,7 +837,7 @@ class FaceDetectorIsolate extends IsolateWorkerBase {
             final mat = _matFromMessage(message, matBytes);
 
             try {
-              final faces = await detector!.detectFacesFromMat(mat, mode: mode);
+              final faces = await detector!._detectFacesDirect(mat, mode: mode);
               final serialized = faces.map((f) => f.toMap()).toList();
               mainSendPort.send({'id': id, 'result': serialized});
             } finally {
@@ -833,7 +845,7 @@ class FaceDetectorIsolate extends IsolateWorkerBase {
             }
 
           case 'embedding':
-            if (detector == null || !detector!.isEmbeddingReady) {
+            if (detector == null || detector!._embedding == null) {
               mainSendPort.send({
                 'id': id,
                 'error': 'FaceDetector embedding not initialized in isolate',
@@ -847,14 +859,17 @@ class FaceDetectorIsolate extends IsolateWorkerBase {
             );
             final Face face = Face.fromMap(faceMap);
 
-            final embedding = await detector!.getFaceEmbedding(
-              face,
-              imageBytes,
-            );
-            mainSendPort.send({'id': id, 'result': embedding.toList()});
+            final cv.Mat mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
+            try {
+              final embedding =
+                  await detector!._getFaceEmbeddingDirect(face, mat);
+              mainSendPort.send({'id': id, 'result': embedding.toList()});
+            } finally {
+              mat.dispose();
+            }
 
           case 'embeddings':
-            if (detector == null || !detector!.isEmbeddingReady) {
+            if (detector == null || detector!._embedding == null) {
               mainSendPort.send({
                 'id': id,
                 'error': 'FaceDetector embedding not initialized in isolate',
@@ -866,15 +881,26 @@ class FaceDetectorIsolate extends IsolateWorkerBase {
             final List<dynamic> faceMaps = message['faces'] as List;
             final List<Face> faces = _deserializeFaces(faceMaps);
 
-            final embeddings = await detector!.getFaceEmbeddings(
-              faces,
-              imageBytes,
-            );
-            final serialized = embeddings.map((e) => e?.toList()).toList();
-            mainSendPort.send({'id': id, 'result': serialized});
+            final cv.Mat image = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
+            try {
+              final List<Float32List?> embeddings = <Float32List?>[];
+              for (final face in faces) {
+                try {
+                  final embedding =
+                      await detector!._getFaceEmbeddingDirect(face, image);
+                  embeddings.add(embedding);
+                } catch (e) {
+                  embeddings.add(null);
+                }
+              }
+              final serialized = embeddings.map((e) => e?.toList()).toList();
+              mainSendPort.send({'id': id, 'result': serialized});
+            } finally {
+              image.dispose();
+            }
 
           case 'dispose':
-            detector?.dispose();
+            detector?._disposeDirect();
             detector = null;
             workerReceivePort.close();
         }

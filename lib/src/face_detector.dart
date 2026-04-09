@@ -96,6 +96,9 @@ List<Point> _transformMeshToAbsolute(
 /// - Iris landmark detection with 76 points per eye (71 eye mesh + 5 iris keypoints)
 /// - Face embedding for identity vectors (192-dimensional)
 ///
+/// All inference runs in a background isolate, ensuring the UI thread is never
+/// blocked during detection.
+///
 /// ## Usage
 ///
 /// ```dart
@@ -130,6 +133,8 @@ List<Point> _transformMeshToAbsolute(
 /// - [initialize] for model loading options
 /// - [detectFaces] for the main detection API
 /// - [Face] for the structure of detection results
+// TODO(v6.0.0): Remove this delegation wrapper. Rename FaceDetectorIsolate
+// to FaceDetector and make the old _FaceDetectorCore fully private.
 class FaceDetector {
   /// Creates a new face detector instance.
   ///
@@ -145,41 +150,40 @@ class FaceDetector {
   /// ```
   FaceDetector();
 
-  FaceDetection? _detector;
-  RoundRobinPool<FaceLandmark>? _meshPool;
-  List<FaceLandmark> _meshItems = [];
-  IrisLandmark? _irisLeft;
-  IrisLandmark? _irisRight;
-  FaceEmbedding? _embedding;
-  SelfieSegmentation? _segmenter;
-
-  final _irisLeftLock = _InferenceLock();
-  final _irisRightLock = _InferenceLock();
-  final _embeddingLock = _InferenceLock();
-  final _segmentationLock = _InferenceLock();
+  // TODO(v6.0.0): Remove this internal worker. FaceDetector should become
+  // FaceDetectorIsolate directly (renamed), not a wrapper around it.
+  FaceDetectorIsolate? _worker;
+  FaceDetectionModel _model = FaceDetectionModel.backCamera;
+  PerformanceConfig _performanceConfig = const PerformanceConfig();
+  int _meshPoolSize = 3;
 
   /// Counts successful iris landmark detections since initialization.
   ///
   /// Incremented each time iris center computation completes successfully
   /// with valid landmark points. Useful for monitoring detection reliability.
+  @Deprecated(
+    'irisOkCount cannot be tracked across isolate boundaries and will be '
+    'removed in v6.0.0.',
+  )
   int irisOkCount = 0;
 
   /// Counts failed iris landmark detections since initialization.
   ///
   /// Incremented when iris center computation fails to produce valid
   /// landmark points. Useful for monitoring detection reliability.
+  @Deprecated(
+    'irisFailCount cannot be tracked across isolate boundaries and will be '
+    'removed in v6.0.0.',
+  )
   int irisFailCount = 0;
 
   /// Returns true if all models are loaded and ready for inference.
   ///
   /// You must call [initialize] before this returns true.
-  bool get isReady =>
-      _detector != null &&
-      _meshItems.isNotEmpty &&
-      _irisLeft != null &&
-      _irisRight != null;
+  bool get isReady => _worker != null && _worker!.isReady;
 
-  /// Loads the face detection, face mesh, and iris landmark models and prepares the interpreters for inference.
+  /// Loads the face detection, face mesh, and iris landmark models and prepares
+  /// the interpreters for inference.
   ///
   /// This must be called before running any detections.
   /// The [model] argument specifies which detection model variant to load
@@ -197,7 +201,8 @@ class FaceDetector {
   /// By default, auto mode selects the optimal delegate per platform:
   /// - iOS: Metal GPU delegate
   /// - Android/macOS/Linux/Windows: XNNPACK (2-5x SIMD acceleration)
-  /// If both [options] and [performanceConfig] are provided, [options] takes precedence.
+  /// If both [options] and [performanceConfig] are provided, [options] takes
+  /// precedence.
   ///
   /// Example:
   /// ```dart
@@ -216,39 +221,27 @@ class FaceDetector {
     InterpreterOptions? options,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
     int meshPoolSize = 3,
-  }) =>
-      _initializeWith(
-        meshPoolSize: meshPoolSize,
-        detectorLoader: () => FaceDetection.create(
-          model,
-          options: options,
-          performanceConfig: performanceConfig,
-        ),
-        landmarkLoader: () => FaceLandmark.create(
-          options: options,
-          performanceConfig: performanceConfig,
-        ),
-        irisLoader: () => IrisLandmark.create(
-          options: options,
-          performanceConfig: performanceConfig,
-        ),
-        embeddingLoader: () => FaceEmbedding.create(
-          options: options,
-          performanceConfig: performanceConfig,
-        ),
-      );
+  }) async {
+    _model = model;
+    _performanceConfig = performanceConfig;
+    _meshPoolSize = meshPoolSize;
+    // TODO(v6.0.0): Remove the options parameter. FaceDetectorIsolate.spawn()
+    // only accepts PerformanceConfig. InterpreterOptions are ignored when
+    // running in isolate mode.
+    _worker = await FaceDetectorIsolate.spawn(
+      model: model,
+      performanceConfig: performanceConfig,
+      meshPoolSize: meshPoolSize,
+    );
+  }
 
   /// Initializes the face detector from pre-loaded model bytes.
   ///
   /// This is primarily used by [FaceDetectorIsolate] to initialize models
   /// in a background isolate where asset loading is not available.
   ///
-  /// The [faceDetectionBytes] parameter should contain the face detection model.
-  /// The [faceLandmarkBytes] parameter should contain the face mesh model.
-  /// The [irisLandmarkBytes] parameter should contain the iris landmark model.
-  /// The [embeddingBytes] parameter should contain the face embedding model (optional).
-  ///
   /// @internal
+  // TODO(v6.0.0): Move to _FaceDetectorCore as a private method.
   Future<void> initializeFromBuffers({
     required Uint8List faceDetectionBytes,
     required Uint8List faceLandmarkBytes,
@@ -258,91 +251,28 @@ class FaceDetector {
     PerformanceConfig performanceConfig = const PerformanceConfig(),
     int meshPoolSize = 3,
   }) =>
-      _initializeWith(
+      _initializeFromBuffersDirect(
+        faceDetectionBytes: faceDetectionBytes,
+        faceLandmarkBytes: faceLandmarkBytes,
+        irisLandmarkBytes: irisLandmarkBytes,
+        embeddingBytes: embeddingBytes,
+        model: model,
+        performanceConfig: performanceConfig,
         meshPoolSize: meshPoolSize,
-        detectorLoader: () => FaceDetection.createFromBuffer(
-          faceDetectionBytes,
-          model,
-          performanceConfig: performanceConfig,
-        ),
-        landmarkLoader: () => FaceLandmark.createFromBuffer(
-          faceLandmarkBytes,
-          performanceConfig: performanceConfig,
-        ),
-        irisLoader: () => IrisLandmark.createFromBuffer(
-          irisLandmarkBytes,
-          performanceConfig: performanceConfig,
-        ),
-        embeddingLoader: embeddingBytes != null
-            ? () => FaceEmbedding.createFromBuffer(
-                  embeddingBytes,
-                  performanceConfig: performanceConfig,
-                )
-            : null,
       );
 
-  Future<void> _initializeWith({
-    required int meshPoolSize,
-    required Future<FaceDetection> Function() detectorLoader,
-    required Future<FaceLandmark> Function() landmarkLoader,
-    required Future<IrisLandmark> Function() irisLoader,
-    Future<FaceEmbedding> Function()? embeddingLoader,
-  }) async {
-    try {
-      _detector = await detectorLoader();
-
-      _meshItems = [];
-      for (int i = 0; i < meshPoolSize; i++) {
-        _meshItems.add(await landmarkLoader());
-      }
-      _meshPool = RoundRobinPool(_meshItems);
-
-      _irisLeft = await irisLoader();
-      _irisRight = await irisLoader();
-
-      if (embeddingLoader != null) {
-        _embedding = await embeddingLoader();
-      }
-    } catch (e) {
-      _cleanupOnInitError();
-      rethrow;
-    }
-  }
-
-  /// Disposes all model fields and clears references.
+  /// Whether the face embedding model is loaded and ready.
   ///
-  /// When [safe] is true, each disposal is wrapped in try-catch to tolerate
-  /// already-disposed models (used during failed initialization cleanup).
-  void _disposeFields({bool safe = false}) {
-    void d(void Function() fn) {
-      if (safe) {
-        try {
-          fn();
-        } on StateError catch (_) {}
-      } else {
-        fn();
-      }
-    }
+  /// Returns true if [initialize] has been called successfully and the
+  /// embedding model is ready to generate face embeddings.
+  bool get isEmbeddingReady => isReady;
 
-    d(() => _detector?.dispose());
-    for (final mesh in _meshItems) {
-      d(() => mesh.dispose());
-    }
-    _meshItems = [];
-    _meshPool = null;
-    d(() => _irisLeft?.dispose());
-    d(() => _irisRight?.dispose());
-    d(() => _embedding?.dispose());
-    d(() => _segmenter?.dispose());
-    _detector = null;
-    _irisLeft = null;
-    _irisRight = null;
-    _embedding = null;
-    _segmenter = null;
-  }
-
-  /// Disposes all partially-initialized resources after a failed initialization.
-  void _cleanupOnInitError() => _disposeFields(safe: true);
+  /// Whether the segmentation model is loaded and ready.
+  ///
+  /// Returns true only after [initializeSegmentation] has been called
+  /// successfully.
+  bool get isSegmentationReady =>
+      _worker != null && _worker!.isSegmentationReady;
 
   /// Extracts aligned eye regions of interest from face mesh landmarks.
   ///
@@ -446,16 +376,9 @@ class FaceDetector {
   Future<List<Face>> detectFaces(
     Uint8List imageBytes, {
     FaceDetectionMode mode = FaceDetectionMode.full,
-  }) async {
-    final cv.Mat mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
-    if (mat.isEmpty) {
-      throw FormatException('Could not decode image bytes');
-    }
-    try {
-      return await detectFacesFromMat(mat, mode: mode);
-    } finally {
-      mat.dispose();
-    }
+  }) {
+    _requireReady();
+    return _worker!.detectFaces(imageBytes, mode: mode);
   }
 
   /// Detects faces in a pre-decoded [cv.Mat] image.
@@ -472,6 +395,359 @@ class FaceDetector {
   ///
   /// Throws [StateError] if [initialize] has not been called successfully.
   Future<List<Face>> detectFacesFromMat(
+    cv.Mat image, {
+    FaceDetectionMode mode = FaceDetectionMode.full,
+  }) {
+    _requireReady();
+    return _worker!.detectFacesFromMat(image, mode: mode);
+  }
+
+  /// Generates a face embedding (identity vector) for a detected face.
+  ///
+  /// This method extracts the face region from the image, aligns it to a
+  /// canonical pose, and generates a 192-dimensional embedding vector that
+  /// represents the face's identity.
+  ///
+  /// The [face] parameter should be a face detection result from [detectFaces].
+  ///
+  /// The [imageBytes] parameter should contain the encoded image data.
+  /// For pre-decoded [cv.Mat] input, use [getFaceEmbeddingFromMat] instead.
+  ///
+  /// Returns a [Float32List] containing the L2-normalized embedding vector.
+  /// The embedding can be compared with other embeddings using [compareFaces].
+  ///
+  /// Throws [StateError] if the embedding model has not been initialized.
+  ///
+  /// Example:
+  /// ```dart
+  /// final faces = await detector.detectFaces(imageBytes);
+  /// final embedding = await detector.getFaceEmbedding(faces.first, imageBytes);
+  ///
+  /// // Compare with a reference embedding
+  /// final similarity = FaceDetector.compareFaces(embedding, referenceEmbedding);
+  /// if (similarity > 0.6) {
+  ///   print('Same person!');
+  /// }
+  /// ```
+  Future<Float32List> getFaceEmbedding(
+    Face face,
+    Uint8List imageBytes,
+  ) {
+    _requireReady();
+    return _worker!.getFaceEmbedding(face, imageBytes);
+  }
+
+  /// Generates a face embedding from a pre-decoded [cv.Mat] image.
+  ///
+  /// This is the cv.Mat variant of [getFaceEmbedding]. The Mat is NOT disposed
+  /// by this method -- caller is responsible for disposal.
+  ///
+  /// Example:
+  /// ```dart
+  /// final mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
+  /// final faces = await detector.detectFacesFromMat(mat);
+  /// final embedding = await detector.getFaceEmbeddingFromMat(faces.first, mat);
+  /// mat.dispose();
+  /// ```
+  Future<Float32List> getFaceEmbeddingFromMat(
+    Face face,
+    cv.Mat image,
+  ) async {
+    _requireReady();
+    // Encode the Mat data and delegate to the isolate worker, which
+    // reconstructs the Mat on its side via TransferableTypedData.
+    final (_, bytes) = cv.imencode('.bmp', image);
+    return _worker!.getFaceEmbedding(face, bytes);
+  }
+
+  /// Generates face embeddings for multiple detected faces.
+  ///
+  /// This is more efficient than calling [getFaceEmbedding] multiple times
+  /// because it decodes the image only once.
+  ///
+  /// The [faces] parameter should be a list of face detection results from
+  /// [detectFaces].
+  ///
+  /// The [imageBytes] parameter should contain the encoded image data.
+  ///
+  /// Returns a list of [Float32List] embeddings in the same order as [faces].
+  /// Faces that fail to produce embeddings will have null entries.
+  ///
+  /// Example:
+  /// ```dart
+  /// final faces = await detector.detectFaces(imageBytes);
+  /// final embeddings = await detector.getFaceEmbeddings(faces, imageBytes);
+  ///
+  /// for (int i = 0; i < faces.length; i++) {
+  ///   if (embeddings[i] != null) {
+  ///     print('Face $i embedding: ${embeddings[i]!.length} dimensions');
+  ///   }
+  /// }
+  /// ```
+  Future<List<Float32List?>> getFaceEmbeddings(
+    List<Face> faces,
+    Uint8List imageBytes,
+  ) {
+    _requireReady();
+    return _worker!.getFaceEmbeddings(faces, imageBytes);
+  }
+
+  /// Compares two face embeddings and returns a similarity score.
+  ///
+  /// Uses cosine similarity to measure how similar two faces are.
+  /// The result ranges from -1 (completely different) to 1 (identical).
+  ///
+  /// Typical thresholds:
+  /// - > 0.6: Very likely the same person
+  /// - > 0.5: Probably the same person
+  /// - > 0.4: Possibly the same person
+  /// - < 0.3: Different people
+  ///
+  /// Both [a] and [b] should be embeddings from [getFaceEmbedding].
+  ///
+  /// Example:
+  /// ```dart
+  /// // Compare a face to a reference
+  /// final similarity = FaceDetector.compareFaces(faceEmbedding, referenceEmbedding);
+  /// if (similarity > 0.6) {
+  ///   print('Match found!');
+  /// }
+  /// ```
+  static double compareFaces(Float32List a, Float32List b) {
+    return FaceEmbedding.cosineSimilarity(a, b);
+  }
+
+  /// Computes the Euclidean distance between two face embeddings.
+  ///
+  /// Lower distance means more similar faces.
+  ///
+  /// Typical thresholds for normalized embeddings:
+  /// - < 0.6: Very likely the same person
+  /// - < 0.8: Probably the same person
+  /// - > 1.0: Different people
+  ///
+  /// Example:
+  /// ```dart
+  /// final distance = FaceDetector.faceDistance(embedding1, embedding2);
+  /// if (distance < 0.6) {
+  ///   print('Same person!');
+  /// }
+  /// ```
+  static double faceDistance(Float32List a, Float32List b) {
+    return FaceEmbedding.euclideanDistance(a, b);
+  }
+
+  /// Initializes the optional segmentation model.
+  ///
+  /// Call this after [initialize] to enable segmentation features.
+  /// Does nothing if segmentation is already initialized.
+  ///
+  /// [config]: Segmentation configuration. If null, uses [SegmentationConfig.safe].
+  ///
+  /// Throws [SegmentationException] on model load failure.
+  ///
+  /// Example:
+  /// ```dart
+  /// final detector = FaceDetector();
+  /// await detector.initialize();
+  /// await detector.initializeSegmentation();
+  ///
+  /// // Now segmentation is available
+  /// final mask = await detector.getSegmentationMask(imageBytes);
+  /// ```
+  Future<void> initializeSegmentation({SegmentationConfig? config}) async {
+    _requireReady();
+    if (_worker!.isSegmentationReady) return;
+    // Dispose the current worker and respawn with segmentation enabled.
+    final oldWorker = _worker!;
+    // We can't add segmentation to an existing isolate, so we need to
+    // read the current configuration and respawn.
+    // TODO(v6.0.0): Consider exposing a way to add segmentation to an
+    // existing FaceDetectorIsolate without respawning.
+    _worker = await FaceDetectorIsolate.spawn(
+      model: _model,
+      performanceConfig: _performanceConfig,
+      meshPoolSize: _meshPoolSize,
+      withSegmentation: true,
+      segmentationConfig: config,
+    );
+    await oldWorker.dispose();
+  }
+
+  /// Segments an image to separate foreground (people) from background.
+  ///
+  /// Returns a [SegmentationMask] with per-pixel probabilities indicating
+  /// foreground vs background.
+  ///
+  /// Throws [StateError] if [initializeSegmentation] hasn't been called.
+  /// Throws [SegmentationException] on inference failure.
+  ///
+  /// Example:
+  /// ```dart
+  /// await detector.initializeSegmentation();
+  ///
+  /// final mask = await detector.getSegmentationMask(imageBytes);
+  /// final binary = mask.toBinary(threshold: 0.5);
+  /// ```
+  Future<SegmentationMask> getSegmentationMask(
+    Uint8List imageBytes,
+  ) {
+    _requireReady();
+    return _worker!.getSegmentationMask(imageBytes);
+  }
+
+  /// Segments a pre-decoded [cv.Mat] image to separate foreground from background.
+  ///
+  /// This is the cv.Mat variant of [getSegmentationMask]. The Mat is NOT disposed
+  /// by this method -- caller is responsible for disposal.
+  ///
+  /// Throws [StateError] if [initializeSegmentation] hasn't been called.
+  /// Throws [SegmentationException] on inference failure.
+  Future<SegmentationMask> getSegmentationMaskFromMat(
+    cv.Mat image,
+  ) {
+    _requireReady();
+    return _worker!.getSegmentationMaskFromMat(image);
+  }
+
+  /// Detects faces and generates segmentation mask in parallel.
+  ///
+  /// This method runs face detection and segmentation simultaneously,
+  /// returning results as soon as both complete. This provides optimal
+  /// performance when both features are needed.
+  ///
+  /// Requires [initializeSegmentation] to have been called first, or
+  /// [initialize] with segmentation support.
+  ///
+  /// Returns a [DetectionWithSegmentationResult] containing both faces and mask.
+  Future<DetectionWithSegmentationResult> detectFacesWithSegmentation(
+    Uint8List imageBytes, {
+    FaceDetectionMode mode = FaceDetectionMode.full,
+    IsolateOutputFormat outputFormat = IsolateOutputFormat.float32,
+    double binaryThreshold = 0.5,
+  }) {
+    _requireReady();
+    return _worker!.detectFacesWithSegmentation(
+      imageBytes,
+      mode: mode,
+      outputFormat: outputFormat,
+      binaryThreshold: binaryThreshold,
+    );
+  }
+
+  /// Detects faces and generates segmentation mask in parallel from a [cv.Mat].
+  ///
+  /// This is the cv.Mat variant of [detectFacesWithSegmentation]. The original
+  /// Mat is NOT disposed by this method.
+  Future<DetectionWithSegmentationResult> detectFacesWithSegmentationFromMat(
+    cv.Mat image, {
+    FaceDetectionMode mode = FaceDetectionMode.full,
+    IsolateOutputFormat outputFormat = IsolateOutputFormat.float32,
+    double binaryThreshold = 0.5,
+  }) {
+    _requireReady();
+    return _worker!.detectFacesWithSegmentationFromMat(
+      image,
+      mode: mode,
+      outputFormat: outputFormat,
+      binaryThreshold: binaryThreshold,
+    );
+  }
+
+  /// Releases all resources held by the detector.
+  ///
+  /// Call this when you're done using the detector to free up memory.
+  /// After calling dispose, you must call [initialize] again before
+  /// running any detections.
+  Future<void> dispose() async {
+    await _worker?.dispose();
+    _worker = null;
+  }
+
+  void _requireReady() {
+    if (_worker == null || !_worker!.isReady) {
+      throw StateError(
+        'FaceDetector not initialized. Call initialize() before using.',
+      );
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Internal direct-initialization path used by FaceDetectorIsolate.
+  //
+  // When FaceDetectorIsolate spawns a background isolate, it creates a
+  // FaceDetector inside that isolate and calls initializeFromBuffers().
+  // In that context we must NOT spawn another nested isolate — we need the
+  // old direct-invocation behavior. These fields and methods support that path.
+  //
+  // TODO(v6.0.0): Extract this into a private _FaceDetectorCore class.
+  // ---------------------------------------------------------------------------
+
+  FaceDetection? _detector;
+  RoundRobinPool<FaceLandmark>? _meshPool;
+  List<FaceLandmark> _meshItems = [];
+  IrisLandmark? _irisLeft;
+  IrisLandmark? _irisRight;
+  FaceEmbedding? _embedding;
+  SelfieSegmentation? _segmenter;
+
+  final _irisLeftLock = _InferenceLock();
+  final _irisRightLock = _InferenceLock();
+  final _embeddingLock = _InferenceLock();
+
+  /// Returns true when using the direct (non-isolate) initialization path.
+  /// This is used by FaceDetectorIsolate's internal entry point.
+  bool get _isDirectMode => _detector != null;
+
+  Future<void> _initializeFromBuffersDirect({
+    required Uint8List faceDetectionBytes,
+    required Uint8List faceLandmarkBytes,
+    required Uint8List irisLandmarkBytes,
+    Uint8List? embeddingBytes,
+    required FaceDetectionModel model,
+    PerformanceConfig performanceConfig = const PerformanceConfig(),
+    int meshPoolSize = 3,
+  }) async {
+    try {
+      _detector = await FaceDetection.createFromBuffer(
+        faceDetectionBytes,
+        model,
+        performanceConfig: performanceConfig,
+      );
+
+      _meshItems = [];
+      for (int i = 0; i < meshPoolSize; i++) {
+        _meshItems.add(await FaceLandmark.createFromBuffer(
+          faceLandmarkBytes,
+          performanceConfig: performanceConfig,
+        ));
+      }
+      _meshPool = RoundRobinPool(_meshItems);
+
+      _irisLeft = await IrisLandmark.createFromBuffer(
+        irisLandmarkBytes,
+        performanceConfig: performanceConfig,
+      );
+      _irisRight = await IrisLandmark.createFromBuffer(
+        irisLandmarkBytes,
+        performanceConfig: performanceConfig,
+      );
+
+      if (embeddingBytes != null) {
+        _embedding = await FaceEmbedding.createFromBuffer(
+          embeddingBytes,
+          performanceConfig: performanceConfig,
+        );
+      }
+    } catch (e) {
+      _cleanupOnInitError();
+      rethrow;
+    }
+  }
+
+  /// Direct-mode detection used inside the FaceDetectorIsolate's background
+  /// isolate. Not used when FaceDetector is in delegation mode.
+  Future<List<Face>> _detectFacesDirect(
     cv.Mat image, {
     FaceDetectionMode mode = FaceDetectionMode.full,
   }) async {
@@ -683,6 +959,7 @@ class FaceDetector {
     if (leftCrop == null || rightCropRaw == null) {
       leftCrop?.dispose();
       rightCropRaw?.dispose();
+      // ignore: deprecated_member_use_from_same_package
       irisFailCount++;
       return <Point>[];
     }
@@ -710,86 +987,24 @@ class FaceDetector {
     ];
 
     if (pts.isNotEmpty) {
+      // ignore: deprecated_member_use_from_same_package
       irisOkCount++;
     } else {
+      // ignore: deprecated_member_use_from_same_package
       irisFailCount++;
     }
 
     return pts;
   }
 
-  /// Whether the face embedding model is loaded and ready.
-  ///
-  /// Returns true if [initialize] has been called successfully and the
-  /// embedding model is ready to generate face embeddings.
-  bool get isEmbeddingReady => _embedding != null;
-
-  /// Generates a face embedding (identity vector) for a detected face.
-  ///
-  /// This method extracts the face region from the image, aligns it to a
-  /// canonical pose, and generates a 192-dimensional embedding vector that
-  /// represents the face's identity.
-  ///
-  /// The [face] parameter should be a face detection result from [detectFaces].
-  ///
-  /// The [imageBytes] parameter should contain the encoded image data.
-  /// For pre-decoded [cv.Mat] input, use [getFaceEmbeddingFromMat] instead.
-  ///
-  /// Returns a [Float32List] containing the L2-normalized embedding vector.
-  /// The embedding can be compared with other embeddings using [compareFaces].
-  ///
-  /// Throws [StateError] if the embedding model has not been initialized.
-  ///
-  /// Example:
-  /// ```dart
-  /// final faces = await detector.detectFaces(imageBytes);
-  /// final embedding = await detector.getFaceEmbedding(faces.first, imageBytes);
-  ///
-  /// // Compare with a reference embedding
-  /// final similarity = FaceDetector.compareFaces(embedding, referenceEmbedding);
-  /// if (similarity > 0.6) {
-  ///   print('Same person!');
-  /// }
-  /// ```
-  Future<Float32List> getFaceEmbedding(
-    Face face,
-    Uint8List imageBytes,
-  ) async {
-    if (_embedding == null) {
-      throw StateError(
-        'Embedding model not initialized. Call initialize() before getFaceEmbedding().',
-      );
-    }
-    final cv.Mat mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
-    if (mat.isEmpty) {
-      throw FormatException('Could not decode image bytes');
-    }
-    try {
-      return await getFaceEmbeddingFromMat(face, mat);
-    } finally {
-      mat.dispose();
-    }
-  }
-
-  /// Generates a face embedding from a pre-decoded [cv.Mat] image.
-  ///
-  /// This is the cv.Mat variant of [getFaceEmbedding]. The Mat is NOT disposed
-  /// by this method -- caller is responsible for disposal.
-  ///
-  /// Example:
-  /// ```dart
-  /// final mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
-  /// final faces = await detector.detectFacesFromMat(mat);
-  /// final embedding = await detector.getFaceEmbeddingFromMat(faces.first, mat);
-  /// mat.dispose();
-  /// ```
-  Future<Float32List> getFaceEmbeddingFromMat(
+  /// Direct-mode embedding generation used inside FaceDetectorIsolate.
+  Future<Float32List> _getFaceEmbeddingDirect(
     Face face,
     cv.Mat image,
   ) async {
     if (_embedding == null) {
       throw StateError(
-        'Embedding model not initialized. Call initialize() before getFaceEmbedding().',
+        'Embedding model not initialized.',
       );
     }
 
@@ -825,198 +1040,40 @@ class FaceDetector {
     }
   }
 
-  /// Generates face embeddings for multiple detected faces.
-  ///
-  /// This is more efficient than calling [getFaceEmbedding] multiple times
-  /// because it decodes the image only once.
-  ///
-  /// The [faces] parameter should be a list of face detection results from
-  /// [detectFaces].
-  ///
-  /// The [imageBytes] parameter should contain the encoded image data.
-  ///
-  /// Returns a list of [Float32List] embeddings in the same order as [faces].
-  /// Faces that fail to produce embeddings will have null entries.
-  ///
-  /// Example:
-  /// ```dart
-  /// final faces = await detector.detectFaces(imageBytes);
-  /// final embeddings = await detector.getFaceEmbeddings(faces, imageBytes);
-  ///
-  /// for (int i = 0; i < faces.length; i++) {
-  ///   if (embeddings[i] != null) {
-  ///     print('Face $i embedding: ${embeddings[i]!.length} dimensions');
-  ///   }
-  /// }
-  /// ```
-  Future<List<Float32List?>> getFaceEmbeddings(
-    List<Face> faces,
-    Uint8List imageBytes,
-  ) async {
-    if (_embedding == null) {
-      throw StateError(
-        'Embedding model not initialized. Call initialize() before getFaceEmbeddings().',
-      );
-    }
-
-    if (faces.isEmpty) {
-      return <Float32List?>[];
-    }
-
-    final cv.Mat image = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
-    if (image.isEmpty) {
-      throw FormatException('Could not decode image bytes');
-    }
-
-    try {
-      final List<Float32List?> embeddings = <Float32List?>[];
-      for (final face in faces) {
+  /// Disposes all model fields and clears references (direct mode only).
+  void _disposeFields({bool safe = false}) {
+    void d(void Function() fn) {
+      if (safe) {
         try {
-          final embedding = await getFaceEmbeddingFromMat(face, image);
-          embeddings.add(embedding);
-        } catch (e) {
-          embeddings.add(null);
-        }
+          fn();
+        } on StateError catch (_) {}
+      } else {
+        fn();
       }
-      return embeddings;
-    } finally {
-      image.dispose();
     }
-  }
 
-  /// Compares two face embeddings and returns a similarity score.
-  ///
-  /// Uses cosine similarity to measure how similar two faces are.
-  /// The result ranges from -1 (completely different) to 1 (identical).
-  ///
-  /// Typical thresholds:
-  /// - > 0.6: Very likely the same person
-  /// - > 0.5: Probably the same person
-  /// - > 0.4: Possibly the same person
-  /// - < 0.3: Different people
-  ///
-  /// Both [a] and [b] should be embeddings from [getFaceEmbedding].
-  ///
-  /// Example:
-  /// ```dart
-  /// // Compare a face to a reference
-  /// final similarity = FaceDetector.compareFaces(faceEmbedding, referenceEmbedding);
-  /// if (similarity > 0.6) {
-  ///   print('Match found!');
-  /// }
-  /// ```
-  static double compareFaces(Float32List a, Float32List b) {
-    return FaceEmbedding.cosineSimilarity(a, b);
-  }
-
-  /// Computes the Euclidean distance between two face embeddings.
-  ///
-  /// Lower distance means more similar faces.
-  ///
-  /// Typical thresholds for normalized embeddings:
-  /// - < 0.6: Very likely the same person
-  /// - < 0.8: Probably the same person
-  /// - > 1.0: Different people
-  ///
-  /// Example:
-  /// ```dart
-  /// final distance = FaceDetector.faceDistance(embedding1, embedding2);
-  /// if (distance < 0.6) {
-  ///   print('Same person!');
-  /// }
-  /// ```
-  static double faceDistance(Float32List a, Float32List b) {
-    return FaceEmbedding.euclideanDistance(a, b);
-  }
-
-  /// Whether the segmentation model is loaded and ready.
-  ///
-  /// Returns true only after [initializeSegmentation] has been called successfully.
-  bool get isSegmentationReady => _segmenter != null;
-
-  /// Initializes the optional segmentation model.
-  ///
-  /// Call this after [initialize] to enable segmentation features.
-  /// Does nothing if segmentation is already initialized.
-  ///
-  /// [config]: Segmentation configuration. If null, uses [SegmentationConfig.safe].
-  ///
-  /// Throws [SegmentationException] on model load failure.
-  ///
-  /// Example:
-  /// ```dart
-  /// final detector = FaceDetector();
-  /// await detector.initialize();
-  /// await detector.initializeSegmentation();
-  ///
-  /// // Now segmentation is available
-  /// final mask = await detector.getSegmentationMask(imageBytes);
-  /// ```
-  Future<void> initializeSegmentation({SegmentationConfig? config}) async {
-    if (_segmenter != null) return;
-    _segmenter = await SelfieSegmentation.create(
-      config: config ?? SegmentationConfig.safe,
-    );
-  }
-
-  /// Segments an image to separate foreground (people) from background.
-  ///
-  /// Returns a [SegmentationMask] with per-pixel probabilities indicating
-  /// foreground vs background.
-  ///
-  /// Throws [StateError] if [initializeSegmentation] hasn't been called.
-  /// Throws [SegmentationException] on inference failure.
-  ///
-  /// Example:
-  /// ```dart
-  /// await detector.initializeSegmentation();
-  ///
-  /// final mask = await detector.getSegmentationMask(imageBytes);
-  /// final binary = mask.toBinary(threshold: 0.5);
-  /// ```
-  Future<SegmentationMask> getSegmentationMask(
-    Uint8List imageBytes,
-  ) async {
-    if (_segmenter == null) {
-      throw StateError(
-        'Segmentation not initialized. Call initializeSegmentation() first.',
-      );
+    d(() => _detector?.dispose());
+    for (final mesh in _meshItems) {
+      d(() => mesh.dispose());
     }
-    final cv.Mat mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
-    if (mat.isEmpty) {
-      throw FormatException('Could not decode image bytes');
-    }
-    try {
-      return await _segmentationLock.run(() => _segmenter!.call(mat));
-    } finally {
-      mat.dispose();
-    }
+    _meshItems = [];
+    _meshPool = null;
+    d(() => _irisLeft?.dispose());
+    d(() => _irisRight?.dispose());
+    d(() => _embedding?.dispose());
+    d(() => _segmenter?.dispose());
+    _detector = null;
+    _irisLeft = null;
+    _irisRight = null;
+    _embedding = null;
+    _segmenter = null;
   }
 
-  /// Segments a pre-decoded [cv.Mat] image to separate foreground from background.
-  ///
-  /// This is the cv.Mat variant of [getSegmentationMask]. The Mat is NOT disposed
-  /// by this method -- caller is responsible for disposal.
-  ///
-  /// Throws [StateError] if [initializeSegmentation] hasn't been called.
-  /// Throws [SegmentationException] on inference failure.
-  Future<SegmentationMask> getSegmentationMaskFromMat(
-    cv.Mat image,
-  ) async {
-    if (_segmenter == null) {
-      throw StateError(
-        'Segmentation not initialized. Call initializeSegmentation() first.',
-      );
-    }
-    return _segmentationLock.run(() => _segmenter!.call(image));
-  }
+  /// Disposes all partially-initialized resources after a failed initialization.
+  void _cleanupOnInitError() => _disposeFields(safe: true);
 
-  /// Releases all resources held by the detector.
-  ///
-  /// Call this when you're done using the detector to free up memory.
-  /// After calling dispose, you must call [initialize] again before
-  /// running any detections.
-  void dispose() => _disposeFields();
+  /// Disposes direct-mode fields only.
+  void _disposeDirect() => _disposeFields();
 }
 
 @visibleForTesting
