@@ -1,8 +1,16 @@
+## 5.1.2 
+
+* Update `detectFacesFromMatBytes` documentation 
+
+## 5.1.1
+
+* Add `detectFacesFromMatBytes` to `FaceDetector`: detects faces from raw pixel data without constructing a `cv.Mat` on the calling thread (zero-copy transfer via `TransferableTypedData`)
+
 ## 5.1.0
 
 * `FaceDetector` now runs all inference in a background isolate automatically, matching `FaceDetectorIsolate` performance
-* `dispose()` is now `Future<void>` (was `void`) — existing code compiles but should be awaited
-* Deprecate `FaceDetectorIsolate` — use `FaceDetector` instead
+* `dispose()` is now `Future<void>` (was `void`), existing code compiles but should be awaited
+* Deprecate `FaceDetectorIsolate`: use `FaceDetector` instead
 * Deprecate `irisOkCount` and `irisFailCount` (not trackable across isolate boundaries)
 * Add `detectFacesWithSegmentation` and `detectFacesWithSegmentationFromMat` to `FaceDetector`
 

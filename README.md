@@ -381,7 +381,7 @@ See the full [example app](https://pub.dev/packages/face_detection_tflite/exampl
 
 ## Background Processing
 
-All inference runs automatically in a background isolate — the UI thread is never blocked during detection, mesh computation, iris tracking, or embedding generation. No special configuration is needed; `FaceDetector` handles isolate management internally.
+All inference runs automatically in a background isolate: the UI thread is never blocked during detection, mesh computation, iris tracking, or embedding generation. No special configuration is needed; `FaceDetector` handles isolate management internally.
 
 ## Face Recognition (Embeddings) 
 
@@ -430,8 +430,8 @@ final segmenter = await SelfieSegmentation.create();
 
 final mask = await segmenter.callFromBytes(imageBytes);
 
-// mask.width, mask.height - mask dimensions (model resolution)
-// mask.at(x, y) - probability (0.0-1.0) that pixel is a person
+// mask.width, mask.height: mask dimensions (model resolution)
+// mask.at(x, y): probability (0.0-1.0) that pixel is a person
 
 // Convert to binary mask (0 or 255)
 final binary = mask.toBinary(threshold: 0.5);
@@ -535,12 +535,12 @@ The package automatically selects the best acceleration strategy for each platfo
 | **Android** | XNNPACK | 2-5x | ARM NEON SIMD acceleration |
 | **Windows** | XNNPACK | 2-5x | SIMD vectorization (AVX on x86) |
 
-No configuration needed - just call `initialize()` and you get the optimal performance for your platform.
+No configuration needed: just call `initialize()` and you get the optimal performance for your platform.
 
 ### Advanced Performance Configuration
 
 ```dart
-// Auto mode (default) - optimal for each platform
+// Auto mode (default): optimal for each platform
 await detector.initialize();
 // Equivalent to:
 await detector.initialize(performanceConfig: PerformanceConfig.auto());
@@ -572,7 +572,7 @@ Future<void> processFrame(cv.Mat frame) async {
   final detector = FaceDetector();
   await detector.initialize(model: FaceDetectionModel.frontCamera);
 
-  // Direct Mat input - fastest for video streams
+  // Direct Mat input: fastest for video streams
   final faces = await detector.detectFacesFromMat(frame, mode: FaceDetectionMode.fast);
 
   frame.dispose(); // always dispose Mats after use
@@ -586,6 +586,26 @@ Future<void> processFrame(cv.Mat frame) async {
 - Maximum throughput scenarios (avoids JPEG encode/decode overhead)
 
 **For all other cases**, pass image bytes (`Uint8List`) to `detectFaces()`.
+
+### Advanced: Raw Pixel Bytes Input
+
+If you already have raw pixel data as a `Uint8List` (e.g. from an isolate worker or image processing pipeline), use `detectFacesFromMatBytes()` to skip constructing a `cv.Mat` on the calling thread entirely:
+
+```dart
+// Raw BGR pixel data from a worker isolate or image pipeline
+final Uint8List rawPixels = ...;
+final int width = 1920;
+final int height = 1080;
+
+final faces = await detector.detectFacesFromMatBytes(
+  rawPixels,
+  width: width,
+  height: height,
+  // matType: 16 (CV_8UC3/BGR) is the default
+);
+```
+
+This is the fastest path when you already have raw pixel bytes: the data is transferred to the background isolate via zero-copy `TransferableTypedData`, and the `cv.Mat` is reconstructed there instead of on the calling thread.
 
 ### Memory Considerations
 

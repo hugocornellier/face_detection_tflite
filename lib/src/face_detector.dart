@@ -402,6 +402,46 @@ class FaceDetector {
     return _worker!.detectFacesFromMat(image, mode: mode);
   }
 
+  /// Detects faces from raw pixel bytes without constructing a [cv.Mat] first.
+  ///
+  /// This avoids the overhead of building a Mat on the calling thread —
+  /// the bytes are transferred via zero-copy [TransferableTypedData] and the
+  /// Mat is reconstructed inside the background isolate.
+  ///
+  /// Parameters:
+  /// - [bytes]: Raw pixel data (e.g. BGR, BGRA)
+  /// - [width]: Image width in pixels
+  /// - [height]: Image height in pixels
+  /// - [matType]: OpenCV MatType value (default: CV_8UC3 = 16 for BGR)
+  /// - [mode]: Detection mode controlling which features to compute
+  ///
+  /// Example:
+  /// ```dart
+  /// final faces = await detector.detectFacesFromMatBytes(
+  ///   rawPixels,
+  ///   width: 1920,
+  ///   height: 1080,
+  /// );
+  /// ```
+  ///
+  /// Throws [StateError] if [initialize] has not been called successfully.
+  Future<List<Face>> detectFacesFromMatBytes(
+    Uint8List bytes, {
+    required int width,
+    required int height,
+    int matType = 16,
+    FaceDetectionMode mode = FaceDetectionMode.full,
+  }) {
+    _requireReady();
+    return _worker!.detectFacesFromMatBytes(
+      bytes,
+      width: width,
+      height: height,
+      matType: matType,
+      mode: mode,
+    );
+  }
+
   /// Generates a face embedding (identity vector) for a detected face.
   ///
   /// This method extracts the face region from the image, aligns it to a
