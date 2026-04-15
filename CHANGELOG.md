@@ -1,3 +1,7 @@
+## 5.1.3
+
+* Update flutter_litert -> 2.0.12
+
 ## 5.1.2 
 
 * Update `detectFacesFromMatBytes` documentation 
