@@ -760,7 +760,7 @@ class MulticlassSegmentationMask extends SegmentationMask {
 /// ```dart
 /// final detector = FaceDetector();
 /// await detector.initialize(withSegmentation: true);
-/// final result = await detector.detectFacesWithSegmentation(mat);
+/// final result = await detector.detectFacesWithSegmentation(imageBytes);
 ///
 /// print('Found ${result.faces.length} faces');
 /// print('Mask: ${result.segmentationMask?.width}x${result.segmentationMask?.height}');
@@ -898,9 +898,7 @@ const int kMaxEyeLandmark = 15;
 ///
 ///   // Direct indexed access
 ///   final noseTip = mesh[1];
-///   if (noseTip.z != null) {
-///     print('Depth available: ${noseTip.z}');
-///   }
+///   print('Depth: ${noseTip.z}');
 /// }
 /// ```
 class FaceMesh {
@@ -1210,12 +1208,6 @@ class FaceLandmarks {
   }
 }
 
-/// Outputs for a single detected face.
-///
-/// [boundingBox] is the face bounding box in pixel coordinates.
-/// [landmarks] provides convenient access to 6 key facial landmarks (eyes, nose, mouth).
-/// [mesh] contains 468 facial landmarks as pixel coordinates.
-/// [eyes] contains iris center, iris contour, and eye mesh landmarks for both eyes.
 /// Returns the iris point closest to the centroid of the iris point set.
 ///
 /// Identifies the iris center geometrically in O(n) time.
@@ -1244,6 +1236,12 @@ Point _irisCenterFromPoints(List<Point> pts) {
   return pts[bestIdx];
 }
 
+/// Outputs for a single detected face.
+///
+/// [boundingBox] is the face bounding box in pixel coordinates.
+/// [landmarks] provides convenient access to 6 key facial landmarks (eyes, nose, mouth).
+/// [mesh] contains the 468-point face mesh in absolute pixel coordinates.
+/// [eyes] contains iris center, iris contour, and eye mesh landmarks for both eyes.
 class Face {
   final Detection _detection;
 
@@ -1264,12 +1262,9 @@ class Face {
   /// final FaceMesh? mesh = face.mesh;
   /// if (mesh != null) {
   ///   final points = mesh.points;
+  ///   // All mesh points always have x, y, and z coordinates
   ///   for (final point in points) {
-  ///     if (point.is3D) {
-  ///       print('Point with depth: (${point.x}, ${point.y}, ${point.z})');
-  ///     } else {
-  ///       print('Point: (${point.x}, ${point.y})');
-  ///     }
+  ///     print('Point: (${point.x}, ${point.y}, ${point.z})');
   ///   }
   /// }
   /// ```
@@ -1313,8 +1308,8 @@ class Face {
   ///   final leftIrisCenter = eyes?.leftEye?.irisCenter;
   ///   final leftEyeMesh = eyes?.leftEye?.mesh;
   ///
-  ///   // Access 3D depth information
-  ///   if (leftIrisCenter != null && leftIrisCenter.is3D) {
+  ///   // Iris points always have z coordinates
+  ///   if (leftIrisCenter != null) {
   ///     print('Iris depth: ${leftIrisCenter.z}');
   ///   }
   /// }

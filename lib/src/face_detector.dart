@@ -335,6 +335,37 @@ class FaceDetector {
     return Float32List.fromList(result);
   }
 
+  /// Generates a face embedding from raw pixel bytes without constructing a [cv.Mat].
+  ///
+  /// Mirrors [detectFacesFromMatBytes] — use this when you already have decoded
+  /// pixel data to avoid the overhead of building a Mat on the calling thread.
+  ///
+  /// Parameters:
+  /// - [bytes]: Raw pixel data (e.g. BGR, BGRA)
+  /// - [width]: Image width in pixels
+  /// - [height]: Image height in pixels
+  /// - [matType]: OpenCV MatType value (default: CV_8UC3 = 16 for BGR)
+  Future<Float32List> getFaceEmbeddingFromMatBytes(
+    Face face,
+    Uint8List bytes, {
+    required int width,
+    required int height,
+    int matType = 16,
+  }) async {
+    _requireReady();
+    final List<double> result = await _sendDetectionRequest<List<double>>(
+      'embeddingMat',
+      {
+        'bytes': TransferableTypedData.fromList([bytes]),
+        'width': width,
+        'height': height,
+        'matType': matType,
+        'face': face.toMap(),
+      },
+    );
+    return Float32List.fromList(result);
+  }
+
   /// Generates a face embedding from a pre-decoded [cv.Mat] image.
   ///
   /// The Mat is NOT disposed by this method — caller is responsible for disposal.
@@ -349,10 +380,16 @@ class FaceDetector {
   Future<Float32List> getFaceEmbeddingFromMat(
     Face face,
     cv.Mat image,
-  ) async {
+  ) {
     _requireReady();
-    final (_, bytes) = cv.imencode('.bmp', image);
-    return getFaceEmbedding(face, bytes);
+    final f = _extractMatFields(image);
+    return getFaceEmbeddingFromMatBytes(
+      face,
+      f.data,
+      width: f.width,
+      height: f.height,
+      matType: f.matType,
+    );
   }
 
   /// Generates face embeddings for multiple detected faces.
@@ -814,6 +851,27 @@ class FaceDetector {
               mainSendPort.send({'id': id, 'result': embedding.toList()});
             } finally {
               mat.dispose();
+            }
+
+          case 'embeddingMat':
+            if (core == null || !core!.isEmbeddingReady) {
+              mainSendPort.send({
+                'id': id,
+                'error': 'Embedding not initialized in isolate',
+              });
+              return;
+            }
+            final Uint8List embMatBytes = _extractBytes(message);
+            final embMatFace = Face.fromMap(
+              Map<String, dynamic>.from(message['face'] as Map),
+            );
+            final embMat = _matFromMessage(message, embMatBytes);
+            try {
+              final embedding =
+                  await core!.getFaceEmbeddingDirect(embMatFace, embMat);
+              mainSendPort.send({'id': id, 'result': embedding.toList()});
+            } finally {
+              embMat.dispose();
             }
 
           case 'embeddings':

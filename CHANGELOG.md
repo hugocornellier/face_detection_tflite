@@ -5,6 +5,8 @@
 * `FaceDetector()` constructor is now public; `initialize()` replaces the old `spawn()` factory
 * `initialize()` gains `withSegmentation` and `segmentationConfig` parameters
 * `initializeSegmentation()` no longer requires re-spawning the detection isolate
+* Add `getFaceEmbeddingFromMatBytes` to mirror `detectFacesFromMatBytes` for callers with pre-decoded pixel data
+* Improve `getFaceEmbeddingFromMat` performance by transferring raw pixel bytes to the background isolate instead of re-encoding
 
 ## 5.1.4
 

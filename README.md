@@ -301,7 +301,7 @@ await faceDetector.detectFaces(bytes, mode: FaceDetectionMode.fast);
 Try the [sample code](https://pub.dev/packages/face_detection_tflite/example) from the pub.dev example tab to easily compare
 modes and inferences timing.
 
-## Models
+## Detection Models
 
 This package supports multiple detection models optimized for different use cases:
 
@@ -391,12 +391,13 @@ Generate 192-dimensional identity vectors to compare faces across images. Useful
 final detector = FaceDetector();
 await detector.initialize();
 
-// Get reference embedding from a photo with one face
-final refFaces = await detector.detectFaces(photo1Bytes, mode: FaceDetectionMode.fast);
+// Full mode gives the most accurate eye alignment for embeddings.
+// Standard mode is a good balance; fast mode is fastest but least accurate.
+final refFaces = await detector.detectFaces(photo1Bytes, mode: FaceDetectionMode.full);
 final refEmbedding = await detector.getFaceEmbedding(refFaces.first, photo1Bytes);
 
 // Compare against faces in another photo
-final faces = await detector.detectFaces(photo2Bytes, mode: FaceDetectionMode.fast);
+final faces = await detector.detectFaces(photo2Bytes, mode: FaceDetectionMode.full);
 for (final face in faces) {
   final embedding = await detector.getFaceEmbedding(face, photo2Bytes);
   final similarity = FaceDetector.compareFaces(refEmbedding, embedding);
@@ -412,6 +413,8 @@ await detector.dispose();
 - `< 0.3`, Different people
 
 Also available: `FaceDetector.faceDistance()` for Euclidean distance, and batch processing with `getFaceEmbeddings()`.
+
+For camera streams or when you already have a decoded `cv.Mat`, use `getFaceEmbeddingFromMat()` to avoid re-encoding overhead. If you have raw pixel bytes (e.g. from an image pipeline), use `getFaceEmbeddingFromMatBytes()` for the fastest path.
 
 ## Selfie Segmentation
 
@@ -563,7 +566,7 @@ await detector.initialize(
 
 ### Advanced: Direct Mat Input
 
-For live camera streams, you can bypass image encoding/decoding entirely by passing a `cv.Mat` directly to `detectFaces()`:
+For live camera streams, you can bypass image encoding/decoding entirely by passing a `cv.Mat` directly to `detectFacesFromMat()`:
 
 ```dart
 import 'package:face_detection_tflite/face_detection_tflite.dart';
