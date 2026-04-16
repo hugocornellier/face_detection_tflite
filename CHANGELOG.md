@@ -1,3 +1,11 @@
+## 6.0.0
+
+* Remove `FaceDetectorIsolate` — `FaceDetector` is now the single unified class running all inference in a background isolate
+* Remove `irisOkCount` and `irisFailCount` (were deprecated in 5.1.0)
+* `FaceDetector()` constructor is now public; `initialize()` replaces the old `spawn()` factory
+* `initialize()` gains `withSegmentation` and `segmentationConfig` parameters
+* `initializeSegmentation()` no longer requires re-spawning the detection isolate
+
 ## 5.1.4
 
 * Update flutter_litert to 2.0.13

@@ -160,17 +160,17 @@ void main() {
       detector3.dispose();
     }, timeout: stressTimeout);
 
-    test('should work with multiple isolate detectors', () async {
-      // ignore: deprecated_member_use
-      final isolate1 = await FaceDetectorIsolate.spawn();
-      // ignore: deprecated_member_use
-      final isolate2 = await FaceDetectorIsolate.spawn();
+    test('should work with multiple detector instances', () async {
+      final detector1 = FaceDetector();
+      await detector1.initialize();
+      final detector2 = FaceDetector();
+      await detector2.initialize();
 
       final bytes = testImages['assets/samples/landmark-ex1.jpg']!;
 
       final futures = [
-        isolate1.detectFaces(bytes, mode: FaceDetectionMode.full),
-        isolate2.detectFaces(bytes, mode: FaceDetectionMode.full),
+        detector1.detectFaces(bytes, mode: FaceDetectionMode.full),
+        detector2.detectFaces(bytes, mode: FaceDetectionMode.full),
       ];
 
       final results = await Future.wait(futures);
@@ -179,8 +179,8 @@ void main() {
       expect(results[1], isNotEmpty);
       expect(results[0].length, results[1].length);
 
-      await isolate1.dispose();
-      await isolate2.dispose();
+      await detector1.dispose();
+      await detector2.dispose();
     }, timeout: stressTimeout);
   });
 
@@ -367,10 +367,10 @@ void main() {
     }, timeout: stressTimeout);
   });
 
-  group('FaceDetectorIsolate Concurrency', () {
-    test('should handle concurrent calls on isolate detector', () async {
-      // ignore: deprecated_member_use
-      final detector = await FaceDetectorIsolate.spawn();
+  group('FaceDetector Concurrency (multiple instances)', () {
+    test('should handle concurrent calls on two detectors', () async {
+      final detector = FaceDetector();
+      await detector.initialize();
 
       final bytes = testImages['assets/samples/landmark-ex1.jpg']!;
 
@@ -385,17 +385,17 @@ void main() {
       final nonEmpty = results.where((r) => r.isNotEmpty).length;
       expect(nonEmpty, greaterThan(0));
 
-      print('Isolate concurrent: $nonEmpty out of 5 succeeded');
+      print('Concurrent: $nonEmpty out of 5 succeeded');
 
       await detector.dispose();
     }, timeout: stressTimeout);
 
-    test('should handle rapid isolate spawn/dispose', () async {
+    test('should handle rapid initialize/dispose cycles', () async {
       const cycles = 3;
 
       for (int i = 0; i < cycles; i++) {
-        // ignore: deprecated_member_use
-        final detector = await FaceDetectorIsolate.spawn();
+        final detector = FaceDetector();
+        await detector.initialize();
 
         final bytes = testImages['assets/samples/landmark-ex1.jpg']!;
         final faces =
@@ -405,7 +405,7 @@ void main() {
         await detector.dispose();
       }
 
-      print('Isolate spawn/dispose cycles passed: $cycles cycles');
+      print('Initialize/dispose cycles passed: $cycles cycles');
     }, timeout: stressTimeout);
   });
 
@@ -480,12 +480,10 @@ void main() {
     }, timeout: stressTimeout);
   });
 
-  group('Benchmark Comparison', () {
-    test('FaceDetector vs FaceDetectorIsolate under load', () async {
-      final regularDetector = FaceDetector();
-      await regularDetector.initialize();
-      // ignore: deprecated_member_use
-      final isolateDetector = await FaceDetectorIsolate.spawn();
+  group('Benchmark', () {
+    test('FaceDetector detection latency under load', () async {
+      final detector = FaceDetector();
+      await detector.initialize();
 
       final bytes = testImages['assets/samples/landmark-ex1.jpg']!;
 
@@ -493,39 +491,23 @@ void main() {
       const benchmarkRuns = 10;
 
       for (int i = 0; i < warmupRuns; i++) {
-        await regularDetector.detectFaces(bytes, mode: FaceDetectionMode.full);
-        await isolateDetector.detectFaces(bytes, mode: FaceDetectionMode.full);
+        await detector.detectFaces(bytes, mode: FaceDetectionMode.full);
       }
 
-      final regularTimes = <int>[];
+      final times = <int>[];
       for (int i = 0; i < benchmarkRuns; i++) {
         final sw = Stopwatch()..start();
-        await regularDetector.detectFaces(bytes, mode: FaceDetectionMode.full);
+        await detector.detectFaces(bytes, mode: FaceDetectionMode.full);
         sw.stop();
-        regularTimes.add(sw.elapsedMicroseconds);
+        times.add(sw.elapsedMicroseconds);
       }
 
-      final isolateTimes = <int>[];
-      for (int i = 0; i < benchmarkRuns; i++) {
-        final sw = Stopwatch()..start();
-        await isolateDetector.detectFaces(bytes, mode: FaceDetectionMode.full);
-        sw.stop();
-        isolateTimes.add(sw.elapsedMicroseconds);
-      }
-
-      final regularAvg =
-          regularTimes.reduce((a, b) => a + b) / benchmarkRuns / 1000;
-      final isolateAvg =
-          isolateTimes.reduce((a, b) => a + b) / benchmarkRuns / 1000;
+      final avg = times.reduce((a, b) => a + b) / benchmarkRuns / 1000;
 
       print('\nBenchmark Results ($benchmarkRuns runs, full mode):');
-      print('  FaceDetector:        ${regularAvg.toStringAsFixed(2)} ms');
-      print('  FaceDetectorIsolate: ${isolateAvg.toStringAsFixed(2)} ms');
-      print(
-          '  Overhead:            ${(isolateAvg - regularAvg).toStringAsFixed(2)} ms');
+      print('  FaceDetector: ${avg.toStringAsFixed(2)} ms');
 
-      regularDetector.dispose();
-      await isolateDetector.dispose();
+      await detector.dispose();
     }, timeout: stressTimeout);
   });
 }

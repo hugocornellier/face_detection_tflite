@@ -52,7 +52,7 @@ enum PixelFormat {
 /// Output format options for isolate-based segmentation to reduce transfer overhead.
 ///
 /// Larger formats provide more precision, smaller formats reduce memory and
-/// transfer time when using [FaceDetectorIsolate].
+/// transfer time when using [FaceDetector].
 enum IsolateOutputFormat {
   /// Full float32 mask (largest, highest precision).
   float32,
@@ -752,13 +752,14 @@ class MulticlassSegmentationMask extends SegmentationMask {
 ///
 /// This class bundles the results of running face detection and selfie
 /// segmentation simultaneously in separate isolates. Use with
-/// [FaceDetectorIsolate.detectFacesWithSegmentation] for optimal
+/// [FaceDetector.detectFacesWithSegmentation] for optimal
 /// performance when both features are needed.
 ///
 /// ## Example
 ///
 /// ```dart
-/// final detector = await FaceDetectorIsolate.spawn(withSegmentation: true);
+/// final detector = FaceDetector();
+/// await detector.initialize(withSegmentation: true);
 /// final result = await detector.detectFacesWithSegmentation(mat);
 ///
 /// print('Found ${result.faces.length} faces');

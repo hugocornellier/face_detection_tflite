@@ -909,13 +909,12 @@ void main() {
   // Isolate Support
   // ===========================================================================
   group('Isolate Support', () {
-    // ignore: deprecated_member_use
-    late FaceDetectorIsolate detector;
+    late FaceDetector detector;
 
     setUpAll(() async {
       if (modelsAvailable) {
-        // ignore: deprecated_member_use
-        detector = await FaceDetectorIsolate.spawn(withSegmentation: true);
+        detector = FaceDetector();
+        await detector.initialize(withSegmentation: true);
       }
     });
 
@@ -925,13 +924,13 @@ void main() {
       }
     });
 
-    test('FaceDetectorIsolate.spawn() with segmentation', () async {
+    test('FaceDetector.initialize() with segmentation', () async {
       if (!modelsAvailable) {
         print('Skipping: models not available');
         return;
       }
 
-      print('\n--- Testing FaceDetectorIsolate with segmentation ---');
+      print('\n--- Testing FaceDetector with segmentation ---');
       expect(detector.isSegmentationReady, true);
       print('Test passed');
     });
@@ -998,10 +997,8 @@ void main() {
 
     test('isolate segmentation throws if not enabled', () async {
       print('\n--- Testing isolate without segmentation ---');
-      // ignore: deprecated_member_use
-      final noSegDetector = await FaceDetectorIsolate.spawn(
-        withSegmentation: false,
-      );
+      final noSegDetector = FaceDetector();
+      await noSegDetector.initialize(withSegmentation: false);
 
       expect(noSegDetector.isSegmentationReady, false);
 
@@ -2073,20 +2070,18 @@ void main() {
   });
 
   // ===========================================================================
-  // FaceDetectorIsolate Model Selection
+  // FaceDetector Model Selection (background isolate)
   // ===========================================================================
-  group('FaceDetectorIsolate Model Selection', () {
+  group('FaceDetector Model Selection (background isolate)', () {
     test('isolate with default (general) model', () async {
       if (!modelsAvailable) {
         print('Skipping: models not available');
         return;
       }
 
-      print('\n--- Testing FaceDetectorIsolate with default model ---');
-      // ignore: deprecated_member_use
-      final detector = await FaceDetectorIsolate.spawn(
-        withSegmentation: true,
-      );
+      print('\n--- Testing FaceDetector with default model ---');
+      final detector = FaceDetector();
+      await detector.initialize(withSegmentation: true);
 
       final imageBytes = _createTestImage(256, 256);
       final mask = await detector.getSegmentationMask(imageBytes);
@@ -2105,9 +2100,9 @@ void main() {
         return;
       }
 
-      print('\n--- Testing FaceDetectorIsolate with multiclass model ---');
-      // ignore: deprecated_member_use
-      final detector = await FaceDetectorIsolate.spawn(
+      print('\n--- Testing FaceDetector with multiclass model ---');
+      final detector = FaceDetector();
+      await detector.initialize(
         withSegmentation: true,
         segmentationConfig: SegmentationConfig(
           model: SegmentationModel.multiclass,
@@ -2131,9 +2126,9 @@ void main() {
         return;
       }
 
-      print('\n--- Testing FaceDetectorIsolate with landscape model ---');
-      // ignore: deprecated_member_use
-      final detector = await FaceDetectorIsolate.spawn(
+      print('\n--- Testing FaceDetector with landscape model ---');
+      final detector = FaceDetector();
+      await detector.initialize(
         withSegmentation: true,
         segmentationConfig: SegmentationConfig(
           model: SegmentationModel.landscape,

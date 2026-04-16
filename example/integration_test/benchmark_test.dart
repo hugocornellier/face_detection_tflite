@@ -544,21 +544,6 @@ void main() {
           allStats.add(stats);
         }
 
-        print('\n${'=' * 60}');
-        print('Iris Detection Statistics:');
-        // ignore: deprecated_member_use
-        final irisOk = detector.irisOkCount;
-        // ignore: deprecated_member_use
-        final irisFail = detector.irisFailCount;
-        print('  Successful: $irisOk');
-        print('  Failed: $irisFail');
-        final totalIris = irisOk + irisFail;
-        if (totalIris > 0) {
-          print(
-              '  Success rate: ${(irisOk / totalIris * 100).toStringAsFixed(1)}%');
-        }
-        print('=' * 60);
-
         detector.dispose();
 
         final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
@@ -629,21 +614,6 @@ void main() {
           stats.printResults('$imagePath (cv.Mat)');
           allStats.add(stats);
         }
-
-        print('\n${'=' * 60}');
-        print('Iris Detection Statistics:');
-        // ignore: deprecated_member_use
-        final irisOk = detector.irisOkCount;
-        // ignore: deprecated_member_use
-        final irisFail = detector.irisFailCount;
-        print('  Successful: $irisOk');
-        print('  Failed: $irisFail');
-        final totalIris = irisOk + irisFail;
-        if (totalIris > 0) {
-          print(
-              '  Success rate: ${(irisOk / totalIris * 100).toStringAsFixed(1)}%');
-        }
-        print('=' * 60);
 
         detector.dispose();
 

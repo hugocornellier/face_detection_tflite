@@ -199,7 +199,7 @@ class SelfieSegmentation with _TfliteModelDisposable {
 
   /// Creates a selfie segmentation model from pre-loaded model bytes.
   ///
-  /// This is primarily used by [FaceDetectorIsolate] to initialize models
+  /// This is primarily used by [FaceDetector] to initialize models
   /// in a background isolate where asset loading is not available.
   /// The [IsolateInterpreter] is skipped since the model is already running
   /// inside a background isolate.

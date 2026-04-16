@@ -321,12 +321,10 @@ void main() {
     }, timeout: configTimeout);
   });
 
-  group('PerformanceConfig with FaceDetectorIsolate', () {
+  group('PerformanceConfig with FaceDetector', () {
     test('should work with auto config', () async {
-      // ignore: deprecated_member_use
-      final detector = await FaceDetectorIsolate.spawn(
-        performanceConfig: PerformanceConfig.auto(),
-      );
+      final detector = FaceDetector();
+      await detector.initialize(performanceConfig: PerformanceConfig.auto());
 
       final faces = await detector.detectFaces(
         testImageBytes,
@@ -340,8 +338,8 @@ void main() {
     }, timeout: configTimeout);
 
     test('should work with xnnpack config', () async {
-      // ignore: deprecated_member_use
-      final detector = await FaceDetectorIsolate.spawn(
+      final detector = FaceDetector();
+      await detector.initialize(
         performanceConfig: PerformanceConfig.xnnpack(numThreads: 2),
       );
 
@@ -356,8 +354,8 @@ void main() {
     }, timeout: configTimeout);
 
     test('should work with disabled config', () async {
-      // ignore: deprecated_member_use
-      final detector = await FaceDetectorIsolate.spawn(
+      final detector = FaceDetector();
+      await detector.initialize(
         performanceConfig: PerformanceConfig.disabled,
       );
 

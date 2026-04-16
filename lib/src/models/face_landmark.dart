@@ -68,7 +68,7 @@ class FaceLandmark with _TfliteModelDisposable {
 
   /// Creates a face landmark model from pre-loaded model bytes.
   ///
-  /// This is primarily used by [FaceDetectorIsolate] to initialize models
+  /// This is primarily used by [FaceDetector] to initialize models
   /// in a background isolate where asset loading is not available.
   ///
   /// The [modelBytes] parameter should contain the raw TFLite model file contents.

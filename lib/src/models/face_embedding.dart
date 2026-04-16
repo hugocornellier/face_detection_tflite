@@ -94,7 +94,7 @@ class FaceEmbedding with _TfliteModelDisposable {
 
   /// Creates a face embedding model from pre-loaded model bytes.
   ///
-  /// This is primarily used by [FaceDetectorIsolate] to initialize models
+  /// This is primarily used by [FaceDetector] to initialize models
   /// in a background isolate where asset loading is not available.
   ///
   /// The [modelBytes] parameter should contain the raw TFLite model file contents.
@@ -129,7 +129,7 @@ class FaceEmbedding with _TfliteModelDisposable {
   /// When [useIsolateInterpreter] is false, inference runs directly via
   /// `_itp.invoke()` instead of spawning a nested isolate. This should be
   /// used when the model is already running inside a background isolate
-  /// (e.g. via [FaceDetectorIsolate]) to avoid nested isolate issues.
+  /// (e.g. via [FaceDetector]) to avoid nested isolate issues.
   Future<void> _initializeTensors({bool useIsolateInterpreter = true}) async {
     _inputTensor = _itp.getInputTensor(0);
     _outputTensor = _itp.getOutputTensor(0);

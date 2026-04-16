@@ -37,7 +37,7 @@ export 'package:opencv_dart/opencv_dart.dart' show Mat, imdecode, IMREAD_COLOR;
 part 'src/types_and_consts.dart';
 part 'src/util/helpers.dart';
 part 'src/face_detector.dart';
-part 'src/isolate/face_detector_isolate.dart';
+part 'src/isolate/face_detector_core.dart';
 part 'src/models/face_detection_model.dart';
 part 'src/models/face_landmark.dart';
 part 'src/models/iris_landmark.dart';

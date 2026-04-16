@@ -76,10 +76,10 @@ void main() {
       print('Test passed');
     }, timeout: testTimeout);
 
-    test('FaceDetectorIsolate embedding has exactly 192 elements', () async {
-      print('\n--- Testing isolate embedding dimension ---');
-      // ignore: deprecated_member_use
-      final detector = await FaceDetectorIsolate.spawn();
+    test('FaceDetector embedding has exactly 192 elements', () async {
+      print('\n--- Testing embedding dimension ---');
+      final detector = FaceDetector();
+      await detector.initialize();
 
       final faces = await detector.detectFaces(landmarkBytes);
       expect(faces, isNotEmpty);
@@ -88,7 +88,7 @@ void main() {
           await detector.getFaceEmbedding(faces.first, landmarkBytes);
       expect(embedding.length, 192);
 
-      print('Isolate embedding length: ${embedding.length}');
+      print('Embedding length: ${embedding.length}');
       await detector.dispose();
       print('Test passed');
     }, timeout: testTimeout);
@@ -210,10 +210,8 @@ void main() {
       }
 
       print('\n--- Testing mixed concurrent operations ---');
-      // ignore: deprecated_member_use
-      final detector = await FaceDetectorIsolate.spawn(
-        withSegmentation: true,
-      );
+      final detector = FaceDetector();
+      await detector.initialize(withSegmentation: true);
 
       final futures = <Future>[];
       for (int i = 0; i < 5; i++) {

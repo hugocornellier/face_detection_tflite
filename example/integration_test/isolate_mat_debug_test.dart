@@ -15,8 +15,8 @@ void main() {
     final Uint8List bytes = data.buffer.asUint8List();
 
     for (int i = 0; i < 15; i++) {
-      // ignore: deprecated_member_use
-      final d = await FaceDetectorIsolate.spawn(
+      final d = FaceDetector();
+      await d.initialize(
         performanceConfig: const PerformanceConfig(
           mode: PerformanceMode.disabled,
           numThreads: 1,
@@ -35,8 +35,8 @@ void main() {
     final Uint8List bytes = data.buffer.asUint8List();
 
     for (int i = 0; i < 15; i++) {
-      // ignore: deprecated_member_use
-      final d = await FaceDetectorIsolate.spawn();
+      final d = FaceDetector();
+      await d.initialize();
       final faces = await d.detectFaces(bytes, mode: FaceDetectionMode.fast);
       print('Auto cycle $i: ${faces.length} faces');
       await d.dispose();

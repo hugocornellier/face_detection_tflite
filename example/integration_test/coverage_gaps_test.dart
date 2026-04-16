@@ -19,7 +19,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:face_detection_tflite/face_detection_tflite.dart';
-import 'package:flutter_litert/flutter_litert.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 
 void main() {
@@ -1175,16 +1174,15 @@ void main() {
   });
 
   // ===========================================================================
-  // 12. initialize(options:) parameter
+  // 12. initialize with thread count via performanceConfig
   // ===========================================================================
-  group('FaceDetector.initialize with custom InterpreterOptions', () {
-    test('accepts custom InterpreterOptions', () async {
-      print('\n--- Testing initialize with custom options ---');
-      final options = InterpreterOptions();
-      options.threads = 2;
-
+  group('FaceDetector.initialize with custom thread count', () {
+    test('accepts custom thread count via performanceConfig', () async {
+      print('\n--- Testing initialize with custom thread count ---');
       final detector = FaceDetector();
-      await detector.initialize(options: options);
+      await detector.initialize(
+        performanceConfig: const PerformanceConfig(numThreads: 2),
+      );
       expect(detector.isReady, true);
 
       final faces = await detector.detectFaces(
@@ -1197,16 +1195,11 @@ void main() {
       print('Test passed');
     }, timeout: testTimeout);
 
-    test('options takes precedence over performanceConfig', () async {
-      print('\n--- Testing options precedence over performanceConfig ---');
-      final options = InterpreterOptions();
-      options.threads = 1;
-
-      // Pass both - options should take precedence
+    test('works with xnnpack and explicit thread count', () async {
+      print('\n--- Testing initialize with xnnpack + thread count ---');
       final detector = FaceDetector();
       await detector.initialize(
-        options: options,
-        performanceConfig: PerformanceConfig.xnnpack(),
+        performanceConfig: PerformanceConfig.xnnpack(numThreads: 1),
       );
       expect(detector.isReady, true);
 

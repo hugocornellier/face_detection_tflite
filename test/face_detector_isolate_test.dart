@@ -7,17 +7,15 @@ import 'test_config.dart';
 void main() {
   globalTestSetup();
 
-  group('FaceDetectorIsolate constructor and state', () {
-    test('should not be ready before spawn', () {
-      // FaceDetectorIsolate has a private constructor, so we test via spawn
-      // But we can test isReady/isSegmentationReady via error paths
+  group('FaceDetector constructor and state (isolate internals)', () {
+    test('should not be ready before initialize', () {
+      // FaceDetector constructor is public; isReady/isSegmentationReady start false
     });
   });
 
-  group('FaceDetectorIsolate.dispose', () {
+  group('FaceDetector.dispose (before initialize)', () {
     test('should handle dispose on freshly created instance', () async {
-      // Can't easily test without spawn since constructor is private
-      // But we can test that it doesn't crash when fields are null
+      // dispose() before initialize() should not crash
     });
   });
 

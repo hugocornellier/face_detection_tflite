@@ -492,10 +492,10 @@ void main() {
     });
   });
 
-  group('FaceDetectorIsolate Edge Cases', () {
+  group('FaceDetector Edge Cases (background isolate)', () {
     test('should handle tiny image', () async {
-      // ignore: deprecated_member_use
-      final isolate = await FaceDetectorIsolate.spawn();
+      final isolate = FaceDetector();
+      await isolate.initialize();
 
       final bytes = ImageGenerator.create1x1Png();
       final faces =
@@ -507,8 +507,8 @@ void main() {
     });
 
     test('should handle detectFaces then getFaceEmbedding', () async {
-      // ignore: deprecated_member_use
-      final isolate = await FaceDetectorIsolate.spawn();
+      final isolate = FaceDetector();
+      await isolate.initialize();
 
       final faces = await isolate.detectFaces(
         validFaceImage,
@@ -525,8 +525,8 @@ void main() {
     });
 
     test('should throw after dispose', () async {
-      // ignore: deprecated_member_use
-      final isolate = await FaceDetectorIsolate.spawn();
+      final isolate = FaceDetector();
+      await isolate.initialize();
       await isolate.dispose();
 
       expect(

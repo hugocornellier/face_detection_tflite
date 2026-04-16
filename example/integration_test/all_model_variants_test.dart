@@ -379,12 +379,10 @@ void main() {
     });
   });
 
-  group('FaceDetectorIsolate with different models', () {
+  group('FaceDetector with different models', () {
     test('should work with frontCamera model', () async {
-      // ignore: deprecated_member_use
-      final detector = await FaceDetectorIsolate.spawn(
-        model: FaceDetectionModel.frontCamera,
-      );
+      final detector = FaceDetector();
+      await detector.initialize(model: FaceDetectionModel.frontCamera);
 
       final ByteData data =
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
@@ -400,10 +398,8 @@ void main() {
     });
 
     test('should work with shortRange model', () async {
-      // ignore: deprecated_member_use
-      final detector = await FaceDetectorIsolate.spawn(
-        model: FaceDetectionModel.shortRange,
-      );
+      final detector = FaceDetector();
+      await detector.initialize(model: FaceDetectionModel.shortRange);
 
       final ByteData data =
           await rootBundle.load('assets/samples/iris-detection-ex1.jpg');
@@ -419,10 +415,8 @@ void main() {
     });
 
     test('should work with fullSparse model', () async {
-      // ignore: deprecated_member_use
-      final detector = await FaceDetectorIsolate.spawn(
-        model: FaceDetectionModel.fullSparse,
-      );
+      final detector = FaceDetector();
+      await detector.initialize(model: FaceDetectionModel.fullSparse);
 
       final ByteData data =
           await rootBundle.load('assets/samples/landmark-ex1.jpg');

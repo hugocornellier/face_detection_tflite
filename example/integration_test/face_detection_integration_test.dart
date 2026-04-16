@@ -24,15 +24,17 @@ void main() {
       detector.dispose();
     });
 
-    test('should allow re-initialization', () async {
+    test('initialize throws when called twice without dispose', () async {
       final detector = FaceDetector();
       await detector.initialize();
       expect(detector.isReady, true);
 
-      await detector.initialize();
-      expect(detector.isReady, true);
+      await expectLater(
+        detector.initialize(),
+        throwsA(isA<StateError>()),
+      );
 
-      detector.dispose();
+      await detector.dispose();
     });
 
     test('should handle multiple dispose calls', () async {
@@ -707,13 +709,12 @@ void main() {
     });
   });
 
-  group('FaceDetectorIsolate - Background Isolate Detection', () {
-    // ignore: deprecated_member_use
-    late FaceDetectorIsolate detector;
+  group('FaceDetector - Background Isolate Detection', () {
+    late FaceDetector detector;
 
     setUpAll(() async {
-      // ignore: deprecated_member_use
-      detector = await FaceDetectorIsolate.spawn();
+      detector = FaceDetector();
+      await detector.initialize();
     });
 
     tearDownAll(() async {
@@ -722,9 +723,9 @@ void main() {
 
     // --- Lifecycle tests that need their own detectors ---
 
-    test('spawn creates initialized instance', () async {
-      // ignore: deprecated_member_use
-      final ownDetector = await FaceDetectorIsolate.spawn();
+    test('initialize creates ready instance', () async {
+      final ownDetector = FaceDetector();
+      await ownDetector.initialize();
 
       expect(ownDetector.isReady, true);
 
@@ -732,8 +733,8 @@ void main() {
     });
 
     test('isReady returns false after dispose', () async {
-      // ignore: deprecated_member_use
-      final ownDetector = await FaceDetectorIsolate.spawn();
+      final ownDetector = FaceDetector();
+      await ownDetector.initialize();
       expect(ownDetector.isReady, true);
 
       await ownDetector.dispose();
@@ -742,8 +743,8 @@ void main() {
     });
 
     test('detectFaces throws after dispose', () async {
-      // ignore: deprecated_member_use
-      final ownDetector = await FaceDetectorIsolate.spawn();
+      final ownDetector = FaceDetector();
+      await ownDetector.initialize();
       await ownDetector.dispose();
 
       final bytes = TestUtils.createDummyImageBytes();
@@ -755,8 +756,8 @@ void main() {
     });
 
     test('dispose can be called multiple times safely', () async {
-      // ignore: deprecated_member_use
-      final ownDetector = await FaceDetectorIsolate.spawn();
+      final ownDetector = FaceDetector();
+      await ownDetector.initialize();
 
       await ownDetector.dispose();
       await ownDetector.dispose();
@@ -764,9 +765,9 @@ void main() {
       expect(ownDetector.isReady, false);
     });
 
-    test('detectFaces throws after dispose', () async {
-      // ignore: deprecated_member_use
-      final ownDetector = await FaceDetectorIsolate.spawn();
+    test('detectFacesFromMat throws after dispose', () async {
+      final ownDetector = FaceDetector();
+      await ownDetector.initialize();
       await ownDetector.dispose();
 
       final mat = cv.Mat.zeros(100, 100, cv.MatType.CV_8UC3);
@@ -788,9 +789,9 @@ void main() {
       expect(faces, isEmpty);
     });
 
-    test('spawn with custom configuration', () async {
-      // ignore: deprecated_member_use
-      final customDetector = await FaceDetectorIsolate.spawn(
+    test('initialize with custom configuration', () async {
+      final customDetector = FaceDetector();
+      await customDetector.initialize(
         model: FaceDetectionModel.frontCamera,
         performanceConfig: PerformanceConfig.xnnpack(numThreads: 2),
         meshPoolSize: 2,
@@ -873,34 +874,32 @@ void main() {
           reason: 'At least one concurrent call should detect faces');
     });
 
-    test('FaceDetectorIsolate produces same results as FaceDetector', () async {
-      final regularDetector = FaceDetector();
-      await regularDetector.initialize();
+    test('two FaceDetector instances produce identical results', () async {
+      final secondDetector = FaceDetector();
+      await secondDetector.initialize();
 
       final ByteData data =
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
-      final isolateFaces =
+      final faces1 =
           await detector.detectFaces(bytes, mode: FaceDetectionMode.full);
-      final regularFaces = await regularDetector.detectFaces(bytes,
-          mode: FaceDetectionMode.full);
+      final faces2 =
+          await secondDetector.detectFaces(bytes, mode: FaceDetectionMode.full);
 
-      expect(isolateFaces.length, regularFaces.length);
+      expect(faces1.length, faces2.length);
 
-      for (int i = 0; i < isolateFaces.length; i++) {
-        final isolateBbox = isolateFaces[i].boundingBox;
-        final regularBbox = regularFaces[i].boundingBox;
+      for (int i = 0; i < faces1.length; i++) {
+        final bbox1 = faces1[i].boundingBox;
+        final bbox2 = faces2[i].boundingBox;
 
-        expect(
-            (isolateBbox.topLeft.x - regularBbox.topLeft.x).abs(), lessThan(1));
-        expect(
-            (isolateBbox.topLeft.y - regularBbox.topLeft.y).abs(), lessThan(1));
-        expect((isolateBbox.width - regularBbox.width).abs(), lessThan(1));
-        expect((isolateBbox.height - regularBbox.height).abs(), lessThan(1));
+        expect((bbox1.topLeft.x - bbox2.topLeft.x).abs(), lessThan(1));
+        expect((bbox1.topLeft.y - bbox2.topLeft.y).abs(), lessThan(1));
+        expect((bbox1.width - bbox2.width).abs(), lessThan(1));
+        expect((bbox1.height - bbox2.height).abs(), lessThan(1));
       }
 
-      regularDetector.dispose();
+      await secondDetector.dispose();
     });
 
     test('detectFaces works with cv.Mat input', () async {
@@ -921,10 +920,10 @@ void main() {
       mat.dispose();
     });
 
-    test('detectFaces produces same results as detectFaces on FaceDetector',
+    test('detectFacesFromMat produces consistent results across instances',
         () async {
-      final regularDetector = FaceDetector();
-      await regularDetector.initialize();
+      final secondDetector = FaceDetector();
+      await secondDetector.initialize();
 
       final ByteData data =
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
@@ -932,25 +931,23 @@ void main() {
 
       final mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
 
-      final isolateFaces =
+      final faces1 =
           await detector.detectFacesFromMat(mat, mode: FaceDetectionMode.full);
-      final regularFaces = await regularDetector.detectFacesFromMat(mat,
+      final faces2 = await secondDetector.detectFacesFromMat(mat,
           mode: FaceDetectionMode.full);
 
-      expect(isolateFaces.length, regularFaces.length);
+      expect(faces1.length, faces2.length);
 
-      for (int i = 0; i < isolateFaces.length; i++) {
-        final isolateBbox = isolateFaces[i].boundingBox;
-        final regularBbox = regularFaces[i].boundingBox;
+      for (int i = 0; i < faces1.length; i++) {
+        final bbox1 = faces1[i].boundingBox;
+        final bbox2 = faces2[i].boundingBox;
 
-        expect(
-            (isolateBbox.topLeft.x - regularBbox.topLeft.x).abs(), lessThan(1));
-        expect(
-            (isolateBbox.topLeft.y - regularBbox.topLeft.y).abs(), lessThan(1));
+        expect((bbox1.topLeft.x - bbox2.topLeft.x).abs(), lessThan(1));
+        expect((bbox1.topLeft.y - bbox2.topLeft.y).abs(), lessThan(1));
       }
 
       mat.dispose();
-      regularDetector.dispose();
+      await secondDetector.dispose();
     });
 
     test('detectFacesFromMatBytes works with raw BGR bytes', () async {
@@ -1179,13 +1176,12 @@ void main() {
     });
   });
 
-  group('FaceDetectorIsolate - Face Embedding', () {
-    // ignore: deprecated_member_use
-    late FaceDetectorIsolate detector;
+  group('FaceDetector - Face Embedding', () {
+    late FaceDetector detector;
 
     setUpAll(() async {
-      // ignore: deprecated_member_use
-      detector = await FaceDetectorIsolate.spawn();
+      detector = FaceDetector();
+      await detector.initialize();
     });
 
     tearDownAll(() async {
@@ -1214,7 +1210,7 @@ void main() {
       expect(norm, closeTo(1.0, 0.01));
     });
 
-    test('should generate batch embeddings in background isolate', () async {
+    test('should generate batch embeddings', () async {
       final ByteData data = await rootBundle
           .load('assets/samples/group-shot-bounding-box-ex1.jpeg');
       final bytes = data.buffer.asUint8List();
@@ -1229,51 +1225,45 @@ void main() {
 
       int validCount = 0;
       for (final emb in embeddings) {
-        if (emb != null) {
-          validCount++;
-        }
+        if (emb != null) validCount++;
       }
       expect(validCount, greaterThan(0));
-      print(
-          'Isolate generated $validCount embeddings out of ${faces.length} faces');
+      print('Generated $validCount embeddings out of ${faces.length} faces');
     });
 
-    test('FaceDetectorIsolate embeddings should match FaceDetector embeddings',
-        () async {
-      final regularDetector = FaceDetector();
-      await regularDetector.initialize();
+    test('embeddings from two instances should match', () async {
+      final secondDetector = FaceDetector();
+      await secondDetector.initialize();
 
       final ByteData data =
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final bytes = data.buffer.asUint8List();
 
-      final isolateFaces =
+      final faces1 =
           await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
-      final regularFaces = await regularDetector.detectFaces(bytes,
-          mode: FaceDetectionMode.fast);
+      final faces2 =
+          await secondDetector.detectFaces(bytes, mode: FaceDetectionMode.fast);
 
-      expect(isolateFaces.length, regularFaces.length);
-      expect(isolateFaces, isNotEmpty);
+      expect(faces1.length, faces2.length);
+      expect(faces1, isNotEmpty);
 
-      final isolateEmb =
-          await detector.getFaceEmbedding(isolateFaces.first, bytes);
-      final regularEmb =
-          await regularDetector.getFaceEmbedding(regularFaces.first, bytes);
+      final emb1 = await detector.getFaceEmbedding(faces1.first, bytes);
+      final emb2 = await secondDetector.getFaceEmbedding(faces2.first, bytes);
 
-      expect(isolateEmb.length, regularEmb.length);
+      expect(emb1.length, emb2.length);
 
-      final similarity = FaceDetector.compareFaces(isolateEmb, regularEmb);
+      final similarity = FaceDetector.compareFaces(emb1, emb2);
       print(
-          'Isolate vs Regular embedding similarity: ${similarity.toStringAsFixed(4)}');
+          'Cross-instance embedding similarity: ${similarity.toStringAsFixed(4)}');
 
       expect(similarity, greaterThan(0.99));
 
-      regularDetector.dispose();
+      await secondDetector.dispose();
     });
 
     test('getFaceEmbedding throws after dispose', () async {
-      // ignore: deprecated_member_use
-      final ownDetector = await FaceDetectorIsolate.spawn();
+      final ownDetector = FaceDetector();
+      await ownDetector.initialize();
 
       final ByteData data =
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
@@ -1354,21 +1344,16 @@ void main() {
     });
   });
 
-  group('Benchmark - FaceDetector vs FaceDetectorIsolate', () {
+  group('Benchmark - FaceDetector', () {
     late FaceDetector regularDetector;
-    // ignore: deprecated_member_use
-    late FaceDetectorIsolate isolateDetector;
 
     setUpAll(() async {
       regularDetector = FaceDetector();
       await regularDetector.initialize();
-      // ignore: deprecated_member_use
-      isolateDetector = await FaceDetectorIsolate.spawn();
     });
 
     tearDownAll(() async {
-      regularDetector.dispose();
-      await isolateDetector.dispose();
+      await regularDetector.dispose();
     });
 
     test('measure serialization overhead specifically', () async {
@@ -1436,7 +1421,7 @@ void main() {
       print('=' * 70);
     });
 
-    test('compare detection latency across modes', () async {
+    test('detection latency across modes', () async {
       final ByteData data =
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
@@ -1444,78 +1429,41 @@ void main() {
       const int warmupRuns = 3;
       const int benchmarkRuns = 10;
 
-      final results = <String, Map<String, double>>{};
+      final results = <String, double>{};
 
       for (final mode in FaceDetectionMode.values) {
         for (int i = 0; i < warmupRuns; i++) {
           await regularDetector.detectFaces(bytes, mode: mode);
-          await isolateDetector.detectFaces(bytes, mode: mode);
         }
 
-        final regularTimes = <int>[];
+        final times = <int>[];
         for (int i = 0; i < benchmarkRuns; i++) {
           final sw = Stopwatch()..start();
           await regularDetector.detectFaces(bytes, mode: mode);
           sw.stop();
-          regularTimes.add(sw.elapsedMicroseconds);
+          times.add(sw.elapsedMicroseconds);
         }
 
-        final isolateTimes = <int>[];
-        for (int i = 0; i < benchmarkRuns; i++) {
-          final sw = Stopwatch()..start();
-          await isolateDetector.detectFaces(bytes, mode: mode);
-          sw.stop();
-          isolateTimes.add(sw.elapsedMicroseconds);
-        }
-
-        final regularAvg =
-            regularTimes.reduce((a, b) => a + b) / benchmarkRuns / 1000;
-        final isolateAvg =
-            isolateTimes.reduce((a, b) => a + b) / benchmarkRuns / 1000;
-        final overhead = isolateAvg - regularAvg;
-        final overheadPct = (overhead / regularAvg) * 100;
-
-        results[mode.name] = {
-          'regular_ms': regularAvg,
-          'isolate_ms': isolateAvg,
-          'overhead_ms': overhead,
-          'overhead_pct': overheadPct,
-        };
+        results[mode.name] =
+            times.reduce((a, b) => a + b) / benchmarkRuns / 1000;
       }
 
       print('\n${'=' * 70}');
-      print('BENCHMARK: FaceDetector vs FaceDetectorIsolate');
+      print('BENCHMARK: FaceDetector detection latency');
       print('=' * 70);
       print('Runs: $benchmarkRuns (after $warmupRuns warmup)');
       print('-' * 70);
-      print('Mode'.padRight(12) +
-          'Regular'.padLeft(12) +
-          'Isolate'.padLeft(12) +
-          'Overhead'.padLeft(12) +
-          'Overhead %'.padLeft(12));
+      print('Mode'.padRight(12) + 'Avg ms'.padLeft(12));
       print('-' * 70);
 
       for (final mode in FaceDetectionMode.values) {
-        final r = results[mode.name]!;
         print(mode.name.padRight(12) +
-            '${r['regular_ms']!.toStringAsFixed(2)} ms'.padLeft(12) +
-            '${r['isolate_ms']!.toStringAsFixed(2)} ms'.padLeft(12) +
-            '${r['overhead_ms']!.toStringAsFixed(2)} ms'.padLeft(12) +
-            '${r['overhead_pct']!.toStringAsFixed(1)}%'.padLeft(12));
+            '${results[mode.name]!.toStringAsFixed(2)} ms'.padLeft(12));
       }
       print('=' * 70);
-
-      for (final mode in FaceDetectionMode.values) {
-        final regularFaces =
-            await regularDetector.detectFaces(bytes, mode: mode);
-        final isolateFaces =
-            await isolateDetector.detectFaces(bytes, mode: mode);
-        expect(regularFaces.length, isolateFaces.length,
-            reason: 'Face count should match for ${mode.name}');
-      }
     });
 
-    test('compare Mat-based detection latency', () async {
+    test('Mat-based detection latency', () async {
       final ByteData data =
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
@@ -1527,40 +1475,22 @@ void main() {
 
       for (int i = 0; i < warmupRuns; i++) {
         await regularDetector.detectFacesFromMat(mat, mode: mode);
-        await isolateDetector.detectFacesFromMat(mat, mode: mode);
       }
 
-      final regularTimes = <int>[];
+      final times = <int>[];
       for (int i = 0; i < benchmarkRuns; i++) {
         final sw = Stopwatch()..start();
         await regularDetector.detectFacesFromMat(mat, mode: mode);
         sw.stop();
-        regularTimes.add(sw.elapsedMicroseconds);
+        times.add(sw.elapsedMicroseconds);
       }
 
-      final isolateTimes = <int>[];
-      for (int i = 0; i < benchmarkRuns; i++) {
-        final sw = Stopwatch()..start();
-        await isolateDetector.detectFacesFromMat(mat, mode: mode);
-        sw.stop();
-        isolateTimes.add(sw.elapsedMicroseconds);
-      }
-
-      final regularAvg =
-          regularTimes.reduce((a, b) => a + b) / benchmarkRuns / 1000;
-      final isolateAvg =
-          isolateTimes.reduce((a, b) => a + b) / benchmarkRuns / 1000;
-      final overhead = isolateAvg - regularAvg;
+      final avg = times.reduce((a, b) => a + b) / benchmarkRuns / 1000;
 
       print('\n${'=' * 70}');
       print('BENCHMARK: Mat-based Detection (full mode)');
       print('=' * 70);
-      print(
-          'FaceDetector.detectFaces:        ${regularAvg.toStringAsFixed(2)} ms');
-      print(
-          'FaceDetectorIsolate.detectFaces: ${isolateAvg.toStringAsFixed(2)} ms');
-      print(
-          'Overhead:                               ${overhead.toStringAsFixed(2)} ms');
+      print('FaceDetector.detectFacesFromMat: ${avg.toStringAsFixed(2)} ms');
       print('=' * 70);
 
       mat.dispose();

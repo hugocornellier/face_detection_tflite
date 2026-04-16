@@ -95,6 +95,7 @@ void main() {
       await detector.initialize();
       expect(detector.isReady, true);
 
+      detector.dispose();
       await detector.initialize();
       expect(detector.isReady, true);
 
@@ -113,6 +114,7 @@ void main() {
       final faces1 = await detector.detectFaces(validImageBytes);
       expect(faces1, isNotEmpty);
 
+      detector.dispose();
       await detector.initialize(model: FaceDetectionModel.backCamera);
       expect(detector.isReady, true);
 
@@ -257,11 +259,11 @@ void main() {
     });
   });
 
-  group('FaceDetectorIsolate Error Handling', () {
+  group('FaceDetector Error Handling (post-dispose)', () {
     test('should throw StateError when detectFaces called after dispose',
         () async {
-      // ignore: deprecated_member_use
-      final detector = await FaceDetectorIsolate.spawn();
+      final detector = FaceDetector();
+      await detector.initialize();
       await detector.dispose();
 
       expect(detector.isReady, false);
@@ -274,8 +276,8 @@ void main() {
 
     test('should throw StateError when getFaceEmbedding called after dispose',
         () async {
-      // ignore: deprecated_member_use
-      final detector = await FaceDetectorIsolate.spawn();
+      final detector = FaceDetector();
+      await detector.initialize();
 
       final faces = await detector.detectFaces(validImageBytes);
       expect(faces, isNotEmpty);
@@ -289,8 +291,8 @@ void main() {
     });
 
     test('should handle multiple dispose calls without crashing', () async {
-      // ignore: deprecated_member_use
-      final detector = await FaceDetectorIsolate.spawn();
+      final detector = FaceDetector();
+      await detector.initialize();
 
       await detector.dispose();
       await detector.dispose();
@@ -300,8 +302,8 @@ void main() {
     });
 
     test('should handle invalid image gracefully', () async {
-      // ignore: deprecated_member_use
-      final detector = await FaceDetectorIsolate.spawn();
+      final detector = FaceDetector();
+      await detector.initialize();
 
       final invalidBytes = Uint8List.fromList([1, 2, 3, 4, 5]);
 

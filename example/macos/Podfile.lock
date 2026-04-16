@@ -1,5 +1,5 @@
 PODS:
-  - camera_desktop (0.1.0):
+  - camera_desktop (1.1.2):
     - FlutterMacOS
   - face_detection_tflite (0.0.1):
     - FlutterMacOS
@@ -29,8 +29,8 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral
 
 SPEC CHECKSUMS:
-  camera_desktop: 8b0acf3142f8bdcfddd923edcb0d9e20f318f385
-  face_detection_tflite: 0f545c69bbd303664ce657a522b62dea11d3ce10
+  camera_desktop: a3e0776e9fdd78bd8f032186cffecd3e3b4ef159
+  face_detection_tflite: b72f8e81cf75089b1a153d6d827a60862127f28d
   file_selector_macos: 9e9e068e90ebee155097d00e89ae91edb2374db7
   flutter_litert: 1bbe6e8757c574ab66044233b98353f34eaa7e29
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
