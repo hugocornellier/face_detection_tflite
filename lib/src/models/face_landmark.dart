@@ -16,6 +16,7 @@ class FaceLandmark with _TfliteModelDisposable {
   late final Tensor _bestTensor;
   late final Float32List _inputBuf;
   late final Float32List _bestOutBuf;
+  late final Float32List _scratchBuf;
   late final List<List<int>> _outShapes;
   late final List<List<List<List<double>>>> _input4dCache;
   late final Map<int, Object> _outputsCache;
@@ -125,6 +126,7 @@ class FaceLandmark with _TfliteModelDisposable {
     _bestTensor = _itp.getOutputTensor(_bestIdx);
     _inputBuf = _inputTensor.data.buffer.asFloat32List();
     _bestOutBuf = _bestTensor.data.buffer.asFloat32List();
+    _scratchBuf = Float32List(_inH * _inW * 3);
 
     final int maxIndex =
         shapes.keys.isEmpty ? -1 : shapes.keys.reduce((a, b) => a > b ? a : b);
@@ -175,7 +177,7 @@ class FaceLandmark with _TfliteModelDisposable {
       faceCrop,
       outW: _inW,
       outH: _inH,
-      buffer: buffer,
+      buffer: buffer ?? _scratchBuf,
     );
 
     if (_iso == null) {

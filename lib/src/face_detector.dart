@@ -245,7 +245,7 @@ class FaceDetector {
         'mode': mode.name,
       },
     );
-    return _deserializeFaces(result);
+    return _deserializeFacesFast(result);
   }
 
   /// Detects faces in a pre-decoded [cv.Mat] image.
@@ -300,7 +300,7 @@ class FaceDetector {
         'mode': mode.name,
       },
     );
-    return _deserializeFaces(result);
+    return _deserializeFacesFast(result);
   }
 
   /// Generates a face embedding (identity vector) for a detected face.
@@ -682,6 +682,76 @@ class FaceDetector {
       .map((map) => Face.fromMap(Map<String, dynamic>.from(map as Map)))
       .toList();
 
+  static Float32List _packPoints(List<Point> points) {
+    final buf = Float32List(points.length * 3);
+    for (int i = 0; i < points.length; i++) {
+      buf[i * 3] = points[i].x;
+      buf[i * 3 + 1] = points[i].y;
+      buf[i * 3 + 2] = points[i].z ?? 0.0;
+    }
+    return buf;
+  }
+
+  static List<Point> _unpackPoints(Float32List buf) {
+    final n = buf.length ~/ 3;
+    return List<Point>.generate(
+        n, (i) => Point(buf[i * 3], buf[i * 3 + 1], buf[i * 3 + 2]));
+  }
+
+  static Map<String, dynamic> _faceToFastMap(Face f) {
+    final bb = f._detection.boundingBox;
+    return {
+      'xmin': bb.xmin,
+      'ymin': bb.ymin,
+      'xmax': bb.xmax,
+      'ymax': bb.ymax,
+      'score': f._detection.score,
+      'kp': f._detection.keypointsXY,
+      'imgW': f.originalSize.width,
+      'imgH': f.originalSize.height,
+      if (f.mesh != null)
+        'mesh': TransferableTypedData.fromList([_packPoints(f.mesh!.points)]),
+      if (f.irisPoints.isNotEmpty)
+        'iris': TransferableTypedData.fromList([_packPoints(f.irisPoints)]),
+    };
+  }
+
+  static List<Face> _deserializeFacesFast(List<dynamic> result) {
+    return result.map((raw) {
+      final map = raw as Map;
+      final imgW = (map['imgW'] as num).toDouble();
+      final imgH = (map['imgH'] as num).toDouble();
+      final imgSize = Size(imgW, imgH);
+      final detection = Detection(
+        boundingBox: RectF(
+          (map['xmin'] as num).toDouble(),
+          (map['ymin'] as num).toDouble(),
+          (map['xmax'] as num).toDouble(),
+          (map['ymax'] as num).toDouble(),
+        ),
+        score: (map['score'] as num).toDouble(),
+        keypointsXY: (map['kp'] as List).cast<double>(),
+        imageSize: imgSize,
+      );
+      FaceMesh? mesh;
+      final meshTd = map['mesh'] as TransferableTypedData?;
+      if (meshTd != null) {
+        mesh = FaceMesh(_unpackPoints(meshTd.materialize().asFloat32List()));
+      }
+      List<Point> irisPoints = const [];
+      final irisTd = map['iris'] as TransferableTypedData?;
+      if (irisTd != null) {
+        irisPoints = _unpackPoints(irisTd.materialize().asFloat32List());
+      }
+      return Face(
+        detection: detection,
+        mesh: mesh,
+        irises: irisPoints,
+        originalSize: imgSize,
+      );
+    }).toList();
+  }
+
   static Uint8List _extractBytes(dynamic message) =>
       (message['bytes'] as TransferableTypedData).materialize().asUint8List();
 
@@ -713,7 +783,7 @@ class FaceDetector {
     final results = await Future.wait([
       _sendDetectionRequest<List<dynamic>>(detectOp, detectFields).then((r) {
         detectionStopwatch.stop();
-        return _deserializeFaces(r);
+        return _deserializeFacesFast(r);
       }),
       _sendSegmentationRequest<Map<String, dynamic>>(
         segmentOp,
@@ -804,7 +874,7 @@ class FaceDetector {
               final faces = await core!.detectFacesDirect(mat, mode: mode);
               mainSendPort.send({
                 'id': id,
-                'result': faces.map((f) => f.toMap()).toList(),
+                'result': faces.map(_faceToFastMap).toList(),
               });
             } finally {
               mat.dispose();
@@ -827,7 +897,7 @@ class FaceDetector {
               final faces = await core!.detectFacesDirect(mat, mode: mode);
               mainSendPort.send({
                 'id': id,
-                'result': faces.map((f) => f.toMap()).toList(),
+                'result': faces.map(_faceToFastMap).toList(),
               });
             } finally {
               mat.dispose();
@@ -1050,19 +1120,20 @@ class FaceDetector {
 
     switch (format) {
       case IsolateOutputFormat.float32:
-        result['data'] = mask.data.toList();
+        result['data'] = TransferableTypedData.fromList([mask._data]);
         result['dataFormat'] = 'float32';
       case IsolateOutputFormat.uint8:
-        result['data'] = mask.toUint8().toList();
+        result['data'] = TransferableTypedData.fromList([mask.toUint8()]);
         result['dataFormat'] = 'uint8';
       case IsolateOutputFormat.binary:
-        result['data'] = mask.toBinary(threshold: binaryThreshold).toList();
+        result['data'] = TransferableTypedData.fromList(
+            [mask.toBinary(threshold: binaryThreshold)]);
         result['dataFormat'] = 'binary';
         result['binaryThreshold'] = binaryThreshold;
     }
 
     if (mask is MulticlassSegmentationMask) {
-      result['classData'] = mask._classData.toList();
+      result['classData'] = TransferableTypedData.fromList([mask._classData]);
     }
 
     return result;
@@ -1070,25 +1141,58 @@ class FaceDetector {
 
   /// Deserializes a segmentation mask from isolate transfer data.
   static SegmentationMask _deserializeMask(Map<String, dynamic> map) {
-    final baseMask = SegmentationMask.fromMap(map);
+    final width = map['width'] as int;
+    final height = map['height'] as int;
+    final originalWidth = map['originalWidth'] as int;
+    final originalHeight = map['originalHeight'] as int;
+    final padding =
+        List<double>.unmodifiable((map['padding'] as List).cast<double>());
 
-    if (map['classData'] != null) {
-      final List rawClassData = map['classData'] as List;
-      final Float32List classData = Float32List.fromList(
-        rawClassData.cast<double>(),
-      );
-      return MulticlassSegmentationMask(
-        data: baseMask.data,
-        width: baseMask.width,
-        height: baseMask.height,
-        originalWidth: baseMask.originalWidth,
-        originalHeight: baseMask.originalHeight,
-        padding: baseMask.padding,
+    final dataFormat = map['dataFormat'] as String? ?? 'float32';
+    final rawData = map['data'] as TransferableTypedData;
+
+    Float32List data;
+    switch (dataFormat) {
+      case 'float32':
+        data = rawData.materialize().asFloat32List();
+      case 'uint8':
+        final uint8 = rawData.materialize().asUint8List();
+        data = Float32List(uint8.length);
+        for (int i = 0; i < uint8.length; i++) {
+          data[i] = uint8[i] / 255.0;
+        }
+      case 'binary':
+        final binary = rawData.materialize().asUint8List();
+        data = Float32List(binary.length);
+        for (int i = 0; i < binary.length; i++) {
+          data[i] = binary[i] == 255 ? 1.0 : 0.0;
+        }
+      default:
+        throw ArgumentError('Unknown data format: $dataFormat');
+    }
+
+    final classDataTd = map['classData'] as TransferableTypedData?;
+    if (classDataTd != null) {
+      final classData = classDataTd.materialize().asFloat32List();
+      return MulticlassSegmentationMask._(
+        data: data,
+        width: width,
+        height: height,
+        originalWidth: originalWidth,
+        originalHeight: originalHeight,
+        padding: padding,
         classData: classData,
       );
     }
 
-    return baseMask;
+    return SegmentationMask._(
+      data: data,
+      width: width,
+      height: height,
+      originalWidth: originalWidth,
+      originalHeight: originalHeight,
+      padding: padding,
+    );
   }
 }
 

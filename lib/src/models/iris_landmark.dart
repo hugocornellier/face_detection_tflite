@@ -36,6 +36,7 @@ class IrisLandmark with _TfliteModelDisposable {
   final int _inW, _inH;
   late final Tensor _inputTensor;
   late final Float32List _inputBuf;
+  late final Float32List _scratchBuf;
   late final Map<int, List<int>> _outShapes;
   late final Map<int, Float32List> _outBuffers;
   late final List<List<List<List<double>>>> _input4dCache;
@@ -114,6 +115,7 @@ class IrisLandmark with _TfliteModelDisposable {
   Future<void> _initializeTensors({bool useIsolateInterpreter = true}) async {
     _inputTensor = _itp.getInputTensor(0);
     _inputBuf = _inputTensor.data.buffer.asFloat32List();
+    _scratchBuf = Float32List(_inH * _inW * 3);
 
     final Map<int, OutputTensorInfo> outputInfo = collectOutputTensorInfo(_itp);
     _outShapes = outputInfo.map(
@@ -301,7 +303,7 @@ class IrisLandmark with _TfliteModelDisposable {
       eyeCrop,
       outW: _inW,
       outH: _inH,
-      buffer: buffer,
+      buffer: buffer ?? _scratchBuf,
     );
     return _inferAndUnpack(pack);
   }

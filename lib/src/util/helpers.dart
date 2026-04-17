@@ -123,24 +123,27 @@ List<List<double>> _unpackLandmarks(
       pb = padding[1],
       pl = padding[2],
       pr = padding[3];
-  final double sx = 1.0 - (pl + pr);
-  final double sy = 1.0 - (pt + pb);
+  final double invSx = 1.0 / (1.0 - (pl + pr));
+  final double invSy = 1.0 / (1.0 - (pt + pb));
+  final double invW = 1.0 / inW;
+  final double invH = 1.0 / inH;
 
-  final int n = (flat.length / 3).floor();
-  final List<List<double>> out = <List<double>>[];
-  for (var i = 0; i < n; i++) {
-    double x = flat[i * 3 + 0] / inW;
-    double y = flat[i * 3 + 1] / inH;
-    final double z = flat[i * 3 + 2];
-    x = (x - pl) / sx;
-    y = (y - pt) / sy;
-    if (clamp) {
-      x = clamp01(x);
-      y = clamp01(y);
-    }
-    out.add([x, y, z]);
-  }
-  return out;
+  final int n = flat.length ~/ 3;
+  return List<List<double>>.generate(
+    n,
+    (i) {
+      final int i3 = i * 3;
+      double x = (flat[i3] * invW - pl) * invSx;
+      double y = (flat[i3 + 1] * invH - pt) * invSy;
+      final double z = flat[i3 + 2];
+      if (clamp) {
+        x = clamp01(x);
+        y = clamp01(y);
+      }
+      return <double>[x, y, z];
+    },
+    growable: false,
+  );
 }
 
 /// Weighted NMS over [Detection] objects using [weightedNms] from flutter_litert.

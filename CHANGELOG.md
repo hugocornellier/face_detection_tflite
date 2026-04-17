@@ -1,6 +1,6 @@
 ## 6.0.0
 
-* Remove `FaceDetectorIsolate` — `FaceDetector` is now the single unified class running all inference in a background isolate
+* Remove `FaceDetectorIsolate` - `FaceDetector` is now the single unified class running all inference in a background isolate
 * Remove `irisOkCount` and `irisFailCount` (were deprecated in 5.1.0)
 * `FaceDetector()` constructor is now public; `initialize()` replaces the old `spawn()` factory
 * `initialize()` gains `withSegmentation` and `segmentationConfig` parameters

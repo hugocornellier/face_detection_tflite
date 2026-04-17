@@ -7,7 +7,7 @@ import 'package:integration_test/integration_test.dart';
 import 'package:face_detection_tflite/face_detection_tflite.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 
-const int iterations = 20;
+const int iterations = 100;
 const List<String> sampleImages = [
   'assets/samples/landmark-ex1.jpg',
   'assets/samples/iris-detection-ex1.jpg',
@@ -57,11 +57,13 @@ class BenchmarkStats {
     print('\n$label:');
     print('  Image size: ${(imageSize / 1024).toStringAsFixed(1)} KB');
     print('  Detections: $detectionCount face(s)');
-    print('  Mean:   ${mean.toStringAsFixed(2)} ms');
-    print('  Median: ${median.toStringAsFixed(2)} ms');
-    print('  Min:    $min ms');
-    print('  Max:    $max ms');
-    print('  StdDev: ${stdDev.toStringAsFixed(2)} ms');
+    print(
+        '  Mean:   ${mean.toStringAsFixed(0)} µs  (${(mean / 1000).toStringAsFixed(2)} ms)');
+    print(
+        '  Median: ${median.toStringAsFixed(0)} µs  (${(median / 1000).toStringAsFixed(2)} ms)');
+    print('  Min:    $min µs  (${(min / 1000).toStringAsFixed(2)} ms)');
+    print('  Max:    $max µs  (${(max / 1000).toStringAsFixed(2)} ms)');
+    print('  StdDev: ${stdDev.toStringAsFixed(0)} µs');
   }
 
   Map<String, dynamic> toJson() => {
@@ -69,12 +71,12 @@ class BenchmarkStats {
         'image_size_kb': (imageSize / 1024),
         'detection_count': detectionCount,
         'iterations': timings.length,
-        'timings_ms': timings,
-        'mean_ms': mean,
-        'median_ms': median,
-        'min_ms': min,
-        'max_ms': max,
-        'stddev_ms': stdDev,
+        'timings_us': timings,
+        'mean_us': mean,
+        'median_us': median,
+        'min_us': min,
+        'max_us': max,
+        'stddev_us': stdDev,
       };
 }
 
@@ -107,7 +109,8 @@ class BenchmarkResults {
     configuration.forEach((key, value) {
       print('  $key: $value');
     });
-    print('\nOverall mean: ${overallMean.toStringAsFixed(2)} ms');
+    print(
+        '\nOverall mean: ${overallMean.toStringAsFixed(0)} µs  (${(overallMean / 1000).toStringAsFixed(2)} ms)');
     print('Total iterations: ${results.length * iterations}');
     print('=' * 60);
   }
@@ -116,7 +119,7 @@ class BenchmarkResults {
         'timestamp': timestamp,
         'test_name': testName,
         'configuration': configuration,
-        'overall_mean_ms': overallMean,
+        'overall_mean_us': overallMean,
         'results': results.map((r) => r.toJson()).toList(),
       };
 
@@ -156,7 +159,7 @@ void main() {
             final stopwatch = Stopwatch()..start();
             await segmenter.callFromBytes(bytes);
             stopwatch.stop();
-            timings.add(stopwatch.elapsedMilliseconds);
+            timings.add(stopwatch.elapsedMicroseconds);
           }
 
           final stats = BenchmarkStats(
@@ -215,7 +218,7 @@ void main() {
             final stopwatch = Stopwatch()..start();
             await segmenter.callFromBytes(bytes);
             stopwatch.stop();
-            timings.add(stopwatch.elapsedMilliseconds);
+            timings.add(stopwatch.elapsedMicroseconds);
           }
 
           final stats = BenchmarkStats(
@@ -277,7 +280,7 @@ void main() {
             final stopwatch = Stopwatch()..start();
             await worker.segment(bytes);
             stopwatch.stop();
-            timings.add(stopwatch.elapsedMilliseconds);
+            timings.add(stopwatch.elapsedMicroseconds);
           }
 
           final stats = BenchmarkStats(
@@ -342,7 +345,7 @@ void main() {
             stopwatch.stop();
 
             mat.dispose();
-            timings.add(stopwatch.elapsedMilliseconds);
+            timings.add(stopwatch.elapsedMicroseconds);
           }
 
           final stats = BenchmarkStats(
@@ -402,7 +405,7 @@ void main() {
             final stopwatch = Stopwatch()..start();
             await segmenter.callFromBytes(bytes);
             stopwatch.stop();
-            timings.add(stopwatch.elapsedMilliseconds);
+            timings.add(stopwatch.elapsedMicroseconds);
           }
 
           final stats = BenchmarkStats(
@@ -466,7 +469,7 @@ void main() {
             final stopwatch = Stopwatch()..start();
             await segmenter.call(mat);
             stopwatch.stop();
-            matTimings.add(stopwatch.elapsedMilliseconds);
+            matTimings.add(stopwatch.elapsedMicroseconds);
           }
           mat.dispose();
 
@@ -476,7 +479,7 @@ void main() {
             final stopwatch = Stopwatch()..start();
             await segmenter.callFromBytes(bytes);
             stopwatch.stop();
-            opencvTimings.add(stopwatch.elapsedMilliseconds);
+            opencvTimings.add(stopwatch.elapsedMicroseconds);
           }
 
           final matMean =
@@ -530,7 +533,7 @@ void main() {
             );
             stopwatch.stop();
 
-            timings.add(stopwatch.elapsedMilliseconds);
+            timings.add(stopwatch.elapsedMicroseconds);
             if (i == 0) detectionCount = results.length;
           }
 
@@ -601,7 +604,7 @@ void main() {
 
             mat.dispose();
 
-            timings.add(stopwatch.elapsedMilliseconds);
+            timings.add(stopwatch.elapsedMicroseconds);
             if (i == 0) detectionCount = results.length;
           }
 
@@ -663,7 +666,7 @@ void main() {
             await detector.detectFacesFromMat(mat,
                 mode: FaceDetectionMode.full);
             stopwatch.stop();
-            opencvTimings.add(stopwatch.elapsedMilliseconds);
+            opencvTimings.add(stopwatch.elapsedMicroseconds);
           }
 
           mat.dispose();
@@ -673,7 +676,7 @@ void main() {
             final stopwatch = Stopwatch()..start();
             await detector.detectFaces(bytes, mode: FaceDetectionMode.full);
             stopwatch.stop();
-            fullTimings.add(stopwatch.elapsedMilliseconds);
+            fullTimings.add(stopwatch.elapsedMicroseconds);
           }
 
           final opencvMean =
@@ -731,14 +734,14 @@ void main() {
         }
         stopwatch.stop();
 
-        final totalMs = stopwatch.elapsedMilliseconds;
-        final avgMs = totalMs / frames;
-        final fps = 1000 / avgMs;
+        final totalUs = stopwatch.elapsedMicroseconds;
+        final avgUs = totalUs / frames;
+        final fps = 1000000 / avgUs;
 
         print('\nSustained throughput test ($frames frames):');
-        print('  Total time:    $totalMs ms');
+        print('  Total time:    ${totalUs ~/ 1000} ms');
         print(
-            '  Avg per frame: ${avgMs.toStringAsFixed(1)} ms (includes decode)');
+            '  Avg per frame: ${(avgUs / 1000).toStringAsFixed(1)} ms (includes decode)');
         print('  Throughput:    ${fps.toStringAsFixed(1)} FPS');
         print('=' * 60);
 

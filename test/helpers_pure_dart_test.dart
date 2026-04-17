@@ -126,9 +126,9 @@ void main() {
       final tensor = createNHWCTensor4D(1, 1);
       fillNHWC4D(flat, tensor, 1, 1);
 
-      expect(tensor[0][0][0][0], 0.5);
-      expect(tensor[0][0][0][1], 0.6);
-      expect(tensor[0][0][0][2], 0.7);
+      expect(tensor[0][0][0][0], flat[0]);
+      expect(tensor[0][0][0][1], flat[1]);
+      expect(tensor[0][0][0][2], flat[2]);
     });
   });
 

@@ -262,10 +262,10 @@ packages:
     dependency: "direct dev"
     description:
       name: flutter_litert
-      sha256: "937598ee62a3ff3ed999a1c710f9c0cd9f7b3782b522530c8f03442ce82fac16"
+      sha256: "1d1e03d449c8bf65b56ef6b903fc0d99993e7aab666a534f72b80c01700c583f"
       url: "https://pub.dev"
     source: hosted
-    version: "2.0.13"
+    version: "2.1.0"
   flutter_plugin_android_lifecycle:
     dependency: transitive
     description:

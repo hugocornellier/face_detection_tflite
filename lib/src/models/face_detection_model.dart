@@ -256,16 +256,8 @@ class FaceDetection with _TfliteModelDisposable {
       scoresBuf = _scoresBuf;
     }
 
-    final Float32List allScores = _decodeScores(scoresBuf, _scoresShape);
-
-    final List<int> candidateIndices = <int>[];
-    final List<double> candidateScores = <double>[];
-    for (int i = 0; i < allScores.length; i++) {
-      if (allScores[i] >= _minScore) {
-        candidateIndices.add(i);
-        candidateScores.add(allScores[i]);
-      }
-    }
+    final (:candidateIndices, :candidateScores) =
+        _collectCandidateScores(scoresBuf, _scoresShape);
 
     final List<DecodedBox> boxes = _decodeBoxesForIndices(
       boxesBuf,
@@ -330,13 +322,24 @@ class FaceDetection with _TfliteModelDisposable {
     return out;
   }
 
-  Float32List _decodeScores(Float32List raw, List<int> shape) {
+  ({
+    List<int> candidateIndices,
+    List<double> candidateScores,
+  }) _collectCandidateScores(Float32List raw, List<int> shape) {
     final int n = shape[1];
-    final Float32List scores = Float32List(n);
+    final List<int> candidateIndices = <int>[];
+    final List<double> candidateScores = <double>[];
     for (int i = 0; i < n; i++) {
-      scores[i] = sigmoidClipped(raw[i]);
+      final double score = sigmoidClipped(raw[i]);
+      if (score >= _minScore) {
+        candidateIndices.add(i);
+        candidateScores.add(score);
+      }
     }
-    return scores;
+    return (
+      candidateIndices: candidateIndices,
+      candidateScores: candidateScores,
+    );
   }
 
   /// Creates detections from pre-filtered boxes and scores.

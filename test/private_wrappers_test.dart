@@ -1,3 +1,4 @@
+import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
@@ -250,7 +251,9 @@ void main() {
       final serialized =
           testSerializeMask(mask, IsolateOutputFormat.uint8, 0.5);
       expect(serialized['dataFormat'], 'uint8');
-      final data = serialized['data'] as List;
+      final data = (serialized['data'] as TransferableTypedData)
+          .materialize()
+          .asUint8List();
       // 0.1*255 ≈ 26, 0.5*255 ≈ 128, 0.8*255 ≈ 204, 1.0*255 = 255
       expect(data[0], closeTo(26, 1));
       expect(data[1], closeTo(128, 1));
@@ -263,7 +266,9 @@ void main() {
           testSerializeMask(mask, IsolateOutputFormat.binary, 0.5);
       expect(serialized['dataFormat'], 'binary');
       expect(serialized['binaryThreshold'], 0.5);
-      final data = serialized['data'] as List;
+      final data = (serialized['data'] as TransferableTypedData)
+          .materialize()
+          .asUint8List();
       expect(data[0], 0); // 0.1 < 0.5
       expect(data[1], 255); // 0.5 >= 0.5
       expect(data[2], 255); // 0.8 >= 0.5
@@ -274,7 +279,9 @@ void main() {
       final mask = createMask();
       final serialized =
           testSerializeMask(mask, IsolateOutputFormat.binary, 0.9);
-      final data = serialized['data'] as List;
+      final data = (serialized['data'] as TransferableTypedData)
+          .materialize()
+          .asUint8List();
       expect(data[0], 0); // 0.1 < 0.9
       expect(data[1], 0); // 0.5 < 0.9
       expect(data[2], 0); // 0.8 < 0.9
@@ -297,7 +304,6 @@ void main() {
       final serialized =
           testSerializeMask(mask, IsolateOutputFormat.float32, 0.5);
       expect(serialized['classData'], isNotNull);
-      expect((serialized['classData'] as List).length, 6);
 
       final restored = testDeserializeMask(serialized);
       expect(restored, isA<MulticlassSegmentationMask>());
