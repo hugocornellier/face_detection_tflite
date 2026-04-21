@@ -187,9 +187,7 @@ class _FaceDetectorCore {
         if (meshPx == null || meshPx.isEmpty) continue;
         try {
           irisResults[i] = await _irisFromMesh(image, meshPx);
-        } catch (_) {
-          // Iris detection failed for this face; skip.
-        }
+        } catch (_) {}
       }
     }
 
@@ -329,6 +327,10 @@ class _FaceDetectorCore {
 
   /// Eye crop extraction (warpAffine) is done serially to avoid opencv_dart
   /// freeze issues, but TFLite inference runs in parallel for performance.
+  ///
+  /// Eye ROIs are computed using the same geometry as
+  /// [FaceDetector.eyeRoisFromMesh] to keep iris alignment consistent between
+  /// the public API and the isolate path.
   Future<List<Point>> _irisFromMesh(
     cv.Mat image,
     List<Point> meshAbs,
@@ -336,7 +338,6 @@ class _FaceDetectorCore {
     if (_irisLeft == null || _irisRight == null) return <Point>[];
     if (meshAbs.length < 468) return <Point>[];
 
-    // Compute eye ROIs using the same geometry as FaceDetector.eyeRoisFromMesh.
     List<AlignedRoi> roisFromMesh(List<Point> mesh) {
       AlignedRoi fromCorners(int a, int b) {
         final p0 = mesh[a];

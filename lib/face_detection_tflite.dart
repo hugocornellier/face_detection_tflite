@@ -30,7 +30,11 @@ export 'package:flutter_litert/flutter_litert.dart'
         bgrBytesToRgbFloat32,
         bgrBytesToSignedFloat32,
         Point,
-        BoundingBox;
+        BoundingBox,
+        packYuv420,
+        YuvPlane,
+        YuvLayout,
+        PackedYuv;
 
 export 'package:opencv_dart/opencv_dart.dart' show Mat, imdecode, IMREAD_COLOR;
 

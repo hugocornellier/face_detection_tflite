@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'dart:ui' as ui;
@@ -10,6 +11,7 @@ import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:camera/camera.dart';
 import 'package:face_detection_tflite/face_detection_tflite.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
+import 'package:sensors_plus/sensors_plus.dart';
 
 // Shared segmentation class colors for multiclass visualization.
 const List<Color> _kSegmentationClassColors = [
@@ -110,6 +112,26 @@ class _DropdownSelected extends StatelessWidget {
   @override
   Widget build(BuildContext context) =>
       Align(alignment: Alignment.centerLeft, child: Text(text));
+}
+
+DropdownMenuItem<T> _whiteItem<T>(T value, String label) => DropdownMenuItem<T>(
+      value: value,
+      child: Text(label, style: const TextStyle(color: Colors.white)),
+    );
+
+// Compute the axis-aligned bounding rect of a set of offsets.
+Rect _boundsOf(Iterable<Offset> pts) {
+  final it = pts.iterator..moveNext();
+  double minX = it.current.dx, maxX = it.current.dx;
+  double minY = it.current.dy, maxY = it.current.dy;
+  while (it.moveNext()) {
+    final p = it.current;
+    if (p.dx < minX) minX = p.dx;
+    if (p.dx > maxX) maxX = p.dx;
+    if (p.dy < minY) minY = p.dy;
+    if (p.dy > maxY) maxY = p.dy;
+  }
+  return Rect.fromLTRB(minX, minY, maxX, maxY);
 }
 
 Future<void> main() async {
@@ -277,10 +299,7 @@ class _ExampleState extends State<Example> {
   double _meshSize = 1.25;
   double _eyeMeshSize = 0.8;
 
-  FaceDetectionModel _detectionModel =
-      !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux)
-          ? FaceDetectionModel.backCamera
-          : FaceDetectionModel.frontCamera;
+  FaceDetectionModel _detectionModel = FaceDetectionModel.backCamera;
 
   @override
   void initState() {
@@ -553,18 +572,9 @@ class _ExampleState extends State<Example> {
             }
 
             Future<void> onSheetFeatureToggle(
-                String feature, bool newValue) async {
+                void Function(bool) assign, bool newValue) async {
               final FaceDetectionMode oldMode = _determineMode();
-
-              if (feature == 'mesh') {
-                _showMesh = newValue;
-              } else if (feature == 'iris') {
-                _showIrises = newValue;
-              } else if (feature == 'eyeContour') {
-                _showEyeContours = newValue;
-              } else if (feature == 'eyeMesh') {
-                _showEyeMesh = newValue;
-              }
+              assign(newValue);
               setSheetState(() {});
               setState(() {});
 
@@ -573,6 +583,19 @@ class _ExampleState extends State<Example> {
                 await _processImage(_imageBytes!);
               }
             }
+
+            Widget cb(String label, bool v, void Function(bool) set) =>
+                _buildCheckbox(
+                    label, v, (x) => updateState(() => set(x ?? false)));
+            Widget fcb(String label, bool v, void Function(bool) set) =>
+                _buildCheckbox(
+                    label, v, (x) => onSheetFeatureToggle(set, x ?? false));
+            Widget col(String label, Color c, void Function(Color) set) =>
+                _buildColorButton(label, c, (x) => updateState(() => set(x)));
+            Widget sl(String label, double v, double mn, double mx,
+                    void Function(double) set) =>
+                _buildCompactSlider(
+                    label, v, mn, mx, (x) => updateState(() => set(x)));
 
             return Container(
               decoration: const BoxDecoration(
@@ -606,41 +629,19 @@ class _ExampleState extends State<Example> {
                               spacing: 8,
                               runSpacing: 4,
                               children: [
-                                _buildCheckbox(
-                                    'Bounding Boxes',
-                                    _showBoundingBoxes,
-                                    (value) => updateState(() =>
-                                        _showBoundingBoxes = value ?? false)),
-                                _buildCheckbox(
-                                    'Mesh',
-                                    _showMesh,
-                                    (value) => onSheetFeatureToggle(
-                                        'mesh', value ?? false)),
-                                _buildCheckbox(
-                                    'Landmarks',
-                                    _showLandmarks,
-                                    (value) => updateState(
-                                        () => _showLandmarks = value ?? false)),
-                                _buildCheckbox(
-                                    'Irises',
-                                    _showIrises,
-                                    (value) => onSheetFeatureToggle(
-                                        'iris', value ?? false)),
-                                _buildCheckbox(
-                                    'Eye Contour',
-                                    _showEyeContours,
-                                    (value) => onSheetFeatureToggle(
-                                        'eyeContour', value ?? false)),
-                                _buildCheckbox(
-                                    'Eye Mesh',
-                                    _showEyeMesh,
-                                    (value) => onSheetFeatureToggle(
-                                        'eyeMesh', value ?? false)),
-                                _buildCheckbox(
-                                    'Landmark Labels',
-                                    _showLandmarkLabels,
-                                    (value) => updateState(() =>
-                                        _showLandmarkLabels = value ?? false)),
+                                cb('Bounding Boxes', _showBoundingBoxes,
+                                    (v) => _showBoundingBoxes = v),
+                                fcb('Mesh', _showMesh, (v) => _showMesh = v),
+                                cb('Landmarks', _showLandmarks,
+                                    (v) => _showLandmarks = v),
+                                fcb('Irises', _showIrises,
+                                    (v) => _showIrises = v),
+                                fcb('Eye Contour', _showEyeContours,
+                                    (v) => _showEyeContours = v),
+                                fcb('Eye Mesh', _showEyeMesh,
+                                    (v) => _showEyeMesh = v),
+                                cb('Landmark Labels', _showLandmarkLabels,
+                                    (v) => _showLandmarkLabels = v),
                               ],
                             ),
                             const SizedBox(height: 8),
@@ -655,36 +656,17 @@ class _ExampleState extends State<Example> {
                               spacing: 6,
                               runSpacing: 6,
                               children: [
-                                _buildColorButton(
-                                    'BBox',
-                                    _boundingBoxColor,
-                                    (color) => updateState(
-                                        () => _boundingBoxColor = color)),
-                                _buildColorButton(
-                                    'Landmarks',
-                                    _landmarkColor,
-                                    (color) => updateState(
-                                        () => _landmarkColor = color)),
-                                _buildColorButton(
-                                    'Mesh',
-                                    _meshColor,
-                                    (color) =>
-                                        updateState(() => _meshColor = color)),
-                                _buildColorButton(
-                                    'Irises',
-                                    _irisColor,
-                                    (color) =>
-                                        updateState(() => _irisColor = color)),
-                                _buildColorButton(
-                                    'Eye Contour',
-                                    _eyeContourColor,
-                                    (color) => updateState(
-                                        () => _eyeContourColor = color)),
-                                _buildColorButton(
-                                    'Eye Mesh',
-                                    _eyeMeshColor,
-                                    (color) => updateState(
-                                        () => _eyeMeshColor = color)),
+                                col('BBox', _boundingBoxColor,
+                                    (c) => _boundingBoxColor = c),
+                                col('Landmarks', _landmarkColor,
+                                    (c) => _landmarkColor = c),
+                                col('Mesh', _meshColor, (c) => _meshColor = c),
+                                col('Irises', _irisColor,
+                                    (c) => _irisColor = c),
+                                col('Eye Contour', _eyeContourColor,
+                                    (c) => _eyeContourColor = c),
+                                col('Eye Mesh', _eyeMeshColor,
+                                    (c) => _eyeMeshColor = c),
                               ],
                             ),
                             const SizedBox(height: 8),
@@ -695,34 +677,14 @@ class _ExampleState extends State<Example> {
                           title: const Text('Sizes',
                               style: TextStyle(fontWeight: FontWeight.bold)),
                           children: [
-                            _buildCompactSlider(
-                                'BBox',
-                                _boundingBoxThickness,
-                                0.5,
-                                10.0,
-                                (value) => updateState(
-                                    () => _boundingBoxThickness = value)),
-                            _buildCompactSlider(
-                                'Landmark',
-                                _landmarkSize,
-                                0.5,
-                                15.0,
-                                (value) =>
-                                    updateState(() => _landmarkSize = value)),
-                            _buildCompactSlider(
-                                'Mesh',
-                                _meshSize,
-                                0.1,
-                                10.0,
-                                (value) =>
-                                    updateState(() => _meshSize = value)),
-                            _buildCompactSlider(
-                                'Eye Mesh',
-                                _eyeMeshSize,
-                                0.1,
-                                10.0,
-                                (value) =>
-                                    updateState(() => _eyeMeshSize = value)),
+                            sl('BBox', _boundingBoxThickness, 0.5, 10.0,
+                                (v) => _boundingBoxThickness = v),
+                            sl('Landmark', _landmarkSize, 0.5, 15.0,
+                                (v) => _landmarkSize = v),
+                            sl('Mesh', _meshSize, 0.1, 10.0,
+                                (v) => _meshSize = v),
+                            sl('Eye Mesh', _eyeMeshSize, 0.1, 10.0,
+                                (v) => _eyeMeshSize = v),
                             const SizedBox(height: 8),
                           ],
                         ),
@@ -900,32 +862,12 @@ class _ExampleState extends State<Example> {
                     _DropdownSelected('Full'),
                     _DropdownSelected('Sparse'),
                   ],
-                  items: const [
-                    DropdownMenuItem(
-                      value: FaceDetectionModel.frontCamera,
-                      child:
-                          Text('Front', style: TextStyle(color: Colors.white)),
-                    ),
-                    DropdownMenuItem(
-                      value: FaceDetectionModel.backCamera,
-                      child:
-                          Text('Back', style: TextStyle(color: Colors.white)),
-                    ),
-                    DropdownMenuItem(
-                      value: FaceDetectionModel.shortRange,
-                      child:
-                          Text('Short', style: TextStyle(color: Colors.white)),
-                    ),
-                    DropdownMenuItem(
-                      value: FaceDetectionModel.full,
-                      child:
-                          Text('Full', style: TextStyle(color: Colors.white)),
-                    ),
-                    DropdownMenuItem(
-                      value: FaceDetectionModel.fullSparse,
-                      child:
-                          Text('Sparse', style: TextStyle(color: Colors.white)),
-                    ),
+                  items: [
+                    _whiteItem(FaceDetectionModel.frontCamera, 'Front'),
+                    _whiteItem(FaceDetectionModel.backCamera, 'Back'),
+                    _whiteItem(FaceDetectionModel.shortRange, 'Short'),
+                    _whiteItem(FaceDetectionModel.full, 'Full'),
+                    _whiteItem(FaceDetectionModel.fullSparse, 'Sparse'),
                   ],
                   onChanged: (value) async {
                     if (value != null && value != _detectionModel) {
@@ -1289,26 +1231,10 @@ class _DetectionsPainter extends CustomPainter {
 
             // Draw iris (center + contour as oval)
             if (showIrises) {
-              // Build bounding box from iris center + iris contour points
-              final allIrisPoints = [iris.irisCenter, ...iris.irisContour];
-              double minX = allIrisPoints.first.x, maxX = allIrisPoints.first.x;
-              double minY = allIrisPoints.first.y, maxY = allIrisPoints.first.y;
-              for (final p in allIrisPoints) {
-                if (p.x < minX) minX = p.x;
-                if (p.x > maxX) maxX = p.x;
-                if (p.y < minY) minY = p.y;
-                if (p.y > maxY) maxY = p.y;
-              }
-
-              final cx = ox + ((minX + maxX) * 0.5) * scaleX;
-              final cy = oy + ((minY + maxY) * 0.5) * scaleY;
-              final rx = (maxX - minX) * 0.5 * scaleX;
-              final ry = (maxY - minY) * 0.5 * scaleY;
-
-              final oval = Rect.fromCenter(
-                  center: Offset(cx, cy), width: rx * 2, height: ry * 2);
-              canvas.drawOval(oval, irisFill);
-              canvas.drawOval(oval, irisStroke);
+              final bounds = _boundsOf([iris.irisCenter, ...iris.irisContour]
+                  .map((p) => Offset(ox + p.x * scaleX, oy + p.y * scaleY)));
+              canvas.drawOval(bounds, irisFill);
+              canvas.drawOval(bounds, irisStroke);
             }
 
             // Draw eye contour landmarks
@@ -1389,15 +1315,17 @@ class LiveCameraScreen extends StatefulWidget {
 
 class _LiveCameraScreenState extends State<LiveCameraScreen> {
   CameraController? _cameraController;
+  List<CameraDescription> _availableCameras = const [];
   FaceDetector? _faceDetector;
   List<Face> _faces = [];
   Size? _imageSize;
   int? _sensorOrientation;
   bool _isFrontCamera = false;
+  bool _isSwitchingCamera = false;
   bool _isProcessing = false;
   bool _isInitialized = false;
-  int _frameCounter = 0;
-  int _processEveryNFrames = 1; // Process every frame
+  String _deviceOrientation = 'Portrait Up';
+  StreamSubscription<AccelerometerEvent>? _accelerometerSub;
   int _detectionTimeMs = 0;
   int _fps = 0;
   DateTime? _lastFpsUpdate;
@@ -1406,10 +1334,12 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
 
   // Detection settings
   FaceDetectionMode _detectionMode = FaceDetectionMode.full;
-  FaceDetectionModel _detectionModel =
-      !kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux)
-          ? FaceDetectionModel.backCamera
-          : FaceDetectionModel.frontCamera;
+  FaceDetectionModel _detectionModel = FaceDetectionModel.backCamera;
+
+  /// One-shot-per-orientation probe for iOS rotation debugging.
+  /// See `_rotationFlagForFrame`. Used to settle whether iOS buffers are
+  /// sensor-native (same as Android) or already rotated by the plugin.
+  DeviceOrientation? _iosProbeOrientation;
 
   // Segmentation settings
   bool _showSegmentation = false;
@@ -1426,6 +1356,22 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     super.initState();
     _initCamera();
     _loadBeachBackground();
+
+    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+      _accelerometerSub = accelerometerEventStream().listen((event) {
+        final next = event.x.abs() > event.y.abs()
+            ? (event.x > 0 ? 'Landscape Left' : 'Landscape Right')
+            : (event.y > 0 ? 'Portrait Up' : 'Portrait Down');
+        if (next == 'Portrait Down' &&
+            (_deviceOrientation == 'Landscape Left' ||
+                _deviceOrientation == 'Landscape Right')) {
+          return;
+        }
+        if (next != _deviceOrientation && mounted) {
+          setState(() => _deviceOrientation = next);
+        }
+      });
+    }
   }
 
   Future<void> _loadBeachBackground() async {
@@ -1492,173 +1438,284 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     await _reinitDetectorIsolate();
   }
 
-  Widget _segModelButton(SegmentationModel model, String label) {
-    final isSelected = _liveSegmentationModel == model;
-    return GestureDetector(
-      onTap: () => _switchLiveSegmentationModel(model),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          color: isSelected ? Colors.blue : Colors.white24,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: isSelected ? Colors.white : Colors.white70,
-            fontSize: 12,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+  int get _barQuarterTurns {
+    switch (_deviceOrientation) {
+      case 'Landscape Left':
+        return 1;
+      case 'Landscape Right':
+        return 3;
+      default:
+        return 0;
+    }
+  }
+
+  /// Builds the live-camera top bar as a plain [Material]-backed [Row] rather
+  /// than an [AppBar]. AppBar doesn't play well inside a [RotatedBox] (applies
+  /// rotated [MediaQuery] safe-area padding, depends on [Scaffold.appBar]-slot
+  /// theming) so its `actions` would render invisibly when the phone is in
+  /// landscape; a plain Row sidesteps all of that.
+  Widget _buildCameraTopBar() {
+    final canPop = Navigator.of(context).canPop();
+    final isMobile = !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+
+    final fpsText = SizedBox(
+      width: 70,
+      child: Text(
+        'FPS: $_fps',
+        style: const TextStyle(color: Colors.white, fontSize: 14),
+        textAlign: isMobile ? TextAlign.left : TextAlign.right,
+      ),
+    );
+    const separator = Text(
+      ' | ',
+      style: TextStyle(color: Colors.white, fontSize: 14),
+    );
+    final msText = SizedBox(
+      width: 70,
+      child: Text(
+        '${_detectionTimeMs}ms',
+        style: const TextStyle(color: Colors.white, fontSize: 14),
+      ),
+    );
+
+    return Material(
+      color: Colors.black.withAlpha(179),
+      elevation: 4,
+      child: SizedBox(
+        height: kToolbarHeight,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(
+            children: [
+              if (canPop)
+                IconButton(
+                  tooltip: 'Back',
+                  color: Colors.white,
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => Navigator.of(context).maybePop(),
+                ),
+              if (isMobile) ...[
+                const SizedBox(width: 8),
+                fpsText,
+                separator,
+                msText,
+                const Spacer(),
+              ] else
+                const Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8),
+                    child: Text(
+                      'Live Camera Detection',
+                      style: TextStyle(color: Colors.white, fontSize: 18),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+              if (_canSwitchCamera)
+                IconButton(
+                  tooltip: _isFrontCamera
+                      ? 'Switch to back camera'
+                      : 'Switch to front camera',
+                  color: Colors.white,
+                  icon: Icon(Platform.isIOS
+                      ? Icons.flip_camera_ios
+                      : Icons.flip_camera_android),
+                  onPressed: _isSwitchingCamera ? null : _switchCamera,
+                ),
+              PopupMenuButton<void>(
+                tooltip: 'Settings',
+                icon: const Icon(Icons.settings, color: Colors.white),
+                color: Colors.blueGrey[900],
+                padding: EdgeInsets.zero,
+                itemBuilder: (context) => [
+                  PopupMenuItem<void>(
+                    enabled: false,
+                    padding: EdgeInsets.zero,
+                    child: StatefulBuilder(
+                      builder: (context, setMenuState) {
+                        return _buildSettingsMenuContent(setMenuState);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              if (!isMobile) ...[
+                const SizedBox(width: 8),
+                fpsText,
+                separator,
+                msText,
+              ],
+            ],
           ),
         ),
       ),
     );
   }
 
-  AppBar _buildCameraAppBar() {
-    return AppBar(
-      title: const Text('Live Camera Detection'),
-      actions: [
-        Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('SPEED',
-                    style: TextStyle(
-                        color: Colors.grey[500],
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 1.0)),
-                const SizedBox(width: 4),
-                DropdownButton<FaceDetectionMode>(
-                  value: _detectionMode,
-                  dropdownColor: Colors.blue[800],
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface,
-                    fontSize: 14,
-                  ),
-                  underline: const SizedBox(),
-                  selectedItemBuilder: (context) => const [
-                    _DropdownSelected('Fast'),
-                    _DropdownSelected('Standard'),
-                    _DropdownSelected('Full'),
-                  ],
-                  items: const [
-                    DropdownMenuItem(
-                        value: FaceDetectionMode.fast,
-                        child: Text('Fast',
-                            style: TextStyle(color: Colors.white))),
-                    DropdownMenuItem(
-                        value: FaceDetectionMode.standard,
-                        child: Text('Standard',
-                            style: TextStyle(color: Colors.white))),
-                    DropdownMenuItem(
-                        value: FaceDetectionMode.full,
-                        child: Text('Full',
-                            style: TextStyle(color: Colors.white))),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) {
-                      setState(() => _detectionMode = value);
-                    }
-                  },
-                ),
-              ],
+  Widget _buildSettingsMenuContent(StateSetter setMenuState) {
+    void update(VoidCallback fn) {
+      setState(fn);
+      setMenuState(() {});
+    }
+
+    Widget chip<T>({
+      required T value,
+      required T current,
+      required String label,
+      required VoidCallback onTap,
+    }) {
+      final isSelected = current == value;
+      return GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: isSelected ? Colors.blue : Colors.white12,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: isSelected ? Colors.white : Colors.white70,
+              fontSize: 12,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
             ),
           ),
         ),
-        Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
+      );
+    }
+
+    const sectionLabelStyle = TextStyle(
+      color: Colors.white60,
+      fontSize: 10,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 1.2,
+    );
+
+    return SizedBox(
+      width: 260,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('SPEED', style: sectionLabelStyle),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
               children: [
-                Text('MODEL',
-                    style: TextStyle(
-                        color: Colors.grey[500],
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 1.0)),
-                const SizedBox(width: 4),
-                DropdownButton<FaceDetectionModel>(
-                  value: _detectionModel,
-                  dropdownColor: Colors.blue[800],
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface,
-                    fontSize: 14,
+                for (final (v, label) in const [
+                  (FaceDetectionMode.fast, 'Fast'),
+                  (FaceDetectionMode.standard, 'Standard'),
+                  (FaceDetectionMode.full, 'Full'),
+                ])
+                  chip<FaceDetectionMode>(
+                    value: v,
+                    current: _detectionMode,
+                    label: label,
+                    onTap: () => update(() => _detectionMode = v),
                   ),
-                  underline: const SizedBox(),
-                  selectedItemBuilder: (context) => const [
-                    _DropdownSelected('Front'),
-                    _DropdownSelected('Back'),
-                    _DropdownSelected('Short'),
-                    _DropdownSelected('Full Range'),
-                    _DropdownSelected('Full Sparse'),
-                  ],
-                  items: const [
-                    DropdownMenuItem(
-                        value: FaceDetectionModel.frontCamera,
-                        child: Text('Front',
-                            style: TextStyle(color: Colors.white))),
-                    DropdownMenuItem(
-                        value: FaceDetectionModel.backCamera,
-                        child: Text('Back',
-                            style: TextStyle(color: Colors.white))),
-                    DropdownMenuItem(
-                        value: FaceDetectionModel.shortRange,
-                        child: Text('Short',
-                            style: TextStyle(color: Colors.white))),
-                    DropdownMenuItem(
-                        value: FaceDetectionModel.full,
-                        child: Text('Full Range',
-                            style: TextStyle(color: Colors.white))),
-                    DropdownMenuItem(
-                        value: FaceDetectionModel.fullSparse,
-                        child: Text('Full Sparse',
-                            style: TextStyle(color: Colors.white))),
-                  ],
-                  onChanged: (value) async {
-                    if (value != null && value != _detectionModel) {
-                      setState(() => _detectionModel = value);
+              ],
+            ),
+            const Divider(color: Colors.white24, height: 24),
+            const Text('MODEL', style: sectionLabelStyle),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final (v, label) in const [
+                  (FaceDetectionModel.frontCamera, 'Front'),
+                  (FaceDetectionModel.backCamera, 'Back'),
+                  (FaceDetectionModel.shortRange, 'Short'),
+                  (FaceDetectionModel.full, 'Full Range'),
+                  (FaceDetectionModel.fullSparse, 'Full Sparse'),
+                ])
+                  chip<FaceDetectionModel>(
+                    value: v,
+                    current: _detectionModel,
+                    label: label,
+                    onTap: () async {
+                      if (v == _detectionModel) return;
+                      update(() => _detectionModel = v);
                       await _reinitDetectorIsolate();
-                    }
+                      if (mounted) setMenuState(() {});
+                    },
+                  ),
+              ],
+            ),
+            const Divider(color: Colors.white24, height: 24),
+            const Text('SEGMENTATION', style: sectionLabelStyle),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Show',
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
+                ),
+                Switch(
+                  value: _showSegmentation,
+                  activeTrackColor: Colors.blue,
+                  onChanged: (value) {
+                    update(() {
+                      _showSegmentation = value;
+                      if (!value) _segmentationMask = null;
+                    });
                   },
                 ),
               ],
             ),
-          ),
-        ),
-        Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: 70,
-                  child: Text(
-                    'FPS: $_fps',
-                    style: const TextStyle(fontSize: 14),
-                    textAlign: TextAlign.right,
+            if (_showSegmentation) ...[
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final (v, label) in const [
+                    (SegmentationModel.general, 'Binary'),
+                    (SegmentationModel.multiclass, '6-Class'),
+                  ])
+                    chip<SegmentationModel>(
+                      value: v,
+                      current: _liveSegmentationModel,
+                      label: label,
+                      onTap: () async {
+                        if (v == _liveSegmentationModel) return;
+                        await _switchLiveSegmentationModel(v);
+                        if (mounted) setMenuState(() {});
+                      },
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Virtual Background',
+                      style: TextStyle(color: Colors.white70, fontSize: 14),
+                    ),
                   ),
-                ),
-                const Text(
-                  ' | ',
-                  style: TextStyle(fontSize: 14),
-                ),
-                SizedBox(
-                  width: 70,
-                  child: Text(
-                    '${_detectionTimeMs}ms',
-                    style: const TextStyle(fontSize: 14),
+                  Switch(
+                    value: _showVirtualBackground,
+                    activeTrackColor: Colors.blue,
+                    onChanged: (value) {
+                      update(() {
+                        _showVirtualBackground = value;
+                        if (!value) _segmentationMask = null;
+                      });
+                    },
                   ),
-                ),
-              ],
-            ),
-          ),
+                ],
+              ),
+            ],
+          ],
         ),
-      ],
+      ),
     );
   }
 
@@ -1726,115 +1783,6 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     );
   }
 
-  Widget _buildInfoPanel() {
-    return Positioned(
-      bottom: 20,
-      left: 0,
-      right: 0,
-      child: Center(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          decoration: BoxDecoration(
-            color: Colors.black.withAlpha(179),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Faces Detected: ${_faces.length}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'Frame Skip: ',
-                    style: TextStyle(color: Colors.white70, fontSize: 14),
-                  ),
-                  DropdownButton<int>(
-                    value: _processEveryNFrames,
-                    dropdownColor: Colors.black87,
-                    style: const TextStyle(color: Colors.white),
-                    items: [1, 2, 3, 4, 5]
-                        .map((n) => DropdownMenuItem(
-                              value: n,
-                              child: Text('1/$n'),
-                            ))
-                        .toList(),
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() {
-                          _processEveryNFrames = value;
-                        });
-                      }
-                    },
-                  ),
-                  const SizedBox(width: 16),
-                  const Text(
-                    'Segmentation: ',
-                    style: TextStyle(color: Colors.white70, fontSize: 14),
-                  ),
-                  Switch(
-                    value: _showSegmentation,
-                    activeTrackColor: Colors.blue,
-                    onChanged: (value) {
-                      setState(() {
-                        _showSegmentation = value;
-                        if (!value) _segmentationMask = null;
-                      });
-                    },
-                  ),
-                ],
-              ),
-              if (_showSegmentation) ...[
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      'Seg Model: ',
-                      style: TextStyle(color: Colors.white70, fontSize: 14),
-                    ),
-                    const SizedBox(width: 8),
-                    _segModelButton(SegmentationModel.general, 'Binary'),
-                    const SizedBox(width: 4),
-                    _segModelButton(SegmentationModel.multiclass, '6-Class'),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      'Virtual Background: ',
-                      style: TextStyle(color: Colors.white70, fontSize: 14),
-                    ),
-                    Switch(
-                      value: _showVirtualBackground,
-                      activeTrackColor: Colors.blue,
-                      onChanged: (value) {
-                        setState(() {
-                          _showVirtualBackground = value;
-                          if (!value) _segmentationMask = null;
-                        });
-                      },
-                    ),
-                  ],
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Future<void> _initCamera() async {
     try {
       try {
@@ -1857,6 +1805,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         }
         return;
       }
+      _availableCameras = cameras;
 
       // Prefer the front camera; fall back to the first camera
       // (desktop cameras may report lensDirection=external, so fallback is important)
@@ -1865,28 +1814,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         orElse: () => cameras.first,
       );
 
-      _cameraController = CameraController(
-        camera,
-        ResolutionPreset
-            .medium, // Use medium for balance between quality and speed
-        enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.yuv420, // Efficient format
-      );
-
-      await _cameraController!.initialize();
-
-      if (!mounted) return;
-
-      setState(() {
-        _isInitialized = true;
-        _sensorOrientation = _cameraController!.description.sensorOrientation;
-        _isFrontCamera = _cameraController!.description.lensDirection ==
-            CameraLensDirection.front;
-      });
-
-      // Start image stream on all platforms.
-      await _cameraController!.startImageStream(_processCameraImage);
-      _isImageStreamStarted = true;
+      await _startControllerFor(camera, markInitialized: true);
     } catch (e, st) {
       debugPrint('Camera init failed: $e');
       debugPrint('$st');
@@ -1895,6 +1823,88 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
           SnackBar(content: Text('Error initializing camera: $e')),
         );
       }
+    }
+  }
+
+  Future<void> _startControllerFor(
+    CameraDescription camera, {
+    required bool markInitialized,
+  }) async {
+    final controller = CameraController(
+      camera,
+      ResolutionPreset.medium,
+      enableAudio: false,
+      imageFormatGroup: ImageFormatGroup.yuv420,
+    );
+
+    await controller.initialize();
+
+    if (!mounted) {
+      await controller.dispose();
+      return;
+    }
+
+    _cameraController = controller;
+
+    setState(() {
+      if (markInitialized) _isInitialized = true;
+      _sensorOrientation = controller.description.sensorOrientation;
+      _isFrontCamera =
+          controller.description.lensDirection == CameraLensDirection.front;
+    });
+
+    await controller.startImageStream(_processCameraImage);
+    _isImageStreamStarted = true;
+  }
+
+  bool get _canSwitchCamera {
+    if (kIsWeb) return false;
+    if (!(Platform.isAndroid || Platform.isIOS)) return false;
+    final hasFront = _availableCameras
+        .any((c) => c.lensDirection == CameraLensDirection.front);
+    final hasBack = _availableCameras
+        .any((c) => c.lensDirection == CameraLensDirection.back);
+    return hasFront && hasBack;
+  }
+
+  Future<void> _switchCamera() async {
+    if (_isSwitchingCamera) return;
+    if (!_canSwitchCamera) return;
+
+    final target =
+        _isFrontCamera ? CameraLensDirection.back : CameraLensDirection.front;
+    final next = _availableCameras.firstWhere(
+      (c) => c.lensDirection == target,
+      orElse: () => _availableCameras.first,
+    );
+
+    setState(() => _isSwitchingCamera = true);
+    try {
+      final prev = _cameraController;
+      if (prev != null) {
+        if (_isImageStreamStarted) {
+          try {
+            await prev.stopImageStream();
+          } catch (_) {}
+          _isImageStreamStarted = false;
+        }
+        await prev.dispose();
+      }
+      _faces = [];
+      _imageSize = null;
+      _segmentationMask = null;
+
+      await _startControllerFor(next, markInitialized: false);
+    } catch (e, st) {
+      debugPrint('Camera switch failed: $e');
+      debugPrint('$st');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error switching camera: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSwitchingCamera = false);
     }
   }
 
@@ -1913,32 +1923,70 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     required int width,
     required int height,
   }) {
-    final DeviceOrientation orientation = _effectiveDeviceOrientation(context);
-    final bool isPortrait = orientation == DeviceOrientation.portraitUp ||
-        orientation == DeviceOrientation.portraitDown;
-
-    if (!isPortrait) return null;
-
-    // If the incoming buffer is already portrait, don't rotate it.
-    if (height >= width) return null;
-
     final int? sensor = _sensorOrientation;
-    if (sensor == 90) {
-      return cv.ROTATE_90_COUNTERCLOCKWISE;
-    }
-    if (sensor == 270) {
-      return cv.ROTATE_90_CLOCKWISE;
+    if (sensor == null) return null;
+
+    // iOS: the camera plugin pre-rotates the image stream per
+    // AVCaptureConnection.videoOrientation, so the historical portrait-only
+    // rotation path still applies. Landscape iOS is handled in step 3 of
+    // the rotation plan (pending empirical verification on device via the
+    // one-shot probe logged from _processCameraImage).
+    if (Platform.isIOS) {
+      final DeviceOrientation orientation =
+          _effectiveDeviceOrientation(context);
+      final bool isPortrait = orientation == DeviceOrientation.portraitUp ||
+          orientation == DeviceOrientation.portraitDown;
+      if (!isPortrait) return null;
+      if (height >= width) return null;
+      if (sensor == 90) return cv.ROTATE_90_CLOCKWISE;
+      if (sensor == 270) return cv.ROTATE_90_COUNTERCLOCKWISE;
+      return null;
     }
 
+    // Android: combined formula covering all four device orientations.
+    // `sensorOrientation` is the clockwise rotation needed to display the
+    // raw sensor buffer upright in the device's natural orientation;
+    // `deviceRotation` is how far the device is rotated clockwise from
+    // natural (portraitUp=0, landscapeLeft=90, portraitDown=180,
+    // landscapeRight=270; per Flutter's DeviceOrientation enum).
+    if (Platform.isAndroid) {
+      final DeviceOrientation d = _effectiveDeviceOrientation(context);
+      final int deviceRotation = switch (d) {
+        DeviceOrientation.portraitUp => 0,
+        DeviceOrientation.landscapeLeft => 90,
+        DeviceOrientation.portraitDown => 180,
+        DeviceOrientation.landscapeRight => 270,
+      };
+
+      final int total = _isFrontCamera
+          ? (sensor + deviceRotation) % 360
+          : (sensor - deviceRotation + 360) % 360;
+
+      return switch (total) {
+        90 => cv.ROTATE_90_CLOCKWISE,
+        180 => cv.ROTATE_180,
+        270 => cv.ROTATE_90_COUNTERCLOCKWISE,
+        _ => null,
+      };
+    }
+
+    // Desktop / web: camera_desktop delivers already-upright frames.
     return null;
   }
 
   Future<void> _processCameraImage(CameraImage image) async {
-    _frameCounter++;
     _updateFps();
 
-    // Skip frames for better performance
-    if (_frameCounter % _processEveryNFrames != 0) return;
+    if (Platform.isIOS) {
+      final DeviceOrientation d = _effectiveDeviceOrientation(context);
+      if (d != _iosProbeOrientation) {
+        _iosProbeOrientation = d;
+        debugPrint('[ios-probe] orient=${d.name} '
+            'sensor=$_sensorOrientation front=$_isFrontCamera '
+            'raw=${image.width}x${image.height} '
+            'planes=${image.planes.length}');
+      }
+    }
 
     // Skip if already processing
     if (_isProcessing) return;
@@ -2042,63 +2090,51 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         return mat;
       }
 
-      // Mobile: YUV420 format
-      final int yRowStride = image.planes[0].bytesPerRow;
-      final int yPixelStride = image.planes[0].bytesPerPixel ?? 1;
+      // Mobile: YUV420. Pack Y+UV into a contiguous buffer via flutter_litert's
+      // shared `packYuv420`, then hand to OpenCV for native cvtColor. The Dart
+      // per-pixel loop this replaced was ~500ms/frame on Android; cvtColor
+      // runs in single-digit ms.
+      final p0 = image.planes[0];
+      final p1 = image.planes.length > 1 ? image.planes[1] : null;
+      final p2 = image.planes.length > 2 ? image.planes[2] : null;
+      if (p1 == null) return null;
 
-      // Allocate BGR buffer for OpenCV (3 bytes per pixel)
-      final bgrBytes = Uint8List(width * height * 3);
+      final packed = packYuv420(
+        width: width,
+        height: height,
+        y: (
+          bytes: p0.bytes,
+          rowStride: p0.bytesPerRow,
+          pixelStride: p0.bytesPerPixel ?? 1,
+        ),
+        u: (
+          bytes: p1.bytes,
+          rowStride: p1.bytesPerRow,
+          pixelStride: p1.bytesPerPixel ?? 1,
+        ),
+        v: p2 == null
+            ? null
+            : (
+                bytes: p2.bytes,
+                rowStride: p2.bytesPerRow,
+                pixelStride: p2.bytesPerPixel ?? 1,
+              ),
+      );
+      if (packed == null) return null;
 
-      void writePixel(int x, int y, int yp, int up, int vp) {
-        int r = (yp + vp * 1436 / 1024 - 179).round().clamp(0, 255);
-        int g = (yp - up * 46549 / 131072 + 44 - vp * 93604 / 131072 + 91)
-            .round()
-            .clamp(0, 255);
-        int b = (yp + up * 1814 / 1024 - 227).round().clamp(0, 255);
-        final int bgrIdx = (y * width + x) * 3;
-        bgrBytes[bgrIdx] = b;
-        bgrBytes[bgrIdx + 1] = g;
-        bgrBytes[bgrIdx + 2] = r;
-      }
-
-      if (image.planes.length == 2) {
-        // iOS NV12 format
-        final int uvRowStride = image.planes[1].bytesPerRow;
-        final int uvPixelStride = image.planes[1].bytesPerPixel ?? 2;
-
-        for (int y = 0; y < height; y++) {
-          for (int x = 0; x < width; x++) {
-            final int uvIndex =
-                uvPixelStride * (x ~/ 2) + uvRowStride * (y ~/ 2);
-            final int index = y * yRowStride + x * yPixelStride;
-            writePixel(
-                x,
-                y,
-                image.planes[0].bytes[index],
-                image.planes[1].bytes[uvIndex],
-                image.planes[1].bytes[uvIndex + 1]);
-          }
-        }
-      } else if (image.planes.length >= 3) {
-        // Android I420 format
-        final int uvRowStride = image.planes[1].bytesPerRow;
-        final int uvPixelStride = image.planes[1].bytesPerPixel ?? 1;
-
-        for (int y = 0; y < height; y++) {
-          for (int x = 0; x < width; x++) {
-            final int uvIndex =
-                uvPixelStride * (x ~/ 2) + uvRowStride * (y ~/ 2);
-            final int index = y * yRowStride + x * yPixelStride;
-            writePixel(x, y, image.planes[0].bytes[index],
-                image.planes[1].bytes[uvIndex], image.planes[2].bytes[uvIndex]);
-          }
-        }
-      } else {
-        return null;
-      }
-
-      // Create cv.Mat from BGR bytes
-      cv.Mat mat = cv.Mat.fromList(height, width, cv.MatType.CV_8UC3, bgrBytes);
+      final int cvtCode = switch (packed.layout) {
+        YuvLayout.nv12 => cv.COLOR_YUV2BGR_NV12,
+        YuvLayout.nv21 => cv.COLOR_YUV2BGR_NV21,
+        YuvLayout.i420 => cv.COLOR_YUV2BGR_I420,
+      };
+      final cv.Mat yuvMat = cv.Mat.fromList(
+        packed.height + packed.height ~/ 2,
+        packed.width,
+        cv.MatType.CV_8UC1,
+        packed.bytes,
+      );
+      cv.Mat mat = cv.cvtColor(yuvMat, cvtCode);
+      yuvMat.dispose();
 
       // Rotate image for portrait mode so face detector sees upright faces.
       final rotationFlag = _rotationFlagForFrame(width: width, height: height);
@@ -2109,13 +2145,15 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       }
 
       return mat;
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('_convertCameraImageToMat error: $e\n$st');
       return null;
     }
   }
 
   @override
   void dispose() {
+    _accelerometerSub?.cancel();
     if (_isImageStreamStarted) {
       _cameraController?.stopImageStream();
     }
@@ -2147,8 +2185,9 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     final double displayAspectRatio =
         isPortrait ? 1.0 / cameraAspectRatio : cameraAspectRatio;
 
+    final int turns = _barQuarterTurns;
+
     return Scaffold(
-      appBar: _buildCameraAppBar(),
       body: Stack(
         fit: StackFit.expand,
         children: [
@@ -2156,14 +2195,39 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
             cameraWidget: CameraPreview(_cameraController!),
             cameraAspectRatio: cameraAspectRatio,
             displayAspectRatio: displayAspectRatio,
-            mirrorHorizontally: false,
+            // On Android the camera plugin mirrors the front preview texture,
+            // but the image stream remains unmirrored. Mirror the overlay to
+            // match. iOS delivers the preview and image stream in aligned
+            // spaces, so no flip is needed there.
+            mirrorHorizontally: Platform.isAndroid && _isFrontCamera,
             sensorOrientation: _sensorOrientation ?? 0,
             deviceOrientation: deviceOrientation,
             isFrontCamera: _isFrontCamera,
           ),
-          _buildInfoPanel(),
+          _positionedTopBar(turns),
         ],
       ),
+    );
+  }
+
+  Widget _positionedTopBar(int turns) {
+    final bar = _buildCameraTopBar();
+    final padding = MediaQuery.of(context).padding;
+    if (turns == 0) {
+      return Positioned(
+        top: padding.top,
+        left: padding.left,
+        right: padding.right,
+        child: bar,
+      );
+    }
+    return Positioned(
+      top: padding.top,
+      bottom: padding.bottom,
+      left: turns == 3 ? padding.left : null,
+      right: turns == 1 ? padding.right : null,
+      width: kToolbarHeight,
+      child: RotatedBox(quarterTurns: turns, child: bar),
     );
   }
 }
@@ -2302,28 +2366,8 @@ class _CameraDetectionPainter extends CustomPainter {
             if (iris == null) continue;
 
             // Draw iris (center + contour as oval)
-            final allIrisPoints = [iris.irisCenter, ...iris.irisContour];
-            final transformedIrisPoints =
-                allIrisPoints.map((p) => transformPoint(p.x, p.y)).toList();
-
-            double minX = transformedIrisPoints.first.dx,
-                maxX = transformedIrisPoints.first.dx;
-            double minY = transformedIrisPoints.first.dy,
-                maxY = transformedIrisPoints.first.dy;
-            for (final p in transformedIrisPoints) {
-              if (p.dx < minX) minX = p.dx;
-              if (p.dx > maxX) maxX = p.dx;
-              if (p.dy < minY) minY = p.dy;
-              if (p.dy > maxY) maxY = p.dy;
-            }
-
-            final cx = (minX + maxX) * 0.5;
-            final cy = (minY + maxY) * 0.5;
-            final rx = (maxX - minX) * 0.5;
-            final ry = (maxY - minY) * 0.5;
-
-            final oval = Rect.fromCenter(
-                center: Offset(cx, cy), width: rx * 2, height: ry * 2);
+            final oval = _boundsOf([iris.irisCenter, ...iris.irisContour]
+                .map((p) => transformPoint(p.x, p.y)));
             canvas.drawOval(oval, irisFill);
             canvas.drawOval(oval, irisStroke);
 
@@ -2792,20 +2836,16 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
                           spacing: 8,
                           runSpacing: 8,
                           children: [
-                            _classOption(null, 'All Classes', Colors.blue,
-                                setModalState),
-                            _classOption(
-                                0, 'Background', Colors.grey, setModalState),
-                            _classOption(
-                                1, 'Hair', Colors.brown, setModalState),
-                            _classOption(
-                                2, 'Body Skin', Colors.orange, setModalState),
-                            _classOption(
-                                3, 'Face Skin', Colors.pink, setModalState),
-                            _classOption(
-                                4, 'Clothes', Colors.blue, setModalState),
-                            _classOption(
-                                5, 'Other', Colors.teal, setModalState),
+                            for (final o in const <(int?, String, Color)>[
+                              (null, 'All Classes', Colors.blue),
+                              (0, 'Background', Colors.grey),
+                              (1, 'Hair', Colors.brown),
+                              (2, 'Body Skin', Colors.orange),
+                              (3, 'Face Skin', Colors.pink),
+                              (4, 'Clothes', Colors.blue),
+                              (5, 'Other', Colors.teal),
+                            ])
+                              _classOption(o.$1, o.$2, o.$3, setModalState),
                           ],
                         ),
                         const SizedBox(height: 16),

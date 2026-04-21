@@ -63,7 +63,8 @@ class SegmentationWorker extends IsolateWorkerBase {
   /// [config] controls model selection, delegate selection, and other options.
   ///
   /// Throws [StateError] if already initialized.
-  /// Throws [SegmentationException] if model loading fails.
+  /// Throws [SegmentationException] if model loading fails. On failure, any
+  /// partially-spawned isolate is cleaned up before rethrowing.
   Future<void> initialize({
     SegmentationConfig config = const SegmentationConfig(),
   }) async {
@@ -110,7 +111,6 @@ class SegmentationWorker extends IsolateWorkerBase {
 
       markInitialized();
     } catch (e) {
-      // Clean up any partially-spawned isolate.
       await super.dispose();
       if (e is SegmentationException) rethrow;
       throw SegmentationException(

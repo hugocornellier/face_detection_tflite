@@ -15,6 +15,10 @@ part of '../face_detection_tflite.dart';
 /// ## Usage
 ///
 /// ```dart
+/// // One-step construction
+/// final detector = await FaceDetector.create();
+///
+/// // Or two-step, if you need to configure between construction and init
 /// final detector = FaceDetector();
 /// await detector.initialize();
 ///
@@ -47,10 +51,53 @@ part of '../face_detection_tflite.dart';
 /// - [detectFaces] for the main detection API
 /// - [Face] for the structure of detection results
 class FaceDetector {
+  /// Cache-invalidation key for consumers that persist detection results.
+  ///
+  /// Bump this when detection output could change for the same input bytes —
+  /// i.e. on model file swaps (retraining, new weights), NMS threshold
+  /// changes, preprocessing changes, or postprocessing / coordinate-space
+  /// changes. Do NOT bump for pure refactors, doc updates, API additions,
+  /// or anything else that leaves inference output identical.
+  ///
+  /// Downstream caches should include this value in their lookup key so
+  /// stored results are ignored after an upgrade that changes behavior.
+  static const String modelVersion = '1.0.0';
+
   /// Creates a new face detector instance.
   ///
   /// The detector is not ready for use until you call [initialize].
   FaceDetector();
+
+  /// Creates and initializes a face detector in one step.
+  ///
+  /// Convenience factory that combines [FaceDetector.new] and [initialize].
+  /// Accepts the same parameters as [initialize].
+  ///
+  /// Example:
+  /// ```dart
+  /// final detector = await FaceDetector.create();
+  ///
+  /// // Equivalent to:
+  /// final detector = FaceDetector();
+  /// await detector.initialize();
+  /// ```
+  static Future<FaceDetector> create({
+    FaceDetectionModel model = FaceDetectionModel.backCamera,
+    PerformanceConfig performanceConfig = const PerformanceConfig(),
+    int meshPoolSize = 3,
+    bool withSegmentation = false,
+    SegmentationConfig? segmentationConfig,
+  }) async {
+    final detector = FaceDetector();
+    await detector.initialize(
+      model: model,
+      performanceConfig: performanceConfig,
+      meshPoolSize: meshPoolSize,
+      withSegmentation: withSegmentation,
+      segmentationConfig: segmentationConfig,
+    );
+    return detector;
+  }
 
   _FaceDetectorWorker? _worker;
   IsolateRpcClient? _segmentationRpc;
@@ -248,6 +295,22 @@ class FaceDetector {
     return _deserializeFacesFast(result);
   }
 
+  /// Detects faces in an image file at [path].
+  ///
+  /// Convenience wrapper that reads the file and calls [detectFaces].
+  /// Not available on Flutter Web (uses `dart:io`).
+  ///
+  /// Throws [StateError] if [initialize] has not been called successfully.
+  /// Throws [FileSystemException] if the file cannot be read.
+  /// Throws [FormatException] if the image cannot be decoded.
+  Future<List<Face>> detectFacesFromFilepath(
+    String path, {
+    FaceDetectionMode mode = FaceDetectionMode.full,
+  }) async {
+    final bytes = await File(path).readAsBytes();
+    return detectFaces(bytes, mode: mode);
+  }
+
   /// Detects faces in a pre-decoded [cv.Mat] image.
   ///
   /// The Mat is NOT disposed by this method — caller is responsible for disposal.
@@ -333,6 +396,18 @@ class FaceDetector {
       },
     );
     return Float32List.fromList(result);
+  }
+
+  /// Generates a face embedding from an image file at [path].
+  ///
+  /// Convenience wrapper that reads the file and calls [getFaceEmbedding].
+  /// Not available on Flutter Web (uses `dart:io`).
+  Future<Float32List> getFaceEmbeddingFromFilepath(
+    Face face,
+    String path,
+  ) async {
+    final bytes = await File(path).readAsBytes();
+    return getFaceEmbedding(face, bytes);
   }
 
   /// Generates a face embedding from raw pixel bytes without constructing a [cv.Mat].

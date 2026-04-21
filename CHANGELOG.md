@@ -1,3 +1,18 @@
+## 6.1.0
+
+* Re-export `packYuv420`, `YuvPlane`, `YuvLayout`, and `PackedYuv` from `flutter_litert` so live-camera consumers can reach the helper through the `face_detection_tflite` barrel without a direct `flutter_litert` import.
+* Update `flutter_litert` to `^2.2.0`
+* Add `FaceDetector.modelVersion` constant so consumers that persist detection results have a stable cache-invalidation key. Bumped on changes that alter detection output (model swaps, threshold or preprocessing changes); unchanged across pure refactors or API additions.
+* Rewrite the README's Live Camera and Direct Mat Input sections around `packYuv420` so every snippet is a real compilable example (no ghost `convertCameraImageToMat`, no duplicate `segmenter` variable, no `cv.Mat` type annotations requiring an unlisted import).
+
+## 6.0.1
+
+* Fix Android live camera overlay in the example app ([#8](https://github.com/hugocornellier/face_detection_tflite/issues/8)):
+  * Replace the per-pixel Dart YUV→BGR loop with `flutter_litert`'s shared `packYuv420` helper + native `cv.cvtColor` (~5–10× faster on Android).
+  * Correct the rotation direction for `sensorOrientation` 90° / 270° to match the Android CameraX convention.
+  * Mirror the detection overlay on Android front camera to match `CameraPreview`'s auto-mirrored preview texture.
+* Add option to toggle between front/back camera in example app (mobile only)
+
 ## 6.0.0
 
 * Remove `FaceDetectorIsolate` - `FaceDetector` is now the single unified class running all inference in a background isolate

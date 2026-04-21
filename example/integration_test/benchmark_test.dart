@@ -503,6 +503,72 @@ void main() {
     );
   });
 
+  group('SelfieSegmentation Multiclass - Performance Benchmarks', () {
+    test(
+      'Benchmark multiclass segmentation (call with Mat, direct invoke)',
+      () async {
+        const modelAsset =
+            'packages/face_detection_tflite/assets/models/selfie_multiclass.tflite';
+        try {
+          await rootBundle.load(modelAsset);
+        } catch (_) {
+          print('SKIP: multiclass model not available at $modelAsset');
+          return;
+        }
+
+        final segmenter = await SelfieSegmentation.create(
+          config: const SegmentationConfig(
+            model: SegmentationModel.multiclass,
+            performanceConfig: PerformanceConfig.xnnpack(),
+            useIsolate: false,
+          ),
+        );
+
+        print('\n${'=' * 60}');
+        print(
+            'BENCHMARK: Multiclass segmentation (call(Mat), direct invoke, XNNPACK)');
+        print('=' * 60);
+
+        const imagePath = 'assets/samples/landmark-ex1.jpg';
+        final ByteData data = await rootBundle.load(imagePath);
+        final Uint8List bytes = data.buffer.asUint8List();
+        final cv.Mat mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
+
+        for (int i = 0; i < 10; i++) {
+          await segmenter.call(mat);
+        }
+
+        const int benchIterations = 200;
+        final List<int> timings = [];
+        for (int i = 0; i < benchIterations; i++) {
+          final stopwatch = Stopwatch()..start();
+          await segmenter.call(mat);
+          stopwatch.stop();
+          timings.add(stopwatch.elapsedMicroseconds);
+        }
+
+        final sorted = List<int>.from(timings)..sort();
+        final p50 = sorted[sorted.length ~/ 2];
+        final p95 = sorted[(sorted.length * 0.95).floor()];
+        final p99 = sorted[(sorted.length * 0.99).floor()];
+        final mean = timings.reduce((a, b) => a + b) / timings.length;
+
+        print('\nResults over $benchIterations iterations:');
+        print(
+            '  Mean: ${(mean / 1000).toStringAsFixed(2)} ms  (${mean.toStringAsFixed(0)} µs)');
+        print('  p50:  ${(p50 / 1000).toStringAsFixed(2)} ms  ($p50 µs)');
+        print('  p95:  ${(p95 / 1000).toStringAsFixed(2)} ms  ($p95 µs)');
+        print('  p99:  ${(p99 / 1000).toStringAsFixed(2)} ms  ($p99 µs)');
+        print('  Min:  ${(sorted.first / 1000).toStringAsFixed(2)} ms');
+        print('  Max:  ${(sorted.last / 1000).toStringAsFixed(2)} ms');
+
+        mat.dispose();
+        segmenter.dispose();
+      },
+      timeout: const Timeout(Duration(minutes: 5)),
+    );
+  });
+
   group('FaceDetector - Performance Benchmarks', () {
     test(
       'Benchmark full mode with OpenCV (native SIMD)',

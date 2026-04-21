@@ -34,19 +34,17 @@ Completely local: no remote API, just pure on-device, offline detection.
 ## Quick Start
 
 ```dart
-import 'dart:io';
 import 'package:face_detection_tflite/face_detection_tflite.dart';
 
 Future main() async {
-  FaceDetector detector = FaceDetector();
-  await detector.initialize(model: FaceDetectionModel.backCamera);
+  // Initialize detector, run inference on image
+  FaceDetector fd = await FaceDetector.create();
+  List<Face> faces = await fd.detectFacesFromFilepath('path/to/image.jpg');
 
-  final imageBytes = await File('path/to/image.jpg').readAsBytes();
-  List<Face> faces = await detector.detectFaces(imageBytes);
-
+  // Iterate through detected faces
   for (final face in faces) {
     final boundingBox = face.boundingBox;
-    final landmarks   = face.landmarks;
+    final landmarks = face.landmarks;
     final mesh = face.mesh;
     final eyes = face.eyes;
   }
@@ -54,6 +52,8 @@ Future main() async {
   await detector.dispose();
 }
 ```
+
+Already have bytes (from `camera`, network, etc.)? Use `detectFaces(imageBytes)` instead. For a pre-decoded `cv.Mat`, use `detectFacesFromMat(mat)`.
 
 ## Models
 
@@ -81,7 +81,6 @@ dimensions (width and height), and the center point.
 ### Accessing Corners
 
 ```dart
-
 final BoundingBox boundingBox = face.boundingBox;
 
 // Access individual corners by name (each is a Point with x and y)
@@ -97,7 +96,6 @@ print('Top-left: (${topLeft.x}, ${topLeft.y})');
 ### Additional Bounding Box Parameters
 
 ```dart
-
 final BoundingBox boundingBox = face.boundingBox;
 
 // Access dimensions and center
@@ -315,69 +313,97 @@ This package supports multiple detection models optimized for different use case
 
 ### Code Examples
 
-The model can be set using the `model` parameter when initialize is called. Defaults to FaceDetectionModel.backCamera.
+The model can be set using the `model` parameter on either `FaceDetector.create()` or `initialize()`. Defaults to `FaceDetectionModel.backCamera`.
 
 ```dart
-FaceDetector faceDetector = FaceDetector();
+// One-step with create()
+final detector = await FaceDetector.create(model: FaceDetectionModel.frontCamera);
 
-// backCamera (default): larger model for group shots or images with smaller faces
-await faceDetector.initialize(model: FaceDetectionModel.backCamera);
+// Or two-step with initialize(), same options
+final detector = FaceDetector();
+await detector.initialize(model: FaceDetectionModel.frontCamera);
+```
 
-// frontCamera: optimized for selfies and close-up portraits
-await faceDetector.initialize(model: FaceDetectionModel.frontCamera);
+Available models:
 
-// shortRange: best for short-range images (faces within ~2m)
-await faceDetector.initialize(model: FaceDetectionModel.shortRange);
-
-// full: best for mid-range images (faces within ~5m)
-await faceDetector.initialize(model: FaceDetectionModel.full);
-
-// fullSparse: same detection quality as full but runs up to 30% faster on CPU
-// (slightly higher precision, slightly lower recall)
-await faceDetector.initialize(model: FaceDetectionModel.fullSparse);
+```dart
+FaceDetectionModel.backCamera    // (default) larger model, group shots, smaller faces
+FaceDetectionModel.frontCamera   // selfies, close-up portraits
+FaceDetectionModel.shortRange    // short-range images (faces within ~2m)
+FaceDetectionModel.full          // mid-range images (faces within ~5m)
+FaceDetectionModel.fullSparse    // same quality as full, ~30% faster on CPU
+                                 // (slightly higher precision, slightly lower recall)
 ```
 
 ## Live Camera Detection
 
 <img src="assets/screenshots/livecamera_ex1.gif" width="600" alt="Live Camera Detection">
 
-For real-time face detection with a camera feed, pass a `cv.Mat` directly to `detectFacesFromMat()` to avoid repeated JPEG encode/decode overhead. This provides the best performance for video streams. All processing runs automatically in a background isolate, so the UI thread is never blocked.
+For real-time face detection with a camera feed, pass a `Mat` directly to `detectFacesFromMat()` to avoid repeated JPEG encode/decode overhead. Use the re-exported `packYuv420` helper to pack YUV420 frames from `camera`'s `CameraImage` (NV12 on iOS, NV21 or I420 on Android) into a contiguous buffer, then let OpenCV run the colour conversion natively. All detection inference runs automatically in a background isolate, so the UI thread is never blocked.
 
 ```dart
 import 'package:camera/camera.dart';
+import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:face_detection_tflite/face_detection_tflite.dart';
 
-FaceDetector detector = FaceDetector();
-await detector.initialize(model: FaceDetectionModel.frontCamera);
+final detector = await FaceDetector.create(model: FaceDetectionModel.frontCamera);
 
 final cameras = await availableCameras();
-CameraController camera = CameraController(cameras.first, ResolutionPreset.medium);
+final camera = CameraController(
+  cameras.first,
+  ResolutionPreset.medium,
+  enableAudio: false,
+  imageFormatGroup: ImageFormatGroup.yuv420,
+);
 await camera.initialize();
 
 camera.startImageStream((CameraImage image) async {
-  // Convert CameraImage (YUV420) directly to cv.Mat (BGR)
-  final cv.Mat mat = convertCameraImageToMat(image); // see example app
-
-  // Detect faces using Mat for maximum performance
-  List<Face> faces = await detector.detectFacesFromMat(
-    mat,
-    mode: FaceDetectionMode.fast,
+  // Pack the YUV planes into a contiguous buffer (auto-detects NV12 / NV21 / I420).
+  final p0 = image.planes[0];
+  final p1 = image.planes[1];
+  final p2 = image.planes.length > 2 ? image.planes[2] : null;
+  final packed = packYuv420(
+    width: image.width,
+    height: image.height,
+    y: (bytes: p0.bytes, rowStride: p0.bytesPerRow, pixelStride: p0.bytesPerPixel ?? 1),
+    u: (bytes: p1.bytes, rowStride: p1.bytesPerRow, pixelStride: p1.bytesPerPixel ?? 1),
+    v: p2 == null
+        ? null
+        : (bytes: p2.bytes, rowStride: p2.bytesPerRow, pixelStride: p2.bytesPerPixel ?? 1),
   );
+  if (packed == null) return;
 
-  // Always dispose Mat after use
-  mat.dispose();
+  // Hand the packed buffer to OpenCV for native YUV -> BGR conversion.
+  final cvtCode = switch (packed.layout) {
+    YuvLayout.nv12 => cv.COLOR_YUV2BGR_NV12,
+    YuvLayout.nv21 => cv.COLOR_YUV2BGR_NV21,
+    YuvLayout.i420 => cv.COLOR_YUV2BGR_I420,
+  };
+  final yuvMat = cv.Mat.fromList(
+    packed.height + packed.height ~/ 2,
+    packed.width,
+    cv.MatType.CV_8UC1,
+    packed.bytes,
+  );
+  final Mat bgr = cv.cvtColor(yuvMat, cvtCode);
+  yuvMat.dispose();
+
+  // Detect faces using Mat for maximum performance.
+  final faces = await detector.detectFacesFromMat(bgr, mode: FaceDetectionMode.fast);
+  bgr.dispose();
 
   // Process faces...
 });
 ```
 
 **Tips for camera detection:**
-- Pass `cv.Mat` directly to `detectFacesFromMat()` to bypass JPEG encoding/decoding
-- Convert YUV420 camera frames directly to BGR Mat format
+- Pass a `Mat` directly to `detectFacesFromMat()` to bypass JPEG encoding/decoding
+- Use `packYuv420` to convert YUV420 frames in a single native `cv.cvtColor` call (much faster than a per-pixel Dart loop)
 - Always call `mat.dispose()` after detection
 - Use `FaceDetectionMode.fast` for real-time performance
+- On Android, rotate the resulting Mat to match `sensorOrientation` before detection, and mirror the overlay on the front camera to match `CameraPreview`'s auto-mirrored texture
 
-See the full [example app](https://pub.dev/packages/face_detection_tflite/example) for complete implementation including YUV-to-Mat conversion and frame throttling.
+See the full [example app](https://pub.dev/packages/face_detection_tflite/example) for a production implementation including orientation handling, mirror handling, and frame throttling.
 
 ## Background Processing
 
@@ -388,8 +414,7 @@ All inference runs automatically in a background isolate: the UI thread is never
 Generate 192-dimensional identity vectors to compare faces across images. Useful for identifying the same person in different photos.
 
 ```dart
-final detector = FaceDetector();
-await detector.initialize();
+final detector = await FaceDetector.create();
 
 // Full mode gives the most accurate eye alignment for embeddings.
 // Standard mode is a good balance; fast mode is fastest but least accurate.
@@ -451,12 +476,16 @@ segmenter.dispose();
 ### With FaceDetector
 
 ```dart
-final detector = FaceDetector();
-await detector.initialize();
+// One-step: initialize detection + segmentation together
+final detector = await FaceDetector.create(withSegmentation: true);
+
+// Or initialize segmentation separately after creating the detector:
+// final detector = await FaceDetector.create();
+// await detector.initializeSegmentation();
 
 // Defaults to SegmentationConfig.safe (CPU-only, 1024 max output).
-// On iOS/desktop, use SegmentationConfig.performance for hardware acceleration.
-await detector.initializeSegmentation();
+// On iOS/desktop, pass `segmentationConfig: SegmentationConfig.performance` for
+// hardware acceleration.
 
 final mask = await detector.getSegmentationMask(imageBytes);
 // Use mask for background replacement...
@@ -474,12 +503,12 @@ await detector.dispose();
 
 ```dart
 // Use landscape model for video
-final segmenter = await SelfieSegmentation.create(
+final videoSegmenter = await SelfieSegmentation.create(
   config: SegmentationConfig(model: SegmentationModel.landscape),
 );
 
 // Use multiclass for body part segmentation
-final segmenter = await SelfieSegmentation.create(
+final multiclassSegmenter = await SelfieSegmentation.create(
   config: SegmentationConfig(model: SegmentationModel.multiclass),
 );
 ```
@@ -538,42 +567,45 @@ The package automatically selects the best acceleration strategy for each platfo
 | **Android** | XNNPACK | 2-5x | ARM NEON SIMD acceleration |
 | **Windows** | XNNPACK | 2-5x | SIMD vectorization (AVX on x86) |
 
-No configuration needed: just call `initialize()` and you get the optimal performance for your platform.
+No configuration needed: just call `FaceDetector.create()` (or `initialize()`) and you get the optimal performance for your platform.
 
 ### Advanced Performance Configuration
 
+The `performanceConfig` parameter works on both `create()` and `initialize()`.
+
 ```dart
 // Auto mode (default): optimal for each platform
-await detector.initialize();
+final detector = await FaceDetector.create();
 // Equivalent to:
-await detector.initialize(performanceConfig: PerformanceConfig.auto());
+final detector = await FaceDetector.create(
+  performanceConfig: PerformanceConfig.auto(),
+);
 
 // Force XNNPACK (all native platforms)
-await detector.initialize(
+final detector = await FaceDetector.create(
   performanceConfig: PerformanceConfig.xnnpack(numThreads: 4),
 );
 
 // Force GPU delegate (iOS recommended, Android experimental)
-await detector.initialize(
+final detector = await FaceDetector.create(
   performanceConfig: PerformanceConfig.gpu(),
 );
 
 // CPU-only (maximum compatibility)
-await detector.initialize(
+final detector = await FaceDetector.create(
   performanceConfig: PerformanceConfig.disabled,
 );
 ```
 
 ### Advanced: Direct Mat Input
 
-For live camera streams, you can bypass image encoding/decoding entirely by passing a `cv.Mat` directly to `detectFacesFromMat()`:
+For live camera streams, you can bypass image encoding/decoding entirely by passing a `Mat` directly to `detectFacesFromMat()`:
 
 ```dart
 import 'package:face_detection_tflite/face_detection_tflite.dart';
 
-Future<void> processFrame(cv.Mat frame) async {
-  final detector = FaceDetector();
-  await detector.initialize(model: FaceDetectionModel.frontCamera);
+Future<void> processFrame(Mat frame) async {
+  final detector = await FaceDetector.create(model: FaceDetectionModel.frontCamera);
 
   // Direct Mat input: fastest for video streams
   final faces = await detector.detectFacesFromMat(frame, mode: FaceDetectionMode.fast);
@@ -583,7 +615,7 @@ Future<void> processFrame(cv.Mat frame) async {
 }
 ```
 
-**When to use `cv.Mat` input:**
+**When to use `Mat` input:**
 - Live camera streams where frames are already in memory
 - When you need to preprocess images with OpenCV before detection
 - Maximum throughput scenarios (avoids JPEG encode/decode overhead)
