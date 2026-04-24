@@ -47,10 +47,8 @@ class FaceEmbedding with _TfliteModelDisposable {
   @override
   final Interpreter _itp;
   final int _inW, _inH;
-  late final Tensor _inputTensor;
-  late final Tensor _outputTensor;
-  late final Float32List _inputBuf;
-  late final Float32List _outputBuf;
+  late final TensorFloat32Views _views;
+  late final List<int> _outputShape;
   late final List<List<List<List<double>>>> _input4dCache;
   late final int _embeddingDim;
 
@@ -131,11 +129,9 @@ class FaceEmbedding with _TfliteModelDisposable {
   /// used when the model is already running inside a background isolate
   /// (e.g. via [FaceDetector]) to avoid nested isolate issues.
   Future<void> _initializeTensors({bool useIsolateInterpreter = true}) async {
-    _inputTensor = _itp.getInputTensor(0);
-    _outputTensor = _itp.getOutputTensor(0);
-    _inputBuf = _inputTensor.data.buffer.asFloat32List();
-    _outputBuf = _outputTensor.data.buffer.asFloat32List();
-    _embeddingDim = _outputTensor.shape.last;
+    _outputShape = List<int>.unmodifiable(_itp.getOutputTensor(0).shape);
+    _embeddingDim = _outputShape.last;
+    _views = TensorFloat32Views.capture(_itp);
     _input4dCache = createNHWCTensor4D(_inH, _inW);
     if (useIsolateInterpreter) {
       _iso = await InterpreterFactory.createIsolateIfNeeded(_itp, _delegate);
@@ -179,16 +175,15 @@ class FaceEmbedding with _TfliteModelDisposable {
     );
 
     if (_iso == null) {
-      _inputBuf.setAll(0, pack.tensorNHWC);
+      _views.inputs[0].setAll(0, pack.tensorNHWC);
       _itp.invoke();
-      return _normalizeEmbeddingImpl(Float32List.fromList(_outputBuf));
+      return _normalizeEmbeddingImpl(Float32List.fromList(_views.outputs[0]));
     } else {
       fillNHWC4D(pack.tensorNHWC, _input4dCache, _inH, _inW);
       final List<List<List<List<List<double>>>>> inputs = [_input4dCache];
 
-      final List<int> outShape = _outputTensor.shape;
       final Map<int, Object> outputs = <int, Object>{
-        0: allocTensorShape(outShape),
+        0: allocTensorShape(_outputShape),
       };
 
       await _iso!.runForMultipleInputs(inputs, outputs);
@@ -331,6 +326,7 @@ Float32List _normalizeEmbeddingImpl(Float32List embedding) {
   return embedding;
 }
 
+/// Test-only: exposes the private embedding-normalization logic for unit tests.
 @visibleForTesting
 Float32List testNormalizeEmbedding(Float32List embedding) =>
     _normalizeEmbeddingImpl(embedding);

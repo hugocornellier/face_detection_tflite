@@ -34,7 +34,12 @@ export 'package:flutter_litert/flutter_litert.dart'
         packYuv420,
         YuvPlane,
         YuvLayout,
-        PackedYuv;
+        PackedYuv,
+        CameraPlane,
+        CameraFrame,
+        CameraFrameConversion,
+        CameraFrameRotation,
+        prepareCameraFrame;
 
 export 'package:opencv_dart/opencv_dart.dart' show Mat, imdecode, IMREAD_COLOR;
 

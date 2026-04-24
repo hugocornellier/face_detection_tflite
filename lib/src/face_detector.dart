@@ -108,6 +108,9 @@ class FaceDetector {
   /// You must call [initialize] before this returns true.
   bool get isReady => _worker?.isReady ?? false;
 
+  /// Returns true if the embedding model is loaded and ready.
+  ///
+  /// All models load together, so this is equivalent to [isReady].
   bool get isEmbeddingReady => isReady;
 
   /// Returns true if the segmentation model is loaded and ready.
@@ -362,6 +365,28 @@ class FaceDetector {
         'matType': matType,
         'mode': mode.name,
       },
+    );
+    return _deserializeFacesFast(result);
+  }
+
+  /// Detects faces directly from a [CameraFrame] produced by
+  /// [prepareCameraFrame].
+  ///
+  /// The frame's YUV→BGR colour conversion and any optional rotation happen
+  /// inside the detection isolate, not on the calling thread. Use this from a
+  /// `CameraController.startImageStream` callback to keep the UI thread free
+  /// of OpenCV work.
+  ///
+  /// Throws [StateError] if [initialize] has not been called successfully.
+  Future<List<Face>> detectFacesFromCameraFrame(
+    CameraFrame frame, {
+    FaceDetectionMode mode = FaceDetectionMode.full,
+    int? maxDim,
+  }) async {
+    _requireReady();
+    final List<dynamic> result = await _sendDetectionRequest<List<dynamic>>(
+      'detectCameraFrame',
+      _cameraFrameFields(frame, {'mode': mode.name, 'maxDim': maxDim}),
     );
     return _deserializeFacesFast(result);
   }
@@ -633,6 +658,62 @@ class FaceDetector {
     );
   }
 
+  /// Segments a [CameraFrame] to separate foreground from background,
+  /// deferring YUV→BGR colour conversion and rotation to the segmentation
+  /// isolate.
+  ///
+  /// Throws [StateError] if [initializeSegmentation] hasn't been called.
+  /// Throws [SegmentationException] on inference failure.
+  Future<SegmentationMask> getSegmentationMaskFromCameraFrame(
+    CameraFrame frame, {
+    IsolateOutputFormat outputFormat = IsolateOutputFormat.float32,
+    double binaryThreshold = 0.5,
+    int? maxDim,
+  }) async {
+    _requireReady();
+    _requireSegmentationReady();
+    final Map<String, dynamic> result =
+        await _sendSegmentationRequest<Map<String, dynamic>>(
+      'segmentCameraFrame',
+      _cameraFrameFields(frame, {
+        'outputFormat': outputFormat.index,
+        'binaryThreshold': binaryThreshold,
+        'maxDim': maxDim,
+      }),
+    );
+    return _deserializeMask(result);
+  }
+
+  /// Detects faces and generates a segmentation mask in parallel from a
+  /// [CameraFrame], with all OpenCV work off the UI thread.
+  ///
+  /// The frame's bytes are transferred to both the detection and segmentation
+  /// isolates; each does its own `cvtColor` + optional `rotate` before
+  /// inference. Total wall time is still ~`max(detect, segment)` since the
+  /// two run in parallel.
+  Future<DetectionWithSegmentationResult>
+      detectFacesWithSegmentationFromCameraFrame(
+    CameraFrame frame, {
+    FaceDetectionMode mode = FaceDetectionMode.full,
+    IsolateOutputFormat outputFormat = IsolateOutputFormat.float32,
+    double binaryThreshold = 0.5,
+    int? maxDim,
+  }) {
+    _requireReady();
+    _requireSegmentationReady();
+    return _detectAndSegmentImpl(
+      detectOp: 'detectCameraFrame',
+      detectFields:
+          _cameraFrameFields(frame, {'mode': mode.name, 'maxDim': maxDim}),
+      segmentOp: 'segmentCameraFrame',
+      segmentFields: _cameraFrameFields(frame, {
+        'outputFormat': outputFormat.index,
+        'binaryThreshold': binaryThreshold,
+        'maxDim': maxDim,
+      }),
+    );
+  }
+
   /// Extracts aligned eye regions of interest from face mesh landmarks.
   ///
   /// Uses specific mesh landmark points corresponding to the eye corners to
@@ -837,6 +918,140 @@ class FaceDetector {
     return cv.Mat.fromList(height, width, cv.MatType(matTypeValue), bytes);
   }
 
+  /// Builds the isolate-request field map for a [CameraFrame] payload, merged
+  /// with any [extra] per-op fields (e.g. `mode`, `outputFormat`).
+  Map<String, dynamic> _cameraFrameFields(
+    CameraFrame frame,
+    Map<String, dynamic> extra,
+  ) =>
+      {
+        'bytes': TransferableTypedData.fromList([frame.bytes]),
+        'width': frame.width,
+        'height': frame.height,
+        'strideCols': frame.strideCols,
+        'conversion': frame.conversion.index,
+        'rotation': frame.rotation?.index,
+        ...extra,
+      };
+
+  /// Decodes a [CameraFrame] message into a 3-channel BGR [cv.Mat]. Runs
+  /// inside the detection / segmentation isolate — all OpenCV work happens off
+  /// the UI thread.
+  ///
+  /// Op ordering is tuned to keep the big allocations tiny: for BGRA frames we
+  /// resize and rotate on the 4-channel buffer and defer `cvtColor` to the end
+  /// (so it converts the post-resize ~640px buffer, not full-res). For YUV we
+  /// must `cvtColor` first because the packed layout isn't resizable, but we
+  /// then resize before rotating so the rotate runs on the small BGR buffer.
+  /// Output is byte-identical to the rotate→resize→cvtColor order because
+  /// `cv.rotate` 90/180/270 is a lossless permutation, `cv.resize`
+  /// (`INTER_LINEAR`) interpolates each channel independently, and the
+  /// BGRA→BGR conversion is a per-pixel alpha drop.
+  static cv.Mat _matFromCameraFrameMessage(Map message, Uint8List bytes) {
+    final int width = message['width'] as int;
+    final int height = message['height'] as int;
+    final int strideCols = message['strideCols'] as int;
+    final conversion =
+        CameraFrameConversion.values[message['conversion'] as int];
+    final int? rotationIndex = message['rotation'] as int?;
+    final int? maxDim = message['maxDim'] as int?;
+
+    int? rotateFlag() {
+      if (rotationIndex == null) return null;
+      return switch (CameraFrameRotation.values[rotationIndex]) {
+        CameraFrameRotation.cw90 => cv.ROTATE_90_CLOCKWISE,
+        CameraFrameRotation.cw180 => cv.ROTATE_180,
+        CameraFrameRotation.cw270 => cv.ROTATE_90_COUNTERCLOCKWISE,
+      };
+    }
+
+    cv.Mat maybeResize(cv.Mat m) {
+      if (maxDim == null || (m.cols <= maxDim && m.rows <= maxDim)) return m;
+      final double scale = maxDim / (m.cols > m.rows ? m.cols : m.rows);
+      final resized = cv.resize(
+        m,
+        ((m.cols * scale).toInt(), (m.rows * scale).toInt()),
+        interpolation: cv.INTER_LINEAR,
+      );
+      m.dispose();
+      return resized;
+    }
+
+    cv.Mat maybeRotate(cv.Mat m) {
+      final flag = rotateFlag();
+      if (flag == null) return m;
+      final rotated = cv.rotate(m, flag);
+      m.dispose();
+      return rotated;
+    }
+
+    switch (conversion) {
+      case CameraFrameConversion.bgra2bgr:
+      case CameraFrameConversion.rgba2bgr:
+        final bgraOrRgba =
+            cv.Mat.fromList(height, strideCols, cv.MatType.CV_8UC4, bytes);
+        // `cropped` is a view into bgraOrRgba when stride padding is present;
+        // track it so we only dispose intermediates we allocated.
+        cv.Mat current = strideCols != width
+            ? bgraOrRgba.region(cv.Rect(0, 0, width, height))
+            : bgraOrRgba;
+
+        // Resize on 4-channel BGRA (shrinks the buffer before cvtColor/rotate).
+        if (maxDim != null &&
+            (current.cols > maxDim || current.rows > maxDim)) {
+          final double scale = maxDim /
+              (current.cols > current.rows ? current.cols : current.rows);
+          final resized = cv.resize(
+            current,
+            ((current.cols * scale).toInt(), (current.rows * scale).toInt()),
+            interpolation: cv.INTER_LINEAR,
+          );
+          if (!identical(current, bgraOrRgba)) current.dispose();
+          current = resized;
+        }
+
+        // Rotate on the (now small) 4-channel buffer.
+        final flag = rotateFlag();
+        if (flag != null) {
+          final rotated = cv.rotate(current, flag);
+          if (!identical(current, bgraOrRgba)) current.dispose();
+          current = rotated;
+        }
+
+        // cvtColor last, on the smallest + upright buffer.
+        final cvtCode = conversion == CameraFrameConversion.bgra2bgr
+            ? cv.COLOR_BGRA2BGR
+            : cv.COLOR_RGBA2BGR;
+        final bgr = cv.cvtColor(current, cvtCode);
+        if (!identical(current, bgraOrRgba)) current.dispose();
+        bgraOrRgba.dispose();
+        return bgr;
+
+      case CameraFrameConversion.yuv2bgrNv12:
+      case CameraFrameConversion.yuv2bgrNv21:
+      case CameraFrameConversion.yuv2bgrI420:
+        final yuvMat = cv.Mat.fromList(
+          height + height ~/ 2,
+          width,
+          cv.MatType.CV_8UC1,
+          bytes,
+        );
+        final cvtCode = switch (conversion) {
+          CameraFrameConversion.yuv2bgrNv12 => cv.COLOR_YUV2BGR_NV12,
+          CameraFrameConversion.yuv2bgrNv21 => cv.COLOR_YUV2BGR_NV21,
+          CameraFrameConversion.yuv2bgrI420 => cv.COLOR_YUV2BGR_I420,
+          _ => cv.COLOR_YUV2BGR_NV12,
+        };
+        // cvtColor must run first — the packed YUV layout can't be resized.
+        cv.Mat current = cv.cvtColor(yuvMat, cvtCode);
+        yuvMat.dispose();
+        // Then resize → rotate so rotate runs on the small buffer.
+        current = maybeResize(current);
+        current = maybeRotate(current);
+        return current;
+    }
+  }
+
   ({Uint8List data, int width, int height, int matType}) _extractMatFields(
     cv.Mat image,
   ) =>
@@ -976,6 +1191,29 @@ class FaceDetector {
               });
             } finally {
               mat.dispose();
+            }
+
+          case 'detectCameraFrame':
+            if (core == null) {
+              mainSendPort.send({
+                'id': id,
+                'error': 'FaceDetectorCore not initialized in isolate',
+              });
+              return;
+            }
+            final Uint8List frameBytes = _extractBytes(message);
+            final mode = FaceDetectionMode.values.firstWhere(
+              (m) => m.name == message['mode'] as String,
+            );
+            final frameMat = _matFromCameraFrameMessage(message, frameBytes);
+            try {
+              final faces = await core!.detectFacesDirect(frameMat, mode: mode);
+              mainSendPort.send({
+                'id': id,
+                'result': faces.map(_faceToFastMap).toList(),
+              });
+            } finally {
+              frameMat.dispose();
             }
 
           case 'embedding':
@@ -1166,6 +1404,35 @@ class FaceDetector {
               });
             } finally {
               mat.dispose();
+            }
+
+          case 'segmentCameraFrame':
+            if (segmenter == null) {
+              mainSendPort.send({
+                'id': id,
+                'error': 'Segmentation not initialized in isolate',
+              });
+              return;
+            }
+            final Uint8List frameBytes = _extractBytes(message);
+            final int outputFormatIndex = message['outputFormat'] as int;
+            final double binaryThreshold = message['binaryThreshold'] as double;
+            final frameMat = _matFromCameraFrameMessage(message, frameBytes);
+            try {
+              final mask = await segmenter!.call(frameMat);
+              final serialized = _serializeMask(
+                mask,
+                IsolateOutputFormat.values[outputFormatIndex],
+                binaryThreshold,
+              );
+              mainSendPort.send({'id': id, 'result': serialized});
+            } on SegmentationException catch (e) {
+              mainSendPort.send({
+                'id': id,
+                'error': 'SegmentationException(${e.code}): ${e.message}',
+              });
+            } finally {
+              frameMat.dispose();
             }
 
           case 'dispose':
@@ -1399,6 +1666,7 @@ List<Point> _transformMeshToAbsolute(
   return mesh;
 }
 
+/// Test-only: exposes the internal face alignment computation for unit tests.
 @visibleForTesting
 ({double theta, double cx, double cy, double size}) testComputeFaceAlignment(
   Detection det,
@@ -1407,6 +1675,7 @@ List<Point> _transformMeshToAbsolute(
 ) =>
     _computeFaceAlignment(det, imgW, imgH);
 
+/// Test-only: exposes the internal mesh-to-absolute transform for unit tests.
 @visibleForTesting
 List<Point> testTransformMeshToAbsolute(
   List<List<double>> lmNorm,
@@ -1417,16 +1686,19 @@ List<Point> testTransformMeshToAbsolute(
 ) =>
     _transformMeshToAbsolute(lmNorm, cx, cy, size, theta);
 
+/// Test-only: returns a fresh inference-lock `run` function for unit tests.
 @visibleForTesting
 Future<T> Function<T>(Future<T> Function() fn) testCreateInferenceLockRunner() {
   final lock = _InferenceLock();
   return lock.run;
 }
 
+/// Test-only: exposes the internal iris-center computation for unit tests.
 @visibleForTesting
 Point testFindIrisCenterFromPoints(List<Point> irisPoints) =>
     _irisCenterFromPoints(irisPoints);
 
+/// Test-only: exposes the private mask-serialization logic for unit tests.
 @visibleForTesting
 Map<String, dynamic> testSerializeMask(
   SegmentationMask mask,
@@ -1435,6 +1707,7 @@ Map<String, dynamic> testSerializeMask(
 ) =>
     FaceDetector._serializeMask(mask, format, binaryThreshold);
 
+/// Test-only: exposes the private mask-deserialization logic for unit tests.
 @visibleForTesting
 SegmentationMask testDeserializeMask(Map<String, dynamic> map) =>
     FaceDetector._deserializeMask(map);

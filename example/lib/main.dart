@@ -10,7 +10,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:camera/camera.dart';
 import 'package:face_detection_tflite/face_detection_tflite.dart';
-import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:sensors_plus/sensors_plus.dart';
 
 // Shared segmentation class colors for multiclass visualization.
@@ -1413,17 +1412,25 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     );
   }
 
-  Future<({List<Face> faces, SegmentationMask? segMask})> _detectFromMat(
-      cv.Mat mat) async {
+  Future<({List<Face> faces, SegmentationMask? segMask})>
+      _detectFromCameraFrame(
+    CameraFrame frame, {
+    required int maxDim,
+  }) async {
     if ((_showSegmentation || _showVirtualBackground) &&
         _faceDetector!.isSegmentationReady) {
-      final result = await _faceDetector!
-          .detectFacesWithSegmentationFromMat(mat, mode: _detectionMode);
+      final result =
+          await _faceDetector!.detectFacesWithSegmentationFromCameraFrame(
+        frame,
+        mode: _detectionMode,
+        maxDim: maxDim,
+      );
       return (faces: result.faces, segMask: result.segmentationMask);
     } else {
-      final faces = await _faceDetector!.detectFacesFromMat(
-        mat,
+      final faces = await _faceDetector!.detectFacesFromCameraFrame(
+        frame,
         mode: _detectionMode,
+        maxDim: maxDim,
       );
       return (faces: faces, segMask: null);
     }
@@ -1844,9 +1851,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       return;
     }
 
-    _cameraController = controller;
-
     setState(() {
+      _cameraController = controller;
       if (markInitialized) _isInitialized = true;
       _sensorOrientation = controller.description.sensorOrientation;
       _isFrontCamera =
@@ -1878,9 +1884,15 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       orElse: () => _availableCameras.first,
     );
 
-    setState(() => _isSwitchingCamera = true);
+    final prev = _cameraController;
+    setState(() {
+      _isSwitchingCamera = true;
+      _cameraController = null;
+      _faces = [];
+      _imageSize = null;
+      _segmentationMask = null;
+    });
     try {
-      final prev = _cameraController;
       if (prev != null) {
         if (_isImageStreamStarted) {
           try {
@@ -1890,9 +1902,6 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         }
         await prev.dispose();
       }
-      _faces = [];
-      _imageSize = null;
-      _segmentationMask = null;
 
       await _startControllerFor(next, markInitialized: false);
     } catch (e, st) {
@@ -1919,7 +1928,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         : DeviceOrientation.landscapeLeft;
   }
 
-  int? _rotationFlagForFrame({
+  CameraFrameRotation? _rotationForFrame({
     required int width,
     required int height,
   }) {
@@ -1928,9 +1937,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
 
     // iOS: the camera plugin pre-rotates the image stream per
     // AVCaptureConnection.videoOrientation, so the historical portrait-only
-    // rotation path still applies. Landscape iOS is handled in step 3 of
-    // the rotation plan (pending empirical verification on device via the
-    // one-shot probe logged from _processCameraImage).
+    // rotation path still applies.
     if (Platform.isIOS) {
       final DeviceOrientation orientation =
           _effectiveDeviceOrientation(context);
@@ -1938,17 +1945,12 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
           orientation == DeviceOrientation.portraitDown;
       if (!isPortrait) return null;
       if (height >= width) return null;
-      if (sensor == 90) return cv.ROTATE_90_CLOCKWISE;
-      if (sensor == 270) return cv.ROTATE_90_COUNTERCLOCKWISE;
+      if (sensor == 90) return CameraFrameRotation.cw90;
+      if (sensor == 270) return CameraFrameRotation.cw270;
       return null;
     }
 
     // Android: combined formula covering all four device orientations.
-    // `sensorOrientation` is the clockwise rotation needed to display the
-    // raw sensor buffer upright in the device's natural orientation;
-    // `deviceRotation` is how far the device is rotated clockwise from
-    // natural (portraitUp=0, landscapeLeft=90, portraitDown=180,
-    // landscapeRight=270; per Flutter's DeviceOrientation enum).
     if (Platform.isAndroid) {
       final DeviceOrientation d = _effectiveDeviceOrientation(context);
       final int deviceRotation = switch (d) {
@@ -1963,15 +1965,40 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
           : (sensor - deviceRotation + 360) % 360;
 
       return switch (total) {
-        90 => cv.ROTATE_90_CLOCKWISE,
-        180 => cv.ROTATE_180,
-        270 => cv.ROTATE_90_COUNTERCLOCKWISE,
+        90 => CameraFrameRotation.cw90,
+        180 => CameraFrameRotation.cw180,
+        270 => CameraFrameRotation.cw270,
         _ => null,
       };
     }
 
     // Desktop / web: camera_desktop delivers already-upright frames.
     return null;
+  }
+
+  /// Computes the final detection-image size (post-rotate, post-downscale)
+  /// used by the overlay painter. Deterministic from the same inputs the
+  /// detection isolate receives, so no round-trip is needed.
+  Size _detectionSize({
+    required int width,
+    required int height,
+    required CameraFrameRotation? rotation,
+    required int maxDim,
+  }) {
+    int w = width;
+    int h = height;
+    if (rotation == CameraFrameRotation.cw90 ||
+        rotation == CameraFrameRotation.cw270) {
+      final int t = w;
+      w = h;
+      h = t;
+    }
+    if (w > maxDim || h > maxDim) {
+      final double scale = maxDim / (w > h ? w : h);
+      w = (w * scale).toInt();
+      h = (h * scale).toInt();
+    }
+    return Size(w.toDouble(), h.toDouble());
   }
 
   Future<void> _processCameraImage(CameraImage image) async {
@@ -1996,34 +2023,41 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     try {
       final startTime = DateTime.now();
 
-      // Convert CameraImage to cv.Mat for OpenCV-accelerated processing
-      cv.Mat? mat = await _convertCameraImageToMat(image);
+      // All OpenCV work (YUV→BGR, rotate, downscale) happens in the detection
+      // isolate. The UI thread just packs plane metadata.
+      final rotation =
+          _rotationForFrame(width: image.width, height: image.height);
+      final frame = prepareCameraFrame(
+        width: image.width,
+        height: image.height,
+        planes: [
+          for (final p in image.planes)
+            (
+              bytes: p.bytes,
+              rowStride: p.bytesPerRow,
+              pixelStride: p.bytesPerPixel ?? 1,
+            ),
+        ],
+        rotation: rotation,
+        isBgra: Platform.isMacOS,
+      );
 
-      if (mat == null || _faceDetector == null) {
+      if (frame == null || _faceDetector == null) {
         _isProcessing = false;
         return;
       }
 
-      // Downscale for performance, the detection model internally resizes
-      // to 128–256px, so full-res frames just waste IPC bandwidth.
+      // Detection model internally resizes to 128–256px, so full-res frames
+      // just waste IPC bandwidth.
       const int maxDim = 640;
-      if (mat.cols > maxDim || mat.rows > maxDim) {
-        final double scale =
-            maxDim / (mat.cols > mat.rows ? mat.cols : mat.rows);
-        final cv.Mat resized = cv.resize(
-          mat,
-          ((mat.cols * scale).toInt(), (mat.rows * scale).toInt()),
-          interpolation: cv.INTER_LINEAR,
-        );
-        mat.dispose();
-        mat = resized;
-      }
+      final Size detectionSize = _detectionSize(
+        width: image.width,
+        height: image.height,
+        rotation: rotation,
+        maxDim: maxDim,
+      );
 
-      // Track detection image size for overlay coordinate mapping.
-      final Size detectionSize = Size(mat.cols.toDouble(), mat.rows.toDouble());
-
-      final result = await _detectFromMat(mat);
-      mat.dispose();
+      final result = await _detectFromCameraFrame(frame, maxDim: maxDim);
       final faces = result.faces;
       final segMask = result.segMask;
 
@@ -2042,112 +2076,6 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       // Silently handle errors during processing
     } finally {
       _isProcessing = false;
-    }
-  }
-
-  /// Converts CameraImage to cv.Mat (BGR) for OpenCV processing.
-  ///
-  /// Handles multiple pixel formats:
-  /// - iOS NV12 (2 planes): YUV420 with interleaved UV
-  /// - Android I420 (3 planes): YUV420 with separate U/V planes
-  /// - Desktop BGRA/RGBA (1 plane): camera_desktop provides packed 4-channel
-  ///   (macOS = BGRA byte order, Linux = RGBA byte order)
-  Future<cv.Mat?> _convertCameraImageToMat(CameraImage image) async {
-    try {
-      final int width = image.width;
-      final int height = image.height;
-
-      // Desktop: camera_desktop provides single-plane 4-channel packed format
-      if (image.planes.length == 1 &&
-          (image.planes[0].bytesPerPixel ?? 1) >= 4) {
-        final bytes = image.planes[0].bytes;
-        final stride = image.planes[0].bytesPerRow;
-
-        // Create a 4-channel Mat directly from camera bytes (handles stride)
-        final matCols = stride ~/ 4;
-        final bgraOrRgba =
-            cv.Mat.fromList(height, matCols, cv.MatType.CV_8UC4, bytes);
-        // Crop out stride padding if present
-        final cropped = matCols != width
-            ? bgraOrRgba.region(cv.Rect(0, 0, width, height))
-            : bgraOrRgba;
-
-        // Native SIMD-accelerated color conversion
-        final colorCode =
-            Platform.isMacOS ? cv.COLOR_BGRA2BGR : cv.COLOR_RGBA2BGR;
-        cv.Mat mat = cv.cvtColor(cropped, colorCode);
-
-        if (!identical(cropped, bgraOrRgba)) cropped.dispose();
-        bgraOrRgba.dispose();
-
-        final rotationFlag =
-            _rotationFlagForFrame(width: width, height: height);
-        if (rotationFlag != null) {
-          final rotated = cv.rotate(mat, rotationFlag);
-          mat.dispose();
-          return rotated;
-        }
-        return mat;
-      }
-
-      // Mobile: YUV420. Pack Y+UV into a contiguous buffer via flutter_litert's
-      // shared `packYuv420`, then hand to OpenCV for native cvtColor. The Dart
-      // per-pixel loop this replaced was ~500ms/frame on Android; cvtColor
-      // runs in single-digit ms.
-      final p0 = image.planes[0];
-      final p1 = image.planes.length > 1 ? image.planes[1] : null;
-      final p2 = image.planes.length > 2 ? image.planes[2] : null;
-      if (p1 == null) return null;
-
-      final packed = packYuv420(
-        width: width,
-        height: height,
-        y: (
-          bytes: p0.bytes,
-          rowStride: p0.bytesPerRow,
-          pixelStride: p0.bytesPerPixel ?? 1,
-        ),
-        u: (
-          bytes: p1.bytes,
-          rowStride: p1.bytesPerRow,
-          pixelStride: p1.bytesPerPixel ?? 1,
-        ),
-        v: p2 == null
-            ? null
-            : (
-                bytes: p2.bytes,
-                rowStride: p2.bytesPerRow,
-                pixelStride: p2.bytesPerPixel ?? 1,
-              ),
-      );
-      if (packed == null) return null;
-
-      final int cvtCode = switch (packed.layout) {
-        YuvLayout.nv12 => cv.COLOR_YUV2BGR_NV12,
-        YuvLayout.nv21 => cv.COLOR_YUV2BGR_NV21,
-        YuvLayout.i420 => cv.COLOR_YUV2BGR_I420,
-      };
-      final cv.Mat yuvMat = cv.Mat.fromList(
-        packed.height + packed.height ~/ 2,
-        packed.width,
-        cv.MatType.CV_8UC1,
-        packed.bytes,
-      );
-      cv.Mat mat = cv.cvtColor(yuvMat, cvtCode);
-      yuvMat.dispose();
-
-      // Rotate image for portrait mode so face detector sees upright faces.
-      final rotationFlag = _rotationFlagForFrame(width: width, height: height);
-      if (rotationFlag != null) {
-        final rotated = cv.rotate(mat, rotationFlag);
-        mat.dispose();
-        return rotated;
-      }
-
-      return mat;
-    } catch (e, st) {
-      debugPrint('_convertCameraImageToMat error: $e\n$st');
-      return null;
     }
   }
 

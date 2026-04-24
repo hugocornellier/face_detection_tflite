@@ -21,12 +21,7 @@ class FaceDetection with _TfliteModelDisposable {
   late final int _inputIdx;
   late final List<int> _boxesShape;
   late final List<int> _scoresShape;
-  late final Tensor _inputTensor;
-  late final Tensor _boxesTensor;
-  late final Tensor _scoresTensor;
-  late final Float32List _inputBuf;
-  late final Float32List _boxesBuf;
-  late final Float32List _scoresBuf;
+  late final TensorFloat32Views _views;
   late final List<List<List<List<double>>>> _input4dCache;
   late final List<List<List<double>>> _boxesOutCache;
   late final Object _scoresOutCache;
@@ -167,12 +162,7 @@ class FaceDetection with _TfliteModelDisposable {
 
     _boxesShape = _itp.getOutputTensor(_boundingBoxIndex).shape;
     _scoresShape = _itp.getOutputTensor(_scoreIndex).shape;
-    _inputTensor = _itp.getInputTensor(_inputIdx);
-    _boxesTensor = _itp.getOutputTensor(_boundingBoxIndex);
-    _scoresTensor = _itp.getOutputTensor(_scoreIndex);
-    _inputBuf = _inputTensor.data.buffer.asFloat32List();
-    _boxesBuf = _boxesTensor.data.buffer.asFloat32List();
-    _scoresBuf = _scoresTensor.data.buffer.asFloat32List();
+    _views = TensorFloat32Views.capture(_itp);
 
     _input4dCache = createNHWCTensor4D(_inH, _inW);
 
@@ -250,10 +240,10 @@ class FaceDetection with _TfliteModelDisposable {
       boxesBuf = outBoxes;
       scoresBuf = outScores;
     } else {
-      _inputBuf.setAll(0, pack.tensorNHWC);
+      _views.inputs[_inputIdx].setAll(0, pack.tensorNHWC);
       _itp.invoke();
-      boxesBuf = _boxesBuf;
-      scoresBuf = _scoresBuf;
+      boxesBuf = _views.outputs[_boundingBoxIndex];
+      scoresBuf = _views.outputs[_scoreIndex];
     }
 
     final (:candidateIndices, :candidateScores) =

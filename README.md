@@ -49,11 +49,11 @@ Future main() async {
     final eyes = face.eyes;
   }
 
-  await detector.dispose();
+  await fd.dispose();
 }
 ```
 
-Already have bytes (from `camera`, network, etc.)? Use `detectFaces(imageBytes)` instead. For a pre-decoded `cv.Mat`, use `detectFacesFromMat(mat)`.
+Already have bytes (from the network etc.)? Use `detectFaces(imageBytes)`. For live camera streams, use `prepareCameraFrame` + `detectFacesFromCameraFrame` (keeps all OpenCV work off the UI thread — see below). For a pre-decoded `cv.Mat`, use `detectFacesFromMat(mat)`.
 
 ## Models
 
@@ -273,7 +273,7 @@ This package supports three detection modes that determine which facial features
 | **Standard** | Bounding boxes, landmarks, 468-point mesh | ~60ms               |
 | **Fast** | Bounding boxes, landmarks | ~30ms               |
 
-*Est. times per faces are based on 640x480 resolution on modern hardware. Performance scales with image size and number of faces.
+*Est. times per face are based on 640x480 resolution on modern hardware. Performance scales with image size and number of faces.
 
 ### Code Examples
 
@@ -285,15 +285,15 @@ The Face Detection Mode can be set using the `mode` parameter. Defaults to FaceD
 // iris-refined coordinates, providing significantly more accurate eye positions
 // compared to the raw detection keypoints used in fast/standard modes.
 // use full mode when precise eye tracking (iris center, contour, eyelid shape) is required.
-await faceDetector.detectFaces(bytes, mode: FaceDetectionMode.full);
+await fd.detectFaces(bytes, mode: FaceDetectionMode.full);
 
 // Standard mode: bounding boxes, 6 basic landmarks + mesh. inference time
 // is faster than full mode, but slower than fast mode.
-await faceDetector.detectFaces(bytes, mode: FaceDetectionMode.standard);
+await fd.detectFaces(bytes, mode: FaceDetectionMode.standard);
 
 // Fast mode: bounding boxes + 6 basic landmarks only. fastest inference
 // time of the three modes.
-await faceDetector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+await fd.detectFaces(bytes, mode: FaceDetectionMode.fast);
 ```
 
 Try the [sample code](https://pub.dev/packages/face_detection_tflite/example) from the pub.dev example tab to easily compare
@@ -339,11 +339,10 @@ FaceDetectionModel.fullSparse    // same quality as full, ~30% faster on CPU
 
 <img src="assets/screenshots/livecamera_ex1.gif" width="600" alt="Live Camera Detection">
 
-For real-time face detection with a camera feed, pass a `Mat` directly to `detectFacesFromMat()` to avoid repeated JPEG encode/decode overhead. Use the re-exported `packYuv420` helper to pack YUV420 frames from `camera`'s `CameraImage` (NV12 on iOS, NV21 or I420 on Android) into a contiguous buffer, then let OpenCV run the colour conversion natively. All detection inference runs automatically in a background isolate, so the UI thread is never blocked.
+For real-time face detection with a camera feed, use `prepareCameraFrame` + `detectFacesFromCameraFrame`. The helper auto-detects YUV420 (NV12 / NV21 / I420) and desktop BGRA/RGBA layouts; the `cvtColor`, optional `rotate`, and `maxDim` downscale all run inside the detector's existing isolate, so the UI thread is never blocked by OpenCV work.
 
 ```dart
 import 'package:camera/camera.dart';
-import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:face_detection_tflite/face_detection_tflite.dart';
 
 final detector = await FaceDetector.create(model: FaceDetectionModel.frontCamera);
@@ -358,50 +357,33 @@ final camera = CameraController(
 await camera.initialize();
 
 camera.startImageStream((CameraImage image) async {
-  // Pack the YUV planes into a contiguous buffer (auto-detects NV12 / NV21 / I420).
-  final p0 = image.planes[0];
-  final p1 = image.planes[1];
-  final p2 = image.planes.length > 2 ? image.planes[2] : null;
-  final packed = packYuv420(
+  final frame = prepareCameraFrame(
     width: image.width,
     height: image.height,
-    y: (bytes: p0.bytes, rowStride: p0.bytesPerRow, pixelStride: p0.bytesPerPixel ?? 1),
-    u: (bytes: p1.bytes, rowStride: p1.bytesPerRow, pixelStride: p1.bytesPerPixel ?? 1),
-    v: p2 == null
-        ? null
-        : (bytes: p2.bytes, rowStride: p2.bytesPerRow, pixelStride: p2.bytesPerPixel ?? 1),
+    planes: [
+      for (final p in image.planes)
+        (bytes: p.bytes, rowStride: p.bytesPerRow,
+         pixelStride: p.bytesPerPixel ?? 1),
+    ],
+    // rotation: CameraFrameRotation.cw90, // optional, based on device orientation
   );
-  if (packed == null) return;
+  if (frame == null) return;
 
-  // Hand the packed buffer to OpenCV for native YUV -> BGR conversion.
-  final cvtCode = switch (packed.layout) {
-    YuvLayout.nv12 => cv.COLOR_YUV2BGR_NV12,
-    YuvLayout.nv21 => cv.COLOR_YUV2BGR_NV21,
-    YuvLayout.i420 => cv.COLOR_YUV2BGR_I420,
-  };
-  final yuvMat = cv.Mat.fromList(
-    packed.height + packed.height ~/ 2,
-    packed.width,
-    cv.MatType.CV_8UC1,
-    packed.bytes,
+  final faces = await detector.detectFacesFromCameraFrame(
+    frame,
+    mode: FaceDetectionMode.fast,
+    maxDim: 640, // optional in-isolate downscale before inference
   );
-  final Mat bgr = cv.cvtColor(yuvMat, cvtCode);
-  yuvMat.dispose();
-
-  // Detect faces using Mat for maximum performance.
-  final faces = await detector.detectFacesFromMat(bgr, mode: FaceDetectionMode.fast);
-  bgr.dispose();
-
   // Process faces...
 });
 ```
 
 **Tips for camera detection:**
-- Pass a `Mat` directly to `detectFacesFromMat()` to bypass JPEG encoding/decoding
-- Use `packYuv420` to convert YUV420 frames in a single native `cv.cvtColor` call (much faster than a per-pixel Dart loop)
-- Always call `mat.dispose()` after detection
-- Use `FaceDetectionMode.fast` for real-time performance
-- On Android, rotate the resulting Mat to match `sensorOrientation` before detection, and mirror the overlay on the front camera to match `CameraPreview`'s auto-mirrored texture
+- `prepareCameraFrame` replaces the old `packYuv420` + manual `cv.cvtColor` + `cv.rotate` dance in one call; no `cv.Mat` on the UI thread.
+- Pass `rotation:` so the detector sees upright frames (Android back/front + device orientation logic); on iOS the camera plugin pre-rotates so this is often null.
+- Pass `maxDim:` (e.g. 640) to downscale in-isolate; the detection model internally resizes to 128–256px, so full-res frames just waste IPC bandwidth.
+- Use `FaceDetectionMode.fast` for real-time performance.
+- Mirror the overlay on the front camera to match `CameraPreview`'s auto-mirrored texture.
 
 See the full [example app](https://pub.dev/packages/face_detection_tflite/example) for a production implementation including orientation handling, mirror handling, and frame throttling.
 
@@ -616,9 +598,10 @@ Future<void> processFrame(Mat frame) async {
 ```
 
 **When to use `Mat` input:**
-- Live camera streams where frames are already in memory
-- When you need to preprocess images with OpenCV before detection
-- Maximum throughput scenarios (avoids JPEG encode/decode overhead)
+- You already have a decoded `cv.Mat` from another OpenCV pipeline
+- You need to preprocess images with OpenCV before detection
+
+For live camera streams, prefer `prepareCameraFrame` + `detectFacesFromCameraFrame` — it keeps all `cvtColor` / `rotate` / downscale work inside the detection isolate rather than on the UI thread.
 
 **For all other cases**, pass image bytes (`Uint8List`) to `detectFaces()`.
 

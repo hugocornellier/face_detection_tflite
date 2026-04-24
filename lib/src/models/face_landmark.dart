@@ -12,10 +12,7 @@ class FaceLandmark with _TfliteModelDisposable {
   final Interpreter _itp;
   final int _inW, _inH;
   late final int _bestIdx;
-  late final Tensor _inputTensor;
-  late final Tensor _bestTensor;
-  late final Float32List _inputBuf;
-  late final Float32List _bestOutBuf;
+  late final TensorFloat32Views _views;
   late final Float32List _scratchBuf;
   late final List<List<int>> _outShapes;
   late final List<List<List<List<double>>>> _input4dCache;
@@ -105,7 +102,6 @@ class FaceLandmark with _TfliteModelDisposable {
   /// `_itp.invoke()` instead of spawning a nested isolate. This should be
   /// used when the model is already running inside a background isolate.
   Future<void> _initializeTensors({bool useIsolateInterpreter = true}) async {
-    _inputTensor = _itp.getInputTensor(0);
     int numElements(List<int> s) => s.fold(1, (a, b) => a * b);
 
     final Map<int, OutputTensorInfo> outputInfo = collectOutputTensorInfo(_itp);
@@ -123,9 +119,7 @@ class FaceLandmark with _TfliteModelDisposable {
       }
     }
     _bestIdx = bestIdx;
-    _bestTensor = _itp.getOutputTensor(_bestIdx);
-    _inputBuf = _inputTensor.data.buffer.asFloat32List();
-    _bestOutBuf = _bestTensor.data.buffer.asFloat32List();
+    _views = TensorFloat32Views.capture(_itp);
     _scratchBuf = Float32List(_inH * _inW * 3);
 
     final int maxIndex =
@@ -181,10 +175,10 @@ class FaceLandmark with _TfliteModelDisposable {
     );
 
     if (_iso == null) {
-      _inputBuf.setAll(0, pack.tensorNHWC);
+      _views.inputs[0].setAll(0, pack.tensorNHWC);
       _itp.invoke();
       return _unpackLandmarks(
-        _bestOutBuf,
+        _views.outputs[_bestIdx],
         _inW,
         _inH,
         pack.padding,

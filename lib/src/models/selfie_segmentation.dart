@@ -28,6 +28,8 @@ int _expectedOutputChannels(SegmentationModel model) => switch (model) {
 /// Segmentation class indices in the multiclass model output.
 /// The model outputs 6 channels representing probabilities for each class.
 class SegmentationClass {
+  SegmentationClass._();
+
   /// Background (not a person).
   static const int background = 0;
 
@@ -641,6 +643,7 @@ class SelfieSegmentation with _TfliteModelDisposable {
   Future<void> disposeAsync() => _doDisposeAsync();
 }
 
+/// Test-only: exposes the private class-probability computation for unit tests.
 @visibleForTesting
 Float32List testComputeClassProbabilities(
   Float32List rawOutput,
@@ -649,15 +652,19 @@ Float32List testComputeClassProbabilities(
 ) =>
     SelfieSegmentation._computeClassProbabilities(rawOutput, width, height);
 
+/// Test-only: exposes the private model-file mapping for unit tests.
 @visibleForTesting
 String testModelFileFor(SegmentationModel model) => _modelFileFor(model);
 
+/// Test-only: exposes the private input-width for unit tests.
 @visibleForTesting
 int testInputWidthFor(SegmentationModel model) => _segmentationInputWidth;
 
+/// Test-only: exposes the private input-height mapping for unit tests.
 @visibleForTesting
 int testInputHeightFor(SegmentationModel model) => _inputHeightFor(model);
 
+/// Test-only: exposes the private expected-output-channel mapping for unit tests.
 @visibleForTesting
 int testExpectedOutputChannels(SegmentationModel model) =>
     _expectedOutputChannels(model);

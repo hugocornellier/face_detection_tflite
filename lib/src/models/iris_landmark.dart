@@ -34,11 +34,9 @@ class IrisLandmark with _TfliteModelDisposable {
   @override
   final Interpreter _itp;
   final int _inW, _inH;
-  late final Tensor _inputTensor;
-  late final Float32List _inputBuf;
+  late final TensorFloat32Views _views;
   late final Float32List _scratchBuf;
   late final Map<int, List<int>> _outShapes;
-  late final Map<int, Float32List> _outBuffers;
   late final List<List<List<List<double>>>> _input4dCache;
   late final Map<int, Object> _outputsCache;
 
@@ -113,16 +111,12 @@ class IrisLandmark with _TfliteModelDisposable {
   /// `_itp.invoke()` instead of spawning a nested isolate. This should be
   /// used when the model is already running inside a background isolate.
   Future<void> _initializeTensors({bool useIsolateInterpreter = true}) async {
-    _inputTensor = _itp.getInputTensor(0);
-    _inputBuf = _inputTensor.data.buffer.asFloat32List();
+    _views = TensorFloat32Views.capture(_itp);
     _scratchBuf = Float32List(_inH * _inW * 3);
 
     final Map<int, OutputTensorInfo> outputInfo = collectOutputTensorInfo(_itp);
     _outShapes = outputInfo.map(
       (int k, OutputTensorInfo v) => MapEntry(k, v.shape),
-    );
-    _outBuffers = outputInfo.map(
-      (int k, OutputTensorInfo v) => MapEntry(k, v.buffer),
     );
     _input4dCache = createNHWCTensor4D(_inH, _inW);
 
@@ -311,11 +305,11 @@ class IrisLandmark with _TfliteModelDisposable {
   /// Runs inference on pre-computed tensor and unpacks all landmarks.
   Future<List<List<double>>> _inferAndUnpack(ImageTensor pack) async {
     if (_iso == null) {
-      _inputBuf.setAll(0, pack.tensorNHWC);
+      _views.inputs[0].setAll(0, pack.tensorNHWC);
       _itp.invoke();
 
       final List<List<double>> lm = <List<double>>[];
-      for (final Float32List flat in _outBuffers.values) {
+      for (final Float32List flat in _views.outputs) {
         lm.addAll(
           _unpackLandmarks(flat, _inW, _inH, pack.padding, clamp: false),
         );
@@ -347,6 +341,7 @@ class IrisLandmark with _TfliteModelDisposable {
   void dispose() => _doDispose();
 }
 
+/// Test-only: exposes the private iris-to-absolute transform for unit tests.
 @visibleForTesting
 List<List<double>> testTransformIrisToAbsolute(
   List<List<double>> lmNorm,

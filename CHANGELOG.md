@@ -1,3 +1,7 @@
+## 6.1.1
+
+* Update flutter_litert to 2.2.1
+
 ## 6.1.0
 
 * Re-export `packYuv420`, `YuvPlane`, `YuvLayout`, and `PackedYuv` from `flutter_litert` so live-camera consumers can reach the helper through the `face_detection_tflite` barrel without a direct `flutter_litert` import.

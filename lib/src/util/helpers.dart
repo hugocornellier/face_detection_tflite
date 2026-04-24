@@ -254,10 +254,12 @@ RectF faceDetectionToRoi(RectF boundingBox, {double expandFraction = 0.6}) {
 @visibleForTesting
 double testClip(double v, double lo, double hi) => clip(v, lo, hi);
 
+/// Test-only: exposes [sigmoidClipped] for unit tests.
 @visibleForTesting
 double testSigmoidClipped(double x, {double limit = _rawScoreLimit}) =>
     sigmoidClipped(x, limit: limit);
 
+/// Test-only: exposes the private letterbox-removal logic for unit tests.
 @visibleForTesting
 List<Detection> testDetectionLetterboxRemoval(
   List<Detection> dets,
@@ -265,6 +267,7 @@ List<Detection> testDetectionLetterboxRemoval(
 ) =>
     _detectionLetterboxRemoval(dets, padding);
 
+/// Test-only: exposes the private landmark-unpacking logic for unit tests.
 @visibleForTesting
 List<List<double>> testUnpackLandmarks(
   Float32List flat,
@@ -275,6 +278,7 @@ List<List<double>> testUnpackLandmarks(
 }) =>
     _unpackLandmarks(flat, inW, inH, padding, clamp: clamp);
 
+/// Test-only: exposes the private weighted-NMS logic for unit tests.
 @visibleForTesting
 List<Detection> testNms(
   List<Detection> dets,
@@ -283,6 +287,7 @@ List<Detection> testNms(
 ) =>
     _weightedNmsDetections(dets, iouThresh, scoreThresh);
 
+/// Test-only: flattens generated SSD anchors into a `Float32List` for unit tests.
 @visibleForTesting
 Float32List testSsdGenerateAnchors(SSDAnchorOptions opts) {
   final anchors = generateAnchors(opts);
@@ -294,9 +299,11 @@ Float32List testSsdGenerateAnchors(SSDAnchorOptions opts) {
   return result;
 }
 
+/// Test-only: exposes the private model-to-[SSDAnchorOptions] mapping for unit tests.
 @visibleForTesting
 SSDAnchorOptions testOptsFor(FaceDetectionModel m) => _optsFor(m);
 
+/// Test-only: exposes the private model-name mapping for unit tests.
 @visibleForTesting
 String testNameFor(FaceDetectionModel m) => _nameFor(m);
 
