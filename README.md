@@ -53,7 +53,7 @@ Future main() async {
 }
 ```
 
-Already have bytes (from the network etc.)? Use `detectFaces(imageBytes)`. For live camera streams, use `prepareCameraFrame` + `detectFacesFromCameraFrame` (keeps all OpenCV work off the UI thread — see below). For a pre-decoded `cv.Mat`, use `detectFacesFromMat(mat)`.
+Already have bytes (from the network etc.)? Use `detectFaces(imageBytes)`. For live camera streams, use `detectFacesFromCameraImage(...)` (keeps all OpenCV work off the UI thread, see below). For a pre-decoded `cv.Mat`, use `detectFacesFromMat(mat)`.
 
 ## Models
 
@@ -339,7 +339,7 @@ FaceDetectionModel.fullSparse    // same quality as full, ~30% faster on CPU
 
 <img src="assets/screenshots/livecamera_ex1.gif" width="600" alt="Live Camera Detection">
 
-For real-time face detection with a camera feed, use `prepareCameraFrame` + `detectFacesFromCameraFrame`. The helper auto-detects YUV420 (NV12 / NV21 / I420) and desktop BGRA/RGBA layouts; the `cvtColor`, optional `rotate`, and `maxDim` downscale all run inside the detector's existing isolate, so the UI thread is never blocked by OpenCV work.
+For real-time face detection with a camera feed, use `detectFacesFromCameraImage`. It auto-detects YUV420 (NV12 / NV21 / I420) and desktop BGRA/RGBA layouts, and the `cvtColor`, optional `rotate`, and `maxDim` downscale all run inside the detector's existing isolate: the UI thread is never blocked by OpenCV work.
 
 ```dart
 import 'package:camera/camera.dart';
@@ -357,20 +357,9 @@ final camera = CameraController(
 await camera.initialize();
 
 camera.startImageStream((CameraImage image) async {
-  final frame = prepareCameraFrame(
-    width: image.width,
-    height: image.height,
-    planes: [
-      for (final p in image.planes)
-        (bytes: p.bytes, rowStride: p.bytesPerRow,
-         pixelStride: p.bytesPerPixel ?? 1),
-    ],
-    // rotation: CameraFrameRotation.cw90, // optional, based on device orientation
-  );
-  if (frame == null) return;
-
-  final faces = await detector.detectFacesFromCameraFrame(
-    frame,
+  final faces = await detector.detectFacesFromCameraImage(
+    image,
+    // rotation: CameraFrameRotation.cw90, // based on device orientation
     mode: FaceDetectionMode.fast,
     maxDim: 640, // optional in-isolate downscale before inference
   );
@@ -379,11 +368,12 @@ camera.startImageStream((CameraImage image) async {
 ```
 
 **Tips for camera detection:**
-- `prepareCameraFrame` replaces the old `packYuv420` + manual `cv.cvtColor` + `cv.rotate` dance in one call; no `cv.Mat` on the UI thread.
+- `detectFacesFromCameraImage` replaces the old `packYuv420` + manual `cv.cvtColor` + `cv.rotate` dance in one call; no `cv.Mat` on the UI thread.
 - Pass `rotation:` so the detector sees upright frames (Android back/front + device orientation logic); on iOS the camera plugin pre-rotates so this is often null.
 - Pass `maxDim:` (e.g. 640) to downscale in-isolate; the detection model internally resizes to 128–256px, so full-res frames just waste IPC bandwidth.
 - Use `FaceDetectionMode.fast` for real-time performance.
 - Mirror the overlay on the front camera to match `CameraPreview`'s auto-mirrored texture.
+- For segmentation or advanced reuse, the underlying two-step API is `prepareCameraFrame(...)` + `detectFacesFromCameraFrame(...)` (or the `...WithSegmentationFromCameraFrame` variant).
 
 See the full [example app](https://pub.dev/packages/face_detection_tflite/example) for a production implementation including orientation handling, mirror handling, and frame throttling.
 
@@ -601,7 +591,7 @@ Future<void> processFrame(Mat frame) async {
 - You already have a decoded `cv.Mat` from another OpenCV pipeline
 - You need to preprocess images with OpenCV before detection
 
-For live camera streams, prefer `prepareCameraFrame` + `detectFacesFromCameraFrame` — it keeps all `cvtColor` / `rotate` / downscale work inside the detection isolate rather than on the UI thread.
+For live camera streams, prefer `detectFacesFromCameraImage(...)`: it keeps all `cvtColor` / `rotate` / downscale work inside the detection isolate rather than on the UI thread.
 
 **For all other cases**, pass image bytes (`Uint8List`) to `detectFaces()`.
 

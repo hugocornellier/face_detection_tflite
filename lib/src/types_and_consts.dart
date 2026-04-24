@@ -1344,7 +1344,19 @@ class Face {
     required List<Point> irises,
     required this.originalSize,
   })  : _detection = detection,
-        irisPoints = irises;
+        irisPoints = irises,
+        boundingBox = _computeBoundingBox(detection.boundingBox, originalSize);
+
+  static BoundingBox _computeBoundingBox(RectF r, Size originalSize) {
+    final double w = originalSize.width.toDouble();
+    final double h = originalSize.height.toDouble();
+    return BoundingBox(
+      topLeft: Point(r.xmin * w, r.ymin * h),
+      topRight: Point(r.xmax * w, r.ymin * h),
+      bottomRight: Point(r.xmax * w, r.ymax * h),
+      bottomLeft: Point(r.xmin * w, r.ymax * h),
+    );
+  }
 
   /// Parses raw iris and eye contour points into a structured Eye object.
   ///
@@ -1455,17 +1467,7 @@ class Face {
   /// print('Face at (${boundingBox.center.x}, ${boundingBox.center.y})');
   /// print('Size: ${boundingBox.width} x ${boundingBox.height}');
   /// ```
-  BoundingBox get boundingBox {
-    final RectF r = _detection.boundingBox;
-    final double w = originalSize.width.toDouble();
-    final double h = originalSize.height.toDouble();
-    return BoundingBox(
-      topLeft: Point(r.xmin * w, r.ymin * h),
-      topRight: Point(r.xmax * w, r.ymin * h),
-      bottomRight: Point(r.xmax * w, r.ymax * h),
-      bottomLeft: Point(r.xmin * w, r.ymax * h),
-    );
-  }
+  final BoundingBox boundingBox;
 
   /// Facial landmark positions in pixel coordinates.
   ///

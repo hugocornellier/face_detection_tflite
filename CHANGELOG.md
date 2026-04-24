@@ -1,3 +1,11 @@
+## 6.2.1
+
+* Update documentation
+
+## 6.2.0
+
+* Update flutter_litert to 2.4.0
+
 ## 6.1.1
 
 * Update flutter_litert to 2.2.1

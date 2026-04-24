@@ -391,6 +391,37 @@ class FaceDetector {
     return _deserializeFacesFast(result);
   }
 
+  /// One-call wrapper for live camera streams: takes a `CameraImage`-shaped
+  /// object directly (any object exposing `width`, `height`, and `planes` with
+  /// `bytes` / `bytesPerRow` / `bytesPerPixel`) and runs YUV packing, colour
+  /// conversion, rotation, and downscale in the detection isolate — all off
+  /// the UI thread.
+  ///
+  /// Returns an empty list (not an error) when the plane shape can't be
+  /// decoded. Throws at runtime if [cameraImage] doesn't expose the expected
+  /// shape.
+  ///
+  /// [isBgra] selects BGRA (macOS, default) vs. RGBA (Linux) for the desktop
+  /// single-plane path; ignored for YUV input.
+  ///
+  /// Throws [StateError] if [initialize] has not been called successfully.
+  Future<List<Face>> detectFacesFromCameraImage(
+    Object cameraImage, {
+    FaceDetectionMode mode = FaceDetectionMode.full,
+    CameraFrameRotation? rotation,
+    bool isBgra = true,
+    int? maxDim,
+  }) async {
+    _requireReady();
+    final frame = prepareCameraFrameFromImage(
+      cameraImage,
+      rotation: rotation,
+      isBgra: isBgra,
+    );
+    if (frame == null) return const <Face>[];
+    return detectFacesFromCameraFrame(frame, mode: mode, maxDim: maxDim);
+  }
+
   /// Generates a face embedding (identity vector) for a detected face.
   ///
   /// The [face] parameter should be a face detection result from [detectFaces].

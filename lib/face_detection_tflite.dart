@@ -7,8 +7,9 @@ import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:io';
+import 'dart:ui' as ui;
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:meta/meta.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:flutter_litert/flutter_litert.dart';
 
@@ -39,7 +40,16 @@ export 'package:flutter_litert/flutter_litert.dart'
         CameraFrame,
         CameraFrameConversion,
         CameraFrameRotation,
-        prepareCameraFrame;
+        prepareCameraFrame,
+        prepareCameraFrameFromImage,
+        rotationForFrame,
+        detectionSize,
+        coverFitScaleOffset,
+        barQuarterTurns,
+        FpsCounter,
+        drawLandmarkMarker,
+        drawSkeletonConnections,
+        drawBoundingBoxOutline;
 
 export 'package:opencv_dart/opencv_dart.dart' show Mat, imdecode, IMREAD_COLOR;
 
@@ -53,3 +63,4 @@ part 'src/models/iris_landmark.dart';
 part 'src/models/face_embedding.dart';
 part 'src/models/selfie_segmentation.dart';
 part 'src/isolate/segmentation_worker.dart';
+part 'src/ui/overlay_painters.dart';
