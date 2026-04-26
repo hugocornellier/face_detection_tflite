@@ -1,3 +1,7 @@
+## 6.2.2
+
+* Simplify and DRY example app, extract utility helpers
+
 ## 6.2.1
 
 * Update documentation

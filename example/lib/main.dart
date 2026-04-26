@@ -11,18 +11,6 @@ import 'package:camera/camera.dart';
 import 'package:face_detection_tflite/face_detection_tflite.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 
-/// Per-class colors for multiclass segmentation overlay, aligned with the
-/// class indices in `kSegmentationClassLabels` (0=BG, 1=Hair, 2=Body,
-/// 3=Face, 4=Clothes, 5=Other).
-const List<Color> _kSegmentationClassColors = [
-  Color(0x99A0A0A0),
-  Color(0x99CD853F),
-  Color(0x88FFA500),
-  Color(0x88FF69B4),
-  Color(0x9900BFFF),
-  Color(0x9940E0D0),
-];
-
 /// Widget shown for the selected dropdown item (inherits parent text style).
 class _DropdownSelected extends StatelessWidget {
   final String text;
@@ -358,103 +346,6 @@ class _ExampleState extends State<Example> {
     );
   }
 
-  Widget _buildTimingRow(String label, int milliseconds, Color color,
-      {bool isBold = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
-                  color: color,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: TextStyle(
-                  fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
-                  fontSize: isBold ? 15 : 14,
-                ),
-              ),
-            ],
-          ),
-          Text(
-            '${milliseconds}ms',
-            style: TextStyle(
-              fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
-              fontSize: isBold ? 15 : 14,
-              color: color,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPerformanceIndicator() {
-    if (_totalTimeMs == null) return const SizedBox.shrink();
-    final perf = performanceLevel(_totalTimeMs!);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: perf.color.withAlpha(26),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: perf.color.withAlpha(77)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(perf.icon, size: 16, color: perf.color),
-          const SizedBox(width: 6),
-          Text(
-            perf.label,
-            style: TextStyle(
-              color: perf.color,
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatusRow(String label, bool processed, Color color) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Icon(
-            processed ? Icons.check_circle : Icons.pending,
-            size: 16,
-            color: color,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: const TextStyle(fontSize: 14),
-          ),
-          const Spacer(),
-          Text(
-            processed ? 'Processed' : 'Skipped',
-            style: TextStyle(
-              fontSize: 12,
-              color: color,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _showSettingsSheet() {
     showModalBottomSheet(
       context: context,
@@ -486,17 +377,25 @@ class _ExampleState extends State<Example> {
             }
 
             Widget cb(String label, bool v, void Function(bool) set) =>
-                _buildCheckbox(
-                    label, v, (x) => updateState(() => set(x ?? false)));
+                CompactCheckbox(
+                    label: label,
+                    value: v,
+                    onChanged: (x) => updateState(() => set(x ?? false)));
             Widget fcb(String label, bool v, void Function(bool) set) =>
-                _buildCheckbox(
-                    label, v, (x) => onSheetFeatureToggle(set, x ?? false));
+                CompactCheckbox(
+                    label: label,
+                    value: v,
+                    onChanged: (x) => onSheetFeatureToggle(set, x ?? false));
             Widget col(String label, Color c, void Function(Color) set) =>
                 _buildColorButton(label, c, (x) => updateState(() => set(x)));
             Widget sl(String label, double v, double mn, double mx,
                     void Function(double) set) =>
-                _buildCompactSlider(
-                    label, v, mn, mx, (x) => updateState(() => set(x)));
+                CompactSlider(
+                    label: label,
+                    value: v,
+                    min: mn,
+                    max: mx,
+                    onChanged: (x) => updateState(() => set(x)));
 
             return Container(
               decoration: const BoxDecoration(
@@ -593,125 +492,6 @@ class _ExampleState extends State<Example> {
             );
           },
         ),
-      ),
-    );
-  }
-
-  Widget _buildCompactSlider(String label, double value, double min, double max,
-      ValueChanged<double> onChanged) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2.0),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 70,
-            child: Text(label, style: const TextStyle(fontSize: 12)),
-          ),
-          Expanded(
-            child: SliderTheme(
-              data: SliderTheme.of(context).copyWith(
-                trackHeight: 2.0,
-                thumbShape:
-                    const RoundSliderThumbShape(enabledThumbRadius: 6.0),
-                overlayShape:
-                    const RoundSliderOverlayShape(overlayRadius: 12.0),
-              ),
-              child: Slider(
-                value: value,
-                min: min,
-                max: max,
-                divisions: ((max - min) * 10).round(),
-                label: value.toStringAsFixed(1),
-                onChanged: onChanged,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCompactPerformanceBadge() {
-    if (_totalTimeMs == null) return const SizedBox.shrink();
-    final perf = performanceLevel(_totalTimeMs!);
-    return Positioned(
-      top: 12,
-      left: 12,
-      child: GestureDetector(
-        onTap: _showTimingDetails,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: Colors.black.withAlpha(179),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(perf.icon, size: 14, color: perf.color),
-              const SizedBox(width: 6),
-              Text(
-                '${_totalTimeMs}ms',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                perf.label,
-                style: TextStyle(color: perf.color, fontSize: 12),
-              ),
-              const SizedBox(width: 4),
-              const Icon(Icons.info_outline, size: 12, color: Colors.white54),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showTimingDetails() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            const Icon(Icons.timer, color: Colors.blue),
-            const SizedBox(width: 8),
-            const Text('Processing Details'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildStatusRow('Detection', true, Colors.green),
-            _buildStatusRow('Mesh', _hasProcessedMesh,
-                _showMesh ? Colors.green : Colors.grey),
-            _buildStatusRow('Iris', _hasProcessedIris,
-                _showIrises ? Colors.green : Colors.grey),
-            const Divider(height: 16),
-            if (_detectionTimeMs != null)
-              _buildTimingRow('Detection', _detectionTimeMs!, Colors.green),
-            if (_meshTimeMs != null)
-              _buildTimingRow('Mesh Refinement', _meshTimeMs!, Colors.pink),
-            if (_irisTimeMs != null)
-              _buildTimingRow(
-                  'Iris Refinement', _irisTimeMs!, Colors.blueAccent),
-            if (_totalTimeMs != null)
-              _buildTimingRow('Total', _totalTimeMs!, Colors.blue,
-                  isBold: true),
-            const SizedBox(height: 12),
-            _buildPerformanceIndicator(),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
       ),
     );
   }
@@ -868,7 +648,21 @@ class _ExampleState extends State<Example> {
                     ],
                   ),
           ),
-          if (hasImage) _buildCompactPerformanceBadge(),
+          if (hasImage && _totalTimeMs != null)
+            Positioned(
+              top: 12,
+              left: 12,
+              child: TimingBadge(
+                totalMs: _totalTimeMs!,
+                detectionMs: _detectionTimeMs,
+                meshMs: _meshTimeMs,
+                irisMs: _irisTimeMs,
+                meshEnabled: _showMesh,
+                irisEnabled: _showIrises,
+                meshProcessed: _hasProcessedMesh,
+                irisProcessed: _hasProcessedIris,
+              ),
+            ),
           if (_isLoading)
             Container(
               color: Colors.black54,
@@ -876,30 +670,6 @@ class _ExampleState extends State<Example> {
                 child: CircularProgressIndicator(),
               ),
             ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCheckbox(
-      String label, bool value, ValueChanged<bool?> onChanged) {
-    return InkWell(
-      onTap: () => onChanged(!value),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: 24,
-            height: 24,
-            child: Checkbox(
-              value: value,
-              onChanged: onChanged,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              visualDensity: VisualDensity.compact,
-            ),
-          ),
-          const SizedBox(width: 4),
-          Text(label, style: const TextStyle(fontSize: 12)),
         ],
       ),
     );
@@ -1341,71 +1111,6 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     );
   }
 
-  Widget _buildCameraOverlays({
-    required Widget cameraWidget,
-    required double cameraAspectRatio,
-    required double displayAspectRatio,
-    required bool mirrorHorizontally,
-    required int sensorOrientation,
-    required Orientation deviceOrientation,
-    required bool isFrontCamera,
-  }) {
-    return Center(
-      child: AspectRatio(
-        aspectRatio: displayAspectRatio,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (_showVirtualBackground && _beachBackground != null)
-              Positioned.fill(
-                child: CustomPaint(
-                  painter: BackgroundImagePainter(image: _beachBackground!),
-                ),
-              ),
-            cameraWidget,
-            if (_showVirtualBackground &&
-                _beachBackground != null &&
-                _segmentationMask != null)
-              CustomPaint(
-                painter: VirtualBackgroundOverlayPainter(
-                  background: _beachBackground!,
-                  mask: _segmentationMask!,
-                  mirrorHorizontally: mirrorHorizontally,
-                ),
-              ),
-            if (_showSegmentation &&
-                !_showVirtualBackground &&
-                _segmentationMask != null)
-              CustomPaint(
-                painter: LiveSegmentationPainter(
-                  mask: _segmentationMask!,
-                  maskColor: _segmentationColor,
-                  showAllClasses:
-                      _liveSegmentationModel == SegmentationModel.multiclass,
-                  mirrorHorizontally: mirrorHorizontally,
-                  classColors: _kSegmentationClassColors,
-                ),
-              ),
-            if (_imageSize != null)
-              CustomPaint(
-                painter: CameraDetectionPainter(
-                  faces: _faces,
-                  imageSize: _imageSize!,
-                  cameraAspectRatio: cameraAspectRatio,
-                  displayAspectRatio: displayAspectRatio,
-                  detectionMode: _detectionMode,
-                  sensorOrientation: sensorOrientation,
-                  deviceOrientation: deviceOrientation,
-                  isFrontCamera: isFrontCamera,
-                  mirrorHorizontally: mirrorHorizontally,
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Future<void> _initCamera() async {
     try {
       try {
@@ -1652,14 +1357,24 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          _buildCameraOverlays(
-            cameraWidget: CameraPreview(_cameraController!),
+          FaceDetectionCameraOverlay(
+            cameraPreview: CameraPreview(_cameraController!),
             cameraAspectRatio: cameraAspectRatio,
             displayAspectRatio: displayAspectRatio,
             mirrorHorizontally: Platform.isAndroid && _isFrontCamera,
             sensorOrientation: _sensorOrientation ?? 0,
             deviceOrientation: deviceOrientation,
             isFrontCamera: _isFrontCamera,
+            detectionMode: _detectionMode,
+            faces: _faces,
+            imageSize: _imageSize,
+            segmentationMask: _segmentationMask,
+            virtualBackground: _beachBackground,
+            showSegmentation: _showSegmentation,
+            showVirtualBackground: _showVirtualBackground,
+            segmentationColor: _segmentationColor,
+            segmentationShowAllClasses:
+                _liveSegmentationModel == SegmentationModel.multiclass,
           ),
           _positionedTopBar(turns),
         ],
@@ -2146,7 +1861,7 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
                                     showAllClasses: _selectedModel ==
                                             SegmentationModel.multiclass &&
                                         _selectedClassIndex == null,
-                                    classColors: _kSegmentationClassColors,
+                                    classColors: kSegmentationClassColors,
                                   ),
                                 ),
                             ],

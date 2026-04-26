@@ -11,6 +11,19 @@ const List<String> kSegmentationClassLabels = [
   'Other',
 ];
 
+/// Default per-class colors for the multiclass segmentation overlay, aligned
+/// by index with [kSegmentationClassLabels] (0=BG, 1=Hair, 2=Body, 3=Face,
+/// 4=Clothes, 5=Other). Alpha is preserved so overlays composite onto the
+/// underlying camera/image.
+const List<Color> kSegmentationClassColors = [
+  Color(0x99A0A0A0),
+  Color(0x99CD853F),
+  Color(0x88FFA500),
+  Color(0x88FF69B4),
+  Color(0x9900BFFF),
+  Color(0x9940E0D0),
+];
+
 /// Classify detection-time in milliseconds into a display-friendly bucket
 /// (`label`, `color`, `icon`) for overlay status indicators.
 ({String label, Color color, IconData icon}) performanceLevel(int ms) {
@@ -861,5 +874,161 @@ class SegmentationMaskPainter extends CustomPainter {
         old.maskColor != maskColor ||
         old.classIndex != classIndex ||
         old.showAllClasses != showAllClasses;
+  }
+}
+
+/// A composite widget that overlays face-detection and (optional) segmentation
+/// results on top of a live camera preview.
+///
+/// Assembles up to four layers inside an [AspectRatio] sized [Stack]:
+/// 1. A full-screen virtual background ([BackgroundImagePainter]) when
+///    [virtualBackground] is provided and [showVirtualBackground] is true.
+/// 2. The caller-provided [cameraPreview].
+/// 3. A virtual-background composite ([VirtualBackgroundOverlayPainter]) that
+///    cuts the subject out of the camera and places them on
+///    [virtualBackground].
+/// 4. Or, when [showSegmentation] is enabled without a virtual background, a
+///    [LiveSegmentationPainter] tint.
+/// 5. A [CameraDetectionPainter] drawing bounding boxes, mesh, landmarks etc.
+///    for the provided [faces] (only when [imageSize] is non-null).
+class FaceDetectionCameraOverlay extends StatelessWidget {
+  /// The camera preview widget (typically a [CameraPreview]).
+  final Widget cameraPreview;
+
+  /// Aspect ratio of the raw camera frames (width / height). Used by the
+  /// detection painter to map face coordinates.
+  final double cameraAspectRatio;
+
+  /// Aspect ratio used for the display [AspectRatio] box. Often the inverse
+  /// of [cameraAspectRatio] when the device is in portrait.
+  final double displayAspectRatio;
+
+  /// Whether the detection and segmentation overlays should be mirrored
+  /// horizontally (usually true for front cameras on Android).
+  final bool mirrorHorizontally;
+
+  /// Sensor mount orientation in degrees (0/90/180/270).
+  final int sensorOrientation;
+
+  /// Current device orientation (portrait/landscape).
+  final Orientation deviceOrientation;
+
+  /// Whether the active camera is the front-facing camera.
+  final bool isFrontCamera;
+
+  /// Detection mode that produced the [faces] (controls which overlays the
+  /// painter considers valid).
+  final FaceDetectionMode detectionMode;
+
+  /// Detected faces to draw via [CameraDetectionPainter].
+  final List<Face> faces;
+
+  /// Size of the image used for detection (post-rotation). The detection
+  /// painter is skipped when null.
+  final Size? imageSize;
+
+  /// Segmentation mask output from the detector, or null when segmentation
+  /// is not active.
+  final SegmentationMask? segmentationMask;
+
+  /// Optional virtual-background image painted behind the subject.
+  final ui.Image? virtualBackground;
+
+  /// Whether to render the standalone segmentation tint overlay. Ignored when
+  /// [showVirtualBackground] is true.
+  final bool showSegmentation;
+
+  /// Whether to replace the background with [virtualBackground], cutting the
+  /// subject out using [segmentationMask].
+  final bool showVirtualBackground;
+
+  /// Tint color used by the standalone segmentation overlay. Ignored for
+  /// multiclass rendering (see [segmentationShowAllClasses]).
+  final Color segmentationColor;
+
+  /// When true, render every class in [segmentationClassColors] instead of a
+  /// single-color tint. Use for multiclass segmentation models.
+  final bool segmentationShowAllClasses;
+
+  /// Per-class colors for multiclass segmentation. Defaults to
+  /// [kSegmentationClassColors].
+  final List<Color> segmentationClassColors;
+
+  const FaceDetectionCameraOverlay({
+    super.key,
+    required this.cameraPreview,
+    required this.cameraAspectRatio,
+    required this.displayAspectRatio,
+    required this.mirrorHorizontally,
+    required this.sensorOrientation,
+    required this.deviceOrientation,
+    required this.isFrontCamera,
+    required this.detectionMode,
+    required this.faces,
+    this.imageSize,
+    this.segmentationMask,
+    this.virtualBackground,
+    this.showSegmentation = false,
+    this.showVirtualBackground = false,
+    this.segmentationColor = const Color(0x8800FF00),
+    this.segmentationShowAllClasses = false,
+    this.segmentationClassColors = kSegmentationClassColors,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: AspectRatio(
+        aspectRatio: displayAspectRatio,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (showVirtualBackground && virtualBackground != null)
+              Positioned.fill(
+                child: CustomPaint(
+                  painter: BackgroundImagePainter(image: virtualBackground!),
+                ),
+              ),
+            cameraPreview,
+            if (showVirtualBackground &&
+                virtualBackground != null &&
+                segmentationMask != null)
+              CustomPaint(
+                painter: VirtualBackgroundOverlayPainter(
+                  background: virtualBackground!,
+                  mask: segmentationMask!,
+                  mirrorHorizontally: mirrorHorizontally,
+                ),
+              ),
+            if (showSegmentation &&
+                !showVirtualBackground &&
+                segmentationMask != null)
+              CustomPaint(
+                painter: LiveSegmentationPainter(
+                  mask: segmentationMask!,
+                  maskColor: segmentationColor,
+                  showAllClasses: segmentationShowAllClasses,
+                  mirrorHorizontally: mirrorHorizontally,
+                  classColors: segmentationClassColors,
+                ),
+              ),
+            if (imageSize != null)
+              CustomPaint(
+                painter: CameraDetectionPainter(
+                  faces: faces,
+                  imageSize: imageSize!,
+                  cameraAspectRatio: cameraAspectRatio,
+                  displayAspectRatio: displayAspectRatio,
+                  detectionMode: detectionMode,
+                  sensorOrientation: sensorOrientation,
+                  deviceOrientation: deviceOrientation,
+                  isFrontCamera: isFrontCamera,
+                  mirrorHorizontally: mirrorHorizontally,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 }

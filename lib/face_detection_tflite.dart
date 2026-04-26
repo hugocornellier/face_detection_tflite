@@ -64,3 +64,5 @@ part 'src/models/face_embedding.dart';
 part 'src/models/selfie_segmentation.dart';
 part 'src/isolate/segmentation_worker.dart';
 part 'src/ui/overlay_painters.dart';
+part 'src/ui/timing_widgets.dart';
+part 'src/ui/demo_controls.dart';
