@@ -1,3 +1,11 @@
+## 6.2.4
+
+* Update flutter_litert -> 2.5.0
+
+## 6.2.3
+
+* Update flutter_litert -> 2.4.1
+
 ## 6.2.2
 
 * Simplify and DRY example app, extract utility helpers

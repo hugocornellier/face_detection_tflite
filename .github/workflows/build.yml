@@ -46,10 +46,22 @@ jobs:
     name: Build Android (${{ matrix.flutter-channel }})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         flutter-channel: [stable, beta]
     steps:
       - uses: actions/checkout@v4
+
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
 
       - uses: actions/setup-java@v4
         with:

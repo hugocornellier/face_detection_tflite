@@ -127,6 +127,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -156,6 +167,71 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      # Write the test runner to a script file. The android-emulator-runner
+      # action executes its `script:` line-by-line through `sh -c`, so we
+      # can't use a multi-line bash script inline — instead invoke this
+      # file from a single line.
+      - name: Write Android test runner
+        run: |
+          cat > "$RUNNER_TEMP/run-android-tests.sh" <<'BASH'
+          #!/usr/bin/env bash
+          set -u
+          # Run tests one file at a time so memory is reclaimed between files
+          # (the runner has previously hung mid-suite when running them together).
+          # Flutter Android integration tests may exit non-zero even when all
+          # tests pass (app process teardown issue). Check actual test output
+          # instead of relying on the exit code.
+          TEST_FILES=(
+            opencv_helpers_test.dart
+            performance_config_test.dart
+            face_detection_integration_test.dart
+            embedding_match_test.dart
+            gpu_delegate_test.dart
+            benchmark_test.dart
+            error_recovery_test.dart
+            edge_cases_test.dart
+            all_model_variants_test.dart
+            concurrency_stress_test.dart
+            combined_segmentation_test.dart
+            helpers_unit_test.dart
+            assertion_gaps_test.dart
+            selfie_segmentation_test.dart
+            isolate_mat_debug_test.dart
+            coverage_gaps_test.dart
+          )
+          FAILED=()
+          ADB=/usr/local/lib/android/sdk/platform-tools/adb
+          for f in "${TEST_FILES[@]}"; do
+            echo "========================================="
+            echo "Running: $f"
+            echo "========================================="
+            "$ADB" -s emulator-5554 shell am force-stop com.hugocornellier.face_detection_tflite_example 2>/dev/null || true
+            sleep 2
+            LOG="$RUNNER_TEMP/$f.log"
+            flutter test "integration_test/$f" -d emulator-5554 2>&1 | tee "$LOG" || true
+            if grep -q "Some tests failed" "$LOG" || \
+               ! grep -qE "(All tests passed|[0-9]+ tests? passed)" "$LOG"; then
+              FAILED+=("$f")
+              echo "::error::FAILED: $f"
+            fi
+          done
+          if [ ${#FAILED[@]} -gt 0 ]; then
+            echo ""
+            echo "========================================="
+            echo "FAILED TESTS:"
+            printf '  - %s\n' "${FAILED[@]}"
+            echo "========================================="
+            for f in "${FAILED[@]}"; do
+              echo ""
+              echo "--- Output for $f ---"
+              cat "$RUNNER_TEMP/$f.log"
+            done
+            exit 1
+          fi
+          echo "All ${#TEST_FILES[@]} test files passed."
+          BASH
+          chmod +x "$RUNNER_TEMP/run-android-tests.sh"
+
       - name: Run integration tests on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -166,13 +242,7 @@ jobs:
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           disable-animations: true
           working-directory: example
-          # Flutter Android integration tests may exit non-zero even when
-          # all tests pass (app process teardown issue). Check actual test
-          # output instead of relying on the exit code.
-          script: |
-            flutter test integration_test/ -d emulator-5554 2>&1 | tee "$RUNNER_TEMP/android.log"
-            grep -q "Some tests failed" "$RUNNER_TEMP/android.log"; status=$?; case "$status" in 0) exit 1 ;; 1) exit 0 ;; *) exit "$status" ;; esac
-            grep -qE "[0-9]+ tests? passed" "$RUNNER_TEMP/android.log"; status=$?; case "$status" in 0) exit 0 ;; 1) exit 1 ;; *) exit "$status" ;; esac
+          script: bash "$RUNNER_TEMP/run-android-tests.sh"
 
   integration-linux:
     name: Integration Linux (${{ matrix.flutter-channel }})
