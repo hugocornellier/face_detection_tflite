@@ -1,4 +1,4 @@
-part of '../../face_detection_tflite.dart';
+part of '../native/face_native_lib.dart';
 
 /// Compact tappable badge that displays the total processing time plus a
 /// color-coded performance indicator (via [performanceLevel]). Tapping opens

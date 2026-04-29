@@ -1,4 +1,4 @@
-part of '../../face_detection_tflite.dart';
+part of '../native/face_native_lib.dart';
 
 /// Predicts the full 468-point face mesh (x, y, z per point) for an aligned face crop.
 /// Coordinates are normalized before later mapping back to image space.
@@ -57,7 +57,7 @@ class FaceLandmark with _TfliteModelDisposable {
   }) =>
       _createWithLoader(
         load: (opts) => Interpreter.fromAsset(
-          'packages/face_detection_tflite/assets/models/$_faceLandmarkModel',
+          'packages/face_detection_tflite/assets/models/$kFaceLandmarkModel',
           options: opts,
         ),
         options: options,

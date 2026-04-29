@@ -1,14 +1,7 @@
-part of '../../face_detection_tflite.dart';
+part of '../native/face_native_lib.dart';
 
 /// Minimum input image size (smaller images rejected).
 const int kMinSegmentationInputSize = 16;
-
-/// Returns the model filename for a given [SegmentationModel] variant.
-String _modelFileFor(SegmentationModel model) => switch (model) {
-      SegmentationModel.general => 'selfie_segmenter.tflite',
-      SegmentationModel.landscape => 'selfie_segmenter_landscape.tflite',
-      SegmentationModel.multiclass => 'selfie_multiclass.tflite',
-    };
 
 /// Model input width for all segmentation variants.
 const int _segmentationInputWidth = 256;
@@ -25,32 +18,15 @@ int _expectedOutputChannels(SegmentationModel model) => switch (model) {
       _ => 1,
     };
 
-/// Segmentation class indices in the multiclass model output.
-/// The model outputs 6 channels representing probabilities for each class.
-class SegmentationClass {
-  SegmentationClass._();
-
-  /// Background (not a person).
-  static const int background = 0;
-
-  /// Hair.
-  static const int hair = 1;
-
-  /// Body skin (arms, legs, etc.).
-  static const int bodySkin = 2;
-
-  /// Face skin.
-  static const int faceSkin = 3;
-
-  /// Clothes.
-  static const int clothes = 4;
-
-  /// Other (accessories, etc.).
-  static const int other = 5;
-
-  /// All person classes (everything except background).
-  static const List<int> allPerson = [hair, bodySkin, faceSkin, clothes, other];
-}
+/// Native-only convenience: list of all multiclass person classes
+/// (everything except background).
+const List<int> kSegmentationAllPersonClasses = <int>[
+  SegmentationClass.hair,
+  SegmentationClass.bodySkin,
+  SegmentationClass.faceSkin,
+  SegmentationClass.clothes,
+  SegmentationClass.other,
+];
 
 /// Performs selfie/person segmentation using MediaPipe TFLite models.
 ///
@@ -184,7 +160,7 @@ class SelfieSegmentation with _TfliteModelDisposable {
     SegmentationConfig config = const SegmentationConfig(),
   }) async {
     final effectiveModel = config.model;
-    final modelFile = _modelFileFor(effectiveModel);
+    final modelFile = segmentationModelFile(effectiveModel);
 
     final obj = await _createWithLoader(
       config: config,
@@ -654,7 +630,8 @@ Float32List testComputeClassProbabilities(
 
 /// Test-only: exposes the private model-file mapping for unit tests.
 @visibleForTesting
-String testModelFileFor(SegmentationModel model) => _modelFileFor(model);
+String testModelFileFor(SegmentationModel model) =>
+    segmentationModelFile(model);
 
 /// Test-only: exposes the private input-width for unit tests.
 @visibleForTesting

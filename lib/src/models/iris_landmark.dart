@@ -1,4 +1,4 @@
-part of '../../face_detection_tflite.dart';
+part of '../native/face_native_lib.dart';
 
 /// Transforms normalized iris landmarks to absolute pixel coordinates
 /// using the alignment parameters from an [AlignedRoi].
@@ -82,7 +82,7 @@ class IrisLandmark with _TfliteModelDisposable {
   }) =>
       _createWithLoader(
         load: (opts) => Interpreter.fromAsset(
-          'packages/face_detection_tflite/assets/models/$_irisLandmarkModel',
+          'packages/face_detection_tflite/assets/models/$kIrisLandmarkModel',
           options: opts,
         ),
         options: options,

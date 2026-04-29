@@ -1,68 +1,13 @@
 /// Face detection and landmark inference utilities backed by MediaPipe-style
 /// TFLite models for Flutter apps.
+///
+/// This is the package's public entry point. It conditionally re-exports the
+/// native or web implementation depending on the host platform:
+/// - Web (Chrome / Edge / Firefox / Safari): web implementation backed by
+///   LiteRT.js (auto WebGPU/WASM) and Canvas preprocessing.
+/// - Everything else (mobile, desktop): the native implementation backed by
+///   `flutter_litert` + `opencv_dart`.
 library;
 
-import 'dart:async';
-import 'dart:isolate';
-import 'dart:math' as math;
-import 'dart:typed_data';
-import 'dart:io';
-import 'dart:ui' as ui;
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:opencv_dart/opencv_dart.dart' as cv;
-import 'package:flutter_litert/flutter_litert.dart';
-
-export 'src/dart_registration.dart';
-export 'package:flutter_litert/flutter_litert.dart'
-    show
-        PerformanceMode,
-        PerformanceConfig,
-        createNHWCTensor4D,
-        fillNHWC4D,
-        allocTensorShape,
-        flattenDynamicTensor,
-        sigmoid,
-        sigmoidClipped,
-        clamp01,
-        clip,
-        computeLetterboxParams,
-        LetterboxParams,
-        bgrBytesToRgbFloat32,
-        bgrBytesToSignedFloat32,
-        Point,
-        BoundingBox,
-        packYuv420,
-        YuvPlane,
-        YuvLayout,
-        PackedYuv,
-        CameraPlane,
-        CameraFrame,
-        CameraFrameConversion,
-        CameraFrameRotation,
-        prepareCameraFrame,
-        prepareCameraFrameFromImage,
-        rotationForFrame,
-        detectionSize,
-        coverFitScaleOffset,
-        barQuarterTurns,
-        FpsCounter,
-        drawLandmarkMarker,
-        drawSkeletonConnections,
-        drawBoundingBoxOutline;
-
-export 'package:opencv_dart/opencv_dart.dart' show Mat, imdecode, IMREAD_COLOR;
-
-part 'src/types_and_consts.dart';
-part 'src/util/helpers.dart';
-part 'src/face_detector.dart';
-part 'src/isolate/face_detector_core.dart';
-part 'src/models/face_detection_model.dart';
-part 'src/models/face_landmark.dart';
-part 'src/models/iris_landmark.dart';
-part 'src/models/face_embedding.dart';
-part 'src/models/selfie_segmentation.dart';
-part 'src/isolate/segmentation_worker.dart';
-part 'src/ui/overlay_painters.dart';
-part 'src/ui/timing_widgets.dart';
-part 'src/ui/demo_controls.dart';
+export 'src/native/face_native_lib.dart'
+    if (dart.library.js_interop) 'src/web/face_web_lib.dart';

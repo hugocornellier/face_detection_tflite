@@ -1,4 +1,4 @@
-part of '../../face_detection_tflite.dart';
+part of '../native/face_native_lib.dart';
 
 /// A dedicated background isolate for selfie segmentation inference.
 ///
@@ -73,7 +73,7 @@ class SegmentationWorker extends IsolateWorkerBase {
     }
 
     _model = config.model;
-    final modelFile = _modelFileFor(_model);
+    final modelFile = segmentationModelFile(_model);
 
     final ByteData modelData = await rootBundle.load(
       'packages/face_detection_tflite/assets/models/$modelFile',

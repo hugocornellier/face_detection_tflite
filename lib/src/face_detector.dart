@@ -1,4 +1,4 @@
-part of '../face_detection_tflite.dart';
+part of 'native/face_native_lib.dart';
 
 /// A complete face detection and analysis system using TensorFlow Lite models.
 ///
@@ -87,6 +87,9 @@ class FaceDetector {
     int meshPoolSize = 3,
     bool withSegmentation = false,
     SegmentationConfig? segmentationConfig,
+    // Web-only knobs; accepted here for API parity but ignored on native.
+    bool useLiteRt = false,
+    String liteRtAccelerator = 'auto',
   }) async {
     final detector = FaceDetector();
     await detector.initialize(
@@ -159,6 +162,9 @@ class FaceDetector {
     int meshPoolSize = 3,
     bool withSegmentation = false,
     SegmentationConfig? segmentationConfig,
+    // Web-only knobs; accepted here for API parity but ignored on native.
+    bool useLiteRt = false,
+    String liteRtAccelerator = 'auto',
   }) async {
     if (isReady) {
       throw StateError('FaceDetector already initialized');
@@ -169,13 +175,13 @@ class FaceDetector {
 
     try {
       final faceDetectionPath =
-          'packages/face_detection_tflite/assets/models/${_nameFor(model)}';
+          'packages/face_detection_tflite/assets/models/${faceDetectionModelFile(model)}';
       const faceLandmarkPath =
-          'packages/face_detection_tflite/assets/models/$_faceLandmarkModel';
+          'packages/face_detection_tflite/assets/models/$kFaceLandmarkModel';
       const irisLandmarkPath =
-          'packages/face_detection_tflite/assets/models/$_irisLandmarkModel';
+          'packages/face_detection_tflite/assets/models/$kIrisLandmarkModel';
       const embeddingPath =
-          'packages/face_detection_tflite/assets/models/$_embeddingModel';
+          'packages/face_detection_tflite/assets/models/$kEmbeddingModel';
 
       final assetFutures = [
         rootBundle.load(faceDetectionPath),
@@ -187,7 +193,7 @@ class FaceDetector {
       if (withSegmentation) {
         final effectiveSegModel =
             segmentationConfig?.model ?? SegmentationModel.general;
-        final segModelFile = _modelFileFor(effectiveSegModel);
+        final segModelFile = segmentationModelFile(effectiveSegModel);
         assetFutures.add(rootBundle.load(
           'packages/face_detection_tflite/assets/models/$segModelFile',
         ));
@@ -250,7 +256,7 @@ class FaceDetector {
     _requireReady();
     if (_segmentationInitialized) return;
     final effectiveConfig = config ?? SegmentationConfig.safe;
-    final segModelFile = _modelFileFor(effectiveConfig.model);
+    final segModelFile = segmentationModelFile(effectiveConfig.model);
     final segmentationRpc = IsolateRpcClient();
     final data = await rootBundle.load(
       'packages/face_detection_tflite/assets/models/$segModelFile',
@@ -839,7 +845,7 @@ class FaceDetector {
         numThreads: config.performanceConfig.numThreads,
         maxOutputSize: config.maxOutputSize,
         validateModel: config.validateModel,
-        modelName: _modelFileFor(effectiveModel),
+        modelName: segmentationModelFile(effectiveModel),
         modelIndex: effectiveModel.index,
       ),
       debugName: 'FaceDetector.segmentation',
@@ -886,14 +892,14 @@ class FaceDetector {
   }
 
   static Map<String, dynamic> _faceToFastMap(Face f) {
-    final bb = f._detection.boundingBox;
+    final bb = f.detectionData.boundingBox;
     return {
       'xmin': bb.xmin,
       'ymin': bb.ymin,
       'xmax': bb.xmax,
       'ymax': bb.ymax,
-      'score': f._detection.score,
-      'kp': f._detection.keypointsXY,
+      'score': f.detectionData.score,
+      'kp': f.detectionData.keypointsXY,
       'imgW': f.originalSize.width,
       'imgH': f.originalSize.height,
       if (f.mesh != null)
@@ -1493,7 +1499,7 @@ class FaceDetector {
 
     switch (format) {
       case IsolateOutputFormat.float32:
-        result['data'] = TransferableTypedData.fromList([mask._data]);
+        result['data'] = TransferableTypedData.fromList([mask.internalData]);
         result['dataFormat'] = 'float32';
       case IsolateOutputFormat.uint8:
         result['data'] = TransferableTypedData.fromList([mask.toUint8()]);
@@ -1506,7 +1512,8 @@ class FaceDetector {
     }
 
     if (mask is MulticlassSegmentationMask) {
-      result['classData'] = TransferableTypedData.fromList([mask._classData]);
+      result['classData'] =
+          TransferableTypedData.fromList([mask.internalClassData]);
     }
 
     return result;
@@ -1547,19 +1554,19 @@ class FaceDetector {
     final classDataTd = map['classData'] as TransferableTypedData?;
     if (classDataTd != null) {
       final classData = classDataTd.materialize().asFloat32List();
-      return MulticlassSegmentationMask._(
-        data: data,
+      return MulticlassSegmentationMask.internal(
+        internalData: data,
         width: width,
         height: height,
         originalWidth: originalWidth,
         originalHeight: originalHeight,
         padding: padding,
-        classData: classData,
+        internalClassData: classData,
       );
     }
 
-    return SegmentationMask._(
-      data: data,
+    return SegmentationMask.internal(
+      internalData: data,
       width: width,
       height: height,
       originalWidth: originalWidth,
@@ -1727,7 +1734,7 @@ Future<T> Function<T>(Future<T> Function() fn) testCreateInferenceLockRunner() {
 /// Test-only: exposes the internal iris-center computation for unit tests.
 @visibleForTesting
 Point testFindIrisCenterFromPoints(List<Point> irisPoints) =>
-    _irisCenterFromPoints(irisPoints);
+    irisCenterFromPoints(irisPoints);
 
 /// Test-only: exposes the private mask-serialization logic for unit tests.
 @visibleForTesting

@@ -1,4 +1,4 @@
-part of '../../face_detection_tflite.dart';
+part of '../native/face_native_lib.dart';
 
 /// Runs face box detection and predicts a small set of facial keypoints
 /// (eyes, nose, mouth, tragions) on the detected face(s).
@@ -75,7 +75,7 @@ class FaceDetection with _TfliteModelDisposable {
       _createWithLoader(
         model: model,
         load: (opts) => Interpreter.fromAsset(
-          'packages/face_detection_tflite/assets/models/${_nameFor(model)}',
+          'packages/face_detection_tflite/assets/models/${faceDetectionModelFile(model)}',
           options: opts,
         ),
         options: options,
@@ -108,7 +108,7 @@ class FaceDetection with _TfliteModelDisposable {
     PerformanceConfig? performanceConfig,
     bool useIsolateInterpreter = true,
   }) async {
-    final SSDAnchorOptions opts = _optsFor(model);
+    final SSDAnchorOptions opts = ssdOptionsFor(model);
     final int inW = opts.inputSizeWidth;
     final int inH = opts.inputSizeHeight;
 
@@ -259,8 +259,8 @@ class FaceDetection with _TfliteModelDisposable {
 
     final List<Detection> pruned = _weightedNmsDetections(
       dets,
-      _minSuppressionThreshold,
-      _minScore,
+      kMinSuppressionThreshold,
+      kMinScore,
     );
     final List<Detection> fixed = _detectionLetterboxRemoval(
       pruned,
@@ -321,7 +321,7 @@ class FaceDetection with _TfliteModelDisposable {
     final List<double> candidateScores = <double>[];
     for (int i = 0; i < n; i++) {
       final double score = sigmoidClipped(raw[i]);
-      if (score >= _minScore) {
+      if (score >= kMinScore) {
         candidateIndices.add(i);
         candidateScores.add(score);
       }

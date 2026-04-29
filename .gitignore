@@ -43,3 +43,7 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+example_web/build/
+example_web/.dart_tool/
+example_web/.flutter-plugins
+example_web/.flutter-plugins-dependencies

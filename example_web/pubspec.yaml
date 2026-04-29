@@ -1,0 +1,19 @@
+name: face_detection_tflite_example_web
+description: Web example for face_detection_tflite
+publish_to: 'none'
+version: 1.0.0
+
+environment:
+  sdk: '>=3.6.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  face_detection_tflite:
+    path: ../
+  web: ^1.1.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/samples/

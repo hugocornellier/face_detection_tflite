@@ -1,7 +1,7 @@
-part of '../../face_detection_tflite.dart';
+part of '../native/face_native_lib.dart';
 
 /// Model name for the MobileFaceNet embedding model.
-const _embeddingModel = 'mobilefacenet.tflite';
+const kEmbeddingModel = 'mobilefacenet.tflite';
 
 /// Generates face embeddings (identity vectors) from aligned face crops.
 ///
@@ -83,7 +83,7 @@ class FaceEmbedding with _TfliteModelDisposable {
   }) =>
       _createWithLoader(
         load: (opts) => Interpreter.fromAsset(
-          'packages/face_detection_tflite/assets/models/$_embeddingModel',
+          'packages/face_detection_tflite/assets/models/$kEmbeddingModel',
           options: opts,
         ),
         options: options,

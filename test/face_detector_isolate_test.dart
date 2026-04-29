@@ -223,8 +223,8 @@ void main() {
       expect(SegmentationClass.faceSkin, 3);
       expect(SegmentationClass.clothes, 4);
       expect(SegmentationClass.other, 5);
-      expect(SegmentationClass.allPerson.length, 5);
-      expect(SegmentationClass.allPerson, isNot(contains(0)));
+      expect(kSegmentationAllPersonClasses.length, 5);
+      expect(kSegmentationAllPersonClasses, isNot(contains(0)));
     });
   });
 

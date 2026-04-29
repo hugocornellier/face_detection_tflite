@@ -1,4 +1,4 @@
-part of '../../face_detection_tflite.dart';
+part of '../native/face_native_lib.dart';
 
 /// Compact checkbox with an inline label, sized for dense settings panels.
 ///

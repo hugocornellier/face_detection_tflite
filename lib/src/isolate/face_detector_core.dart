@@ -1,4 +1,4 @@
-part of '../../face_detection_tflite.dart';
+part of '../native/face_native_lib.dart';
 
 /// Data passed to the detection isolate during startup.
 class _DetectionIsolateStartupData {
@@ -204,13 +204,13 @@ class _FaceDetectorCore {
       if (computeIris && irisPx.isNotEmpty) {
         kp = List<double>.from(det.keypointsXY);
         if (irisPx.length >= _kLeftIrisEnd) {
-          final leftCenter = _irisCenterFromPoints(
+          final leftCenter = irisCenterFromPoints(
               irisPx.sublist(_kLeftIrisStart, _kLeftIrisEnd));
           kp[FaceLandmarkType.leftEye.index * 2] = leftCenter.x / width;
           kp[FaceLandmarkType.leftEye.index * 2 + 1] = leftCenter.y / height;
         }
         if (irisPx.length >= _kRightIrisEnd) {
-          final rightCenter = _irisCenterFromPoints(
+          final rightCenter = irisCenterFromPoints(
               irisPx.sublist(_kRightIrisStart, _kRightIrisEnd));
           kp[FaceLandmarkType.rightEye.index * 2] = rightCenter.x / width;
           kp[FaceLandmarkType.rightEye.index * 2 + 1] = rightCenter.y / height;

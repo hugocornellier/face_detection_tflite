@@ -23,8 +23,8 @@ void main() {
     });
 
     test('allPerson should contain all non-background classes', () {
-      expect(SegmentationClass.allPerson, [1, 2, 3, 4, 5]);
-      expect(SegmentationClass.allPerson, isNot(contains(0)));
+      expect(kSegmentationAllPersonClasses, [1, 2, 3, 4, 5]);
+      expect(kSegmentationAllPersonClasses, isNot(contains(0)));
     });
   });
 

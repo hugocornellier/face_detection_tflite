@@ -1,4 +1,4 @@
-part of '../../face_detection_tflite.dart';
+part of '../native/face_native_lib.dart';
 
 /// Holds metadata for an output tensor (shape plus its writable buffer).
 class OutputTensorInfo {
@@ -190,63 +190,6 @@ List<Detection> _weightedNmsDetections(
   }).toList();
 }
 
-SSDAnchorOptions _optsFor(FaceDetectionModel m) {
-  switch (m) {
-    case FaceDetectionModel.frontCamera:
-      return _ssdFront;
-    case FaceDetectionModel.backCamera:
-      return _ssdBack;
-    case FaceDetectionModel.shortRange:
-      return _ssdFront;
-    case FaceDetectionModel.full:
-      return _ssdFull;
-    case FaceDetectionModel.fullSparse:
-      return _ssdFull;
-  }
-}
-
-String _nameFor(FaceDetectionModel m) {
-  switch (m) {
-    case FaceDetectionModel.frontCamera:
-      return _modelNameFront;
-    case FaceDetectionModel.backCamera:
-      return _modelNameBack;
-    case FaceDetectionModel.shortRange:
-      return _modelNameShort;
-    case FaceDetectionModel.full:
-      return _modelNameFull;
-    case FaceDetectionModel.fullSparse:
-      return _modelNameFullSparse;
-  }
-}
-
-/// Converts a face detection bounding box to a square region of interest (ROI).
-///
-/// This function takes a face bounding box and generates a square ROI suitable
-/// for face mesh alignment. The process involves:
-/// 1. Expanding the bounding box by [expandFraction] (default 0.6 = 60% larger)
-/// 2. Finding the center of the expanded box
-/// 3. Creating a square ROI centered on that point
-///
-/// The [boundingBox] parameter is the face bounding box in normalized coordinates (0.0 to 1.0).
-///
-/// The [expandFraction] controls how much to expand the bounding box before
-/// computing the square ROI. Default is 0.6 (60% expansion).
-///
-/// Returns a square [RectF] in normalized coordinates centered on the face,
-/// with dimensions based on the larger of the expanded width or height.
-///
-/// This is typically used to prepare face regions for mesh landmark detection,
-/// which requires a square input with some padding around the face.
-@visibleForTesting
-RectF faceDetectionToRoi(RectF boundingBox, {double expandFraction = 0.6}) {
-  final RectF e = boundingBox.expand(expandFraction);
-  final double cx = (e.xmin + e.xmax) * 0.5;
-  final double cy = (e.ymin + e.ymax) * 0.5;
-  final double s = math.max(e.w, e.h) * 0.5;
-  return RectF(cx - s, cy - s, cx + s, cy + s);
-}
-
 /// Test-only access to [clip] for verifying value clamping behavior.
 ///
 /// This function exposes [clip] for unit testing.
@@ -256,7 +199,7 @@ double testClip(double v, double lo, double hi) => clip(v, lo, hi);
 
 /// Test-only: exposes [sigmoidClipped] for unit tests.
 @visibleForTesting
-double testSigmoidClipped(double x, {double limit = _rawScoreLimit}) =>
+double testSigmoidClipped(double x, {double limit = kRawScoreLimit}) =>
     sigmoidClipped(x, limit: limit);
 
 /// Test-only: exposes the private letterbox-removal logic for unit tests.
@@ -301,11 +244,11 @@ Float32List testSsdGenerateAnchors(SSDAnchorOptions opts) {
 
 /// Test-only: exposes the private model-to-[SSDAnchorOptions] mapping for unit tests.
 @visibleForTesting
-SSDAnchorOptions testOptsFor(FaceDetectionModel m) => _optsFor(m);
+SSDAnchorOptions testOptsFor(FaceDetectionModel m) => ssdOptionsFor(m);
 
 /// Test-only: exposes the private model-name mapping for unit tests.
 @visibleForTesting
-String testNameFor(FaceDetectionModel m) => _nameFor(m);
+String testNameFor(FaceDetectionModel m) => faceDetectionModelFile(m);
 
 /// Converts a cv.Mat image to a normalized tensor with letterboxing.
 ///
