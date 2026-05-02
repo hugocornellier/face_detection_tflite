@@ -15,6 +15,14 @@ import '../../util/web_image_utils.dart';
 /// the detector flips the results back.
 class IrisLandmarkModelWeb {
   LiteRtInterpreter? _liteRtItp;
+
+  String? _activeAccelerator;
+
+  /// The accelerator that compiled this model (`'webgpu'` / `'wasm'`),
+  /// or null pre-init.
+  String? get activeAccelerator =>
+      _liteRtItp != null ? _activeAccelerator : null;
+
   late int _inW;
   late int _inH;
   Float32List? _inputBuffer;
@@ -41,6 +49,7 @@ class IrisLandmarkModelWeb {
       bytes,
       accelerator: resolved,
     );
+    _activeAccelerator = resolved;
 
     final inT = _liteRtItp!.getInputTensor(0);
     _inH = inT.shape[1];
@@ -70,6 +79,7 @@ class IrisLandmarkModelWeb {
   Future<void> dispose() async {
     _liteRtItp?.close();
     _liteRtItp = null;
+    _activeAccelerator = null;
     _inputBuffer = null;
     _canvas = null;
     _ctx = null;
@@ -82,7 +92,7 @@ class IrisLandmarkModelWeb {
   /// landmark output in normalized [0, 1] coordinates (76 points * 3 = 228
   /// floats for the iris model).
   Future<Float32List> runOnEyeCrop(
-    web.ImageBitmap bitmap, {
+    JSObject canvasSource, {
     required double cx,
     required double cy,
     required double size,
@@ -104,7 +114,7 @@ class IrisLandmarkModelWeb {
     ctx.rotate(-theta);
     ctx.scale(scale, scale);
     ctx.translate(-cx, -cy);
-    ctx.drawImage(bitmap, 0, 0);
+    ctx.drawImage(canvasSource, 0, 0);
     ctx.restore();
 
     final web.ImageData imageData = ctx.getImageData(0, 0, _inW, _inH);

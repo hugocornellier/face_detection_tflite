@@ -20,6 +20,14 @@ import '../../util/web_image_utils.dart';
 /// for the multiclass model (post-softmax).
 class SelfieSegmentationWeb {
   LiteRtInterpreter? _liteRtItp;
+
+  String? _activeAccelerator;
+
+  /// The accelerator that compiled this model (`'webgpu'` / `'wasm'`),
+  /// or null pre-init.
+  String? get activeAccelerator =>
+      _liteRtItp != null ? _activeAccelerator : null;
+
   late int _inW;
   late int _inH;
   Float32List? _inputBuffer;
@@ -56,6 +64,7 @@ class SelfieSegmentationWeb {
       bytes,
       accelerator: resolved,
     );
+    _activeAccelerator = resolved;
 
     final inT = _liteRtItp!.getInputTensor(0);
     _inH = inT.shape[1];
@@ -83,6 +92,7 @@ class SelfieSegmentationWeb {
   Future<void> dispose() async {
     _liteRtItp?.close();
     _liteRtItp = null;
+    _activeAccelerator = null;
     _inputBuffer = null;
     _outputBuffer = null;
     _canvas = null;
@@ -94,7 +104,7 @@ class SelfieSegmentationWeb {
   /// at model resolution with letterbox padding info so the caller can call
   /// [SegmentationMask.upsample] for a full-image mask.
   Future<SegmentationMask> segment(
-    web.ImageBitmap bitmap, {
+    JSObject canvasSource, {
     required int imageWidth,
     required int imageHeight,
   }) async {
@@ -116,7 +126,7 @@ class SelfieSegmentationWeb {
     ctx.fillStyle = 'rgb(0,0,0)'.toJS;
     ctx.fillRect(0, 0, _inW, _inH);
     ctx.drawImage(
-      bitmap,
+      canvasSource,
       0,
       0,
       imageWidth,

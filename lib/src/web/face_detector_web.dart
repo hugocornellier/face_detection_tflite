@@ -96,6 +96,51 @@ class FaceDetector {
   bool get isEmbeddingReady => false;
   bool get isSegmentationReady => _segmentationReady;
 
+  /// The accelerator currently in use across all model runners (`'webgpu'`
+  /// / `'wasm'`), or null pre-init. May change at runtime if a GPU error
+  /// fires on WebGPU and the detector swaps to WASM.
+  String? get activeAccelerator =>
+      _detector.activeAccelerator ??
+      _mesh.activeAccelerator ??
+      _iris.activeAccelerator ??
+      _segmenter?.activeAccelerator;
+
+  /// True once the detector has irreversibly fallen back from WebGPU to
+  /// WASM after a runtime GPU error. Useful for surfacing in UI.
+  bool get fellBackToWasm => _fellBackToWasm;
+  bool _fellBackToWasm = false;
+
+  // Cached init args so [_swapToWasm] can re-init the runners with the same
+  // model selection but a forced 'wasm' accelerator.
+  FaceDetectionModel _model = FaceDetectionModel.backCamera;
+  bool _withSegmentation = false;
+  SegmentationConfig? _segmentationConfig;
+
+  Future<void> _swapToWasm() async {
+    if (_fellBackToWasm) return;
+    _fellBackToWasm = true;
+    _liteRtAccelerator = 'wasm';
+    try {
+      await _detector.dispose();
+      await _mesh.dispose();
+      await _iris.dispose();
+      await _segmenter?.dispose();
+    } catch (_) {
+      // Best-effort: an interpreter that already errored may not dispose
+      // cleanly. Continue to re-init regardless.
+    }
+    await _detector.initialize(_model, liteRtAccelerator: 'wasm');
+    await _mesh.initialize(liteRtAccelerator: 'wasm');
+    await _iris.initialize(liteRtAccelerator: 'wasm');
+    if (_withSegmentation) {
+      _segmenter = SelfieSegmentationWeb();
+      await _segmenter!.initialize(
+        model: (_segmentationConfig ?? SegmentationConfig.safe).model,
+        liteRtAccelerator: 'wasm',
+      );
+    }
+  }
+
   Future<void> initialize({
     FaceDetectionModel model = FaceDetectionModel.backCamera,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
@@ -109,6 +154,9 @@ class FaceDetector {
       throw StateError('FaceDetector already initialized');
     }
     _liteRtAccelerator = liteRtAccelerator;
+    _model = model;
+    _withSegmentation = withSegmentation;
+    _segmentationConfig = segmentationConfig;
     await _detector.initialize(
       model,
       liteRtAccelerator: liteRtAccelerator,
@@ -157,6 +205,9 @@ class FaceDetector {
   }
 
   /// Detects faces in encoded image bytes (JPEG/PNG/...).
+  ///
+  /// Internally decodes via `createImageBitmap` (off-thread) and routes
+  /// through the same pipeline used by [detectFacesFromVideo].
   Future<List<Face>> detectFaces(
     Uint8List imageBytes, {
     FaceDetectionMode mode = FaceDetectionMode.full,
@@ -166,17 +217,28 @@ class FaceDetector {
         'FaceDetector not initialized. Call initialize() before using.',
       );
     }
+    try {
+      return await _detectFacesInner(imageBytes, mode: mode);
+    } catch (e) {
+      if (activeAccelerator == 'webgpu' && !_fellBackToWasm) {
+        await _swapToWasm();
+        return _detectFacesInner(imageBytes, mode: mode);
+      }
+      rethrow;
+    }
+  }
+
+  Future<List<Face>> _detectFacesInner(
+    Uint8List imageBytes, {
+    FaceDetectionMode mode = FaceDetectionMode.full,
+  }) async {
     final t = debugTimings ? WebDetectTimings() : null;
     final totalSw = t != null ? (Stopwatch()..start()) : Stopwatch();
-    final sw = Stopwatch();
 
-    if (t != null) sw.start();
+    final Stopwatch decodeSw = Stopwatch()..start();
     final web.ImageBitmap? bitmap = await _decodeBitmap(imageBytes);
-    if (t != null) {
-      sw.stop();
-      t.decodeUs = sw.elapsedMicroseconds;
-      sw.reset();
-    }
+    decodeSw.stop();
+    if (t != null) t.decodeUs = decodeSw.elapsedMicroseconds;
     if (bitmap == null) {
       if (t != null) {
         totalSw.stop();
@@ -185,25 +247,116 @@ class FaceDetector {
       }
       return const <Face>[];
     }
-    final int imageWidth = bitmap.width;
-    final int imageHeight = bitmap.height;
+    try {
+      final faces = await _runPipelineOnSource(
+        bitmap,
+        imageWidth: bitmap.width,
+        imageHeight: bitmap.height,
+        mode: mode,
+        timings: t,
+      );
+      if (t != null) {
+        totalSw.stop();
+        t.totalUs = totalSw.elapsedMicroseconds;
+        lastTimings = t;
+      }
+      return faces;
+    } finally {
+      bitmap.close();
+    }
+  }
 
-    if (t != null) sw.start();
+  /// Detects faces from a live `<video>` element (webcam feed).
+  ///
+  /// The video must be playing and have non-zero `videoWidth`/`videoHeight`
+  /// (i.e. past the `loadedmetadata` event). Returns an empty list if those
+  /// dimensions are still zero — useful while the camera is warming up.
+  ///
+  /// This skips the JPEG/PNG decode stage entirely: `ctx.drawImage` accepts
+  /// `HTMLVideoElement` directly, so we save ~1ms per frame at 30fps.
+  Future<List<Face>> detectFacesFromVideo(
+    web.HTMLVideoElement video, {
+    FaceDetectionMode mode = FaceDetectionMode.full,
+  }) async {
+    if (!isReady) {
+      throw StateError(
+        'FaceDetector not initialized. Call initialize() before using.',
+      );
+    }
+    final int width = video.videoWidth;
+    final int height = video.videoHeight;
+    if (width == 0 || height == 0) return const <Face>[];
+
+    try {
+      return await _detectFacesFromVideoInner(
+        video,
+        width: width,
+        height: height,
+        mode: mode,
+      );
+    } catch (e) {
+      if (activeAccelerator == 'webgpu' && !_fellBackToWasm) {
+        await _swapToWasm();
+        return _detectFacesFromVideoInner(
+          video,
+          width: width,
+          height: height,
+          mode: mode,
+        );
+      }
+      rethrow;
+    }
+  }
+
+  Future<List<Face>> _detectFacesFromVideoInner(
+    web.HTMLVideoElement video, {
+    required int width,
+    required int height,
+    FaceDetectionMode mode = FaceDetectionMode.full,
+  }) async {
+    final t = debugTimings ? WebDetectTimings() : null;
+    final totalSw = t != null ? (Stopwatch()..start()) : Stopwatch();
+    final faces = await _runPipelineOnSource(
+      video,
+      imageWidth: width,
+      imageHeight: height,
+      mode: mode,
+      timings: t,
+    );
+    if (t != null) {
+      totalSw.stop();
+      t.totalUs = totalSw.elapsedMicroseconds;
+      lastTimings = t;
+    }
+    return faces;
+  }
+
+  /// Core pipeline: BlazeFace → mesh → iris on whatever drawable the caller
+  /// hands us (`ImageBitmap`, `HTMLVideoElement`, `HTMLCanvasElement`, etc.).
+  Future<List<Face>> _runPipelineOnSource(
+    JSObject source, {
+    required int imageWidth,
+    required int imageHeight,
+    required FaceDetectionMode mode,
+    WebDetectTimings? timings,
+  }) async {
+    final sw = Stopwatch();
+    if (timings != null) sw.start();
     final List<Detection> dets = await _detector.detect(
-      bitmap,
+      source,
       imageWidth: imageWidth,
       imageHeight: imageHeight,
     );
-    if (t != null) {
+    if (timings != null) {
       sw.stop();
-      t.detInferUs = sw.elapsedMicroseconds;
+      timings.detInferUs = sw.elapsedMicroseconds;
+      timings.detections = dets.length;
       sw.reset();
     }
 
     final imgSize = Size(imageWidth.toDouble(), imageHeight.toDouble());
     if (mode == FaceDetectionMode.fast || dets.isEmpty) {
-      bitmap.close();
-      final result = <Face>[
+      return <Face>[
         for (final d in dets)
           Face(
             detection: d.imageSize == null
@@ -219,13 +372,6 @@ class FaceDetector {
             originalSize: imgSize,
           ),
       ];
-      if (t != null) {
-        totalSw.stop();
-        t.totalUs = totalSw.elapsedMicroseconds;
-        t.detections = dets.length;
-        lastTimings = t;
-      }
-      return result;
     }
 
     final List<Face> faces = <Face>[];
@@ -241,17 +387,17 @@ class FaceDetector {
         imageHeight.toDouble(),
       );
 
-      if (t != null) sw.start();
+      if (timings != null) sw.start();
       final mesh = await _mesh.runOnCrop(
-        bitmap,
+        source,
         cx: align.cx,
         cy: align.cy,
         size: align.size,
         theta: align.theta,
       );
-      if (t != null) {
+      if (timings != null) {
         sw.stop();
-        t.meshInferUs += sw.elapsedMicroseconds;
+        timings.meshInferUs += sw.elapsedMicroseconds;
         sw.reset();
       }
 
@@ -270,9 +416,6 @@ class FaceDetector {
 
       List<Point> irisPoints = const <Point>[];
       if (mode == FaceDetectionMode.full) {
-        // Compute eye ROIs from mesh landmark indices used by MediaPipe:
-        // left:  33  (inner)  / 133 (outer)
-        // right: 362 (inner)  / 263 (outer)
         AlignedRoi roiFromCorners(int a, int b) {
           final p0 = meshPoints[a];
           final p1 = meshPoints[b];
@@ -287,9 +430,9 @@ class FaceDetector {
         final leftRoi = roiFromCorners(33, 133);
         final rightRoi = roiFromCorners(362, 263);
 
-        if (t != null) sw.start();
+        if (timings != null) sw.start();
         final leftFlat = await _iris.runOnEyeCrop(
-          bitmap,
+          source,
           cx: leftRoi.cx,
           cy: leftRoi.cy,
           size: leftRoi.size,
@@ -297,16 +440,16 @@ class FaceDetector {
           isRight: false,
         );
         final rightFlat = await _iris.runOnEyeCrop(
-          bitmap,
+          source,
           cx: rightRoi.cx,
           cy: rightRoi.cy,
           size: rightRoi.size,
           theta: rightRoi.theta,
           isRight: true,
         );
-        if (t != null) {
+        if (timings != null) {
           sw.stop();
-          t.irisInferUs += sw.elapsedMicroseconds;
+          timings.irisInferUs += sw.elapsedMicroseconds;
           sw.reset();
         }
 
@@ -340,14 +483,6 @@ class FaceDetector {
           originalSize: imgSize,
         ),
       );
-    }
-
-    bitmap.close();
-    if (t != null) {
-      totalSw.stop();
-      t.totalUs = totalSw.elapsedMicroseconds;
-      t.detections = dets.length;
-      lastTimings = t;
     }
     return faces;
   }
@@ -394,6 +529,20 @@ class FaceDetector {
         'initialize(withSegmentation: true).',
       );
     }
+    try {
+      return await _getSegmentationMaskInner(imageBytes);
+    } catch (e) {
+      if (activeAccelerator == 'webgpu' && !_fellBackToWasm) {
+        await _swapToWasm();
+        return _getSegmentationMaskInner(imageBytes);
+      }
+      rethrow;
+    }
+  }
+
+  Future<SegmentationMask> _getSegmentationMaskInner(
+    Uint8List imageBytes,
+  ) async {
     final web.ImageBitmap? bitmap = await _decodeBitmap(imageBytes);
     if (bitmap == null) {
       throw const SegmentationException(
@@ -411,6 +560,54 @@ class FaceDetector {
       bitmap.close();
     }
   }
+
+  /// Runs segmentation on a live `<video>` frame (webcam feed).
+  Future<SegmentationMask> getSegmentationMaskFromVideo(
+    web.HTMLVideoElement video,
+  ) async {
+    if (!_segmentationReady || _segmenter == null) {
+      throw StateError(
+        'Segmentation not initialized. Call initializeSegmentation() or '
+        'initialize(withSegmentation: true).',
+      );
+    }
+    final int width = video.videoWidth;
+    final int height = video.videoHeight;
+    if (width == 0 || height == 0) {
+      throw const SegmentationException(
+        SegmentationError.imageTooSmall,
+        'Video has no dimensions yet (loadedmetadata not fired).',
+      );
+    }
+    try {
+      return await _getSegmentationMaskFromVideoInner(
+        video,
+        width: width,
+        height: height,
+      );
+    } catch (e) {
+      if (activeAccelerator == 'webgpu' && !_fellBackToWasm) {
+        await _swapToWasm();
+        return _getSegmentationMaskFromVideoInner(
+          video,
+          width: width,
+          height: height,
+        );
+      }
+      rethrow;
+    }
+  }
+
+  Future<SegmentationMask> _getSegmentationMaskFromVideoInner(
+    web.HTMLVideoElement video, {
+    required int width,
+    required int height,
+  }) =>
+      _segmenter!.segment(
+        video,
+        imageWidth: width,
+        imageHeight: height,
+      );
 
   // ---- API parity stubs that throw on web -----------------------------------
 

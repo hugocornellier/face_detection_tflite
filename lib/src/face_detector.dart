@@ -304,6 +304,26 @@ class FaceDetector {
     return _deserializeFacesFast(result);
   }
 
+  /// Detects faces directly from a live `<video>` element. Web-only.
+  ///
+  /// Native platforms throw [UnsupportedError]. Provided here for API parity
+  /// so cross-platform code can compile against either build.
+  Future<List<Face>> detectFacesFromVideo(
+    Object video, {
+    FaceDetectionMode mode = FaceDetectionMode.full,
+  }) {
+    throw UnsupportedError(
+      'detectFacesFromVideo is web-only. On native, use detectFacesFromCameraImage.',
+    );
+  }
+
+  /// Runs segmentation on a live `<video>` frame. Web-only.
+  Future<SegmentationMask> getSegmentationMaskFromVideo(Object video) {
+    throw UnsupportedError(
+      'getSegmentationMaskFromVideo is web-only.',
+    );
+  }
+
   /// Detects faces in an image file at [path].
   ///
   /// Convenience wrapper that reads the file and calls [detectFaces].

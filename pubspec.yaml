@@ -30,6 +30,12 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^6.0.0
 
+# Local override while developing the runtime-fallback / activeAccelerator
+# additions in flutter_litert. Drop this once flutter_litert is published.
+dependency_overrides:
+  flutter_litert:
+    path: ../flutter_litert
+
 flutter:
   uses-material-design: true
   assets:

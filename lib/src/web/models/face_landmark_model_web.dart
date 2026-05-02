@@ -13,6 +13,14 @@ import '../../util/web_image_utils.dart';
 /// 468-point face mesh runner for web. Uses LiteRT.js with auto WebGPU/WASM.
 class FaceLandmarkModelWeb {
   LiteRtInterpreter? _liteRtItp;
+
+  String? _activeAccelerator;
+
+  /// The accelerator that compiled this model (`'webgpu'` / `'wasm'`),
+  /// or null pre-init.
+  String? get activeAccelerator =>
+      _liteRtItp != null ? _activeAccelerator : null;
+
   Float32List? _landmarksOut;
   Float32List? _scoreOut;
   int _landmarksIdx = 0;
@@ -42,6 +50,7 @@ class FaceLandmarkModelWeb {
       bytes,
       accelerator: resolved,
     );
+    _activeAccelerator = resolved;
 
     final inT = _liteRtItp!.getInputTensor(0);
     _inH = inT.shape[1];
@@ -88,6 +97,7 @@ class FaceLandmarkModelWeb {
   Future<void> dispose() async {
     _liteRtItp?.close();
     _liteRtItp = null;
+    _activeAccelerator = null;
     _landmarksOut = null;
     _scoreOut = null;
     _inputBuffer = null;
@@ -102,7 +112,7 @@ class FaceLandmarkModelWeb {
   /// [bitmap] should be the source image. [cx], [cy], [size], [theta] specify
   /// the rotation-aware crop. Output is the model's tensor as Float32List.
   Future<({Float32List landmarks, double score})> runOnCrop(
-    web.ImageBitmap bitmap, {
+    JSObject canvasSource, {
     required double cx,
     required double cy,
     required double size,
@@ -123,7 +133,7 @@ class FaceLandmarkModelWeb {
     ctx.rotate(-theta);
     ctx.scale(scale, scale);
     ctx.translate(-cx, -cy);
-    ctx.drawImage(bitmap, 0, 0);
+    ctx.drawImage(canvasSource, 0, 0);
     ctx.restore();
 
     final web.ImageData imageData = ctx.getImageData(0, 0, _inW, _inH);

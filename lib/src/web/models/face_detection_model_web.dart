@@ -18,6 +18,14 @@ import '../../util/web_image_utils.dart';
 /// otherwise falls back to WASM SIMD.
 class FaceDetectionModelWeb {
   LiteRtInterpreter? _liteRtItp;
+
+  String? _activeAccelerator;
+
+  /// The accelerator that compiled this model (`'webgpu'` / `'wasm'`),
+  /// or null before [initialize] completes.
+  String? get activeAccelerator =>
+      _liteRtItp != null ? _activeAccelerator : null;
+
   Float32List? _boxesOut;
   Float32List? _scoresOut;
   late int _inW;
@@ -62,6 +70,7 @@ class FaceDetectionModelWeb {
       bytes,
       accelerator: resolved,
     );
+    _activeAccelerator = resolved;
 
     final outs = _liteRtItp!.getOutputTensors();
     int boxesIdx = -1;
@@ -117,6 +126,7 @@ class FaceDetectionModelWeb {
   Future<void> dispose() async {
     _liteRtItp?.close();
     _liteRtItp = null;
+    _activeAccelerator = null;
     _boxesOut = null;
     _scoresOut = null;
     _inputBuffer = null;
@@ -134,7 +144,7 @@ class FaceDetectionModelWeb {
   ///
   /// Returns detections in NORMALIZED image coordinates.
   Future<List<Detection>> detect(
-    web.ImageBitmap bitmap, {
+    JSObject canvasSource, {
     required int imageWidth,
     required int imageHeight,
   }) async {
@@ -153,7 +163,7 @@ class FaceDetectionModelWeb {
     ctx.fillStyle = 'rgb(0,0,0)'.toJS;
     ctx.fillRect(0, 0, _inW, _inH);
     ctx.drawImage(
-      bitmap,
+      canvasSource,
       0,
       0,
       imageWidth,
