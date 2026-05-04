@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -9,7 +11,10 @@ import 'package:image_picker/image_picker.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:camera/camera.dart';
 import 'package:face_detection_tflite/face_detection_tflite.dart';
+import 'package:opencv_dart/opencv.dart' as cv;
+import 'package:path_provider/path_provider.dart';
 import 'package:sensors_plus/sensors_plus.dart';
+import 'package:video_player/video_player.dart';
 
 /// Widget shown for the selected dropdown item (inherits parent text style).
 class _DropdownSelected extends StatelessWidget {
@@ -93,6 +98,21 @@ class HomeScreen extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                       builder: (context) => const SegmentationDemoScreen()),
+                );
+              },
+            ),
+            const SizedBox(height: 24),
+            _buildModeCard(
+              context,
+              icon: Icons.movie_creation_outlined,
+              title: 'Video File',
+              description:
+                  'Process an MP4 frame-by-frame with smoothed face detection',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => const VideoFileScreen()),
                 );
               },
             ),
@@ -1976,5 +1996,848 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
         ],
       ),
     );
+  }
+}
+
+// ─────────────────────────── Video File Screen ────────────────────────────
+
+class VideoFileScreen extends StatefulWidget {
+  const VideoFileScreen({super.key});
+
+  @override
+  State<VideoFileScreen> createState() => _VideoFileScreenState();
+}
+
+class _VideoFileScreenState extends State<VideoFileScreen> {
+  FaceDetector? _detector;
+  bool _isInitialized = false;
+  bool _isProcessing = false;
+  bool _cancelRequested = false;
+  String? _errorMessage;
+  String? _statusMessage;
+
+  String? _inputPath;
+  String? _outputPath;
+  int _totalFrames = 0;
+  int _processedFrames = 0;
+  double _videoFps = 0;
+  int _videoWidth = 0;
+  int _videoHeight = 0;
+  Duration _elapsed = Duration.zero;
+  final Stopwatch _wallClock = Stopwatch();
+
+  VideoPlayerController? _playerController;
+  bool _playerReady = false;
+  String? _playerError;
+
+  bool _smoothingEnabled = true;
+  final FaceSmoother _smoother = FaceSmoother(enabled: true);
+
+  bool get _supportsInAppPlayer {
+    if (kIsWeb) return true;
+    return Platform.isAndroid || Platform.isIOS || Platform.isMacOS;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _initDetector();
+  }
+
+  Future<void> _initDetector() async {
+    try {
+      final detector = await FaceDetector.create(
+        performanceConfig: const PerformanceConfig.xnnpack(),
+      );
+      if (!mounted) {
+        await detector.dispose();
+        return;
+      }
+      setState(() {
+        _detector = detector;
+        _isInitialized = true;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _errorMessage = 'Failed to initialize detector: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _cancelRequested = true;
+    _detector?.dispose();
+    _playerController?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _disposePlayer() async {
+    final c = _playerController;
+    _playerController = null;
+    _playerReady = false;
+    _playerError = null;
+    await c?.dispose();
+  }
+
+  Future<void> _initPlayerForOutput(String path) async {
+    await _disposePlayer();
+    if (!_supportsInAppPlayer) return;
+    final controller = VideoPlayerController.file(File(path));
+    _playerController = controller;
+    try {
+      await controller.initialize();
+      await controller.setLooping(true);
+      if (!mounted) {
+        await controller.dispose();
+        _playerController = null;
+        return;
+      }
+      setState(() => _playerReady = true);
+      await controller.play();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _playerError = 'Could not load video: $e');
+    }
+  }
+
+  Future<void> _pickVideo() async {
+    const typeGroup = XTypeGroup(
+      label: 'Videos',
+      extensions: ['mp4', 'mov', 'm4v'],
+    );
+    final XFile? file = await openFile(acceptedTypeGroups: [typeGroup]);
+    if (file == null) return;
+    await _processVideo(file.path);
+  }
+
+  Future<void> _processVideo(String path) async {
+    final inputFile = File(path);
+    if (!await inputFile.exists()) {
+      setState(() => _errorMessage = 'File does not exist: $path');
+      return;
+    }
+
+    final cap = cv.VideoCapture.fromFile(path);
+    if (!cap.isOpened) {
+      cap.release();
+      String hint = '';
+      if (Platform.isLinux) {
+        hint = '\n\nLinux requires GStreamer plugins. Try:\n'
+            '  sudo apt install gstreamer1.0-libav '
+            'gstreamer1.0-plugins-good gstreamer1.0-plugins-bad';
+      }
+      setState(
+        () => _errorMessage =
+            'Could not open video.\nFormat may not be supported by the OS '
+                'video backend.$hint',
+      );
+      return;
+    }
+
+    final fps = cap.get(cv.CAP_PROP_FPS);
+    final width = cap.get(cv.CAP_PROP_FRAME_WIDTH).toInt();
+    final height = cap.get(cv.CAP_PROP_FRAME_HEIGHT).toInt();
+    final total = cap.get(cv.CAP_PROP_FRAME_COUNT).toInt();
+
+    final docs = await getApplicationDocumentsDirectory();
+    final outName = 'face_${DateTime.now().millisecondsSinceEpoch}.mp4';
+    final outPath = '${docs.path}/$outName';
+
+    final writer = cv.VideoWriter.fromFile(outPath, 'avc1', fps, (
+      width,
+      height,
+    ));
+    if (!writer.isOpened) {
+      cap.release();
+      setState(
+        () => _errorMessage =
+            'Could not open writer for $outPath. The "avc1" (H.264) codec '
+                'may not be available on this OS backend.',
+      );
+      return;
+    }
+
+    if (!mounted) {
+      cap.release();
+      writer.release();
+      return;
+    }
+    await _disposePlayer();
+    setState(() {
+      _inputPath = path;
+      _outputPath = outPath;
+      _videoFps = fps;
+      _videoWidth = width;
+      _videoHeight = height;
+      _totalFrames = total;
+      _processedFrames = 0;
+      _isProcessing = true;
+      _cancelRequested = false;
+      _errorMessage = null;
+      _statusMessage = 'Processing...';
+      _elapsed = Duration.zero;
+    });
+    _wallClock
+      ..reset()
+      ..start();
+
+    cv.Mat? frame;
+    _smoother.reset();
+    try {
+      int idx = 0;
+      while (mounted && !_cancelRequested) {
+        final result = cap.read(m: frame);
+        final ok = result.$1;
+        frame = result.$2;
+        if (!ok || frame.isEmpty) break;
+
+        final List<Face> raw = await _detector!.detectFacesFromMat(
+          frame,
+          mode: FaceDetectionMode.full,
+        );
+        final double tSec = fps > 0 ? idx / fps : idx / 30.0;
+        final List<Face> faces = _smoother.apply(raw, tSec);
+        _drawFacesOnMat(frame, faces);
+        writer.write(frame);
+
+        idx++;
+        if (idx % 4 == 0) {
+          if (!mounted) break;
+          setState(() {
+            _processedFrames = idx;
+            _elapsed = _wallClock.elapsed;
+          });
+          await Future<void>.delayed(Duration.zero);
+        }
+      }
+      if (mounted) {
+        setState(() {
+          _processedFrames = idx;
+          _elapsed = _wallClock.elapsed;
+          _statusMessage = _cancelRequested
+              ? 'Cancelled after $idx frames.'
+              : 'Done. Wrote $idx frames to:\n$outPath';
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _errorMessage = 'Error during processing: $e');
+      }
+    } finally {
+      _wallClock.stop();
+      cap.release();
+      writer.release();
+      frame?.dispose();
+      if (mounted) setState(() => _isProcessing = false);
+      if (mounted && !_cancelRequested && _outputPath != null) {
+        await _initPlayerForOutput(_outputPath!);
+      }
+    }
+  }
+
+  void _drawFacesOnMat(cv.Mat mat, List<Face> faces) {
+    if (faces.isEmpty) return;
+    final orange = cv.Scalar(0, 165, 255);
+    final cyan = cv.Scalar(255, 255, 0);
+    final green = cv.Scalar(0, 255, 0);
+    final black = cv.Scalar(0, 0, 0);
+
+    final w = mat.cols;
+    final h = mat.rows;
+
+    for (final face in faces) {
+      final bb = face.boundingBox;
+      final l = bb.left.toInt().clamp(0, w - 1);
+      final t = bb.top.toInt().clamp(0, h - 1);
+      final r = bb.right.toInt().clamp(0, w - 1);
+      final b = bb.bottom.toInt().clamp(0, h - 1);
+      cv.rectangle(
+        mat,
+        cv.Rect(l, t, (r - l).clamp(1, w), (b - t).clamp(1, h)),
+        orange,
+        thickness: 3,
+      );
+
+      final label =
+          'Face ${(face.detectionData.score * 100).toStringAsFixed(0)}%';
+      final (sz, _) = cv.getTextSize(label, cv.FONT_HERSHEY_SIMPLEX, 0.6, 2);
+      final labelTop = (t - sz.height - 8).clamp(0, h - 1);
+      final labelW = (sz.width + 8).clamp(1, w - l);
+      final labelH = (sz.height + 8).clamp(1, h - labelTop);
+      cv.rectangle(
+        mat,
+        cv.Rect(l, labelTop, labelW, labelH),
+        orange,
+        thickness: -1,
+      );
+      cv.putText(
+        mat,
+        label,
+        cv.Point(l + 4, labelTop + sz.height + 2),
+        cv.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        black,
+        thickness: 2,
+      );
+
+      final mesh = face.mesh;
+      if (mesh != null) {
+        for (final pt in mesh.points) {
+          cv.circle(
+            mat,
+            cv.Point(pt.x.toInt(), pt.y.toInt()),
+            1,
+            green,
+            thickness: -1,
+          );
+        }
+      }
+
+      for (final pt in face.irisPoints) {
+        cv.circle(
+          mat,
+          cv.Point(pt.x.toInt(), pt.y.toInt()),
+          2,
+          cyan,
+          thickness: -1,
+        );
+      }
+    }
+  }
+
+  Future<void> _openOutputFile() async {
+    final path = _outputPath;
+    if (path == null) return;
+    try {
+      if (Platform.isMacOS) {
+        await Process.run('open', [path]);
+      } else if (Platform.isLinux) {
+        await Process.run('xdg-open', [path]);
+      } else if (Platform.isWindows) {
+        await Process.run('cmd', ['/c', 'start', '', path]);
+      } else if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Saved to: $path')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Could not open: $e')));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Video File - Face Detection')),
+      body: _buildBody(),
+      floatingActionButton: _isInitialized && !_isProcessing
+          ? FloatingActionButton.extended(
+              onPressed: _pickVideo,
+              icon: const Icon(Icons.video_file),
+              label: const Text('Pick Video'),
+            )
+          : (_isProcessing
+              ? FloatingActionButton.extended(
+                  onPressed: () => setState(() => _cancelRequested = true),
+                  icon: const Icon(Icons.cancel),
+                  label: const Text('Cancel'),
+                  backgroundColor: Colors.red,
+                )
+              : null),
+    );
+  }
+
+  Widget _buildBody() {
+    if (!_isInitialized && _errorMessage == null) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('Initializing detector...'),
+          ],
+        ),
+      );
+    }
+
+    final progress = (_totalFrames > 0)
+        ? (_processedFrames / _totalFrames).clamp(0.0, 1.0)
+        : 0.0;
+    final processedFps = (_elapsed.inMilliseconds > 0)
+        ? _processedFrames * 1000.0 / _elapsed.inMilliseconds
+        : 0.0;
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_errorMessage != null)
+            Card(
+              color: Colors.red[50],
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    const Icon(Icons.error_outline, color: Colors.red),
+                    const SizedBox(width: 12),
+                    Expanded(child: Text(_errorMessage!)),
+                  ],
+                ),
+              ),
+            ),
+          if (_inputPath != null) ...[
+            const SizedBox(height: 8),
+            _infoRow('Input', _inputPath!),
+            if (_videoWidth > 0)
+              _infoRow(
+                'Source',
+                '$_videoWidth×$_videoHeight @ '
+                    '${_videoFps.toStringAsFixed(2)} fps · '
+                    '$_totalFrames frames',
+              ),
+          ],
+          if (!_isProcessing)
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: const Text('Smoothing (One-Euro filter)'),
+              subtitle: Text(
+                _smoothingEnabled
+                    ? 'On: mesh points filtered across frames'
+                    : 'Off: raw per-frame detections',
+              ),
+              value: _smoothingEnabled,
+              onChanged: (v) {
+                setState(() {
+                  _smoothingEnabled = v;
+                  _smoother.enabled = v;
+                  _smoother.reset();
+                });
+              },
+            ),
+          const SizedBox(height: 16),
+          if (_isProcessing) ...[
+            LinearProgressIndicator(value: _totalFrames > 0 ? progress : null),
+            const SizedBox(height: 8),
+            Text(
+              'Frame $_processedFrames / $_totalFrames · '
+              '${(progress * 100).toStringAsFixed(1)}% · '
+              '${processedFps.toStringAsFixed(1)} fps · '
+              'elapsed ${_formatDuration(_elapsed)}',
+              style: const TextStyle(
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
+            ),
+          ] else if (_outputPath != null && _statusMessage != null)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.check_circle, color: Colors.green),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _statusMessage!,
+                            style: const TextStyle(fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Total time: ${_formatDuration(_elapsed)} '
+                      '(${processedFps.toStringAsFixed(1)} fps avg)',
+                    ),
+                    const SizedBox(height: 12),
+                    _buildOutputPreview(),
+                    const SizedBox(height: 12),
+                    if (Platform.isMacOS ||
+                        Platform.isLinux ||
+                        Platform.isWindows)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: ElevatedButton.icon(
+                          onPressed: _openOutputFile,
+                          icon: const Icon(Icons.play_circle_outline),
+                          label: const Text('Open output video'),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            )
+          else
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const SizedBox(height: 32),
+                  Icon(
+                    Icons.movie_creation_outlined,
+                    size: 96,
+                    color: Colors.grey[400],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Pick an MP4 to run face detection on every frame.\n'
+                    'Output is written to the app documents directory.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey[700]),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _infoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 70,
+            child: Text(
+              '$label:',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+          Expanded(child: SelectableText(value)),
+        ],
+      ),
+    );
+  }
+
+  String _formatDuration(Duration d) {
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    if (d.inHours > 0) {
+      return '${d.inHours}:$m:$s';
+    }
+    return '$m:$s';
+  }
+
+  Widget _buildOutputPreview() {
+    if (!_supportsInAppPlayer) return const SizedBox.shrink();
+    if (_playerError != null) {
+      return Text(_playerError!, style: const TextStyle(color: Colors.red));
+    }
+    final controller = _playerController;
+    if (controller == null || !_playerReady) {
+      return const SizedBox(
+        height: 64,
+        child: Center(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              SizedBox(width: 12),
+              Text('Loading preview...'),
+            ],
+          ),
+        ),
+      );
+    }
+    return _OutputVideoPlayer(controller: controller);
+  }
+}
+
+// ─────────────────────────── Output Video Player ──────────────────────────
+
+class _OutputVideoPlayer extends StatefulWidget {
+  final VideoPlayerController controller;
+  const _OutputVideoPlayer({required this.controller});
+
+  @override
+  State<_OutputVideoPlayer> createState() => _OutputVideoPlayerState();
+}
+
+class _OutputVideoPlayerState extends State<_OutputVideoPlayer> {
+  void _onTick() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onTick);
+  }
+
+  @override
+  void didUpdateWidget(covariant _OutputVideoPlayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_onTick);
+      widget.controller.addListener(_onTick);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onTick);
+    super.dispose();
+  }
+
+  String _fmt(Duration d) {
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.controller;
+    final value = c.value;
+    final pos = value.position;
+    final dur = value.duration;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: AspectRatio(
+            aspectRatio: value.aspectRatio == 0 ? 16 / 9 : value.aspectRatio,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Container(color: Colors.black),
+                VideoPlayer(c),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            IconButton(
+              icon: Icon(value.isPlaying ? Icons.pause : Icons.play_arrow),
+              onPressed: () {
+                if (value.isPlaying) {
+                  c.pause();
+                } else {
+                  c.play();
+                }
+              },
+            ),
+            Expanded(
+              child: VideoProgressIndicator(
+                c,
+                allowScrubbing: true,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '${_fmt(pos)} / ${_fmt(dur)}',
+              style: const TextStyle(
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────── One-Euro Filter ──────────────────────────────
+
+class _OneEuroFilter {
+  final double minCutoff;
+  final double beta;
+  final double dCutoff;
+
+  double? _xPrev;
+  double _dxPrev = 0.0;
+  double? _tPrev;
+
+  _OneEuroFilter({this.minCutoff = 1.0, this.beta = 0.1, this.dCutoff = 1.0});
+
+  static double _alpha(double cutoff, double dt) {
+    final tau = 1.0 / (2 * math.pi * cutoff);
+    return 1.0 / (1.0 + tau / dt);
+  }
+
+  double filter(double x, double tSec) {
+    if (_xPrev == null || _tPrev == null) {
+      _xPrev = x;
+      _tPrev = tSec;
+      _dxPrev = 0.0;
+      return x;
+    }
+    final dt = (tSec - _tPrev!).clamp(1e-6, 1.0);
+    final dx = (x - _xPrev!) / dt;
+    final aD = _alpha(dCutoff, dt);
+    final dxHat = aD * dx + (1 - aD) * _dxPrev;
+    final cutoff = minCutoff + beta * dxHat.abs();
+    final a = _alpha(cutoff, dt);
+    final xHat = a * x + (1 - a) * _xPrev!;
+    _xPrev = xHat;
+    _dxPrev = dxHat;
+    _tPrev = tSec;
+    return xHat;
+  }
+
+  void reset() {
+    _xPrev = null;
+    _tPrev = null;
+    _dxPrev = 0.0;
+  }
+}
+
+// ─────────────────────────── Face Smoother ────────────────────────────────
+
+class _FaceTrack {
+  final Map<int, List<_OneEuroFilter>> filters = {};
+  double lastLeft = 0, lastTop = 0, lastRight = 0, lastBottom = 0;
+  bool hasBox = false;
+  int missedFrames = 0;
+}
+
+class FaceSmoother {
+  bool enabled;
+  static const int _maxMissed = 5;
+  static const double _minIou = 0.2;
+  final List<_FaceTrack> _tracks = [];
+
+  FaceSmoother({this.enabled = true});
+
+  void reset() {
+    _tracks.clear();
+  }
+
+  List<Face> apply(List<Face> faces, double tSec) {
+    if (!enabled || faces.isEmpty) {
+      if (!enabled) _tracks.clear();
+      return faces;
+    }
+
+    final unmatched = List<int>.generate(_tracks.length, (i) => i);
+    final matchedTrack = List<int?>.filled(faces.length, null);
+
+    for (int p = 0; p < faces.length; p++) {
+      double bestIou = _minIou;
+      int bestT = -1;
+      for (final t in unmatched) {
+        if (!_tracks[t].hasBox) continue;
+        final iou = _iou(faces[p], _tracks[t]);
+        if (iou > bestIou) {
+          bestIou = iou;
+          bestT = t;
+        }
+      }
+      if (bestT >= 0) {
+        matchedTrack[p] = bestT;
+        unmatched.remove(bestT);
+      }
+    }
+
+    final out = <Face>[];
+    for (int p = 0; p < faces.length; p++) {
+      _FaceTrack track;
+      if (matchedTrack[p] != null) {
+        track = _tracks[matchedTrack[p]!];
+        track.missedFrames = 0;
+      } else {
+        track = _FaceTrack();
+        _tracks.add(track);
+      }
+      final bb = faces[p].boundingBox;
+      track.lastLeft = bb.left;
+      track.lastTop = bb.top;
+      track.lastRight = bb.right;
+      track.lastBottom = bb.bottom;
+      track.hasBox = true;
+      out.add(_smoothFace(faces[p], track, tSec));
+    }
+
+    for (final t in unmatched) {
+      _tracks[t].missedFrames++;
+    }
+    _tracks.removeWhere((t) => t.missedFrames > _maxMissed);
+
+    return out;
+  }
+
+  Face _smoothFace(Face face, _FaceTrack track, double tSec) {
+    final mesh = face.mesh;
+    if (mesh == null) return face;
+
+    final smoothedPoints = <Point>[];
+    for (int i = 0; i < mesh.points.length; i++) {
+      final pt = mesh.points[i];
+      var fs = track.filters[i];
+      if (fs == null) {
+        fs = [
+          _OneEuroFilter(minCutoff: 1.0, beta: 0.1, dCutoff: 1.0),
+          _OneEuroFilter(minCutoff: 1.0, beta: 0.1, dCutoff: 1.0),
+        ];
+        track.filters[i] = fs;
+      }
+      smoothedPoints.add(Point(
+        fs[0].filter(pt.x, tSec),
+        fs[1].filter(pt.y, tSec),
+      ));
+    }
+
+    final smoothedIrises = <Point>[];
+    for (int i = 0; i < face.irisPoints.length; i++) {
+      final pt = face.irisPoints[i];
+      final key = mesh.points.length + i;
+      var fs = track.filters[key];
+      if (fs == null) {
+        fs = [
+          _OneEuroFilter(minCutoff: 1.0, beta: 0.1, dCutoff: 1.0),
+          _OneEuroFilter(minCutoff: 1.0, beta: 0.1, dCutoff: 1.0),
+        ];
+        track.filters[key] = fs;
+      }
+      smoothedIrises.add(Point(
+        fs[0].filter(pt.x, tSec),
+        fs[1].filter(pt.y, tSec),
+      ));
+    }
+
+    return Face(
+      detection: face.detectionData,
+      mesh: FaceMesh(smoothedPoints),
+      irises: smoothedIrises,
+      originalSize: face.originalSize,
+    );
+  }
+
+  double _iou(Face a, _FaceTrack b) {
+    final box = a.boundingBox;
+    final l = math.max(box.left, b.lastLeft);
+    final t = math.max(box.top, b.lastTop);
+    final r = math.min(box.right, b.lastRight);
+    final bo = math.min(box.bottom, b.lastBottom);
+    final iw = math.max(0.0, r - l);
+    final ih = math.max(0.0, bo - t);
+    final inter = iw * ih;
+    final aa = math.max(0.0, box.right - box.left) *
+        math.max(0.0, box.bottom - box.top);
+    final bb = math.max(0.0, b.lastRight - b.lastLeft) *
+        math.max(0.0, b.lastBottom - b.lastTop);
+    final union = aa + bb - inter;
+    if (union <= 0) return 0;
+    return inter / union;
   }
 }

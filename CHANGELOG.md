@@ -1,3 +1,9 @@
+## 6.2.5
+
+* Add Web mode GPU fallback
+* Add video file processing mode to example
+* Update flutter_litert -> 2.5.1
+
 ## 6.2.4
 
 * Update flutter_litert -> 2.5.0
@@ -32,7 +38,7 @@
 ## 6.0.1
 
 * Fix Android live camera overlay in the example app ([#8](https://github.com/hugocornellier/face_detection_tflite/issues/8)):
-  * Replace the per-pixel Dart YUV→BGR loop with `flutter_litert`'s shared `packYuv420` helper + native `cv.cvtColor` (~5–10× faster on Android).
+  * Replace the per-pixel Dart YUV→BGR loop with `flutter_litert`'s shared `packYuv420` helper + native `cv.cvtColor` (~5-10x faster on Android).
   * Correct the rotation direction for `sensorOrientation` 90° / 270° to match the Android CameraX convention.
   * Mirror the detection overlay on Android front camera to match `CameraPreview`'s auto-mirrored preview texture.
 * Add option to toggle between front/back camera in example app (mobile only)

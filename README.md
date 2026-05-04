@@ -370,7 +370,7 @@ camera.startImageStream((CameraImage image) async {
 **Tips for camera detection:**
 - `detectFacesFromCameraImage` replaces the old `packYuv420` + manual `cv.cvtColor` + `cv.rotate` dance in one call; no `cv.Mat` on the UI thread.
 - Pass `rotation:` so the detector sees upright frames (Android back/front + device orientation logic); on iOS the camera plugin pre-rotates so this is often null.
-- Pass `maxDim:` (e.g. 640) to downscale in-isolate; the detection model internally resizes to 128–256px, so full-res frames just waste IPC bandwidth.
+- Pass `maxDim:` (e.g. 640) to downscale in-isolate; the detection model internally resizes to 128-256px, so full-res frames just waste IPC bandwidth.
 - Use `FaceDetectionMode.fast` for real-time performance.
 - Mirror the overlay on the front camera to match `CameraPreview`'s auto-mirrored texture.
 - For segmentation or advanced reuse, the underlying two-step API is `prepareCameraFrame(...)` + `detectFacesFromCameraFrame(...)` (or the `...WithSegmentationFromCameraFrame` variant).

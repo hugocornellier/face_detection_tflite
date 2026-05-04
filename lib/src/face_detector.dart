@@ -53,7 +53,7 @@ part of 'native/face_native_lib.dart';
 class FaceDetector {
   /// Cache-invalidation key for consumers that persist detection results.
   ///
-  /// Bump this when detection output could change for the same input bytes —
+  /// Bump this when detection output could change for the same input bytes -
   /// i.e. on model file swaps (retraining, new weights), NMS threshold
   /// changes, preprocessing changes, or postprocessing / coordinate-space
   /// changes. Do NOT bump for pure refactors, doc updates, API additions,
@@ -342,7 +342,7 @@ class FaceDetector {
 
   /// Detects faces in a pre-decoded [cv.Mat] image.
   ///
-  /// The Mat is NOT disposed by this method — caller is responsible for disposal.
+  /// The Mat is NOT disposed by this method - caller is responsible for disposal.
   ///
   /// Throws [StateError] if [initialize] has not been called successfully.
   Future<List<Face>> detectFacesFromMat(
@@ -362,7 +362,7 @@ class FaceDetector {
 
   /// Detects faces from raw pixel bytes without constructing a [cv.Mat] first.
   ///
-  /// This avoids the overhead of building a Mat on the calling thread —
+  /// This avoids the overhead of building a Mat on the calling thread -
   /// the bytes are transferred via zero-copy [TransferableTypedData] and the
   /// Mat is reconstructed inside the background isolate.
   ///
@@ -420,7 +420,7 @@ class FaceDetector {
   /// One-call wrapper for live camera streams: takes a `CameraImage`-shaped
   /// object directly (any object exposing `width`, `height`, and `planes` with
   /// `bytes` / `bytesPerRow` / `bytesPerPixel`) and runs YUV packing, colour
-  /// conversion, rotation, and downscale in the detection isolate — all off
+  /// conversion, rotation, and downscale in the detection isolate - all off
   /// the UI thread.
   ///
   /// Returns an empty list (not an error) when the plane shape can't be
@@ -494,7 +494,7 @@ class FaceDetector {
 
   /// Generates a face embedding from raw pixel bytes without constructing a [cv.Mat].
   ///
-  /// Mirrors [detectFacesFromMatBytes] — use this when you already have decoded
+  /// Mirrors [detectFacesFromMatBytes] - use this when you already have decoded
   /// pixel data to avoid the overhead of building a Mat on the calling thread.
   ///
   /// Parameters:
@@ -525,7 +525,7 @@ class FaceDetector {
 
   /// Generates a face embedding from a pre-decoded [cv.Mat] image.
   ///
-  /// The Mat is NOT disposed by this method — caller is responsible for disposal.
+  /// The Mat is NOT disposed by this method - caller is responsible for disposal.
   ///
   /// Example:
   /// ```dart
@@ -627,7 +627,7 @@ class FaceDetector {
 
   /// Segments a pre-decoded [cv.Mat] image to separate foreground from background.
   ///
-  /// The Mat is NOT disposed by this method — caller is responsible for disposal.
+  /// The Mat is NOT disposed by this method - caller is responsible for disposal.
   ///
   /// Throws [StateError] if [initializeSegmentation] hasn't been called.
   /// Throws [SegmentationException] on inference failure.
@@ -992,7 +992,7 @@ class FaceDetector {
       };
 
   /// Decodes a [CameraFrame] message into a 3-channel BGR [cv.Mat]. Runs
-  /// inside the detection / segmentation isolate — all OpenCV work happens off
+  /// inside the detection / segmentation isolate - all OpenCV work happens off
   /// the UI thread.
   ///
   /// Op ordering is tuned to keep the big allocations tiny: for BGRA frames we
@@ -1099,7 +1099,7 @@ class FaceDetector {
           CameraFrameConversion.yuv2bgrI420 => cv.COLOR_YUV2BGR_I420,
           _ => cv.COLOR_YUV2BGR_NV12,
         };
-        // cvtColor must run first — the packed YUV layout can't be resized.
+        // cvtColor must run first - the packed YUV layout can't be resized.
         cv.Mat current = cv.cvtColor(yuvMat, cvtCode);
         yuvMat.dispose();
         // Then resize → rotate so rotate runs on the small buffer.
@@ -1148,7 +1148,7 @@ class FaceDetector {
     );
   }
 
-  /// Detection isolate entry point — handles face detection and embeddings.
+  /// Detection isolate entry point - handles face detection and embeddings.
   @pragma('vm:entry-point')
   static void _detectionIsolateEntry(_DetectionIsolateStartupData data) async {
     final SendPort mainSendPort = data.sendPort;
@@ -1355,7 +1355,7 @@ class FaceDetector {
     });
   }
 
-  /// Segmentation isolate entry point — handles selfie segmentation.
+  /// Segmentation isolate entry point - handles selfie segmentation.
   @pragma('vm:entry-point')
   static void _segmentationIsolateEntry(
     _SegmentationIsolateStartupData data,

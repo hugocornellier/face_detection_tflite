@@ -13,10 +13,8 @@ dependencies:
     path: ../
   web: ^1.1.1
 
-# Mirrors the override in face_detection_tflite/pubspec.yaml.
 dependency_overrides:
-  flutter_litert:
-    path: ../../flutter_litert
+  flutter_litert: ^2.5.1
 
 flutter:
   uses-material-design: true

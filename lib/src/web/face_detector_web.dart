@@ -8,6 +8,8 @@ import 'dart:ui' show Size;
 
 import 'package:flutter_litert/flutter_litert.dart'
     show Point, PerformanceConfig;
+import 'package:flutter_litert/src/web/web_detector_utils.dart'
+    show decodeBitmap, WebGpuFallback;
 import 'package:web/web.dart' as web;
 
 import 'models/face_detection_model_web.dart';
@@ -47,7 +49,7 @@ class WebDetectTimings {
 /// Mirrors the public API surface of the native FaceDetector for the
 /// detect-from-bytes use case. Native-only methods (filepath, mat, camera
 /// frames) throw [UnsupportedError] on web.
-class FaceDetector {
+class FaceDetector with WebGpuFallback {
   static const String modelVersion = '1.0.0';
 
   FaceDetector();
@@ -99,26 +101,21 @@ class FaceDetector {
   /// The accelerator currently in use across all model runners (`'webgpu'`
   /// / `'wasm'`), or null pre-init. May change at runtime if a GPU error
   /// fires on WebGPU and the detector swaps to WASM.
+  @override
   String? get activeAccelerator =>
       _detector.activeAccelerator ??
       _mesh.activeAccelerator ??
       _iris.activeAccelerator ??
       _segmenter?.activeAccelerator;
 
-  /// True once the detector has irreversibly fallen back from WebGPU to
-  /// WASM after a runtime GPU error. Useful for surfacing in UI.
-  bool get fellBackToWasm => _fellBackToWasm;
-  bool _fellBackToWasm = false;
-
-  // Cached init args so [_swapToWasm] can re-init the runners with the same
+  // Cached init args so [swapToWasm] can re-init the runners with the same
   // model selection but a forced 'wasm' accelerator.
   FaceDetectionModel _model = FaceDetectionModel.backCamera;
   bool _withSegmentation = false;
   SegmentationConfig? _segmentationConfig;
 
-  Future<void> _swapToWasm() async {
-    if (_fellBackToWasm) return;
-    _fellBackToWasm = true;
+  @override
+  Future<void> swapToWasm() async {
     _liteRtAccelerator = 'wasm';
     try {
       await _detector.dispose();
@@ -217,15 +214,7 @@ class FaceDetector {
         'FaceDetector not initialized. Call initialize() before using.',
       );
     }
-    try {
-      return await _detectFacesInner(imageBytes, mode: mode);
-    } catch (e) {
-      if (activeAccelerator == 'webgpu' && !_fellBackToWasm) {
-        await _swapToWasm();
-        return _detectFacesInner(imageBytes, mode: mode);
-      }
-      rethrow;
-    }
+    return withFallback(() => _detectFacesInner(imageBytes, mode: mode));
   }
 
   Future<List<Face>> _detectFacesInner(
@@ -236,7 +225,7 @@ class FaceDetector {
     final totalSw = t != null ? (Stopwatch()..start()) : Stopwatch();
 
     final Stopwatch decodeSw = Stopwatch()..start();
-    final web.ImageBitmap? bitmap = await _decodeBitmap(imageBytes);
+    final web.ImageBitmap? bitmap = await decodeBitmap(imageBytes);
     decodeSw.stop();
     if (t != null) t.decodeUs = decodeSw.elapsedMicroseconds;
     if (bitmap == null) {
@@ -270,7 +259,7 @@ class FaceDetector {
   ///
   /// The video must be playing and have non-zero `videoWidth`/`videoHeight`
   /// (i.e. past the `loadedmetadata` event). Returns an empty list if those
-  /// dimensions are still zero — useful while the camera is warming up.
+  /// dimensions are still zero - useful while the camera is warming up.
   ///
   /// This skips the JPEG/PNG decode stage entirely: `ctx.drawImage` accepts
   /// `HTMLVideoElement` directly, so we save ~1ms per frame at 30fps.
@@ -287,25 +276,14 @@ class FaceDetector {
     final int height = video.videoHeight;
     if (width == 0 || height == 0) return const <Face>[];
 
-    try {
-      return await _detectFacesFromVideoInner(
+    return withFallback(
+      () => _detectFacesFromVideoInner(
         video,
         width: width,
         height: height,
         mode: mode,
-      );
-    } catch (e) {
-      if (activeAccelerator == 'webgpu' && !_fellBackToWasm) {
-        await _swapToWasm();
-        return _detectFacesFromVideoInner(
-          video,
-          width: width,
-          height: height,
-          mode: mode,
-        );
-      }
-      rethrow;
-    }
+      ),
+    );
   }
 
   Future<List<Face>> _detectFacesFromVideoInner(
@@ -529,21 +507,13 @@ class FaceDetector {
         'initialize(withSegmentation: true).',
       );
     }
-    try {
-      return await _getSegmentationMaskInner(imageBytes);
-    } catch (e) {
-      if (activeAccelerator == 'webgpu' && !_fellBackToWasm) {
-        await _swapToWasm();
-        return _getSegmentationMaskInner(imageBytes);
-      }
-      rethrow;
-    }
+    return withFallback(() => _getSegmentationMaskInner(imageBytes));
   }
 
   Future<SegmentationMask> _getSegmentationMaskInner(
     Uint8List imageBytes,
   ) async {
-    final web.ImageBitmap? bitmap = await _decodeBitmap(imageBytes);
+    final web.ImageBitmap? bitmap = await decodeBitmap(imageBytes);
     if (bitmap == null) {
       throw const SegmentationException(
         SegmentationError.imageDecodeFailed,
@@ -579,23 +549,13 @@ class FaceDetector {
         'Video has no dimensions yet (loadedmetadata not fired).',
       );
     }
-    try {
-      return await _getSegmentationMaskFromVideoInner(
+    return withFallback(
+      () => _getSegmentationMaskFromVideoInner(
         video,
         width: width,
         height: height,
-      );
-    } catch (e) {
-      if (activeAccelerator == 'webgpu' && !_fellBackToWasm) {
-        await _swapToWasm();
-        return _getSegmentationMaskFromVideoInner(
-          video,
-          width: width,
-          height: height,
-        );
-      }
-      rethrow;
-    }
+      ),
+    );
   }
 
   Future<SegmentationMask> _getSegmentationMaskFromVideoInner(
@@ -780,18 +740,6 @@ class FaceDetector {
   }
 
   // ---------------------------------------------------------------------------
-
-  static Future<web.ImageBitmap?> _decodeBitmap(Uint8List bytes) async {
-    final web.Blob blob = web.Blob([bytes.toJS].toJS);
-    try {
-      final JSPromise<web.ImageBitmap> promise = web.window.createImageBitmap(
-        blob,
-      );
-      return await promise.toDart;
-    } catch (_) {
-      return null;
-    }
-  }
 
   /// Inverse of the rotation+scale crop in [FaceLandmarkModelWeb.runOnCrop].
   /// Mesh landmarks come back in the model's input pixel space; this maps

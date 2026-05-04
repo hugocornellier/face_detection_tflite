@@ -1,6 +1,6 @@
 part of '../native/face_native_lib.dart';
 
-/// Semantic labels (indexed 0–5) for classes emitted by the multiclass
+/// Semantic labels (indexed 0-5) for classes emitted by the multiclass
 /// segmentation model: background, hair, body skin, face skin, clothes, other.
 const List<String> kSegmentationClassLabels = [
   'BG',
