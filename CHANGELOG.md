@@ -2,7 +2,7 @@
 
 * Add Web mode GPU fallback
 * Add video file processing mode to example
-* Update flutter_litert -> 2.5.1
+* Update flutter_litert -> 2.5.2
 
 ## 6.2.4
 
