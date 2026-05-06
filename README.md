@@ -525,6 +525,67 @@ if (mask is MulticlassSegmentationMask) {
 segmenter.dispose();
 ```
 
+## Web (Flutter Web)
+
+This package supports Flutter Web using the same package import:
+
+```dart
+import 'package:face_detection_tflite/face_detection_tflite.dart';
+```
+
+The following methods work on web: `detectFaces(bytes)` and `getSegmentationMask(bytes)`. Methods that require native OpenCV or isolate infrastructure — `detectFacesFromFilepath`, `detectFacesFromMat`, `detectFacesFromMatBytes`, `detectFacesFromCameraImage`, `detectFacesFromCameraFrame`, all face embedding methods (`getFaceEmbedding`, `getFaceEmbeddings`, `compareFaces`, `faceDistance`, etc.), and segmentation Mat/camera variants — throw `UnsupportedError` on web.
+
+On web, load image bytes from a file picker, drag-and-drop, or network response and pass them to `detectFaces(imageBytes)`:
+
+```dart
+final detector = await FaceDetector.create();
+
+final List<Face> faces = await detector.detectFaces(imageBytes);
+
+await detector.dispose();
+```
+
+### Web (LiteRT.js + WebGPU, default)
+
+LiteRT.js is the default web runtime — no extra configuration needed. It prefers WebGPU and falls back to SIMD-optimized WASM automatically on unsupported browsers:
+
+```dart
+final detector = await FaceDetector.create(
+  // liteRtAccelerator defaults to 'auto': prefers WebGPU, falls back to WASM.
+);
+```
+
+`liteRtAccelerator` accepts:
+
+| Value | Behavior |
+|---|---|
+| `'auto'` (default) | Try WebGPU; if compile fails (no `navigator.gpu`, or unsupported ops) fall back to WASM. |
+| `'webgpu'` | Request WebGPU; falls back to WASM if WebGPU compile fails. |
+| `'wasm'` | Use SIMD-optimized WASM. Use this to opt out of GPU even when available. |
+
+To opt into the legacy `tflite-js` runtime, pass `useLiteRt: false` to `FaceDetector.create()` or `initialize()`.
+
+If you need to self-host the runtime (offline, strict CSP, or to pin a specific build), call `flutter_litert`'s `configureLiteRtLoader(moduleUrl: ..., wasmUrl: ...)` before any `FaceDetector.create`, or set `autoLoad: false` and load it from your own `<script>` tag instead.
+
+### Separate `example_web` app
+
+The repository keeps the browser demo in `example_web/` (separate from `example/`) because the web sample uses browser-specific APIs (HTML file picker + canvas overlay) and includes a live webcam mode via `getUserMedia`. Copy from <a href="https://github.com/hugocornellier/face_detection_tflite/blob/main/example_web/lib/main.dart" target="_blank">example_web/lib/main.dart</a> as a starting point.
+
+Run the web demo locally:
+
+```bash
+cd example_web
+flutter pub get
+flutter run -d chrome
+```
+
+Build for web:
+
+```bash
+cd example_web
+flutter build web
+```
+
 ## Performance
 
 ### Hardware Acceleration

@@ -32,6 +32,14 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_litert: ^2.5.2
 
+hooks:
+  user_defines:
+    dartcv4:
+      include_modules:
+        - imgcodecs
+        - imgproc
+        - videoio
+
 flutter:
   uses-material-design: true
   assets:
