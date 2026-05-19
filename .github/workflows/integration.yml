@@ -169,7 +169,7 @@ jobs:
 
       # Write the test runner to a script file. The android-emulator-runner
       # action executes its `script:` line-by-line through `sh -c`, so we
-      # can't use a multi-line bash script inline — instead invoke this
+      # can't use a multi-line bash script inline, instead invoke this
       # file from a single line.
       - name: Write Android test runner
         run: |

@@ -427,22 +427,24 @@ class FaceDetector {
   /// decoded. Throws at runtime if [cameraImage] doesn't expose the expected
   /// shape.
   ///
-  /// [isBgra] selects BGRA (macOS, default) vs. RGBA (Linux) for the desktop
-  /// single-plane path; ignored for YUV input.
+  /// [isBgra] selects BGRA vs. RGBA for the desktop single-plane path; ignored
+  /// for YUV input (Android/iOS). Defaults to `true` on macOS (BGRA) and
+  /// `false` on Windows/Linux (RGBA). Only pass this explicitly if you are
+  /// using a non-standard camera plugin that delivers a different format.
   ///
   /// Throws [StateError] if [initialize] has not been called successfully.
   Future<List<Face>> detectFacesFromCameraImage(
     Object cameraImage, {
     FaceDetectionMode mode = FaceDetectionMode.full,
     CameraFrameRotation? rotation,
-    bool isBgra = true,
+    bool? isBgra,
     int? maxDim,
   }) async {
     _requireReady();
     final frame = prepareCameraFrameFromImage(
       cameraImage,
       rotation: rotation,
-      isBgra: isBgra,
+      isBgra: isBgra ?? Platform.isMacOS,
     );
     if (frame == null) return const <Face>[];
     return detectFacesFromCameraFrame(frame, mode: mode, maxDim: maxDim);

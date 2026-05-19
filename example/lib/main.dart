@@ -829,7 +829,6 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       final frame = prepareCameraFrameFromImage(
         image,
         rotation: rotation,
-        isBgra: Platform.isMacOS,
       );
       if (frame == null) {
         return (faces: <Face>[], segMask: null);
@@ -845,7 +844,6 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     final faces = await _faceDetector!.detectFacesFromCameraImage(
       image,
       rotation: rotation,
-      isBgra: Platform.isMacOS,
       mode: _detectionMode,
       maxDim: maxDim,
     );
@@ -1178,7 +1176,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       camera,
       ResolutionPreset.medium,
       enableAudio: false,
-      imageFormatGroup: ImageFormatGroup.yuv420,
+      imageFormatGroup: ImageFormatGroup
+          .yuv420, // prevents JPEG fallback on Android; ignored on desktop
     );
 
     await controller.initialize();

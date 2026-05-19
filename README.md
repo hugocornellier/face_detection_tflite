@@ -339,7 +339,14 @@ FaceDetectionModel.fullSparse    // same quality as full, ~30% faster on CPU
 
 <img src="assets/screenshots/livecamera_ex1.gif" width="600" alt="Live Camera Detection">
 
-For real-time face detection with a camera feed, use `detectFacesFromCameraImage`. It auto-detects YUV420 (NV12 / NV21 / I420) and desktop BGRA/RGBA layouts, and the `cvtColor`, optional `rotate`, and `maxDim` downscale all run inside the detector's existing isolate: the UI thread is never blocked by OpenCV work.
+For real-time face detection from a camera feed, use `detectFacesFromCameraImage`. All processing runs off the UI thread.
+
+> **Desktop (Windows / macOS / Linux):** You must also add [`camera_desktop`](https://pub.dev/packages/camera_desktop) to your `pubspec.yaml`, otherwise `startImageStream` throws `UnimplementedError: onStreamedFrameAvailable() is not implemented`.
+> ```yaml
+> dependencies:
+>   camera: ^0.12.0
+>   camera_desktop: ^1.1.4   # required for Windows, macOS, and Linux streaming
+> ```
 
 ```dart
 import 'package:camera/camera.dart';
@@ -352,30 +359,29 @@ final camera = CameraController(
   cameras.first,
   ResolutionPreset.medium,
   enableAudio: false,
-  imageFormatGroup: ImageFormatGroup.yuv420,
+  imageFormatGroup: ImageFormatGroup.yuv420, // prevents JPEG fallback on Android; ignored on desktop
 );
 await camera.initialize();
 
 camera.startImageStream((CameraImage image) async {
   final faces = await detector.detectFacesFromCameraImage(
     image,
-    // rotation: CameraFrameRotation.cw90, // based on device orientation
+    // rotation: rotationForFrame(...), // recommended on Android/iOS
     mode: FaceDetectionMode.fast,
-    maxDim: 640, // optional in-isolate downscale before inference
+    maxDim: 640,
   );
   // Process faces...
 });
 ```
 
-**Tips for camera detection:**
-- `detectFacesFromCameraImage` replaces the old `packYuv420` + manual `cv.cvtColor` + `cv.rotate` dance in one call; no `cv.Mat` on the UI thread.
-- Pass `rotation:` so the detector sees upright frames (Android back/front + device orientation logic); on iOS the camera plugin pre-rotates so this is often null.
-- Pass `maxDim:` (e.g. 640) to downscale in-isolate; the detection model internally resizes to 128-256px, so full-res frames just waste IPC bandwidth.
+Tips:
+- Pass `rotation:` on Android/iOS so the detector sees upright frames. Use `rotationForFrame(...)` to compute the correct value from sensor orientation and device orientation. On desktop frames are always upright so omit it.
+- Pass `maxDim: 640` to downscale frames before inference. Recommended: full-res frames waste bandwidth since the model input is much smaller.
 - Use `FaceDetectionMode.fast` for real-time performance.
 - Mirror the overlay on the front camera to match `CameraPreview`'s auto-mirrored texture.
-- For segmentation or advanced reuse, the underlying two-step API is `prepareCameraFrame(...)` + `detectFacesFromCameraFrame(...)` (or the `...WithSegmentationFromCameraFrame` variant).
+- For segmentation or advanced use, the two-step API is `prepareCameraFrame(...)` + `detectFacesFromCameraFrame(...)` (or the `...WithSegmentationFromCameraFrame` variant).
 
-See the full [example app](https://pub.dev/packages/face_detection_tflite/example) for a production implementation including orientation handling, mirror handling, and frame throttling.
+See the full [example app](https://pub.dev/packages/face_detection_tflite/example) for a complete implementation.
 
 ## Background Processing
 
@@ -533,7 +539,7 @@ This package supports Flutter Web using the same package import:
 import 'package:face_detection_tflite/face_detection_tflite.dart';
 ```
 
-The following methods work on web: `detectFaces(bytes)` and `getSegmentationMask(bytes)`. Methods that require native OpenCV or isolate infrastructure — `detectFacesFromFilepath`, `detectFacesFromMat`, `detectFacesFromMatBytes`, `detectFacesFromCameraImage`, `detectFacesFromCameraFrame`, all face embedding methods (`getFaceEmbedding`, `getFaceEmbeddings`, `compareFaces`, `faceDistance`, etc.), and segmentation Mat/camera variants — throw `UnsupportedError` on web.
+The following methods work on web: `detectFaces(bytes)` and `getSegmentationMask(bytes)`. Methods that require native OpenCV or isolate infrastructure (`detectFacesFromFilepath`, `detectFacesFromMat`, `detectFacesFromMatBytes`, `detectFacesFromCameraImage`, `detectFacesFromCameraFrame`, all face embedding methods (`getFaceEmbedding`, `getFaceEmbeddings`, `compareFaces`, `faceDistance`, etc.), and segmentation Mat/camera variants) throw `UnsupportedError` on web.
 
 On web, load image bytes from a file picker, drag-and-drop, or network response and pass them to `detectFaces(imageBytes)`:
 
@@ -547,7 +553,7 @@ await detector.dispose();
 
 ### Web (LiteRT.js + WebGPU, default)
 
-LiteRT.js is the default web runtime — no extra configuration needed. It prefers WebGPU and falls back to SIMD-optimized WASM automatically on unsupported browsers:
+LiteRT.js is the default web runtime, no extra configuration needed. It prefers WebGPU and falls back to SIMD-optimized WASM automatically on unsupported browsers:
 
 ```dart
 final detector = await FaceDetector.create(

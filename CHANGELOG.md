@@ -1,3 +1,7 @@
+## 6.2.6
+
+* Update flutter_litert to 2.5.3 and camera_desktop to 1.1.4
+
 ## 6.2.5
 
 * Add Web mode GPU fallback
