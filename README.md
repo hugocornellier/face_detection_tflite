@@ -12,7 +12,7 @@
 </p>
 
 Flutter implementation of Google's MediaPipe face and facial landmark detection models using LiteRT (formerly TensorFlow Lite).
-Completely local: no remote API, just pure on-device, offline detection.
+Runs 100% offline/on-device. 
 
 > **~5.5x faster than Google ML Kit** on equivalent face detection tasks ([benchmark source](example/integration_test/mlkit_benchmark_test.dart))
 
