@@ -19,7 +19,7 @@ dependencies:
   flutter:
     sdk: flutter
   opencv_dart: ^2.2.1+4
-  flutter_litert: ^2.5.5
+  flutter_litert: ^2.5.7
   meta: ^1.17.0
   web: ^1.1.1
   flutter_web_plugins:
@@ -52,7 +52,7 @@ flutter:
       android:
         dartPluginClass: FaceDetectionTfliteDart
       macos:
-        pluginClass: FaceDetectionTflitePlugin
+        dartPluginClass: FaceDetectionTfliteDart
       windows:
         pluginClass: FaceDetectionTflitePlugin
       linux:

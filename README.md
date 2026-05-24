@@ -14,7 +14,7 @@
 Flutter implementation of Google's MediaPipe face and facial landmark detection models using LiteRT (formerly TensorFlow Lite).
 Runs 100% offline/on-device. 
 
-> **~5.5x faster than Google ML Kit** on equivalent face detection tasks ([benchmark source](example/integration_test/mlkit_benchmark_test.dart))
+> **~5.5x faster than Google ML Kit** on equivalent face detection tasks ([benchmark source](example/integration_test/mlkit_benchmark_test.dart))<sup>[†](#mlkit-comparison-benchmark)</sup>
 
 | Face Mesh, Iris Detection, Eye Tracking | Multi-Face Detection |
 |---|---|
@@ -27,9 +27,10 @@ Runs 100% offline/on-device.
 - 468 point mesh with 3D depth information (x, y, z coordinates)
 - Selfie segmentation: separate person from background, or use multiclass model for 6-class body part segmentation (hair, face, body, clothes, etc.)
 - Face recognition (embeddings): identify/compare faces across images
-- Truly cross-platform: compatible with Android, iOS, macOS, Windows, and Linux
-- The [example](https://pub.dev/packages/face_detection_tflite/example) app illustrates how to detect and render results on images
-  - Includes demo for bounding boxes, the 468-point mesh, facial landmarks and comprehensive eye tracking.
+- Truly cross-platform: compatible with Android, iOS, macOS, Windows, Linux and Web
+- Full [example](https://pub.dev/packages/face_detection_tflite/example) app (for native platforms) that illustrates how to detect and render results on images
+  - Includes demo for bounding boxes, facial mesh, landmarks and eye/iris tracking.
+- The <a href="https://github.com/hugocornellier/face_detection_tflite/blob/main/example_web/lib/main.dart" target="_blank">web example</a> provides a complete web demo
 
 ## Quick Start
 
@@ -345,7 +346,7 @@ For real-time face detection from a camera feed, use `detectFacesFromCameraImage
 > ```yaml
 > dependencies:
 >   camera: ^0.12.0
->   camera_desktop: ^1.1.4   # required for Windows, macOS, and Linux streaming
+>   camera_desktop: ^1.1.6   # required for Windows, macOS, and Linux streaming
 > ```
 
 ```dart
@@ -685,6 +686,19 @@ This is the fastest path when you already have raw pixel bytes: the data is tran
 ### Memory Considerations
 
 `FaceDetector` holds all TFLite models (~26-40MB for full pipeline) in a background isolate. Always call `dispose()` when finished to release these resources. Image data is transferred using zero-copy `TransferableTypedData`, minimizing memory overhead.
+
+## MLKit Comparison Benchmark
+
+<a id="mlkit-comparison-benchmark"></a>
+
+The benchmark test ([`example/integration_test/mlkit_benchmark_test.dart`](example/integration_test/mlkit_benchmark_test.dart)) compares `face_detection_tflite` against `google_mlkit_face_detection`. Since `google_mlkit_face_detection` does not support Swift Package Manager, running the benchmark requires CocoaPods. To set it up:
+
+```bash
+cd example/ios
+pod init
+# restore the Flutter podhelper in the Podfile, then:
+pod install
+```
 
 ## Example
 
