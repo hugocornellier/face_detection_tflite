@@ -116,11 +116,7 @@ List<List<double>> transformIrisNormToAbsolute(
     final double px = isRight ? (1.0 - p[0]) : p[0];
     final double lx2 = (px - 0.5) * s;
     final double ly2 = (p[1] - 0.5) * s;
-    out.add([
-      roi.cx + lx2 * ct - ly2 * st,
-      roi.cy + lx2 * st + ly2 * ct,
-      p[2],
-    ]);
+    out.add([roi.cx + lx2 * ct - ly2 * st, roi.cy + lx2 * st + ly2 * ct, p[2]]);
   }
   return out;
 }

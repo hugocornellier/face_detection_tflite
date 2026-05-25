@@ -18,7 +18,7 @@ jobs:
       matrix:
         flutter-channel: [stable, beta]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: subosito/flutter-action@v2
         with:
@@ -33,7 +33,7 @@ jobs:
 
       - name: Upload coverage to Codecov
         if: matrix.flutter-channel == 'stable'
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           files: coverage/lcov.info
           flags: unit-tests
@@ -50,19 +50,12 @@ jobs:
       matrix:
         flutter-channel: [stable, beta]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: subosito/flutter-action@v2
         with:
           channel: ${{ matrix.flutter-channel }}
           cache: true
-
-      - name: Cache CocoaPods
-        uses: actions/cache@v4
-        with:
-          path: example/macos/Pods
-          key: pods-macos-${{ hashFiles('example/macos/Podfile.lock') }}
-          restore-keys: pods-macos-
 
       - name: Install example dependencies
         run: flutter pub get
@@ -125,7 +118,7 @@ jobs:
       matrix:
         flutter-channel: [stable, beta]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Free disk space
         uses: jlumbroso/free-disk-space@main
@@ -149,7 +142,7 @@ jobs:
           cache: true
 
       - name: Cache Gradle
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.gradle/caches
@@ -253,7 +246,7 @@ jobs:
       matrix:
         flutter-channel: [stable, beta]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Linux dependencies
         run: |
@@ -266,7 +259,7 @@ jobs:
           cache: true
 
       - name: Cache opencv_dart native build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: example/.dart_tool/hooks_runner/shared
           key: opencv-native-linux-${{ hashFiles('pubspec.lock', 'example/pubspec.lock') }}
@@ -346,7 +339,7 @@ jobs:
       matrix:
         flutter-channel: [stable, beta]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: subosito/flutter-action@v2
         with:
@@ -354,7 +347,7 @@ jobs:
           cache: true
 
       - name: Cache opencv_dart native build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: example/.dart_tool/hooks_runner/shared
           key: opencv-native-windows-${{ hashFiles('pubspec.lock', 'example/pubspec.lock') }}

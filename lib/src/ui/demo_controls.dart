@@ -75,10 +75,12 @@ class CompactSlider extends StatelessWidget {
             child: SliderTheme(
               data: SliderTheme.of(context).copyWith(
                 trackHeight: 2.0,
-                thumbShape:
-                    const RoundSliderThumbShape(enabledThumbRadius: 6.0),
-                overlayShape:
-                    const RoundSliderOverlayShape(overlayRadius: 12.0),
+                thumbShape: const RoundSliderThumbShape(
+                  enabledThumbRadius: 6.0,
+                ),
+                overlayShape: const RoundSliderOverlayShape(
+                  overlayRadius: 12.0,
+                ),
               ),
               child: Slider(
                 value: value,

@@ -194,9 +194,11 @@ class FaceDetector {
         final effectiveSegModel =
             segmentationConfig?.model ?? SegmentationModel.general;
         final segModelFile = segmentationModelFile(effectiveSegModel);
-        assetFutures.add(rootBundle.load(
-          'packages/face_detection_tflite/assets/models/$segModelFile',
-        ));
+        assetFutures.add(
+          rootBundle.load(
+            'packages/face_detection_tflite/assets/models/$segModelFile',
+          ),
+        );
       }
 
       final results = await Future.wait(assetFutures);
@@ -319,9 +321,7 @@ class FaceDetector {
 
   /// Runs segmentation on a live `<video>` frame. Web-only.
   Future<SegmentationMask> getSegmentationMaskFromVideo(Object video) {
-    throw UnsupportedError(
-      'getSegmentationMaskFromVideo is web-only.',
-    );
+    throw UnsupportedError('getSegmentationMaskFromVideo is web-only.');
   }
 
   /// Detects faces in an image file at [path].
@@ -467,10 +467,7 @@ class FaceDetector {
   /// final similarity = FaceDetector.compareFaces(embedding, referenceEmbedding);
   /// if (similarity > 0.6) print('Same person!');
   /// ```
-  Future<Float32List> getFaceEmbedding(
-    Face face,
-    Uint8List imageBytes,
-  ) async {
+  Future<Float32List> getFaceEmbedding(Face face, Uint8List imageBytes) async {
     _requireReady();
     final List<double> result = await _sendDetectionRequest<List<double>>(
       'embedding',
@@ -536,10 +533,7 @@ class FaceDetector {
   /// final embedding = await detector.getFaceEmbeddingFromMat(faces.first, mat);
   /// mat.dispose();
   /// ```
-  Future<Float32List> getFaceEmbeddingFromMat(
-    Face face,
-    cv.Mat image,
-  ) {
+  Future<Float32List> getFaceEmbeddingFromMat(Face face, cv.Mat image) {
     _requireReady();
     final f = _extractMatFields(image);
     return getFaceEmbeddingFromMatBytes(
@@ -620,10 +614,10 @@ class FaceDetector {
     _requireSegmentationReady();
     final Map<String, dynamic> result =
         await _sendSegmentationRequest<Map<String, dynamic>>('segment', {
-      'bytes': TransferableTypedData.fromList([imageBytes]),
-      'outputFormat': outputFormat.index,
-      'binaryThreshold': binaryThreshold,
-    });
+          'bytes': TransferableTypedData.fromList([imageBytes]),
+          'outputFormat': outputFormat.index,
+          'binaryThreshold': binaryThreshold,
+        });
     return _deserializeMask(result);
   }
 
@@ -643,13 +637,13 @@ class FaceDetector {
     final f = _extractMatFields(image);
     final Map<String, dynamic> result =
         await _sendSegmentationRequest<Map<String, dynamic>>('segmentMat', {
-      'bytes': TransferableTypedData.fromList([f.data]),
-      'width': f.width,
-      'height': f.height,
-      'matType': f.matType,
-      'outputFormat': outputFormat.index,
-      'binaryThreshold': binaryThreshold,
-    });
+          'bytes': TransferableTypedData.fromList([f.data]),
+          'width': f.width,
+          'height': f.height,
+          'matType': f.matType,
+          'outputFormat': outputFormat.index,
+          'binaryThreshold': binaryThreshold,
+        });
     return _deserializeMask(result);
   }
 
@@ -733,13 +727,13 @@ class FaceDetector {
     _requireSegmentationReady();
     final Map<String, dynamic> result =
         await _sendSegmentationRequest<Map<String, dynamic>>(
-      'segmentCameraFrame',
-      _cameraFrameFields(frame, {
-        'outputFormat': outputFormat.index,
-        'binaryThreshold': binaryThreshold,
-        'maxDim': maxDim,
-      }),
-    );
+          'segmentCameraFrame',
+          _cameraFrameFields(frame, {
+            'outputFormat': outputFormat.index,
+            'binaryThreshold': binaryThreshold,
+            'maxDim': maxDim,
+          }),
+        );
     return _deserializeMask(result);
   }
 
@@ -751,7 +745,7 @@ class FaceDetector {
   /// inference. Total wall time is still ~`max(detect, segment)` since the
   /// two run in parallel.
   Future<DetectionWithSegmentationResult>
-      detectFacesWithSegmentationFromCameraFrame(
+  detectFacesWithSegmentationFromCameraFrame(
     CameraFrame frame, {
     FaceDetectionMode mode = FaceDetectionMode.full,
     IsolateOutputFormat outputFormat = IsolateOutputFormat.float32,
@@ -762,8 +756,10 @@ class FaceDetector {
     _requireSegmentationReady();
     return _detectAndSegmentImpl(
       detectOp: 'detectCameraFrame',
-      detectFields:
-          _cameraFrameFields(frame, {'mode': mode.name, 'maxDim': maxDim}),
+      detectFields: _cameraFrameFields(frame, {
+        'mode': mode.name,
+        'maxDim': maxDim,
+      }),
       segmentOp: 'segmentCameraFrame',
       segmentFields: _cameraFrameFields(frame, {
         'outputFormat': outputFormat.index,
@@ -884,14 +880,12 @@ class FaceDetector {
   Future<T> _sendDetectionRequest<T>(
     String operation,
     Map<String, dynamic> params,
-  ) =>
-      _worker!.sendRequest<T>(operation, params);
+  ) => _worker!.sendRequest<T>(operation, params);
 
   Future<T> _sendSegmentationRequest<T>(
     String operation,
     Map<String, dynamic> params,
-  ) =>
-      _segmentationRpc!.sendRequest<T>(operation, params);
+  ) => _segmentationRpc!.sendRequest<T>(operation, params);
 
   static List<Face> _deserializeFaces(List<dynamic> result) => result
       .map((map) => Face.fromMap(Map<String, dynamic>.from(map as Map)))
@@ -910,7 +904,9 @@ class FaceDetector {
   static List<Point> _unpackPoints(Float32List buf) {
     final n = buf.length ~/ 3;
     return List<Point>.generate(
-        n, (i) => Point(buf[i * 3], buf[i * 3 + 1], buf[i * 3 + 2]));
+      n,
+      (i) => Point(buf[i * 3], buf[i * 3 + 1], buf[i * 3 + 2]),
+    );
   }
 
   static Map<String, dynamic> _faceToFastMap(Face f) {
@@ -982,16 +978,15 @@ class FaceDetector {
   Map<String, dynamic> _cameraFrameFields(
     CameraFrame frame,
     Map<String, dynamic> extra,
-  ) =>
-      {
-        'bytes': TransferableTypedData.fromList([frame.bytes]),
-        'width': frame.width,
-        'height': frame.height,
-        'strideCols': frame.strideCols,
-        'conversion': frame.conversion.index,
-        'rotation': frame.rotation?.index,
-        ...extra,
-      };
+  ) => {
+    'bytes': TransferableTypedData.fromList([frame.bytes]),
+    'width': frame.width,
+    'height': frame.height,
+    'strideCols': frame.strideCols,
+    'conversion': frame.conversion.index,
+    'rotation': frame.rotation?.index,
+    ...extra,
+  };
 
   /// Decodes a [CameraFrame] message into a 3-channel BGR [cv.Mat]. Runs
   /// inside the detection / segmentation isolate - all OpenCV work happens off
@@ -1027,11 +1022,10 @@ class FaceDetector {
     cv.Mat maybeResize(cv.Mat m) {
       if (maxDim == null || (m.cols <= maxDim && m.rows <= maxDim)) return m;
       final double scale = maxDim / (m.cols > m.rows ? m.cols : m.rows);
-      final resized = cv.resize(
-        m,
-        ((m.cols * scale).toInt(), (m.rows * scale).toInt()),
-        interpolation: cv.INTER_LINEAR,
-      );
+      final resized = cv.resize(m, (
+        (m.cols * scale).toInt(),
+        (m.rows * scale).toInt(),
+      ), interpolation: cv.INTER_LINEAR);
       m.dispose();
       return resized;
     }
@@ -1047,8 +1041,12 @@ class FaceDetector {
     switch (conversion) {
       case CameraFrameConversion.bgra2bgr:
       case CameraFrameConversion.rgba2bgr:
-        final bgraOrRgba =
-            cv.Mat.fromList(height, strideCols, cv.MatType.CV_8UC4, bytes);
+        final bgraOrRgba = cv.Mat.fromList(
+          height,
+          strideCols,
+          cv.MatType.CV_8UC4,
+          bytes,
+        );
         // `cropped` is a view into bgraOrRgba when stride padding is present;
         // track it so we only dispose intermediates we allocated.
         cv.Mat current = strideCols != width
@@ -1058,13 +1056,13 @@ class FaceDetector {
         // Resize on 4-channel BGRA (shrinks the buffer before cvtColor/rotate).
         if (maxDim != null &&
             (current.cols > maxDim || current.rows > maxDim)) {
-          final double scale = maxDim /
+          final double scale =
+              maxDim /
               (current.cols > current.rows ? current.cols : current.rows);
-          final resized = cv.resize(
-            current,
-            ((current.cols * scale).toInt(), (current.rows * scale).toInt()),
-            interpolation: cv.INTER_LINEAR,
-          );
+          final resized = cv.resize(current, (
+            (current.cols * scale).toInt(),
+            (current.rows * scale).toInt(),
+          ), interpolation: cv.INTER_LINEAR);
           if (!identical(current, bgraOrRgba)) current.dispose();
           current = resized;
         }
@@ -1113,13 +1111,12 @@ class FaceDetector {
 
   ({Uint8List data, int width, int height, int matType}) _extractMatFields(
     cv.Mat image,
-  ) =>
-      (
-        data: image.data,
-        width: image.cols,
-        height: image.rows,
-        matType: image.type.value,
-      );
+  ) => (
+    data: image.data,
+    width: image.cols,
+    height: image.rows,
+    matType: image.type.value,
+  );
 
   Future<DetectionWithSegmentationResult> _detectAndSegmentImpl({
     required String detectOp,
@@ -1159,12 +1156,15 @@ class FaceDetector {
     _FaceDetectorCore? core;
 
     try {
-      final faceDetectionBytes =
-          data.faceDetectionBytes.materialize().asUint8List();
-      final faceLandmarkBytes =
-          data.faceLandmarkBytes.materialize().asUint8List();
-      final irisLandmarkBytes =
-          data.irisLandmarkBytes.materialize().asUint8List();
+      final faceDetectionBytes = data.faceDetectionBytes
+          .materialize()
+          .asUint8List();
+      final faceLandmarkBytes = data.faceLandmarkBytes
+          .materialize()
+          .asUint8List();
+      final irisLandmarkBytes = data.irisLandmarkBytes
+          .materialize()
+          .asUint8List();
       final embeddingBytes = data.embeddingBytes.materialize().asUint8List();
 
       final model = FaceDetectionModel.values.firstWhere(
@@ -1309,8 +1309,10 @@ class FaceDetector {
             );
             final embMat = _matFromMessage(message, embMatBytes);
             try {
-              final embedding =
-                  await core!.getFaceEmbeddingDirect(embMatFace, embMat);
+              final embedding = await core!.getFaceEmbeddingDirect(
+                embMatFace,
+                embMat,
+              );
               mainSendPort.send({'id': id, 'result': embedding.toList()});
             } finally {
               embMat.dispose();
@@ -1325,15 +1327,17 @@ class FaceDetector {
               return;
             }
             final Uint8List imageBytes = _extractBytes(message);
-            final List<Face> faces =
-                _deserializeFaces(message['faces'] as List);
+            final List<Face> faces = _deserializeFaces(
+              message['faces'] as List,
+            );
             final cv.Mat image = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
             try {
               final embeddings = <Float32List?>[];
               for (final face in faces) {
                 try {
-                  embeddings
-                      .add(await core!.getFaceEmbeddingDirect(face, image));
+                  embeddings.add(
+                    await core!.getFaceEmbeddingDirect(face, image),
+                  );
                 } catch (_) {
                   embeddings.add(null);
                 }
@@ -1527,15 +1531,17 @@ class FaceDetector {
         result['data'] = TransferableTypedData.fromList([mask.toUint8()]);
         result['dataFormat'] = 'uint8';
       case IsolateOutputFormat.binary:
-        result['data'] = TransferableTypedData.fromList(
-            [mask.toBinary(threshold: binaryThreshold)]);
+        result['data'] = TransferableTypedData.fromList([
+          mask.toBinary(threshold: binaryThreshold),
+        ]);
         result['dataFormat'] = 'binary';
         result['binaryThreshold'] = binaryThreshold;
     }
 
     if (mask is MulticlassSegmentationMask) {
-      result['classData'] =
-          TransferableTypedData.fromList([mask.internalClassData]);
+      result['classData'] = TransferableTypedData.fromList([
+        mask.internalClassData,
+      ]);
     }
 
     return result;
@@ -1547,8 +1553,9 @@ class FaceDetector {
     final height = map['height'] as int;
     final originalWidth = map['originalWidth'] as int;
     final originalHeight = map['originalHeight'] as int;
-    final padding =
-        List<double>.unmodifiable((map['padding'] as List).cast<double>());
+    final padding = List<double>.unmodifiable(
+      (map['padding'] as List).cast<double>(),
+    );
 
     final dataFormat = map['dataFormat'] as String? ?? 'float32';
     final rawData = map['data'] as TransferableTypedData;
@@ -1732,8 +1739,7 @@ List<Point> _transformMeshToAbsolute(
   Detection det,
   double imgW,
   double imgH,
-) =>
-    _computeFaceAlignment(det, imgW, imgH);
+) => _computeFaceAlignment(det, imgW, imgH);
 
 /// Test-only: exposes the internal mesh-to-absolute transform for unit tests.
 @visibleForTesting
@@ -1743,8 +1749,7 @@ List<Point> testTransformMeshToAbsolute(
   double cy,
   double size,
   double theta,
-) =>
-    _transformMeshToAbsolute(lmNorm, cx, cy, size, theta);
+) => _transformMeshToAbsolute(lmNorm, cx, cy, size, theta);
 
 /// Test-only: returns a fresh inference-lock `run` function for unit tests.
 @visibleForTesting
@@ -1764,8 +1769,7 @@ Map<String, dynamic> testSerializeMask(
   SegmentationMask mask,
   IsolateOutputFormat format,
   double binaryThreshold,
-) =>
-    FaceDetector._serializeMask(mask, format, binaryThreshold);
+) => FaceDetector._serializeMask(mask, format, binaryThreshold);
 
 /// Test-only: exposes the private mask-deserialization logic for unit tests.
 @visibleForTesting

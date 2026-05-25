@@ -79,15 +79,14 @@ class IrisLandmark with _TfliteModelDisposable {
   static Future<IrisLandmark> create({
     InterpreterOptions? options,
     PerformanceConfig? performanceConfig,
-  }) =>
-      _createWithLoader(
-        load: (opts) => Interpreter.fromAsset(
-          'packages/face_detection_tflite/assets/models/$kIrisLandmarkModel',
-          options: opts,
-        ),
-        options: options,
-        performanceConfig: performanceConfig,
-      );
+  }) => _createWithLoader(
+    load: (opts) => Interpreter.fromAsset(
+      'packages/face_detection_tflite/assets/models/$kIrisLandmarkModel',
+      options: opts,
+    ),
+    options: options,
+    performanceConfig: performanceConfig,
+  );
 
   /// Creates an iris landmark model from pre-loaded model bytes.
   ///
@@ -98,12 +97,11 @@ class IrisLandmark with _TfliteModelDisposable {
   static Future<IrisLandmark> createFromBuffer(
     Uint8List modelBytes, {
     PerformanceConfig? performanceConfig,
-  }) =>
-      _createWithLoader(
-        load: (opts) => Interpreter.fromBuffer(modelBytes, options: opts),
-        performanceConfig: performanceConfig,
-        useIsolateInterpreter: false,
-      );
+  }) => _createWithLoader(
+    load: (opts) => Interpreter.fromBuffer(modelBytes, options: opts),
+    performanceConfig: performanceConfig,
+    useIsolateInterpreter: false,
+  );
 
   /// Shared tensor initialization logic.
   ///
@@ -170,12 +168,11 @@ class IrisLandmark with _TfliteModelDisposable {
     String modelPath, {
     InterpreterOptions? options,
     PerformanceConfig? performanceConfig,
-  }) =>
-      _createWithLoader(
-        load: (opts) => Interpreter.fromFile(File(modelPath), options: opts),
-        options: options,
-        performanceConfig: performanceConfig,
-      );
+  }) => _createWithLoader(
+    load: (opts) => Interpreter.fromFile(File(modelPath), options: opts),
+    options: options,
+    performanceConfig: performanceConfig,
+  );
 
   /// Shared factory logic for [create], [createFromBuffer], and [createFromFile].
   static Future<IrisLandmark> _createWithLoader({
@@ -183,16 +180,15 @@ class IrisLandmark with _TfliteModelDisposable {
     InterpreterOptions? options,
     PerformanceConfig? performanceConfig,
     bool useIsolateInterpreter = true,
-  }) =>
-      _buildModel(
-        load: load,
-        options: options,
-        performanceConfig: performanceConfig,
-        useIsolateInterpreter: useIsolateInterpreter,
-        construct: IrisLandmark._,
-        initTensors: (obj, iso) =>
-            obj._initializeTensors(useIsolateInterpreter: iso),
-      );
+  }) => _buildModel(
+    load: load,
+    options: options,
+    performanceConfig: performanceConfig,
+    useIsolateInterpreter: useIsolateInterpreter,
+    construct: IrisLandmark._,
+    initTensors: (obj, iso) =>
+        obj._initializeTensors(useIsolateInterpreter: iso),
+  );
 
   /// Runs iris detection in a separate isolate for non-blocking inference.
   ///
@@ -347,5 +343,4 @@ List<List<double>> testTransformIrisToAbsolute(
   List<List<double>> lmNorm,
   AlignedRoi roi,
   bool isRight,
-) =>
-    _transformIrisToAbsolute(lmNorm, roi, isRight);
+) => _transformIrisToAbsolute(lmNorm, roi, isRight);

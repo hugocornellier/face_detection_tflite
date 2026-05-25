@@ -32,16 +32,16 @@ class WebDetectTimings {
   int detections = 0;
 
   Map<String, int> toJsonUs() => {
-        'decode_us': decodeUs,
-        'det_pre_us': detPreUs,
-        'det_infer_us': detInferUs,
-        'mesh_pre_us': meshPreUs,
-        'mesh_infer_us': meshInferUs,
-        'iris_pre_us': irisPreUs,
-        'iris_infer_us': irisInferUs,
-        'total_us': totalUs,
-        'detections': detections,
-      };
+    'decode_us': decodeUs,
+    'det_pre_us': detPreUs,
+    'det_infer_us': detInferUs,
+    'mesh_pre_us': meshPreUs,
+    'mesh_infer_us': meshInferUs,
+    'iris_pre_us': irisPreUs,
+    'iris_infer_us': irisInferUs,
+    'total_us': totalUs,
+    'detections': detections,
+  };
 }
 
 /// Web implementation of FaceDetector.
@@ -154,10 +154,7 @@ class FaceDetector with WebGpuFallback {
     _model = model;
     _withSegmentation = withSegmentation;
     _segmentationConfig = segmentationConfig;
-    await _detector.initialize(
-      model,
-      liteRtAccelerator: liteRtAccelerator,
-    );
+    await _detector.initialize(model, liteRtAccelerator: liteRtAccelerator);
     _detectorReady = true;
     await _mesh.initialize(liteRtAccelerator: liteRtAccelerator);
     _meshReady = true;
@@ -562,12 +559,7 @@ class FaceDetector with WebGpuFallback {
     web.HTMLVideoElement video, {
     required int width,
     required int height,
-  }) =>
-      _segmenter!.segment(
-        video,
-        imageWidth: width,
-        imageHeight: height,
-      );
+  }) => _segmenter!.segment(video, imageWidth: width, imageHeight: height);
 
   // ---- API parity stubs that throw on web -----------------------------------
 
@@ -598,9 +590,7 @@ class FaceDetector with WebGpuFallback {
     int matType = 16,
     FaceDetectionMode mode = FaceDetectionMode.full,
   }) {
-    throw UnsupportedError(
-      'detectFacesFromMatBytes is not supported on web.',
-    );
+    throw UnsupportedError('detectFacesFromMatBytes is not supported on web.');
   }
 
   Future<List<Face>> detectFacesFromCameraFrame(
@@ -701,7 +691,7 @@ class FaceDetector with WebGpuFallback {
   }
 
   Future<DetectionWithSegmentationResult>
-      detectFacesWithSegmentationFromCameraFrame(
+  detectFacesWithSegmentationFromCameraFrame(
     Object frame, {
     FaceDetectionMode mode = FaceDetectionMode.full,
     IsolateOutputFormat outputFormat = IsolateOutputFormat.float32,

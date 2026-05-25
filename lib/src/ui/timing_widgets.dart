@@ -54,10 +54,7 @@ class TimingBadge extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 4),
-            Text(
-              perf.label,
-              style: TextStyle(color: perf.color, fontSize: 12),
-            ),
+            Text(perf.label, style: TextStyle(color: perf.color, fontSize: 12)),
             const SizedBox(width: 4),
             const Icon(Icons.info_outline, size: 12, color: Colors.white54),
           ],
@@ -81,7 +78,10 @@ class TimingBadge extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             const _StatusRow(
-                label: 'Detection', processed: true, color: Colors.green),
+              label: 'Detection',
+              processed: true,
+              color: Colors.green,
+            ),
             _StatusRow(
               label: 'Mesh',
               processed: meshProcessed,
@@ -95,17 +95,28 @@ class TimingBadge extends StatelessWidget {
             const Divider(height: 16),
             if (detectionMs != null)
               _TimingRow(
-                  label: 'Detection', ms: detectionMs!, color: Colors.green),
+                label: 'Detection',
+                ms: detectionMs!,
+                color: Colors.green,
+              ),
             if (meshMs != null)
               _TimingRow(
-                  label: 'Mesh Refinement', ms: meshMs!, color: Colors.pink),
+                label: 'Mesh Refinement',
+                ms: meshMs!,
+                color: Colors.pink,
+              ),
             if (irisMs != null)
               _TimingRow(
-                  label: 'Iris Refinement',
-                  ms: irisMs!,
-                  color: Colors.blueAccent),
+                label: 'Iris Refinement',
+                ms: irisMs!,
+                color: Colors.blueAccent,
+              ),
             _TimingRow(
-                label: 'Total', ms: totalMs, color: Colors.blue, isBold: true),
+              label: 'Total',
+              ms: totalMs,
+              color: Colors.blue,
+              isBold: true,
+            ),
             const SizedBox(height: 12),
             _PerformanceIndicator(totalMs: totalMs),
           ],
@@ -146,10 +157,7 @@ class _TimingRow extends StatelessWidget {
               Container(
                 width: 12,
                 height: 12,
-                decoration: BoxDecoration(
-                  color: color,
-                  shape: BoxShape.circle,
-                ),
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
               ),
               const SizedBox(width: 8),
               Text(

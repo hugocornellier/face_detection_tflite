@@ -59,8 +59,13 @@ void main() {
   });
 
   group('testDetectionLetterboxRemoval', () {
-    Detection makeDet(double xmin, double ymin, double xmax, double ymax,
-        {double score = 0.9}) {
+    Detection makeDet(
+      double xmin,
+      double ymin,
+      double xmax,
+      double ymax, {
+      double score = 0.9,
+    }) {
       return Detection(
         boundingBox: RectF(xmin, ymin, xmax, ymax),
         score: score,
@@ -70,7 +75,7 @@ void main() {
           xmax,
           ymax,
           (xmin + xmax) / 2,
-          (ymin + ymax) / 2
+          (ymin + ymax) / 2,
         ],
       );
     }
@@ -128,8 +133,12 @@ void main() {
       // landmark at center of padded area
       final flat = Float32List.fromList([64.0, 64.0, 0.0]);
       // padding: left=0.25, right=0.25 → valid x range = [0.25, 0.75], sx=0.5
-      final result =
-          testUnpackLandmarks(flat, 128, 128, [0.0, 0.0, 0.25, 0.25]);
+      final result = testUnpackLandmarks(flat, 128, 128, [
+        0.0,
+        0.0,
+        0.25,
+        0.25,
+      ]);
       // x = (64/128 - 0.25) / 0.5 = (0.5 - 0.25) / 0.5 = 0.5
       expect(result[0][0], closeTo(0.5, 0.0001));
     });
@@ -137,8 +146,12 @@ void main() {
     test('should clamp to [0,1] by default', () {
       // landmark outside valid region
       final flat = Float32List.fromList([0.0, 0.0, 0.0]);
-      final result =
-          testUnpackLandmarks(flat, 128, 128, [0.25, 0.25, 0.25, 0.25]);
+      final result = testUnpackLandmarks(flat, 128, 128, [
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+      ]);
       // x = (0 - 0.25) / 0.5 = -0.5 → clamped to 0.0
       expect(result[0][0], 0.0);
       expect(result[0][1], 0.0);
@@ -146,15 +159,27 @@ void main() {
 
     test('should not clamp when clamp=false', () {
       final flat = Float32List.fromList([0.0, 0.0, 0.0]);
-      final result = testUnpackLandmarks(
-          flat, 128, 128, [0.25, 0.25, 0.25, 0.25],
-          clamp: false);
+      final result = testUnpackLandmarks(flat, 128, 128, [
+        0.25,
+        0.25,
+        0.25,
+        0.25,
+      ], clamp: false);
       expect(result[0][0], lessThan(0.0));
     });
 
     test('should handle multiple landmarks', () {
-      final flat = Float32List.fromList(
-          [0.0, 0.0, 0.0, 64.0, 64.0, 1.0, 128.0, 128.0, 2.0]);
+      final flat = Float32List.fromList([
+        0.0,
+        0.0,
+        0.0,
+        64.0,
+        64.0,
+        1.0,
+        128.0,
+        128.0,
+        2.0,
+      ]);
       final result = testUnpackLandmarks(flat, 128, 128, [0.0, 0.0, 0.0, 0.0]);
       expect(result.length, 3);
       expect(result[0][0], closeTo(0.0, 0.0001));
@@ -165,7 +190,12 @@ void main() {
 
   group('testNms', () {
     Detection det(
-        double xmin, double ymin, double xmax, double ymax, double score) {
+      double xmin,
+      double ymin,
+      double xmax,
+      double ymax,
+      double score,
+    ) {
       return Detection(
         boundingBox: RectF(xmin, ymin, xmax, ymax),
         score: score,
@@ -185,10 +215,7 @@ void main() {
     });
 
     test('should keep non-overlapping detections', () {
-      final dets = [
-        det(0.0, 0.0, 0.2, 0.2, 0.9),
-        det(0.8, 0.8, 1.0, 1.0, 0.8),
-      ];
+      final dets = [det(0.0, 0.0, 0.2, 0.2, 0.9), det(0.8, 0.8, 1.0, 1.0, 0.8)];
       final result = testNms(dets, 0.5, 0.5);
       expect(result.length, 2);
     });
@@ -318,10 +345,12 @@ void main() {
 
     test('front and short models should produce same anchor count', () {
       // Both use same strides and input size
-      final frontAnchors =
-          testSsdGenerateAnchors(testOptsFor(FaceDetectionModel.frontCamera));
-      final shortAnchors =
-          testSsdGenerateAnchors(testOptsFor(FaceDetectionModel.shortRange));
+      final frontAnchors = testSsdGenerateAnchors(
+        testOptsFor(FaceDetectionModel.frontCamera),
+      );
+      final shortAnchors = testSsdGenerateAnchors(
+        testOptsFor(FaceDetectionModel.shortRange),
+      );
       expect(frontAnchors.length, shortAnchors.length);
     });
 
@@ -366,16 +395,26 @@ void main() {
 
   group('testNameFor', () {
     test('should return model filenames for each variant', () {
-      expect(testNameFor(FaceDetectionModel.frontCamera),
-          'face_detection_front.tflite');
-      expect(testNameFor(FaceDetectionModel.backCamera),
-          'face_detection_back.tflite');
-      expect(testNameFor(FaceDetectionModel.shortRange),
-          'face_detection_short_range.tflite');
-      expect(testNameFor(FaceDetectionModel.full),
-          'face_detection_full_range.tflite');
-      expect(testNameFor(FaceDetectionModel.fullSparse),
-          'face_detection_full_range_sparse.tflite');
+      expect(
+        testNameFor(FaceDetectionModel.frontCamera),
+        'face_detection_front.tflite',
+      );
+      expect(
+        testNameFor(FaceDetectionModel.backCamera),
+        'face_detection_back.tflite',
+      );
+      expect(
+        testNameFor(FaceDetectionModel.shortRange),
+        'face_detection_short_range.tflite',
+      );
+      expect(
+        testNameFor(FaceDetectionModel.full),
+        'face_detection_full_range.tflite',
+      );
+      expect(
+        testNameFor(FaceDetectionModel.fullSparse),
+        'face_detection_full_range_sparse.tflite',
+      );
     });
   });
 }

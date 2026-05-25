@@ -53,10 +53,10 @@ packages:
     dependency: "direct main"
     description:
       name: camera_desktop
-      sha256: "67c173ea02f1a3819c707c8e74c90be768cbbe65302b3fd338f5e37aa300d94f"
+      sha256: "9eccef7941761a482475368766583d9242abcbd1d43226206d5a913361a74600"
       url: "https://pub.dev"
     source: hosted
-    version: "1.1.4"
+    version: "1.1.6"
   camera_platform_interface:
     dependency: transitive
     description:
@@ -159,7 +159,7 @@ packages:
       path: ".."
       relative: true
     source: path
-    version: "6.2.7"
+    version: "6.2.9"
   fake_async:
     dependency: transitive
     description:
@@ -278,10 +278,10 @@ packages:
     dependency: "direct dev"
     description:
       name: flutter_litert
-      sha256: "316e9e29b0cd82640f829faec296fc5d92d60210a36c3fac437c45c87dad1774"
+      sha256: "90ca1c324328ca793c2e7cd5e2c2648f6676ee27012f757717a37a9660373ac2"
       url: "https://pub.dev"
     source: hosted
-    version: "2.5.5"
+    version: "2.5.8"
   flutter_plugin_android_lifecycle:
     dependency: transitive
     description:
@@ -322,7 +322,7 @@ packages:
     source: hosted
     version: "0.11.1"
   google_mlkit_face_detection:
-    dependency: "direct main"
+    dependency: "direct dev"
     description:
       name: google_mlkit_face_detection
       sha256: "7b6ddcc69dbd6fbfa313fb2d974ad0f0c3a0d1657560f0da6be465baf1889687"

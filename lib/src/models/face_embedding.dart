@@ -80,15 +80,14 @@ class FaceEmbedding with _TfliteModelDisposable {
   static Future<FaceEmbedding> create({
     InterpreterOptions? options,
     PerformanceConfig? performanceConfig,
-  }) =>
-      _createWithLoader(
-        load: (opts) => Interpreter.fromAsset(
-          'packages/face_detection_tflite/assets/models/$kEmbeddingModel',
-          options: opts,
-        ),
-        options: options,
-        performanceConfig: performanceConfig,
-      );
+  }) => _createWithLoader(
+    load: (opts) => Interpreter.fromAsset(
+      'packages/face_detection_tflite/assets/models/$kEmbeddingModel',
+      options: opts,
+    ),
+    options: options,
+    performanceConfig: performanceConfig,
+  );
 
   /// Creates a face embedding model from pre-loaded model bytes.
   ///
@@ -99,28 +98,26 @@ class FaceEmbedding with _TfliteModelDisposable {
   static Future<FaceEmbedding> createFromBuffer(
     Uint8List modelBytes, {
     PerformanceConfig? performanceConfig,
-  }) =>
-      _createWithLoader(
-        load: (opts) => Interpreter.fromBuffer(modelBytes, options: opts),
-        performanceConfig: performanceConfig,
-        useIsolateInterpreter: false,
-      );
+  }) => _createWithLoader(
+    load: (opts) => Interpreter.fromBuffer(modelBytes, options: opts),
+    performanceConfig: performanceConfig,
+    useIsolateInterpreter: false,
+  );
 
   static Future<FaceEmbedding> _createWithLoader({
     required FutureOr<Interpreter> Function(InterpreterOptions) load,
     InterpreterOptions? options,
     PerformanceConfig? performanceConfig,
     bool useIsolateInterpreter = true,
-  }) =>
-      _buildModel(
-        load: load,
-        options: options,
-        performanceConfig: performanceConfig,
-        useIsolateInterpreter: useIsolateInterpreter,
-        construct: FaceEmbedding._,
-        initTensors: (obj, iso) =>
-            obj._initializeTensors(useIsolateInterpreter: iso),
-      );
+  }) => _buildModel(
+    load: load,
+    options: options,
+    performanceConfig: performanceConfig,
+    useIsolateInterpreter: useIsolateInterpreter,
+    construct: FaceEmbedding._,
+    initTensors: (obj, iso) =>
+        obj._initializeTensors(useIsolateInterpreter: iso),
+  );
 
   /// Shared tensor initialization logic.
   ///

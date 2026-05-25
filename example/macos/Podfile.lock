@@ -1,47 +1,16 @@
 PODS:
-  - camera_desktop (1.1.2):
-    - FlutterMacOS
-  - face_detection_tflite (6.2.5):
-    - FlutterMacOS
-  - file_selector_macos (0.0.1):
-    - FlutterMacOS
-  - flutter_litert (0.0.1):
-    - FlutterMacOS
   - FlutterMacOS (1.0.0)
-  - video_player_avfoundation (0.0.1):
-    - Flutter
-    - FlutterMacOS
 
 DEPENDENCIES:
-  - camera_desktop (from `Flutter/ephemeral/.symlinks/plugins/camera_desktop/macos`)
-  - face_detection_tflite (from `Flutter/ephemeral/.symlinks/plugins/face_detection_tflite/macos`)
-  - file_selector_macos (from `Flutter/ephemeral/.symlinks/plugins/file_selector_macos/macos`)
-  - flutter_litert (from `Flutter/ephemeral/.symlinks/plugins/flutter_litert/macos`)
   - FlutterMacOS (from `Flutter/ephemeral`)
-  - video_player_avfoundation (from `Flutter/ephemeral/.symlinks/plugins/video_player_avfoundation/darwin`)
 
 EXTERNAL SOURCES:
-  camera_desktop:
-    :path: Flutter/ephemeral/.symlinks/plugins/camera_desktop/macos
-  face_detection_tflite:
-    :path: Flutter/ephemeral/.symlinks/plugins/face_detection_tflite/macos
-  file_selector_macos:
-    :path: Flutter/ephemeral/.symlinks/plugins/file_selector_macos/macos
-  flutter_litert:
-    :path: Flutter/ephemeral/.symlinks/plugins/flutter_litert/macos
   FlutterMacOS:
     :path: Flutter/ephemeral
-  video_player_avfoundation:
-    :path: Flutter/ephemeral/.symlinks/plugins/video_player_avfoundation/darwin
 
 SPEC CHECKSUMS:
-  camera_desktop: a3e0776e9fdd78bd8f032186cffecd3e3b4ef159
-  face_detection_tflite: 9f787746e700bb1c8462c8cdd254ecc25c9560ce
-  file_selector_macos: 9e9e068e90ebee155097d00e89ae91edb2374db7
-  flutter_litert: 1bbe6e8757c574ab66044233b98353f34eaa7e29
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
-  video_player_avfoundation: dd410b52df6d2466a42d28550e33e4146928280a
 
-PODFILE CHECKSUM: 346bfb2deb41d4a6ebd6f6799f92188bde2d246f
+PODFILE CHECKSUM: 54d867c82ac51cbd61b565781b9fada492027009
 
 COCOAPODS: 1.16.2

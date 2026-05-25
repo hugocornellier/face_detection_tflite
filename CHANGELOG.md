@@ -1,3 +1,13 @@
+## 6.2.9
+
+* Remove unused Darwin podspecs for Dart-only iOS/macOS plugin registration.
+
+## 6.2.8
+
+* Update flutter_litert -> 2.5.8
+* Migrate macOS to Swift Package Manager (CocoaPods no longer required)
+* Update camera_desktop -> 1.1.6 in example
+
 ## 6.2.7
 
 * Update flutter_litert -> 2.5.5

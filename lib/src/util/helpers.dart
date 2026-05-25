@@ -23,7 +23,7 @@ class OutputTensorInfo {
 /// try/break loops in model constructors.
 Map<int, OutputTensorInfo> collectOutputTensorInfo(Interpreter itp) {
   final Map<int, OutputTensorInfo> outputs = <int, OutputTensorInfo>{};
-  for (int i = 0;; i++) {
+  for (int i = 0; ; i++) {
     try {
       final Tensor t = itp.getOutputTensor(i);
       outputs[i] = OutputTensorInfo(t.shape, t.data.buffer.asFloat32List());
@@ -87,11 +87,11 @@ List<Detection> _detectionLetterboxRemoval(
   final double sy = 1.0 - (pt + pb);
 
   RectF unpad(RectF r) => RectF(
-        (r.xmin - pl) / sx,
-        (r.ymin - pt) / sy,
-        (r.xmax - pl) / sx,
-        (r.ymax - pt) / sy,
-      );
+    (r.xmin - pl) / sx,
+    (r.ymin - pt) / sy,
+    (r.xmax - pl) / sx,
+    (r.ymax - pt) / sy,
+  );
   List<double> unpadKp(List<double> kps) {
     final List<double> out = List<double>.from(kps);
     for (int i = 0; i < out.length; i += 2) {
@@ -129,21 +129,17 @@ List<List<double>> _unpackLandmarks(
   final double invH = 1.0 / inH;
 
   final int n = flat.length ~/ 3;
-  return List<List<double>>.generate(
-    n,
-    (i) {
-      final int i3 = i * 3;
-      double x = (flat[i3] * invW - pl) * invSx;
-      double y = (flat[i3 + 1] * invH - pt) * invSy;
-      final double z = flat[i3 + 2];
-      if (clamp) {
-        x = clamp01(x);
-        y = clamp01(y);
-      }
-      return <double>[x, y, z];
-    },
-    growable: false,
-  );
+  return List<List<double>>.generate(n, (i) {
+    final int i3 = i * 3;
+    double x = (flat[i3] * invW - pl) * invSx;
+    double y = (flat[i3 + 1] * invH - pt) * invSy;
+    final double z = flat[i3 + 2];
+    if (clamp) {
+      x = clamp01(x);
+      y = clamp01(y);
+    }
+    return <double>[x, y, z];
+  }, growable: false);
 }
 
 /// Weighted NMS over [Detection] objects using [weightedNms] from flutter_litert.
@@ -161,24 +157,29 @@ List<Detection> _weightedNmsDetections(
   double scoreThresh, {
   int maxDetections = 100,
 }) {
-  final List<Detection> filtered = dets
-      .where((d) => d.score >= scoreThresh)
-      .toList()
-    ..sort((a, b) => b.score.compareTo(a.score));
+  final List<Detection> filtered =
+      dets.where((d) => d.score >= scoreThresh).toList()
+        ..sort((a, b) => b.score.compareTo(a.score));
   if (filtered.isEmpty) return const <Detection>[];
 
   final boxes = filtered
-      .map((d) => [
-            d.boundingBox.xmin,
-            d.boundingBox.ymin,
-            d.boundingBox.xmax,
-            d.boundingBox.ymax
-          ])
+      .map(
+        (d) => [
+          d.boundingBox.xmin,
+          d.boundingBox.ymin,
+          d.boundingBox.xmax,
+          d.boundingBox.ymax,
+        ],
+      )
       .toList();
   final scores = filtered.map((d) => d.score).toList();
 
-  final results =
-      weightedNms(boxes, scores, iouThres: iouThresh, maxDet: maxDetections);
+  final results = weightedNms(
+    boxes,
+    scores,
+    iouThres: iouThresh,
+    maxDet: maxDetections,
+  );
 
   return results.map((r) {
     final Detection src = filtered[r.index];
@@ -207,8 +208,7 @@ double testSigmoidClipped(double x, {double limit = kRawScoreLimit}) =>
 List<Detection> testDetectionLetterboxRemoval(
   List<Detection> dets,
   List<double> padding,
-) =>
-    _detectionLetterboxRemoval(dets, padding);
+) => _detectionLetterboxRemoval(dets, padding);
 
 /// Test-only: exposes the private landmark-unpacking logic for unit tests.
 @visibleForTesting
@@ -218,8 +218,7 @@ List<List<double>> testUnpackLandmarks(
   int inH,
   List<double> padding, {
   bool clamp = true,
-}) =>
-    _unpackLandmarks(flat, inW, inH, padding, clamp: clamp);
+}) => _unpackLandmarks(flat, inW, inH, padding, clamp: clamp);
 
 /// Test-only: exposes the private weighted-NMS logic for unit tests.
 @visibleForTesting
@@ -227,8 +226,7 @@ List<Detection> testNms(
   List<Detection> dets,
   double iouThresh,
   double scoreThresh,
-) =>
-    _weightedNmsDetections(dets, iouThresh, scoreThresh);
+) => _weightedNmsDetections(dets, iouThresh, scoreThresh);
 
 /// Test-only: flattens generated SSD anchors into a `Float32List` for unit tests.
 @visibleForTesting
@@ -281,11 +279,10 @@ ImageTensor convertImageToTensor(
     targetHeight: outH,
   );
 
-  final cv.Mat resized = cv.resize(
-    src,
-    (lbp.newWidth, lbp.newHeight),
-    interpolation: cv.INTER_LINEAR,
-  );
+  final cv.Mat resized = cv.resize(src, (
+    lbp.newWidth,
+    lbp.newHeight,
+  ), interpolation: cv.INTER_LINEAR);
 
   final cv.Mat padded = cv.copyMakeBorder(
     resized,

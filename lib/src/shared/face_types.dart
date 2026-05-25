@@ -350,13 +350,13 @@ class SegmentationMask {
 
   /// Serialization for isolate transfer.
   Map<String, dynamic> toMap() => {
-        'data': internalData.toList(),
-        'width': width,
-        'height': height,
-        'originalWidth': originalWidth,
-        'originalHeight': originalHeight,
-        'padding': padding,
-      };
+    'data': internalData.toList(),
+    'width': width,
+    'height': height,
+    'originalWidth': originalWidth,
+    'originalHeight': originalHeight,
+    'padding': padding,
+  };
 
   /// Creates a SegmentationMask from a serialized map.
   factory SegmentationMask.fromMap(Map<String, dynamic> map) {
@@ -400,7 +400,8 @@ class SegmentationMask {
   }
 
   @override
-  String toString() => 'SegmentationMask(${width}x$height, original: '
+  String toString() =>
+      'SegmentationMask(${width}x$height, original: '
       '${originalWidth}x$originalHeight)';
 }
 
@@ -484,7 +485,8 @@ class MulticlassSegmentationMask extends SegmentationMask {
   Float32List get backgroundMask => classMask(SegmentationClass.background);
 
   @override
-  String toString() => 'MulticlassSegmentationMask(${width}x$height, original: '
+  String toString() =>
+      'MulticlassSegmentationMask(${width}x$height, original: '
       '${originalWidth}x$originalHeight, 6 classes)';
 }
 
@@ -537,8 +539,8 @@ class FaceMesh {
 
   /// Converts this mesh to a map for isolate serialization.
   Map<String, dynamic> toMap() => {
-        'points': _points.map((p) => p.toMap()).toList(),
-      };
+    'points': _points.map((p) => p.toMap()).toList(),
+  };
 
   /// Creates a face mesh from a map.
   factory FaceMesh.fromMap(Map<String, dynamic> map) =>
@@ -593,18 +595,19 @@ class Eye {
 
   /// Converts this eye to a map for isolate serialization.
   Map<String, dynamic> toMap() => {
-        'irisCenter': irisCenter.toMap(),
-        'irisContour': irisContour.map((p) => p.toMap()).toList(),
-        'mesh': mesh.map((p) => p.toMap()).toList(),
-      };
+    'irisCenter': irisCenter.toMap(),
+    'irisContour': irisContour.map((p) => p.toMap()).toList(),
+    'mesh': mesh.map((p) => p.toMap()).toList(),
+  };
 
   /// Creates an eye from a map.
   factory Eye.fromMap(Map<String, dynamic> map) => Eye.optimized(
-        irisCenter: Point.fromMap(map['irisCenter']),
-        irisContour:
-            (map['irisContour'] as List).map((p) => Point.fromMap(p)).toList(),
-        mesh: (map['mesh'] as List).map((p) => Point.fromMap(p)).toList(),
-      );
+    irisCenter: Point.fromMap(map['irisCenter']),
+    irisContour: (map['irisContour'] as List)
+        .map((p) => Point.fromMap(p))
+        .toList(),
+    mesh: (map['mesh'] as List).map((p) => Point.fromMap(p)).toList(),
+  );
 }
 
 /// Eye tracking data for both eyes.
@@ -620,15 +623,15 @@ class EyePair {
 
   /// Converts this eye pair to a map.
   Map<String, dynamic> toMap() => {
-        if (leftEye != null) 'leftEye': leftEye!.toMap(),
-        if (rightEye != null) 'rightEye': rightEye!.toMap(),
-      };
+    if (leftEye != null) 'leftEye': leftEye!.toMap(),
+    if (rightEye != null) 'rightEye': rightEye!.toMap(),
+  };
 
   /// Creates an eye pair from a map.
   factory EyePair.fromMap(Map<String, dynamic> map) => EyePair(
-        leftEye: map['leftEye'] != null ? Eye.fromMap(map['leftEye']) : null,
-        rightEye: map['rightEye'] != null ? Eye.fromMap(map['rightEye']) : null,
-      );
+    leftEye: map['leftEye'] != null ? Eye.fromMap(map['leftEye']) : null,
+    rightEye: map['rightEye'] != null ? Eye.fromMap(map['rightEye']) : null,
+  );
 }
 
 /// Facial landmark points with named access.
@@ -670,9 +673,8 @@ class FaceLandmarks {
 
   /// Serializable map for isolate transfer.
   Map<String, dynamic> toSerializableMap() => {
-        for (final entry in _landmarks.entries)
-          entry.key.name: entry.value.toMap(),
-      };
+    for (final entry in _landmarks.entries) entry.key.name: entry.value.toMap(),
+  };
 
   /// Creates landmarks from a serializable map.
   factory FaceLandmarks.fromSerializableMap(Map<String, dynamic> map) {
@@ -737,9 +739,9 @@ class Face {
     required this.mesh,
     required List<Point> irises,
     required this.originalSize,
-  })  : detectionData = detection,
-        irisPoints = irises,
-        boundingBox = _computeBoundingBox(detection.boundingBox, originalSize);
+  }) : detectionData = detection,
+       irisPoints = irises,
+       boundingBox = _computeBoundingBox(detection.boundingBox, originalSize);
 
   static BoundingBox _computeBoundingBox(RectF r, Size originalSize) {
     final double w = originalSize.width.toDouble();
@@ -822,26 +824,25 @@ class Face {
 
   /// Serializes this face to a map for isolate transfer.
   Map<String, dynamic> toMap() => {
-        'detection': detectionData.toMap(),
-        if (mesh != null) 'mesh': mesh!.toMap(),
-        'irisPoints': irisPoints.map((p) => p.toMap()).toList(),
-        'originalSize': {
-          'width': originalSize.width,
-          'height': originalSize.height,
-        },
-      };
+    'detection': detectionData.toMap(),
+    if (mesh != null) 'mesh': mesh!.toMap(),
+    'irisPoints': irisPoints.map((p) => p.toMap()).toList(),
+    'originalSize': {
+      'width': originalSize.width,
+      'height': originalSize.height,
+    },
+  };
 
   /// Creates a face from a map.
   factory Face.fromMap(Map<String, dynamic> map) => Face(
-        detection: Detection.fromMap(map['detection']),
-        mesh: map['mesh'] != null ? FaceMesh.fromMap(map['mesh']) : null,
-        irises:
-            (map['irisPoints'] as List).map((p) => Point.fromMap(p)).toList(),
-        originalSize: Size(
-          map['originalSize']['width'],
-          map['originalSize']['height'],
-        ),
-      );
+    detection: Detection.fromMap(map['detection']),
+    mesh: map['mesh'] != null ? FaceMesh.fromMap(map['mesh']) : null,
+    irises: (map['irisPoints'] as List).map((p) => Point.fromMap(p)).toList(),
+    originalSize: Size(
+      map['originalSize']['width'],
+      map['originalSize']['height'],
+    ),
+  );
 }
 
 /// Result combining face detection and segmentation from parallel processing.
@@ -873,12 +874,11 @@ class DetectionWithSegmentationResult {
 
   /// Serializes this result to a map.
   Map<String, dynamic> toMap() => {
-        'faces': faces.map((f) => f.toMap()).toList(),
-        if (segmentationMask != null)
-          'segmentationMask': segmentationMask!.toMap(),
-        'detectionTimeMs': detectionTimeMs,
-        'segmentationTimeMs': segmentationTimeMs,
-      };
+    'faces': faces.map((f) => f.toMap()).toList(),
+    if (segmentationMask != null) 'segmentationMask': segmentationMask!.toMap(),
+    'detectionTimeMs': detectionTimeMs,
+    'segmentationTimeMs': segmentationTimeMs,
+  };
 
   /// Creates a result from a serialized map.
   factory DetectionWithSegmentationResult.fromMap(Map<String, dynamic> map) {
@@ -932,19 +932,19 @@ class RectF {
 
   /// Serializes to a map.
   Map<String, dynamic> toMap() => {
-        'xmin': xmin,
-        'ymin': ymin,
-        'xmax': xmax,
-        'ymax': ymax,
-      };
+    'xmin': xmin,
+    'ymin': ymin,
+    'xmax': xmax,
+    'ymax': ymax,
+  };
 
   /// Creates from a map.
   factory RectF.fromMap(Map<String, dynamic> map) => RectF(
-        map['xmin'] as double,
-        map['ymin'] as double,
-        map['xmax'] as double,
-        map['ymax'] as double,
-      );
+    map['xmin'] as double,
+    map['ymin'] as double,
+    map['xmax'] as double,
+    map['ymax'] as double,
+  );
 }
 
 /// Raw detection output: bounding box + 6 keypoints.
@@ -992,22 +992,22 @@ class Detection {
 
   /// Serializes to a map.
   Map<String, dynamic> toMap() => {
-        'boundingBox': boundingBox.toMap(),
-        'score': score,
-        'keypointsXY': keypointsXY,
-        if (imageSize != null)
-          'imageSize': {'width': imageSize!.width, 'height': imageSize!.height},
-      };
+    'boundingBox': boundingBox.toMap(),
+    'score': score,
+    'keypointsXY': keypointsXY,
+    if (imageSize != null)
+      'imageSize': {'width': imageSize!.width, 'height': imageSize!.height},
+  };
 
   /// Creates from a map.
   factory Detection.fromMap(Map<String, dynamic> map) => Detection(
-        boundingBox: RectF.fromMap(map['boundingBox']),
-        score: map['score'] as double,
-        keypointsXY: (map['keypointsXY'] as List).cast<double>(),
-        imageSize: map['imageSize'] != null
-            ? Size(map['imageSize']['width'], map['imageSize']['height'])
-            : null,
-      );
+    boundingBox: RectF.fromMap(map['boundingBox']),
+    score: map['score'] as double,
+    keypointsXY: (map['keypointsXY'] as List).cast<double>(),
+    imageSize: map['imageSize'] != null
+        ? Size(map['imageSize']['width'], map['imageSize']['height'])
+        : null,
+  );
 }
 
 /// Image tensor plus padding metadata used to undo letterboxing.

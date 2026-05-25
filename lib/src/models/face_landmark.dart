@@ -54,15 +54,14 @@ class FaceLandmark with _TfliteModelDisposable {
   static Future<FaceLandmark> create({
     InterpreterOptions? options,
     PerformanceConfig? performanceConfig,
-  }) =>
-      _createWithLoader(
-        load: (opts) => Interpreter.fromAsset(
-          'packages/face_detection_tflite/assets/models/$kFaceLandmarkModel',
-          options: opts,
-        ),
-        options: options,
-        performanceConfig: performanceConfig,
-      );
+  }) => _createWithLoader(
+    load: (opts) => Interpreter.fromAsset(
+      'packages/face_detection_tflite/assets/models/$kFaceLandmarkModel',
+      options: opts,
+    ),
+    options: options,
+    performanceConfig: performanceConfig,
+  );
 
   /// Creates a face landmark model from pre-loaded model bytes.
   ///
@@ -73,28 +72,26 @@ class FaceLandmark with _TfliteModelDisposable {
   static Future<FaceLandmark> createFromBuffer(
     Uint8List modelBytes, {
     PerformanceConfig? performanceConfig,
-  }) =>
-      _createWithLoader(
-        load: (opts) => Interpreter.fromBuffer(modelBytes, options: opts),
-        performanceConfig: performanceConfig,
-        useIsolateInterpreter: false,
-      );
+  }) => _createWithLoader(
+    load: (opts) => Interpreter.fromBuffer(modelBytes, options: opts),
+    performanceConfig: performanceConfig,
+    useIsolateInterpreter: false,
+  );
 
   static Future<FaceLandmark> _createWithLoader({
     required FutureOr<Interpreter> Function(InterpreterOptions) load,
     InterpreterOptions? options,
     PerformanceConfig? performanceConfig,
     bool useIsolateInterpreter = true,
-  }) =>
-      _buildModel(
-        load: load,
-        options: options,
-        performanceConfig: performanceConfig,
-        useIsolateInterpreter: useIsolateInterpreter,
-        construct: FaceLandmark._,
-        initTensors: (obj, iso) =>
-            obj._initializeTensors(useIsolateInterpreter: iso),
-      );
+  }) => _buildModel(
+    load: load,
+    options: options,
+    performanceConfig: performanceConfig,
+    useIsolateInterpreter: useIsolateInterpreter,
+    construct: FaceLandmark._,
+    initTensors: (obj, iso) =>
+        obj._initializeTensors(useIsolateInterpreter: iso),
+  );
 
   /// Shared tensor initialization logic.
   ///
@@ -122,8 +119,9 @@ class FaceLandmark with _TfliteModelDisposable {
     _views = TensorFloat32Views.capture(_itp);
     _scratchBuf = Float32List(_inH * _inW * 3);
 
-    final int maxIndex =
-        shapes.keys.isEmpty ? -1 : shapes.keys.reduce((a, b) => a > b ? a : b);
+    final int maxIndex = shapes.keys.isEmpty
+        ? -1
+        : shapes.keys.reduce((a, b) => a > b ? a : b);
     _outShapes = List<List<int>>.generate(
       maxIndex + 1,
       (i) => shapes[i] ?? const <int>[],

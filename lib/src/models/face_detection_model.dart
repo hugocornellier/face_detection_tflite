@@ -71,16 +71,15 @@ class FaceDetection with _TfliteModelDisposable {
     FaceDetectionModel model, {
     InterpreterOptions? options,
     PerformanceConfig? performanceConfig,
-  }) =>
-      _createWithLoader(
-        model: model,
-        load: (opts) => Interpreter.fromAsset(
-          'packages/face_detection_tflite/assets/models/${faceDetectionModelFile(model)}',
-          options: opts,
-        ),
-        options: options,
-        performanceConfig: performanceConfig,
-      );
+  }) => _createWithLoader(
+    model: model,
+    load: (opts) => Interpreter.fromAsset(
+      'packages/face_detection_tflite/assets/models/${faceDetectionModelFile(model)}',
+      options: opts,
+    ),
+    options: options,
+    performanceConfig: performanceConfig,
+  );
 
   /// Creates a face detection model from pre-loaded model bytes.
   ///
@@ -93,13 +92,12 @@ class FaceDetection with _TfliteModelDisposable {
     Uint8List modelBytes,
     FaceDetectionModel model, {
     PerformanceConfig? performanceConfig,
-  }) =>
-      _createWithLoader(
-        model: model,
-        load: (opts) => Interpreter.fromBuffer(modelBytes, options: opts),
-        performanceConfig: performanceConfig,
-        useIsolateInterpreter: false,
-      );
+  }) => _createWithLoader(
+    model: model,
+    load: (opts) => Interpreter.fromBuffer(modelBytes, options: opts),
+    performanceConfig: performanceConfig,
+    useIsolateInterpreter: false,
+  );
 
   static Future<FaceDetection> _createWithLoader({
     required FaceDetectionModel model,
@@ -246,8 +244,10 @@ class FaceDetection with _TfliteModelDisposable {
       scoresBuf = _views.outputs[_scoreIndex];
     }
 
-    final (:candidateIndices, :candidateScores) =
-        _collectCandidateScores(scoresBuf, _scoresShape);
+    final (:candidateIndices, :candidateScores) = _collectCandidateScores(
+      scoresBuf,
+      _scoresShape,
+    );
 
     final List<DecodedBox> boxes = _decodeBoxesForIndices(
       boxesBuf,
@@ -312,10 +312,8 @@ class FaceDetection with _TfliteModelDisposable {
     return out;
   }
 
-  ({
-    List<int> candidateIndices,
-    List<double> candidateScores,
-  }) _collectCandidateScores(Float32List raw, List<int> shape) {
+  ({List<int> candidateIndices, List<double> candidateScores})
+  _collectCandidateScores(Float32List raw, List<int> shape) {
     final int n = shape[1];
     final List<int> candidateIndices = <int>[];
     final List<double> candidateScores = <double>[];

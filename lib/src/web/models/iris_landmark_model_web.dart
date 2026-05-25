@@ -43,8 +43,9 @@ class IrisLandmarkModelWeb {
         'packages/face_detection_tflite/assets/models/iris_landmark.tflite';
     final ByteData raw = await rootBundle.load(assetPath);
     final bytes = raw.buffer.asUint8List();
-    final String resolved =
-        liteRtAccelerator == 'auto' ? 'webgpu' : liteRtAccelerator;
+    final String resolved = liteRtAccelerator == 'auto'
+        ? 'webgpu'
+        : liteRtAccelerator;
     _liteRtItp = await LiteRtInterpreter.fromBytes(
       bytes,
       accelerator: resolved,

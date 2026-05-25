@@ -44,8 +44,9 @@ class FaceLandmarkModelWeb {
     final ByteData raw = await rootBundle.load(assetPath);
     final bytes = raw.buffer.asUint8List();
 
-    final String resolved =
-        liteRtAccelerator == 'auto' ? 'webgpu' : liteRtAccelerator;
+    final String resolved = liteRtAccelerator == 'auto'
+        ? 'webgpu'
+        : liteRtAccelerator;
     _liteRtItp = await LiteRtInterpreter.fromBytes(
       bytes,
       accelerator: resolved,
@@ -141,12 +142,10 @@ class FaceLandmarkModelWeb {
     final input = _inputBuffer!;
     rgbaToSignedRgbFloat32(Uint8List.view(rgba.buffer), input);
 
-    await _liteRtItp!.runForMultipleInputs(<Object>[
-      input
-    ], <int, Object>{
-      _landmarksIdx: _landmarksOut!,
-      _scoreIdx: _scoreOut!,
-    });
+    await _liteRtItp!.runForMultipleInputs(
+      <Object>[input],
+      <int, Object>{_landmarksIdx: _landmarksOut!, _scoreIdx: _scoreOut!},
+    );
 
     return (
       landmarks: Float32List.fromList(_landmarksOut!),

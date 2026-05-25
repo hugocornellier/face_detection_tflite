@@ -171,8 +171,8 @@ class SegmentationWorker extends IsolateWorkerBase {
   /// Rebuilds a [SegmentationMask] or [MulticlassSegmentationMask] from
   /// isolate transfer data.
   SegmentationMask _rebuildMask(Map result) {
-    final ByteBuffer maskBB =
-        (result['mask'] as TransferableTypedData).materialize();
+    final ByteBuffer maskBB = (result['mask'] as TransferableTypedData)
+        .materialize();
     final Float32List maskData = maskBB.asUint8List().buffer.asFloat32List();
     final int width = result['width'] as int;
     final int height = result['height'] as int;
@@ -181,10 +181,12 @@ class SegmentationWorker extends IsolateWorkerBase {
     final List<double> padding = (result['padding'] as List).cast<double>();
 
     if (_model == SegmentationModel.multiclass && result['classData'] != null) {
-      final ByteBuffer classBB =
-          (result['classData'] as TransferableTypedData).materialize();
-      final Float32List classData =
-          classBB.asUint8List().buffer.asFloat32List();
+      final ByteBuffer classBB = (result['classData'] as TransferableTypedData)
+          .materialize();
+      final Float32List classData = classBB
+          .asUint8List()
+          .buffer
+          .asFloat32List();
       return MulticlassSegmentationMask(
         data: maskData,
         width: width,
@@ -278,8 +280,8 @@ class SegmentationWorker extends IsolateWorkerBase {
   static Future<_SegmentationWorkerState> _initInterpreter(
     Map<dynamic, dynamic> params,
   ) async {
-    final ByteBuffer modelBB =
-        (params['modelBytes'] as TransferableTypedData).materialize();
+    final ByteBuffer modelBB = (params['modelBytes'] as TransferableTypedData)
+        .materialize();
     final Uint8List modelBytes = modelBB.asUint8List();
     final int numThreads = params['numThreads'] as int;
     final int modeIndex = params['mode'] as int;
@@ -329,8 +331,8 @@ class SegmentationWorker extends IsolateWorkerBase {
     _SegmentationWorkerState state,
     Map<dynamic, dynamic> params,
   ) {
-    final ByteBuffer imageBB =
-        (params['imageBytes'] as TransferableTypedData).materialize();
+    final ByteBuffer imageBB = (params['imageBytes'] as TransferableTypedData)
+        .materialize();
     final Uint8List imageBytes = imageBB.asUint8List();
 
     final cv.Mat image = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
@@ -352,8 +354,8 @@ class SegmentationWorker extends IsolateWorkerBase {
     _SegmentationWorkerState state,
     Map<dynamic, dynamic> params,
   ) {
-    final ByteBuffer matBB =
-        (params['matBytes'] as TransferableTypedData).materialize();
+    final ByteBuffer matBB = (params['matBytes'] as TransferableTypedData)
+        .materialize();
     final Uint8List matBytes = matBB.asUint8List();
     final int width = params['width'] as int;
     final int height = params['height'] as int;
@@ -413,8 +415,11 @@ class SegmentationWorker extends IsolateWorkerBase {
         state.outputHeight,
       );
       final int numPixels = state.outputWidth * state.outputHeight;
-      final personMask =
-          SelfieSegmentation._buildPersonMask(rawOutput, numPixels, classProbs);
+      final personMask = SelfieSegmentation._buildPersonMask(
+        rawOutput,
+        numPixels,
+        classProbs,
+      );
       result['mask'] = TransferableTypedData.fromList([
         personMask.buffer.asUint8List(),
       ]);
@@ -423,8 +428,11 @@ class SegmentationWorker extends IsolateWorkerBase {
       ]);
     } else {
       final int numPixels = state.outputWidth * state.outputHeight;
-      final personMask =
-          SelfieSegmentation._buildPersonMask(rawOutput, numPixels, null);
+      final personMask = SelfieSegmentation._buildPersonMask(
+        rawOutput,
+        numPixels,
+        null,
+      );
       result['mask'] = TransferableTypedData.fromList([
         personMask.buffer.asUint8List(),
       ]);

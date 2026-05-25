@@ -14,7 +14,7 @@ void main() {
           Point(98, 198),
           Point(102, 198),
           Point(100, 196),
-          Point(100, 204)
+          Point(100, 204),
         ],
       );
       expect(eye.irisCenter.x, 100);
@@ -30,7 +30,7 @@ void main() {
           Point(8, 8),
           Point(12, 8),
           Point(10, 6),
-          Point(10, 14)
+          Point(10, 14),
         ],
         mesh: mesh,
       );
@@ -48,16 +48,18 @@ void main() {
       expect(eye.contour.length, kMaxEyeLandmark);
     });
 
-    test('contour returns full mesh when mesh is shorter than kMaxEyeLandmark',
-        () {
-      final mesh = [const Point(1, 2), const Point(3, 4)];
-      final eye = Eye(
-        irisCenter: const Point(10, 10),
-        irisContour: const [Point(8, 8)],
-        mesh: mesh,
-      );
-      expect(eye.contour.length, 2);
-    });
+    test(
+      'contour returns full mesh when mesh is shorter than kMaxEyeLandmark',
+      () {
+        final mesh = [const Point(1, 2), const Point(3, 4)];
+        final eye = Eye(
+          irisCenter: const Point(10, 10),
+          irisContour: const [Point(8, 8)],
+          mesh: mesh,
+        );
+        expect(eye.contour.length, 2);
+      },
+    );
 
     test('toMap/fromMap round-trip', () {
       final mesh = List.generate(5, (i) => Point(i.toDouble(), i * 2.0));
@@ -67,7 +69,7 @@ void main() {
           Point(48, 58),
           Point(52, 58),
           Point(50, 56),
-          Point(50, 64)
+          Point(50, 64),
         ],
         mesh: mesh,
       );
@@ -190,8 +192,10 @@ void main() {
 
     test('toMap returns unmodifiable map', () {
       final map = landmarks.toMap();
-      expect(() => map[FaceLandmarkType.leftEye] = const Point(0, 0),
-          throwsA(isA<UnsupportedError>()));
+      expect(
+        () => map[FaceLandmarkType.leftEye] = const Point(0, 0),
+        throwsA(isA<UnsupportedError>()),
+      );
     });
   });
 

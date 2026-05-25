@@ -62,18 +62,24 @@ void main() {
 
   group('testModelFileFor', () {
     test('general returns selfie_segmenter.tflite', () {
-      expect(testModelFileFor(SegmentationModel.general),
-          'selfie_segmenter.tflite');
+      expect(
+        testModelFileFor(SegmentationModel.general),
+        'selfie_segmenter.tflite',
+      );
     });
 
     test('landscape returns selfie_segmenter_landscape.tflite', () {
-      expect(testModelFileFor(SegmentationModel.landscape),
-          'selfie_segmenter_landscape.tflite');
+      expect(
+        testModelFileFor(SegmentationModel.landscape),
+        'selfie_segmenter_landscape.tflite',
+      );
     });
 
     test('multiclass returns selfie_multiclass.tflite', () {
-      expect(testModelFileFor(SegmentationModel.multiclass),
-          'selfie_multiclass.tflite');
+      expect(
+        testModelFileFor(SegmentationModel.multiclass),
+        'selfie_multiclass.tflite',
+      );
     });
   });
 

@@ -90,10 +90,12 @@ class _FaceDetectorCore {
 
       _meshItems = [];
       for (int i = 0; i < meshPoolSize; i++) {
-        _meshItems.add(await FaceLandmark.createFromBuffer(
-          faceLandmarkBytes,
-          performanceConfig: performanceConfig,
-        ));
+        _meshItems.add(
+          await FaceLandmark.createFromBuffer(
+            faceLandmarkBytes,
+            performanceConfig: performanceConfig,
+          ),
+        );
       }
       _meshPool = RoundRobinPool(_meshItems);
 
@@ -205,13 +207,15 @@ class _FaceDetectorCore {
         kp = List<double>.from(det.keypointsXY);
         if (irisPx.length >= _kLeftIrisEnd) {
           final leftCenter = irisCenterFromPoints(
-              irisPx.sublist(_kLeftIrisStart, _kLeftIrisEnd));
+            irisPx.sublist(_kLeftIrisStart, _kLeftIrisEnd),
+          );
           kp[FaceLandmarkType.leftEye.index * 2] = leftCenter.x / width;
           kp[FaceLandmarkType.leftEye.index * 2 + 1] = leftCenter.y / height;
         }
         if (irisPx.length >= _kRightIrisEnd) {
           final rightCenter = irisCenterFromPoints(
-              irisPx.sublist(_kRightIrisStart, _kRightIrisEnd));
+            irisPx.sublist(_kRightIrisStart, _kRightIrisEnd),
+          );
           kp[FaceLandmarkType.rightEye.index * 2] = rightCenter.x / width;
           kp[FaceLandmarkType.rightEye.index * 2 + 1] = rightCenter.y / height;
         }
@@ -238,10 +242,7 @@ class _FaceDetectorCore {
   }
 
   /// Generates a face embedding directly on the calling thread.
-  Future<Float32List> getFaceEmbeddingDirect(
-    Face face,
-    cv.Mat image,
-  ) async {
+  Future<Float32List> getFaceEmbeddingDirect(Face face, cv.Mat image) async {
     if (_embedding == null) {
       throw StateError('Embedding model not initialized.');
     }
@@ -294,10 +295,7 @@ class _FaceDetectorCore {
     return await d.callWithTensor(tensor);
   }
 
-  Future<AlignedFace> _estimateAlignedFace(
-    cv.Mat image,
-    Detection det,
-  ) async {
+  Future<AlignedFace> _estimateAlignedFace(cv.Mat image, Detection det) async {
     final (:theta, :cx, :cy, :size) = _computeFaceAlignment(
       det,
       image.cols.toDouble(),
@@ -310,7 +308,12 @@ class _FaceDetectorCore {
     }
 
     return AlignedFace(
-        cx: cx, cy: cy, size: size, theta: theta, faceCrop: faceCrop);
+      cx: cx,
+      cy: cy,
+      size: size,
+      theta: theta,
+      faceCrop: faceCrop,
+    );
   }
 
   Future<List<Point>> _meshFromAlignedFace(
@@ -331,10 +334,7 @@ class _FaceDetectorCore {
   /// Eye ROIs are computed using the same geometry as
   /// [FaceDetector.eyeRoisFromMesh] to keep iris alignment consistent between
   /// the public API and the isolate path.
-  Future<List<Point>> _irisFromMesh(
-    cv.Mat image,
-    List<Point> meshAbs,
-  ) async {
+  Future<List<Point>> _irisFromMesh(cv.Mat image, List<Point> meshAbs) async {
     if (_irisLeft == null || _irisRight == null) return <Point>[];
     if (meshAbs.length < 468) return <Point>[];
 

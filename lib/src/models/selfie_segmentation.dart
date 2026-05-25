@@ -8,15 +8,15 @@ const int _segmentationInputWidth = 256;
 
 /// Returns the model input height for a given [SegmentationModel] variant.
 int _inputHeightFor(SegmentationModel model) => switch (model) {
-      SegmentationModel.landscape => 144,
-      _ => 256,
-    };
+  SegmentationModel.landscape => 144,
+  _ => 256,
+};
 
 /// Returns the expected output channels for a given [SegmentationModel] variant.
 int _expectedOutputChannels(SegmentationModel model) => switch (model) {
-      SegmentationModel.multiclass => 6,
-      _ => 1,
-    };
+  SegmentationModel.multiclass => 6,
+  _ => 1,
+};
 
 /// Native-only convenience: list of all multiclass person classes
 /// (everything except background).
@@ -390,10 +390,7 @@ class SelfieSegmentation with _TfliteModelDisposable {
   /// final mask = await segmenter.call(mat);
   /// mat.dispose();
   /// ```
-  Future<SegmentationMask> call(
-    cv.Mat image, {
-    Float32List? buffer,
-  }) async {
+  Future<SegmentationMask> call(cv.Mat image, {Float32List? buffer}) async {
     if (_disposed) {
       throw StateError('Cannot use SelfieSegmentation after dispose()');
     }
@@ -625,8 +622,7 @@ Float32List testComputeClassProbabilities(
   Float32List rawOutput,
   int width,
   int height,
-) =>
-    SelfieSegmentation._computeClassProbabilities(rawOutput, width, height);
+) => SelfieSegmentation._computeClassProbabilities(rawOutput, width, height);
 
 /// Test-only: exposes the private model-file mapping for unit tests.
 @visibleForTesting

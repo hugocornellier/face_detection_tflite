@@ -98,25 +98,25 @@ const SSDAnchorOptions kSsdFull = SSDAnchorOptions(
 
 /// Returns the SSD anchor options for the given face detection model variant.
 SSDAnchorOptions ssdOptionsFor(FaceDetectionModel m) => switch (m) {
-      FaceDetectionModel.frontCamera => kSsdFront,
-      FaceDetectionModel.backCamera => kSsdBack,
-      FaceDetectionModel.shortRange => kSsdFront,
-      FaceDetectionModel.full => kSsdFull,
-      FaceDetectionModel.fullSparse => kSsdFull,
-    };
+  FaceDetectionModel.frontCamera => kSsdFront,
+  FaceDetectionModel.backCamera => kSsdBack,
+  FaceDetectionModel.shortRange => kSsdFront,
+  FaceDetectionModel.full => kSsdFull,
+  FaceDetectionModel.fullSparse => kSsdFull,
+};
 
 /// Returns the asset filename for the given face detection model variant.
 String faceDetectionModelFile(FaceDetectionModel m) => switch (m) {
-      FaceDetectionModel.frontCamera => kModelNameFront,
-      FaceDetectionModel.backCamera => kModelNameBack,
-      FaceDetectionModel.shortRange => kModelNameShort,
-      FaceDetectionModel.full => kModelNameFull,
-      FaceDetectionModel.fullSparse => kModelNameFullSparse,
-    };
+  FaceDetectionModel.frontCamera => kModelNameFront,
+  FaceDetectionModel.backCamera => kModelNameBack,
+  FaceDetectionModel.shortRange => kModelNameShort,
+  FaceDetectionModel.full => kModelNameFull,
+  FaceDetectionModel.fullSparse => kModelNameFullSparse,
+};
 
 /// Returns the asset filename for the given segmentation model variant.
 String segmentationModelFile(SegmentationModel m) => switch (m) {
-      SegmentationModel.general => kSegmentationGeneralModel,
-      SegmentationModel.landscape => kSegmentationLandscapeModel,
-      SegmentationModel.multiclass => kSegmentationMulticlassModel,
-    };
+  SegmentationModel.general => kSegmentationGeneralModel,
+  SegmentationModel.landscape => kSegmentationLandscapeModel,
+  SegmentationModel.multiclass => kSegmentationMulticlassModel,
+};

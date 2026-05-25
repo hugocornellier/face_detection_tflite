@@ -55,7 +55,11 @@ const List<Color> kSegmentationClassColors = [
 /// Draw multiclass segmentation labels at class centroids (one label per
 /// class index whose pixel count exceeds an internal threshold).
 void drawSegmentationClassLabels(
-    Canvas canvas, List<int> counts, List<double> sumX, List<double> sumY) {
+  Canvas canvas,
+  List<int> counts,
+  List<double> sumX,
+  List<double> sumY,
+) {
   for (int c = 0; c < 6; c++) {
     if (counts[c] > 100) {
       final centroidX = sumX[c] / counts[c];
@@ -78,8 +82,10 @@ void drawSegmentationClassLabels(
       textPainter.layout();
       textPainter.paint(
         canvas,
-        Offset(centroidX - textPainter.width / 2,
-            centroidY - textPainter.height / 2),
+        Offset(
+          centroidX - textPainter.width / 2,
+          centroidY - textPainter.height / 2,
+        ),
       );
     }
   }
@@ -282,8 +288,12 @@ class DetectionsPainter extends CustomPainter {
             if (iris == null) continue;
 
             if (showIrises) {
-              final bounds = boundsOf([iris.irisCenter, ...iris.irisContour]
-                  .map((p) => Offset(ox + p.x * scaleX, oy + p.y * scaleY)));
+              final bounds = boundsOf(
+                [
+                  iris.irisCenter,
+                  ...iris.irisContour,
+                ].map((p) => Offset(ox + p.x * scaleX, oy + p.y * scaleY)),
+              );
               canvas.drawOval(bounds, irisFill);
               canvas.drawOval(bounds, irisStroke);
             }
@@ -319,7 +329,10 @@ class DetectionsPainter extends CustomPainter {
                 final canvasX = ox + p.x * scaleX;
                 final canvasY = oy + p.y * scaleY;
                 canvas.drawCircle(
-                    Offset(canvasX, canvasY), eyeMeshSize, eyeMeshPointPaint);
+                  Offset(canvasX, canvasY),
+                  eyeMeshSize,
+                  eyeMeshPointPaint,
+                );
               }
             }
           }
@@ -434,8 +447,10 @@ class CameraDetectionPainter extends CustomPainter {
     for (final face in faces) {
       final boundingBox = face.boundingBox;
       final p1 = transformPoint(boundingBox.topLeft.x, boundingBox.topLeft.y);
-      final p2 =
-          transformPoint(boundingBox.bottomRight.x, boundingBox.bottomRight.y);
+      final p2 = transformPoint(
+        boundingBox.bottomRight.x,
+        boundingBox.bottomRight.y,
+      );
 
       final rect = Rect.fromLTRB(
         math.min(p1.dx, p2.dx),
@@ -471,8 +486,12 @@ class CameraDetectionPainter extends CustomPainter {
           for (final iris in [eyePair.leftEye, eyePair.rightEye]) {
             if (iris == null) continue;
 
-            final oval = boundsOf([iris.irisCenter, ...iris.irisContour]
-                .map((p) => transformPoint(p.x, p.y)));
+            final oval = boundsOf(
+              [
+                iris.irisCenter,
+                ...iris.irisContour,
+              ].map((p) => transformPoint(p.x, p.y)),
+            );
             canvas.drawOval(oval, irisFill);
             canvas.drawOval(oval, irisStroke);
 
@@ -581,8 +600,9 @@ class LiveSegmentationPainter extends CustomPainter {
         for (int x = v.x0; x < v.x1; x++) {
           final idx = y * mask.width + x;
           final rawX = (x - v.x0) * scale + offsetX;
-          final renderX =
-              mirrorHorizontally ? size.width - rawX - pixelW : rawX;
+          final renderX = mirrorHorizontally
+              ? size.width - rawX - pixelW
+              : rawX;
           final renderY = (y - v.y0) * scale + offsetY;
 
           int winningClass = 0;
@@ -622,8 +642,9 @@ class LiveSegmentationPainter extends CustomPainter {
         if (alpha > 0.01) {
           paint.color = maskColor.withAlpha((alpha * 255).round());
           final rawX = (x - v.x0) * scale + offsetX;
-          final renderX =
-              mirrorHorizontally ? size.width - rawX - pixelW : rawX;
+          final renderX = mirrorHorizontally
+              ? size.width - rawX - pixelW
+              : rawX;
           final renderY = (y - v.y0) * scale + offsetY;
           canvas.drawRect(
             Rect.fromLTWH(renderX, renderY, pixelW, pixelH),
@@ -651,8 +672,12 @@ class BackgroundImagePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final src =
-        Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
+    final src = Rect.fromLTWH(
+      0,
+      0,
+      image.width.toDouble(),
+      image.height.toDouble(),
+    );
     final dst = Rect.fromLTWH(0, 0, size.width, size.height);
     canvas.drawImageRect(image, src, dst, Paint());
   }
@@ -711,14 +736,20 @@ class VirtualBackgroundOverlayPainter extends CustomPainter {
         final renderX = mirrorHorizontally ? size.width - rawX - pixelW : rawX;
         final renderY = (y - v.y0) * scale + offsetY;
 
-        final bgX =
-            (renderX * bgScaleX).clamp(0, background.width - 1).toDouble();
-        final bgY =
-            (renderY * bgScaleY).clamp(0, background.height - 1).toDouble();
+        final bgX = (renderX * bgScaleX)
+            .clamp(0, background.width - 1)
+            .toDouble();
+        final bgY = (renderY * bgScaleY)
+            .clamp(0, background.height - 1)
+            .toDouble();
 
         paint.color = Color.fromRGBO(255, 255, 255, bgAlpha);
-        final src =
-            Rect.fromLTWH(bgX, bgY, bgScaleX * pixelW, bgScaleY * pixelH);
+        final src = Rect.fromLTWH(
+          bgX,
+          bgY,
+          bgScaleX * pixelW,
+          bgScaleY * pixelH,
+        );
         final dst = Rect.fromLTWH(renderX, renderY, pixelW, pixelH);
         canvas.drawImageRect(background, src, dst, paint);
       }
@@ -810,8 +841,9 @@ class SegmentationMaskPainter extends CustomPainter {
           if (maxProb >= threshold) {
             final color = classColors[winningClass];
             final baseAlpha = (color.a * 255).round();
-            paint.color =
-                binary ? color : color.withAlpha((maxProb * baseAlpha).round());
+            paint.color = binary
+                ? color
+                : color.withAlpha((maxProb * baseAlpha).round());
             canvas.drawRect(
               Rect.fromLTWH(renderX, renderY, scaleX + 0.5, scaleY + 0.5),
               paint,
@@ -830,8 +862,9 @@ class SegmentationMaskPainter extends CustomPainter {
 
     Float32List? classMaskData;
     if (classIndex != null && mask is MulticlassSegmentationMask) {
-      classMaskData =
-          (mask as MulticlassSegmentationMask).classMask(classIndex!);
+      classMaskData = (mask as MulticlassSegmentationMask).classMask(
+        classIndex!,
+      );
     }
 
     final paint = Paint();

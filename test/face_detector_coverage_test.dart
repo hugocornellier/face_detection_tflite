@@ -50,23 +50,25 @@ void main() {
     test('size should be proportional to eye distance', () {
       final narrow = testComputeFaceAlignment(
         makeDet(
-            leftEyeX: 0.4,
-            leftEyeY: 0.5,
-            rightEyeX: 0.6,
-            rightEyeY: 0.5,
-            mouthX: 0.5,
-            mouthY: 0.6),
+          leftEyeX: 0.4,
+          leftEyeY: 0.5,
+          rightEyeX: 0.6,
+          rightEyeY: 0.5,
+          mouthX: 0.5,
+          mouthY: 0.6,
+        ),
         100.0,
         100.0,
       );
       final wide = testComputeFaceAlignment(
         makeDet(
-            leftEyeX: 0.2,
-            leftEyeY: 0.5,
-            rightEyeX: 0.8,
-            rightEyeY: 0.5,
-            mouthX: 0.5,
-            mouthY: 0.6),
+          leftEyeX: 0.2,
+          leftEyeY: 0.5,
+          rightEyeX: 0.8,
+          rightEyeY: 0.5,
+          mouthX: 0.5,
+          mouthY: 0.6,
+        ),
         100.0,
         100.0,
       );
@@ -76,12 +78,13 @@ void main() {
     test('center should be influenced by eye and mouth position', () {
       final result = testComputeFaceAlignment(
         makeDet(
-            leftEyeX: 0.3,
-            leftEyeY: 0.3,
-            rightEyeX: 0.7,
-            rightEyeY: 0.3,
-            mouthX: 0.5,
-            mouthY: 0.7),
+          leftEyeX: 0.3,
+          leftEyeY: 0.3,
+          rightEyeX: 0.7,
+          rightEyeY: 0.3,
+          mouthX: 0.5,
+          mouthY: 0.7,
+        ),
         100.0,
         100.0,
       );
@@ -127,8 +130,13 @@ void main() {
       final lmNorm = [
         [1.0, 0.0, 0.0],
       ];
-      final result =
-          testTransformMeshToAbsolute(lmNorm, 50.0, 50.0, 100.0, math.pi / 2);
+      final result = testTransformMeshToAbsolute(
+        lmNorm,
+        50.0,
+        50.0,
+        100.0,
+        math.pi / 2,
+      );
       expect(result[0].x, closeTo(100.0, 0.5));
       expect(result[0].y, closeTo(100.0, 0.5));
     });
@@ -137,8 +145,13 @@ void main() {
       final lmNorm = [
         [0.5, 0.5, 0.0], // center in normalized space
       ];
-      final result =
-          testTransformMeshToAbsolute(lmNorm, 200.0, 300.0, 100.0, 0.0);
+      final result = testTransformMeshToAbsolute(
+        lmNorm,
+        200.0,
+        300.0,
+        100.0,
+        0.0,
+      );
       // tx = 200 - 50 = 150, ty = 300 - 50 = 250
       // x = 150 + 100*0.5 = 200, y = 250 + 100*0.5 = 300
       expect(result[0].x, closeTo(200.0, 0.0001));
@@ -269,10 +282,7 @@ void main() {
     });
 
     test('should handle two points', () {
-      final points = [
-        const Point(0, 0),
-        const Point(10, 10),
-      ];
+      final points = [const Point(0, 0), const Point(10, 10)];
       final result = testFindIrisCenterFromPoints(points);
       // Centroid is (5, 5), both equidistant, should return first (idx 0)
       expect(result.x, 0);

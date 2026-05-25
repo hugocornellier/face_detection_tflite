@@ -58,8 +58,9 @@ class SelfieSegmentationWeb {
     final ByteData raw = await rootBundle.load(assetPath);
     final bytes = raw.buffer.asUint8List();
 
-    final String resolved =
-        liteRtAccelerator == 'auto' ? 'webgpu' : liteRtAccelerator;
+    final String resolved = liteRtAccelerator == 'auto'
+        ? 'webgpu'
+        : liteRtAccelerator;
     _liteRtItp = await LiteRtInterpreter.fromBytes(
       bytes,
       accelerator: resolved,
@@ -142,11 +143,10 @@ class SelfieSegmentationWeb {
     final input = _inputBuffer!;
     rgbaToSignedRgbFloat32(Uint8List.view(rgba.buffer), input);
 
-    await _liteRtItp!.runForMultipleInputs(<Object>[
-      input
-    ], <int, Object>{
-      0: _outputBuffer!,
-    });
+    await _liteRtItp!.runForMultipleInputs(
+      <Object>[input],
+      <int, Object>{0: _outputBuffer!},
+    );
 
     final padding = <double>[
       lb.padTop / _inH,

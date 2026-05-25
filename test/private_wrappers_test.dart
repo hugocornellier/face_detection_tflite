@@ -192,8 +192,14 @@ void main() {
     });
 
     test('should handle large negative logits', () {
-      final raw = Float32List.fromList(
-          [-100.0, -100.0, -100.0, -100.0, -100.0, -100.0]);
+      final raw = Float32List.fromList([
+        -100.0,
+        -100.0,
+        -100.0,
+        -100.0,
+        -100.0,
+        -100.0,
+      ]);
       final result = testComputeClassProbabilities(raw, 1, 1);
       // All equal, so uniform
       double sum = 0.0;
@@ -231,8 +237,11 @@ void main() {
 
     test('float32 format round-trip', () {
       final mask = createMask();
-      final serialized =
-          testSerializeMask(mask, IsolateOutputFormat.float32, 0.5);
+      final serialized = testSerializeMask(
+        mask,
+        IsolateOutputFormat.float32,
+        0.5,
+      );
       expect(serialized['dataFormat'], 'float32');
       expect(serialized['width'], 2);
       expect(serialized['height'], 2);
@@ -248,8 +257,11 @@ void main() {
 
     test('uint8 format round-trip', () {
       final mask = createMask();
-      final serialized =
-          testSerializeMask(mask, IsolateOutputFormat.uint8, 0.5);
+      final serialized = testSerializeMask(
+        mask,
+        IsolateOutputFormat.uint8,
+        0.5,
+      );
       expect(serialized['dataFormat'], 'uint8');
       final data = (serialized['data'] as TransferableTypedData)
           .materialize()
@@ -262,8 +274,11 @@ void main() {
 
     test('binary format round-trip', () {
       final mask = createMask();
-      final serialized =
-          testSerializeMask(mask, IsolateOutputFormat.binary, 0.5);
+      final serialized = testSerializeMask(
+        mask,
+        IsolateOutputFormat.binary,
+        0.5,
+      );
       expect(serialized['dataFormat'], 'binary');
       expect(serialized['binaryThreshold'], 0.5);
       final data = (serialized['data'] as TransferableTypedData)
@@ -277,8 +292,11 @@ void main() {
 
     test('binary format with custom threshold', () {
       final mask = createMask();
-      final serialized =
-          testSerializeMask(mask, IsolateOutputFormat.binary, 0.9);
+      final serialized = testSerializeMask(
+        mask,
+        IsolateOutputFormat.binary,
+        0.9,
+      );
       final data = (serialized['data'] as TransferableTypedData)
           .materialize()
           .asUint8List();
@@ -301,8 +319,11 @@ void main() {
         originalHeight: 2,
         classData: classData,
       );
-      final serialized =
-          testSerializeMask(mask, IsolateOutputFormat.float32, 0.5);
+      final serialized = testSerializeMask(
+        mask,
+        IsolateOutputFormat.float32,
+        0.5,
+      );
       expect(serialized['classData'], isNotNull);
 
       final restored = testDeserializeMask(serialized);
@@ -314,8 +335,11 @@ void main() {
 
     test('standard mask has no classData', () {
       final mask = createMask();
-      final serialized =
-          testSerializeMask(mask, IsolateOutputFormat.float32, 0.5);
+      final serialized = testSerializeMask(
+        mask,
+        IsolateOutputFormat.float32,
+        0.5,
+      );
       expect(serialized.containsKey('classData'), isFalse);
 
       final restored = testDeserializeMask(serialized);
@@ -331,8 +355,11 @@ void main() {
         originalHeight: 4,
         padding: [0.1, 0.2, 0.3, 0.4],
       );
-      final serialized =
-          testSerializeMask(mask, IsolateOutputFormat.float32, 0.5);
+      final serialized = testSerializeMask(
+        mask,
+        IsolateOutputFormat.float32,
+        0.5,
+      );
       expect(serialized['padding'], [0.1, 0.2, 0.3, 0.4]);
     });
   });

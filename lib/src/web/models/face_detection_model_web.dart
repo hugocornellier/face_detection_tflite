@@ -64,8 +64,9 @@ class FaceDetectionModelWeb {
     final ByteData raw = await rootBundle.load(assetPath);
     final bytes = raw.buffer.asUint8List();
 
-    final String resolved =
-        liteRtAccelerator == 'auto' ? 'webgpu' : liteRtAccelerator;
+    final String resolved = liteRtAccelerator == 'auto'
+        ? 'webgpu'
+        : liteRtAccelerator;
     _liteRtItp = await LiteRtInterpreter.fromBytes(
       bytes,
       accelerator: resolved,
@@ -234,10 +235,8 @@ class FaceDetectionModelWeb {
     if (decoded.isEmpty) return const <Detection>[];
 
     // Sort by score and run weighted NMS in flutter_litert.
-    final List<int> order = List<int>.generate(
-      decoded.length,
-      (i) => i,
-    )..sort((a, b) => candScores[b].compareTo(candScores[a]));
+    final List<int> order = List<int>.generate(decoded.length, (i) => i)
+      ..sort((a, b) => candScores[b].compareTo(candScores[a]));
 
     final List<List<double>> sortedBoxes = <List<double>>[
       for (final i in order)
@@ -307,6 +306,5 @@ class FaceDetectionModelWeb {
     Detection det,
     double imgW,
     double imgH,
-  ) =>
-      computeFaceAlignment(det, imgW, imgH);
+  ) => computeFaceAlignment(det, imgW, imgH);
 }
