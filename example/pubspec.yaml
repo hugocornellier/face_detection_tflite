@@ -23,6 +23,13 @@ dependencies:
   video_player: ^2.9.2
   path_provider: ^2.1.5
 
+# video_player_avfoundation 2.9.7's macOS Swift Package imports the iOS-only
+# <Flutter/Flutter.h> module, which fails to build on macOS ("module 'Flutter'
+# not found"). Pin to 2.9.4, the last version that builds on macOS, until the
+# upstream package is fixed.
+dependency_overrides:
+  video_player_avfoundation: 2.9.4
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -45,3 +45,24 @@ app.*.map.json
 # Exclude from pub.dev archive (referenced via GitHub URLs)
 assets/screenshots/
 example/assets/
+
+# Reference model-card PDFs: not loaded at runtime, linked from the README.
+doc/
+
+# Second example app: pub.dev only renders example/, so this just duplicates assets.
+example_web/
+
+# README/demo sample images: not declared as runtime assets (only assets/models is).
+assets/samples/
+
+# Dev-only scripts and tools, not useful to package consumers.
+runAllTests.sh
+runBenchmark.sh
+runWebBenchmark.sh
+example/run_integration_tests.sh
+example/run_integration_tests_windows.ps1
+example/tool/
+
+# Example Podfiles: CocoaPods is only needed locally for the optional MLKit benchmark.
+example/**/Podfile
+example/**/Podfile.lock

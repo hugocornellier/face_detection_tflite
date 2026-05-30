@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'live_camera_screen.dart';
 import 'still_image_screen.dart';
+import 'video_file_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -57,6 +58,17 @@ class HomeScreen extends StatelessWidget {
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
                       builder: (_) => const LiveCameraScreen(),
+                    ),
+                  ),
+                ),
+                _DemoCard(
+                  icon: Icons.movie,
+                  title: 'Video File',
+                  subtitle: 'Upload a video and detect faces frame by frame '
+                      'with a live overlay.',
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const VideoFileScreen(),
                     ),
                   ),
                 ),

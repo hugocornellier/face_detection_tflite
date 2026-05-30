@@ -201,7 +201,8 @@ class _StillImageScreenState extends State<StillImageScreen> {
     });
     try {
       final sw = Stopwatch()..start();
-      final faces = await _detector!.detectFaces(_pickedBytes!, mode: _mode);
+      final faces =
+          await _detector!.detectFacesFromBytes(_pickedBytes!, mode: _mode);
       sw.stop();
       SegmentationMask? mask;
       if (_showSegmentation && _detector!.isSegmentationReady) {
