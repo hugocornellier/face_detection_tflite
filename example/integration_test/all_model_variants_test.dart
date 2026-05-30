@@ -41,8 +41,8 @@ void main() {
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
-      final faces =
-          await detector.detectFaces(bytes, mode: FaceDetectionMode.full);
+      final faces = await detector.detectFacesFromBytes(bytes,
+          mode: FaceDetectionMode.full);
 
       expect(faces, isNotEmpty, reason: 'frontCamera should detect faces');
       expect(faces.first.boundingBox.width, greaterThan(0));
@@ -63,8 +63,8 @@ void main() {
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
-      final faces =
-          await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+      final faces = await detector.detectFacesFromBytes(bytes,
+          mode: FaceDetectionMode.fast);
 
       expect(faces, isNotEmpty);
       expect(faces.first.mesh, isNull);
@@ -81,8 +81,8 @@ void main() {
           await rootBundle.load('assets/samples/iris-detection-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
-      final faces =
-          await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+      final faces = await detector.detectFacesFromBytes(bytes,
+          mode: FaceDetectionMode.fast);
 
       expect(faces, isNotEmpty,
           reason: 'frontCamera should detect close-up faces');
@@ -102,8 +102,8 @@ void main() {
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
-      final faces =
-          await detector.detectFaces(bytes, mode: FaceDetectionMode.full);
+      final faces = await detector.detectFacesFromBytes(bytes,
+          mode: FaceDetectionMode.full);
 
       expect(faces, isNotEmpty, reason: 'backCamera should detect faces');
       expect(faces.first.boundingBox.width, greaterThan(0));
@@ -125,7 +125,7 @@ void main() {
       final Uint8List bytes = data.buffer.asUint8List();
 
       for (final mode in FaceDetectionMode.values) {
-        final faces = await detector.detectFaces(bytes, mode: mode);
+        final faces = await detector.detectFacesFromBytes(bytes, mode: mode);
         expect(faces, isNotEmpty, reason: 'backCamera ${mode.name} failed');
 
         if (mode == FaceDetectionMode.fast) {
@@ -150,8 +150,8 @@ void main() {
           .load('assets/samples/group-shot-bounding-box-ex1.jpeg');
       final Uint8List bytes = data.buffer.asUint8List();
 
-      final faces =
-          await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+      final faces = await detector.detectFacesFromBytes(bytes,
+          mode: FaceDetectionMode.fast);
 
       expect(faces.length, greaterThanOrEqualTo(2),
           reason: 'backCamera should detect multiple faces');
@@ -171,8 +171,8 @@ void main() {
           await rootBundle.load('assets/samples/iris-detection-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
-      final faces =
-          await detector.detectFaces(bytes, mode: FaceDetectionMode.full);
+      final faces = await detector.detectFacesFromBytes(bytes,
+          mode: FaceDetectionMode.full);
 
       expect(faces, isNotEmpty,
           reason: 'shortRange should detect close-up faces');
@@ -198,8 +198,8 @@ void main() {
         final ByteData data = await rootBundle.load(imagePath);
         final Uint8List bytes = data.buffer.asUint8List();
 
-        final faces =
-            await detector.detectFaces(bytes, mode: FaceDetectionMode.full);
+        final faces = await detector.detectFacesFromBytes(bytes,
+            mode: FaceDetectionMode.full);
 
         expect(faces, isNotEmpty, reason: 'shortRange failed on $imagePath');
         expect(faces.first.irisPoints, isNotEmpty,
@@ -220,8 +220,8 @@ void main() {
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
-      final faces =
-          await detector.detectFaces(bytes, mode: FaceDetectionMode.full);
+      final faces = await detector.detectFacesFromBytes(bytes,
+          mode: FaceDetectionMode.full);
 
       expect(faces, isNotEmpty, reason: 'full model should detect faces');
       expect(faces.first.boundingBox.width, greaterThan(0));
@@ -242,8 +242,8 @@ void main() {
         final ByteData data = await rootBundle.load(entry.key);
         final Uint8List bytes = data.buffer.asUint8List();
 
-        final faces =
-            await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+        final faces = await detector.detectFacesFromBytes(bytes,
+            mode: FaceDetectionMode.fast);
 
         expect(faces, isNotEmpty, reason: 'full model failed on ${entry.key}');
         print('full: ${entry.key} -> ${faces.length} faces');
@@ -263,8 +263,8 @@ void main() {
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
-      final faces =
-          await detector.detectFaces(bytes, mode: FaceDetectionMode.full);
+      final faces = await detector.detectFacesFromBytes(bytes,
+          mode: FaceDetectionMode.full);
 
       expect(faces, isNotEmpty, reason: 'fullSparse should detect faces');
       expect(faces.first.boundingBox.width, greaterThan(0));
@@ -285,7 +285,7 @@ void main() {
       final Uint8List bytes = data.buffer.asUint8List();
 
       for (final mode in FaceDetectionMode.values) {
-        final faces = await detector.detectFaces(bytes, mode: mode);
+        final faces = await detector.detectFacesFromBytes(bytes, mode: mode);
         expect(faces, isNotEmpty, reason: 'fullSparse ${mode.name} failed');
       }
 
@@ -305,8 +305,8 @@ void main() {
         final detector = FaceDetector();
         await detector.initialize(model: model);
 
-        final faces =
-            await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+        final faces = await detector.detectFacesFromBytes(bytes,
+            mode: FaceDetectionMode.fast);
         results[model.name] = faces.length;
 
         detector.dispose();
@@ -331,8 +331,8 @@ void main() {
         final detector = FaceDetector();
         await detector.initialize(model: model);
 
-        final faces =
-            await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+        final faces = await detector.detectFacesFromBytes(bytes,
+            mode: FaceDetectionMode.fast);
         results[model.name] = faces.length;
 
         detector.dispose();
@@ -367,8 +367,8 @@ void main() {
 
       final counts = <int>[];
       for (int i = 0; i < 5; i++) {
-        final faces =
-            await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+        final faces = await detector.detectFacesFromBytes(bytes,
+            mode: FaceDetectionMode.fast);
         counts.add(faces.length);
       }
 
@@ -388,8 +388,8 @@ void main() {
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
-      final faces =
-          await detector.detectFaces(bytes, mode: FaceDetectionMode.full);
+      final faces = await detector.detectFacesFromBytes(bytes,
+          mode: FaceDetectionMode.full);
 
       expect(faces, isNotEmpty);
       expect(faces.first.mesh, isNotNull);
@@ -405,8 +405,8 @@ void main() {
           await rootBundle.load('assets/samples/iris-detection-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
-      final faces =
-          await detector.detectFaces(bytes, mode: FaceDetectionMode.full);
+      final faces = await detector.detectFacesFromBytes(bytes,
+          mode: FaceDetectionMode.full);
 
       expect(faces, isNotEmpty);
       expect(faces.first.irisPoints, isNotEmpty);
@@ -422,8 +422,8 @@ void main() {
           await rootBundle.load('assets/samples/landmark-ex1.jpg');
       final Uint8List bytes = data.buffer.asUint8List();
 
-      final faces =
-          await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+      final faces = await detector.detectFacesFromBytes(bytes,
+          mode: FaceDetectionMode.fast);
 
       expect(faces, isNotEmpty);
 

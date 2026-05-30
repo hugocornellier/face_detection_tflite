@@ -26,8 +26,8 @@ void main() {
     final image2Bytes = data2.buffer.asUint8List();
 
     print('=== Reference Image (Day 13 - one_face.jpg) ===');
-    final refFaces =
-        await detector.detectFaces(image1Bytes, mode: FaceDetectionMode.fast);
+    final refFaces = await detector.detectFacesFromBytes(image1Bytes,
+        mode: FaceDetectionMode.fast);
     print('Detected ${refFaces.length} face(s)');
     expect(refFaces.length, 1,
         reason: 'Should detect exactly 1 face in Day 13');
@@ -39,8 +39,8 @@ void main() {
     print('Face location: (${refCenter.x.toInt()}, ${refCenter.y.toInt()})\n');
 
     print('=== Comparison Image (Day 14 - two_faces.jpg) ===');
-    final faces =
-        await detector.detectFaces(image2Bytes, mode: FaceDetectionMode.fast);
+    final faces = await detector.detectFacesFromBytes(image2Bytes,
+        mode: FaceDetectionMode.fast);
     print('Detected ${faces.length} face(s)');
     expect(faces.length, 2, reason: 'Should detect exactly 2 faces in Day 14');
 

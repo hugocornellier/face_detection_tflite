@@ -33,7 +33,7 @@ void main() {
       final detector = FaceDetector();
 
       expect(
-        () => detector.detectFaces(validImageBytes),
+        () => detector.detectFacesFromBytes(validImageBytes),
         throwsA(isA<StateError>().having(
           (e) => e.message,
           'message',
@@ -62,7 +62,7 @@ void main() {
         () async {
       final initDetector = FaceDetector();
       await initDetector.initialize();
-      final faces = await initDetector.detectFaces(validImageBytes);
+      final faces = await initDetector.detectFacesFromBytes(validImageBytes);
       initDetector.dispose();
 
       final uninitDetector = FaceDetector();
@@ -99,7 +99,7 @@ void main() {
       await detector.initialize();
       expect(detector.isReady, true);
 
-      final faces = await detector.detectFaces(validImageBytes);
+      final faces = await detector.detectFacesFromBytes(validImageBytes);
       expect(faces, isNotEmpty);
 
       detector.dispose();
@@ -111,14 +111,14 @@ void main() {
       await detector.initialize(model: FaceDetectionModel.frontCamera);
       expect(detector.isReady, true);
 
-      final faces1 = await detector.detectFaces(validImageBytes);
+      final faces1 = await detector.detectFacesFromBytes(validImageBytes);
       expect(faces1, isNotEmpty);
 
       detector.dispose();
       await detector.initialize(model: FaceDetectionModel.backCamera);
       expect(detector.isReady, true);
 
-      final faces2 = await detector.detectFaces(validImageBytes);
+      final faces2 = await detector.detectFacesFromBytes(validImageBytes);
       expect(faces2, isNotEmpty);
 
       detector.dispose();
@@ -155,13 +155,13 @@ void main() {
 
       final invalidBytes = Uint8List.fromList([1, 2, 3, 4, 5]);
       try {
-        await detector.detectFaces(invalidBytes);
+        await detector.detectFacesFromBytes(invalidBytes);
       } catch (e) {
         // Expected - invalid bytes should fail; testing recovery
       }
 
       expect(detector.isReady, true);
-      final faces = await detector.detectFaces(validImageBytes);
+      final faces = await detector.detectFacesFromBytes(validImageBytes);
       expect(faces, isNotEmpty);
 
       detector.dispose();
@@ -172,12 +172,12 @@ void main() {
       await detector.initialize();
 
       try {
-        await detector.detectFaces(Uint8List(0));
+        await detector.detectFacesFromBytes(Uint8List(0));
       } catch (e) {
         // Expected - empty image should fail; testing recovery
       }
 
-      final faces = await detector.detectFaces(validImageBytes);
+      final faces = await detector.detectFacesFromBytes(validImageBytes);
       expect(faces, isNotEmpty);
 
       detector.dispose();
@@ -193,7 +193,7 @@ void main() {
 
       expect(noFaceResult, isEmpty);
 
-      final faces = await detector.detectFaces(validImageBytes);
+      final faces = await detector.detectFacesFromBytes(validImageBytes);
       expect(faces, isNotEmpty);
 
       detector.dispose();
@@ -207,10 +207,10 @@ void main() {
 
       for (int i = 0; i < 10; i++) {
         try {
-          await detector.detectFaces(invalidBytes);
+          await detector.detectFacesFromBytes(invalidBytes);
         } catch (_) {}
 
-        final faces = await detector.detectFaces(validImageBytes);
+        final faces = await detector.detectFacesFromBytes(validImageBytes);
         expect(faces, isNotEmpty, reason: 'Iteration $i failed');
       }
 
@@ -269,7 +269,7 @@ void main() {
       expect(detector.isReady, false);
 
       expect(
-        () => detector.detectFaces(validImageBytes),
+        () => detector.detectFacesFromBytes(validImageBytes),
         throwsA(isA<StateError>()),
       );
     });
@@ -279,7 +279,7 @@ void main() {
       final detector = FaceDetector();
       await detector.initialize();
 
-      final faces = await detector.detectFaces(validImageBytes);
+      final faces = await detector.detectFacesFromBytes(validImageBytes);
       expect(faces, isNotEmpty);
 
       await detector.dispose();
@@ -308,13 +308,13 @@ void main() {
       final invalidBytes = Uint8List.fromList([1, 2, 3, 4, 5]);
 
       try {
-        final faces = await detector.detectFaces(invalidBytes);
+        final faces = await detector.detectFacesFromBytes(invalidBytes);
         expect(faces, isEmpty);
       } catch (e) {
         // Expected - invalid bytes may throw; testing isolate recovery
       }
 
-      final faces = await detector.detectFaces(validImageBytes);
+      final faces = await detector.detectFacesFromBytes(validImageBytes);
       expect(faces, isNotEmpty);
 
       await detector.dispose();
@@ -326,7 +326,7 @@ void main() {
       final detector = FaceDetector();
       await detector.initialize();
 
-      final faces = await detector.detectFaces(validImageBytes);
+      final faces = await detector.detectFacesFromBytes(validImageBytes);
       expect(faces, isNotEmpty);
 
       final embedding =
@@ -344,8 +344,8 @@ void main() {
           .load('assets/samples/group-shot-bounding-box-ex1.jpeg');
       final groupImage = data.buffer.asUint8List();
 
-      final faces =
-          await detector.detectFaces(groupImage, mode: FaceDetectionMode.fast);
+      final faces = await detector.detectFacesFromBytes(groupImage,
+          mode: FaceDetectionMode.fast);
       expect(faces.length, greaterThan(1));
 
       final embeddings = await detector.getFaceEmbeddings(faces, groupImage);
@@ -370,7 +370,7 @@ void main() {
       await detector.initialize();
       expect(detector.isReady, true);
 
-      final faces = await detector.detectFaces(validImageBytes);
+      final faces = await detector.detectFacesFromBytes(validImageBytes);
       expect(faces, isNotEmpty);
 
       detector.dispose();
@@ -382,12 +382,12 @@ void main() {
       final detector = FaceDetector();
       await detector.initialize();
 
-      final faces = await detector.detectFaces(validImageBytes);
+      final faces = await detector.detectFacesFromBytes(validImageBytes);
       expect(faces, isNotEmpty);
       final validFace = faces.first;
 
       try {
-        await detector.detectFaces(Uint8List.fromList([1, 2, 3]));
+        await detector.detectFacesFromBytes(Uint8List.fromList([1, 2, 3]));
       } catch (_) {}
 
       final embedding =
@@ -401,13 +401,13 @@ void main() {
       final detector = FaceDetector();
       await detector.initialize();
 
-      final fastFaces = await detector.detectFaces(
+      final fastFaces = await detector.detectFacesFromBytes(
         validImageBytes,
         mode: FaceDetectionMode.fast,
       );
       expect(fastFaces, isNotEmpty);
 
-      final fullFaces = await detector.detectFaces(
+      final fullFaces = await detector.detectFacesFromBytes(
         validImageBytes,
         mode: FaceDetectionMode.full,
       );
@@ -430,7 +430,7 @@ void main() {
         mat.dispose();
       }
 
-      final faces = await detector.detectFaces(validImageBytes);
+      final faces = await detector.detectFacesFromBytes(validImageBytes);
       expect(faces, isNotEmpty);
 
       detector.dispose();
@@ -442,7 +442,7 @@ void main() {
         final detector = FaceDetector();
         await detector.initialize();
 
-        final faces = await detector.detectFaces(validImageBytes);
+        final faces = await detector.detectFacesFromBytes(validImageBytes);
         expect(faces, isNotEmpty, reason: 'Cycle $i failed');
 
         detector.dispose();

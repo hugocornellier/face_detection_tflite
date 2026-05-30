@@ -3,7 +3,7 @@
 // Performance benchmark tests for FaceDetector on Web/Chrome.
 //
 // Mirrors face_detection_integration_test.dart but uses
-// detector.detectFaces(bytes) instead of cv.imdecode + detectFacesFromMat,
+// detector.detectFacesFromBytes(bytes) instead of cv.imdecode + detectFacesFromMat,
 // since opencv_dart is FFI-only and cannot run on web.
 //
 // Run with:
@@ -190,7 +190,7 @@ void main() {
         } catch (_) {}
 
         print('\n${'=' * 60}');
-        print('BENCHMARK: Full mode (Web/Chrome, detectFaces(bytes))');
+        print('BENCHMARK: Full mode (Web/Chrome, detectFacesFromBytes(bytes))');
         print('=' * 60);
 
         final allStats = <BenchmarkStats>[];
@@ -204,7 +204,7 @@ void main() {
           final stages = StageAvgs();
 
           for (int i = 0; i < warmupIterations; i++) {
-            final faces = await detector.detectFaces(
+            final faces = await detector.detectFacesFromBytes(
               bytes,
               mode: FaceDetectionMode.full,
             );
@@ -213,7 +213,8 @@ void main() {
 
           for (int i = 0; i < iterations; i++) {
             final stopwatch = Stopwatch()..start();
-            await detector.detectFaces(bytes, mode: FaceDetectionMode.full);
+            await detector.detectFacesFromBytes(bytes,
+                mode: FaceDetectionMode.full);
             stopwatch.stop();
             timings.add(stopwatch.elapsedMilliseconds);
             try {
@@ -250,7 +251,7 @@ void main() {
             'model': 'backCamera',
             'warmup_iterations': warmupIterations,
             'timed_iterations': iterations,
-            'detect_path': 'detectFaces(Uint8List)',
+            'detect_path': 'detectFacesFromBytes(Uint8List)',
             'use_litert': useLiteRt,
             'litert_accelerator': liteRtAccel,
           },

@@ -36,15 +36,15 @@ Future<_BenchResult> _benchmarkTflite(
   Uint8List bytes,
 ) async {
   // Warmup
-  await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+  await detector.detectFacesFromBytes(bytes, mode: FaceDetectionMode.fast);
 
   final timings = <double>[];
   int faceCount = 0;
 
   for (int i = 0; i < _kIterations; i++) {
     final sw = Stopwatch()..start();
-    final results =
-        await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+    final results = await detector.detectFacesFromBytes(bytes,
+        mode: FaceDetectionMode.fast);
     sw.stop();
     timings.add(sw.elapsedMicroseconds / 1000.0);
     if (i == 0) faceCount = results.length;
@@ -280,7 +280,7 @@ void main() {
         print('');
 
         // Landmark comparison on first matched face pair
-        final tfliteFaces = await tfliteDetector.detectFaces(bytes,
+        final tfliteFaces = await tfliteDetector.detectFacesFromBytes(bytes,
             mode: FaceDetectionMode.fast);
         final mlkitInput = mlkit.InputImage.fromFilePath(
           '${Directory.systemTemp.path}/benchmark_$imageName',

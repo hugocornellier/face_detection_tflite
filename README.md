@@ -12,7 +12,7 @@
 </p>
 
 Flutter implementation of Google's MediaPipe face and facial landmark detection models using LiteRT (formerly TensorFlow Lite).
-Runs 100% offline/on-device. 
+Runs 100% offline/on-device. Highly performant: full detection runs in ~35ms per face, with a fast mode around 27ms. All work on a background isolate so the UI thread is never blocked.
 
 > **~5.5x faster than Google ML Kit** on equivalent face detection tasks ([benchmark source](example/integration_test/mlkit_benchmark_test.dart))<sup>[†](#mlkit-comparison-benchmark)</sup>
 
@@ -54,7 +54,21 @@ Future main() async {
 }
 ```
 
-Already have bytes (from the network etc.)? Use `detectFaces(imageBytes)`. For live camera streams, use `detectFacesFromCameraImage(...)` (keeps all OpenCV work off the UI thread, see below). For a pre-decoded `cv.Mat`, use `detectFacesFromMat(mat)`.
+Already have bytes (from the network etc.)? Use `detectFacesFromBytes(imageBytes)`. For live camera streams, use `detectFacesFromCameraImage(...)` (keeps all OpenCV work off the UI thread, see below). For a pre-decoded `cv.Mat`, use `detectFacesFromMat(mat)`.
+
+### Detection entry points
+
+Pick the method that matches the input you already have. Each returns `Future<List<Face>>`:
+
+| Input you have | Method | Input type | Example |
+|----------------|--------|------------|---------|
+| Image file on disk | `detectFacesFromFilepath` | `String` | shown above |
+| Encoded image bytes (e.g. from the network) | `detectFacesFromBytes` | `Uint8List` (encoded JPEG/PNG) | [Encoded Image Bytes Example](#encoded-image-bytes-example) |
+| Decoded OpenCV matrix | `detectFacesFromMat` | `cv.Mat` | [Direct Mat Example](#direct-mat-example) |
+| Raw pixel bytes (+ width/height) | `detectFacesFromMatBytes` | `Uint8List` (raw BGR pixels) | [Raw Pixel Bytes Example](#raw-pixel-bytes-example) |
+| Live camera frame | `detectFacesFromCameraImage` | `CameraImage` | [Live Camera Detection](#live-camera-detection) |
+
+> `detectFacesFromBytes` decodes a compressed image file; `detectFacesFromMatBytes` takes already-decoded pixels and so requires `width`/`height`. Same `Uint8List` type, different content.
 
 ## Models
 
@@ -270,9 +284,9 @@ This package supports three detection modes that determine which facial features
 
 | Mode | Features | Est. Time per Face* |
 |------|----------|---------------------|
-| **Full** (default) | Bounding boxes, landmarks, 468-point mesh, eye tracking (iris + 71-point eye mesh) | ~80-120ms           |
-| **Standard** | Bounding boxes, landmarks, 468-point mesh | ~60ms               |
-| **Fast** | Bounding boxes, landmarks | ~30ms               |
+| **Full** (default) | Bounding boxes, landmarks, 468-point mesh, eye tracking (iris + 71-point eye mesh) | ~35ms               |
+| **Standard** | Bounding boxes, landmarks, 468-point mesh | ~31ms               |
+| **Fast** | Bounding boxes, landmarks | ~27ms               |
 
 *Est. times per face are based on 640x480 resolution on modern hardware. Performance scales with image size and number of faces.
 
@@ -286,15 +300,15 @@ The Face Detection Mode can be set using the `mode` parameter. Defaults to FaceD
 // iris-refined coordinates, providing significantly more accurate eye positions
 // compared to the raw detection keypoints used in fast/standard modes.
 // use full mode when precise eye tracking (iris center, contour, eyelid shape) is required.
-await fd.detectFaces(bytes, mode: FaceDetectionMode.full);
+await fd.detectFacesFromBytes(bytes, mode: FaceDetectionMode.full);
 
 // Standard mode: bounding boxes, 6 basic landmarks + mesh. inference time
 // is faster than full mode, but slower than fast mode.
-await fd.detectFaces(bytes, mode: FaceDetectionMode.standard);
+await fd.detectFacesFromBytes(bytes, mode: FaceDetectionMode.standard);
 
 // Fast mode: bounding boxes + 6 basic landmarks only. fastest inference
 // time of the three modes.
-await fd.detectFaces(bytes, mode: FaceDetectionMode.fast);
+await fd.detectFacesFromBytes(bytes, mode: FaceDetectionMode.fast);
 ```
 
 Try the [sample code](https://pub.dev/packages/face_detection_tflite/example) from the pub.dev example tab to easily compare
@@ -346,7 +360,7 @@ For real-time face detection from a camera feed, use `detectFacesFromCameraImage
 > ```yaml
 > dependencies:
 >   camera: ^0.12.0
->   camera_desktop: ^1.1.6   # required for Windows, macOS, and Linux streaming
+>   camera_desktop: ^1.1.7   # required for Windows, macOS, and Linux streaming
 > ```
 
 ```dart
@@ -397,11 +411,11 @@ final detector = await FaceDetector.create();
 
 // Full mode gives the most accurate eye alignment for embeddings.
 // Standard mode is a good balance; fast mode is fastest but least accurate.
-final refFaces = await detector.detectFaces(photo1Bytes, mode: FaceDetectionMode.full);
+final refFaces = await detector.detectFacesFromBytes(photo1Bytes, mode: FaceDetectionMode.full);
 final refEmbedding = await detector.getFaceEmbedding(refFaces.first, photo1Bytes);
 
 // Compare against faces in another photo
-final faces = await detector.detectFaces(photo2Bytes, mode: FaceDetectionMode.full);
+final faces = await detector.detectFacesFromBytes(photo2Bytes, mode: FaceDetectionMode.full);
 for (final face in faces) {
   final embedding = await detector.getFaceEmbedding(face, photo2Bytes);
   final similarity = FaceDetector.compareFaces(refEmbedding, embedding);
@@ -540,14 +554,14 @@ This package supports Flutter Web using the same package import:
 import 'package:face_detection_tflite/face_detection_tflite.dart';
 ```
 
-The following methods work on web: `detectFaces(bytes)` and `getSegmentationMask(bytes)`. Methods that require native OpenCV or isolate infrastructure (`detectFacesFromFilepath`, `detectFacesFromMat`, `detectFacesFromMatBytes`, `detectFacesFromCameraImage`, `detectFacesFromCameraFrame`, all face embedding methods (`getFaceEmbedding`, `getFaceEmbeddings`, `compareFaces`, `faceDistance`, etc.), and segmentation Mat/camera variants) throw `UnsupportedError` on web.
+The following methods work on web: `detectFacesFromBytes(bytes)` and `getSegmentationMask(bytes)`. Methods that require native OpenCV or isolate infrastructure (`detectFacesFromFilepath`, `detectFacesFromMat`, `detectFacesFromMatBytes`, `detectFacesFromCameraImage`, `detectFacesFromCameraFrame`, all face embedding methods (`getFaceEmbedding`, `getFaceEmbeddings`, `compareFaces`, `faceDistance`, etc.), and segmentation Mat/camera variants) throw `UnsupportedError` on web.
 
-On web, load image bytes from a file picker, drag-and-drop, or network response and pass them to `detectFaces(imageBytes)`:
+On web, load image bytes from a file picker, drag-and-drop, or network response and pass them to `detectFacesFromBytes(imageBytes)`:
 
 ```dart
 final detector = await FaceDetector.create();
 
-final List<Face> faces = await detector.detectFaces(imageBytes);
+final List<Face> faces = await detector.detectFacesFromBytes(imageBytes);
 
 await detector.dispose();
 ```
@@ -637,7 +651,21 @@ final detector = await FaceDetector.create(
 );
 ```
 
-### Advanced: Direct Mat Input
+### Encoded Image Bytes Example
+
+If you already hold the bytes of an encoded image file (JPEG, PNG, etc.), for example from a network response or a file picker, pass them straight to `detectFacesFromBytes()`. The bytes are decoded inside the detection isolate:
+
+```dart
+// The bytes ARE a compressed image file: the contents of a .jpg/.png/...
+// e.g. a network download, an asset, or a picked file (no path on disk).
+final Uint8List imageBytes = await http.readBytes(Uri.parse(imageUrl));
+
+final faces = await detector.detectFacesFromBytes(imageBytes);
+```
+
+This is the right choice whenever your source is a compressed image rather than raw pixels. For raw (already-decoded) pixels, use [detectFacesFromMatBytes](#raw-pixel-bytes-example) instead.
+
+### Direct Mat Example
 
 For live camera streams, you can bypass image encoding/decoding entirely by passing a `Mat` directly to `detectFacesFromMat()`:
 
@@ -661,17 +689,19 @@ Future<void> processFrame(Mat frame) async {
 
 For live camera streams, prefer `detectFacesFromCameraImage(...)`: it keeps all `cvtColor` / `rotate` / downscale work inside the detection isolate rather than on the UI thread.
 
-**For all other cases**, pass image bytes (`Uint8List`) to `detectFaces()`.
+**For all other cases**, pass image bytes (`Uint8List`) to `detectFacesFromBytes()`.
 
-### Advanced: Raw Pixel Bytes Input
+### Raw Pixel Bytes Example
 
 If you already have raw pixel data as a `Uint8List` (e.g. from an isolate worker or image processing pipeline), use `detectFacesFromMatBytes()` to skip constructing a `cv.Mat` on the calling thread entirely:
 
 ```dart
-// Raw BGR pixel data from a worker isolate or image pipeline
-final Uint8List rawPixels = ...;
-final int width = 1920;
-final int height = 1080;
+// The bytes are ALREADY-decoded pixels (no file header), e.g. straight from a
+// cv.Mat buffer or a worker isolate. Dimensions can't be inferred, so pass them.
+final cv.Mat mat = ...;            // some decoded image
+final Uint8List rawPixels = mat.data;
+final int width = mat.cols;
+final int height = mat.rows;
 
 final faces = await detector.detectFacesFromMatBytes(
   rawPixels,
@@ -691,14 +721,7 @@ This is the fastest path when you already have raw pixel bytes: the data is tran
 
 <a id="mlkit-comparison-benchmark"></a>
 
-The benchmark test ([`example/integration_test/mlkit_benchmark_test.dart`](example/integration_test/mlkit_benchmark_test.dart)) compares `face_detection_tflite` against `google_mlkit_face_detection`. Since `google_mlkit_face_detection` does not support Swift Package Manager, running the benchmark requires CocoaPods. To set it up:
-
-```bash
-cd example/ios
-pod init
-# restore the Flutter podhelper in the Podfile, then:
-pod install
-```
+The benchmark test ([`example/integration_test/mlkit_benchmark_test.dart`](example/integration_test/mlkit_benchmark_test.dart)) compares `face_detection_tflite` against `google_mlkit_face_detection`, which the example declares as a dev dependency. Because `google_mlkit_face_detection` does not support Swift Package Manager (as of May 2026 it ships a CocoaPods podspec only), the iOS example is built with CocoaPods. Flutter configures this automatically when you build or test the example, so no manual `pod install` step is needed. The published `face_detection_tflite` plugin is pure Dart and uses Swift Package Manager on every platform.
 
 ## Example
 

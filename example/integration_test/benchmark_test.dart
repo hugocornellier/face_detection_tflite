@@ -593,7 +593,7 @@ void main() {
 
           for (int i = 0; i < iterations; i++) {
             final stopwatch = Stopwatch()..start();
-            final results = await detector.detectFaces(
+            final results = await detector.detectFacesFromBytes(
               bytes,
               mode: FaceDetectionMode.full,
             );
@@ -740,7 +740,8 @@ void main() {
           final List<int> fullTimings = [];
           for (int i = 0; i < iterations; i++) {
             final stopwatch = Stopwatch()..start();
-            await detector.detectFaces(bytes, mode: FaceDetectionMode.full);
+            await detector.detectFacesFromBytes(bytes,
+                mode: FaceDetectionMode.full);
             stopwatch.stop();
             fullTimings.add(stopwatch.elapsedMicroseconds);
           }

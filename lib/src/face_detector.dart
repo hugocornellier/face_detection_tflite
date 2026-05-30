@@ -23,7 +23,7 @@ part of 'native/face_native_lib.dart';
 /// await detector.initialize();
 ///
 /// // Detect faces with full mesh and iris tracking
-/// final faces = await detector.detectFaces(
+/// final faces = await detector.detectFacesFromBytes(
 ///   imageBytes,
 ///   mode: FaceDetectionMode.full,
 /// );
@@ -43,12 +43,12 @@ part of 'native/face_native_lib.dart';
 /// 1. Create instance with `FaceDetector()`
 /// 2. Call [initialize] to load TensorFlow Lite models
 /// 3. Check [isReady] to verify models are loaded
-/// 4. Call [detectFaces] to analyze images
+/// 4. Call [detectFacesFromBytes] to analyze images
 /// 5. Call [dispose] when done to free resources
 ///
 /// See also:
 /// - [initialize] for model loading options
-/// - [detectFaces] for the main detection API
+/// - [detectFacesFromBytes] for the main detection API
 /// - [Face] for the structure of detection results
 class FaceDetector {
   /// Cache-invalidation key for consumers that persist detection results.
@@ -291,7 +291,7 @@ class FaceDetector {
   ///
   /// Throws [StateError] if [initialize] has not been called successfully.
   /// Throws [FormatException] if the image bytes cannot be decoded.
-  Future<List<Face>> detectFaces(
+  Future<List<Face>> detectFacesFromBytes(
     Uint8List imageBytes, {
     FaceDetectionMode mode = FaceDetectionMode.full,
   }) async {
@@ -305,6 +305,18 @@ class FaceDetector {
     );
     return _deserializeFacesFast(result);
   }
+
+  /// Deprecated alias for [detectFacesFromBytes].
+  ///
+  /// Renamed for clarity: the input is encoded image bytes (JPEG/PNG/...),
+  /// as opposed to the raw pixel bytes taken by [detectFacesFromMatBytes].
+  @Deprecated(
+    'Use detectFacesFromBytes instead. Will be removed in a future release.',
+  )
+  Future<List<Face>> detectFaces(
+    Uint8List imageBytes, {
+    FaceDetectionMode mode = FaceDetectionMode.full,
+  }) => detectFacesFromBytes(imageBytes, mode: mode);
 
   /// Detects faces directly from a live `<video>` element. Web-only.
   ///
@@ -326,7 +338,7 @@ class FaceDetector {
 
   /// Detects faces in an image file at [path].
   ///
-  /// Convenience wrapper that reads the file and calls [detectFaces].
+  /// Convenience wrapper that reads the file and calls [detectFacesFromBytes].
   /// Not available on Flutter Web (uses `dart:io`).
   ///
   /// Throws [StateError] if [initialize] has not been called successfully.
@@ -337,7 +349,7 @@ class FaceDetector {
     FaceDetectionMode mode = FaceDetectionMode.full,
   }) async {
     final bytes = await File(path).readAsBytes();
-    return detectFaces(bytes, mode: mode);
+    return detectFacesFromBytes(bytes, mode: mode);
   }
 
   /// Detects faces in a pre-decoded [cv.Mat] image.
@@ -452,7 +464,7 @@ class FaceDetector {
 
   /// Generates a face embedding (identity vector) for a detected face.
   ///
-  /// The [face] parameter should be a face detection result from [detectFaces].
+  /// The [face] parameter should be a face detection result from [detectFacesFromBytes].
   ///
   /// The [imageBytes] parameter should contain the encoded image data.
   /// For pre-decoded [cv.Mat] input, use [getFaceEmbeddingFromMat] instead.
@@ -461,7 +473,7 @@ class FaceDetector {
   ///
   /// Example:
   /// ```dart
-  /// final faces = await detector.detectFaces(imageBytes);
+  /// final faces = await detector.detectFacesFromBytes(imageBytes);
   /// final embedding = await detector.getFaceEmbedding(faces.first, imageBytes);
   ///
   /// final similarity = FaceDetector.compareFaces(embedding, referenceEmbedding);

@@ -39,7 +39,7 @@ void main() {
 
       expect(detector.isReady, true);
 
-      final faces = await detector.detectFaces(
+      final faces = await detector.detectFacesFromBytes(
         testImageBytes,
         mode: FaceDetectionMode.full,
       );
@@ -57,12 +57,13 @@ void main() {
         performanceConfig: PerformanceConfig.disabled,
       );
 
-      await detector.detectFaces(testImageBytes, mode: FaceDetectionMode.fast);
+      await detector.detectFacesFromBytes(testImageBytes,
+          mode: FaceDetectionMode.fast);
 
       final times = <int>[];
       for (int i = 0; i < 5; i++) {
         final sw = Stopwatch()..start();
-        await detector.detectFaces(testImageBytes,
+        await detector.detectFacesFromBytes(testImageBytes,
             mode: FaceDetectionMode.fast);
         sw.stop();
         times.add(sw.elapsedMilliseconds);
@@ -85,7 +86,7 @@ void main() {
 
       expect(detector.isReady, true);
 
-      final faces = await detector.detectFaces(
+      final faces = await detector.detectFacesFromBytes(
         testImageBytes,
         mode: FaceDetectionMode.full,
       );
@@ -107,7 +108,7 @@ void main() {
 
       expect(detector.isReady, true);
 
-      final faces = await detector.detectFaces(
+      final faces = await detector.detectFacesFromBytes(
         testImageBytes,
         mode: FaceDetectionMode.fast,
       );
@@ -127,7 +128,7 @@ void main() {
 
       expect(detector.isReady, true);
 
-      final faces = await detector.detectFaces(
+      final faces = await detector.detectFacesFromBytes(
         testImageBytes,
         mode: FaceDetectionMode.full,
       );
@@ -149,7 +150,7 @@ void main() {
           performanceConfig: PerformanceConfig.xnnpack(numThreads: threads),
         );
 
-        final faces = await detector.detectFaces(
+        final faces = await detector.detectFacesFromBytes(
           testImageBytes,
           mode: FaceDetectionMode.fast,
         );
@@ -172,13 +173,13 @@ void main() {
         performanceConfig: PerformanceConfig.disabled,
       );
 
-      await cpuDetector.detectFaces(testImageBytes,
+      await cpuDetector.detectFacesFromBytes(testImageBytes,
           mode: FaceDetectionMode.fast);
 
       final cpuTimes = <int>[];
       for (int i = 0; i < 5; i++) {
         final sw = Stopwatch()..start();
-        await cpuDetector.detectFaces(testImageBytes,
+        await cpuDetector.detectFacesFromBytes(testImageBytes,
             mode: FaceDetectionMode.fast);
         sw.stop();
         cpuTimes.add(sw.elapsedMilliseconds);
@@ -190,13 +191,13 @@ void main() {
         performanceConfig: PerformanceConfig.xnnpack(numThreads: 4),
       );
 
-      await xnnDetector.detectFaces(testImageBytes,
+      await xnnDetector.detectFacesFromBytes(testImageBytes,
           mode: FaceDetectionMode.fast);
 
       final xnnTimes = <int>[];
       for (int i = 0; i < 5; i++) {
         final sw = Stopwatch()..start();
-        await xnnDetector.detectFaces(testImageBytes,
+        await xnnDetector.detectFacesFromBytes(testImageBytes,
             mode: FaceDetectionMode.fast);
         sw.stop();
         xnnTimes.add(sw.elapsedMilliseconds);
@@ -226,7 +227,7 @@ void main() {
         );
 
         if (detector.isReady) {
-          final faces = await detector.detectFaces(
+          final faces = await detector.detectFacesFromBytes(
             testImageBytes,
             mode: FaceDetectionMode.fast,
           );
@@ -251,7 +252,7 @@ void main() {
 
         expect(detector.isReady, true);
 
-        final faces = await detector.detectFaces(
+        final faces = await detector.detectFacesFromBytes(
           testImageBytes,
           mode: FaceDetectionMode.fast,
         );
@@ -278,13 +279,13 @@ void main() {
         final detector = FaceDetector();
         await detector.initialize(performanceConfig: config);
 
-        await detector.detectFaces(testImageBytes,
+        await detector.detectFacesFromBytes(testImageBytes,
             mode: FaceDetectionMode.fast);
 
         final times = <int>[];
         for (int i = 0; i < 5; i++) {
           final sw = Stopwatch()..start();
-          await detector.detectFaces(testImageBytes,
+          await detector.detectFacesFromBytes(testImageBytes,
               mode: FaceDetectionMode.fast);
           sw.stop();
           times.add(sw.elapsedMilliseconds);
@@ -310,7 +311,7 @@ void main() {
 
       expect(detector.isReady, true);
 
-      final faces = await detector.detectFaces(
+      final faces = await detector.detectFacesFromBytes(
         testImageBytes,
         mode: FaceDetectionMode.fast,
       );
@@ -326,7 +327,7 @@ void main() {
       final detector = FaceDetector();
       await detector.initialize(performanceConfig: PerformanceConfig.auto());
 
-      final faces = await detector.detectFaces(
+      final faces = await detector.detectFacesFromBytes(
         testImageBytes,
         mode: FaceDetectionMode.full,
       );
@@ -343,7 +344,7 @@ void main() {
         performanceConfig: PerformanceConfig.xnnpack(numThreads: 2),
       );
 
-      final faces = await detector.detectFaces(
+      final faces = await detector.detectFacesFromBytes(
         testImageBytes,
         mode: FaceDetectionMode.fast,
       );
@@ -359,7 +360,7 @@ void main() {
         performanceConfig: PerformanceConfig.disabled,
       );
 
-      final faces = await detector.detectFaces(
+      final faces = await detector.detectFacesFromBytes(
         testImageBytes,
         mode: FaceDetectionMode.fast,
       );
@@ -385,7 +386,7 @@ void main() {
         final detector = FaceDetector();
         await detector.initialize(performanceConfig: entry.value);
 
-        final faces = await detector.detectFaces(
+        final faces = await detector.detectFacesFromBytes(
           testImageBytes,
           mode: FaceDetectionMode.fast,
         );
@@ -430,7 +431,7 @@ void main() {
             .load('assets/samples/group-shot-bounding-box-ex1.jpeg');
         final bytes = data.buffer.asUint8List();
 
-        final faces = await detector.detectFaces(
+        final faces = await detector.detectFacesFromBytes(
           bytes,
           mode: FaceDetectionMode.standard,
         );
@@ -456,7 +457,7 @@ void main() {
           .load('assets/samples/group-shot-bounding-box-ex1.jpeg');
       final bytes = data.buffer.asUint8List();
 
-      final faces = await detector.detectFaces(
+      final faces = await detector.detectFacesFromBytes(
         bytes,
         mode: FaceDetectionMode.full,
       );

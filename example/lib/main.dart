@@ -268,7 +268,7 @@ class _ExampleState extends State<Example> {
 
     final DateTime detectionStart = DateTime.now();
     final List<Face> faces =
-        await _faceDetector!.detectFaces(bytes, mode: mode);
+        await _faceDetector!.detectFacesFromBytes(bytes, mode: mode);
     final DateTime detectionEnd = DateTime.now();
 
     Size decodedSize;

@@ -52,15 +52,16 @@ void main() {
             continue;
           }
 
-          await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+          await detector.detectFacesFromBytes(bytes,
+              mode: FaceDetectionMode.fast);
 
           const runs = 5;
           final detectionTimes = <int>[];
 
           for (int i = 0; i < runs; i++) {
             final sw = Stopwatch()..start();
-            final faces =
-                await detector.detectFaces(bytes, mode: FaceDetectionMode.full);
+            final faces = await detector.detectFacesFromBytes(bytes,
+                mode: FaceDetectionMode.full);
             sw.stop();
             detectionTimes.add(sw.elapsedMilliseconds);
 
@@ -193,8 +194,8 @@ void main() {
       await cpuDetector.initialize(
         performanceConfig: PerformanceConfig.disabled,
       );
-      final cpuFaces =
-          await cpuDetector.detectFaces(bytes, mode: FaceDetectionMode.full);
+      final cpuFaces = await cpuDetector.detectFacesFromBytes(bytes,
+          mode: FaceDetectionMode.full);
 
       print('CPU detected ${cpuFaces.length} faces');
       expect(cpuFaces, isNotEmpty);
@@ -203,8 +204,8 @@ void main() {
       await autoDetector.initialize(
         performanceConfig: PerformanceConfig.auto(),
       );
-      final autoFaces =
-          await autoDetector.detectFaces(bytes, mode: FaceDetectionMode.full);
+      final autoFaces = await autoDetector.detectFacesFromBytes(bytes,
+          mode: FaceDetectionMode.full);
 
       print('Auto detected ${autoFaces.length} faces');
 

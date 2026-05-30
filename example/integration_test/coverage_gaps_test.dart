@@ -68,7 +68,7 @@ void main() {
       // First lifecycle
       await detector.initialize();
       expect(detector.isReady, true);
-      final faces1 = await detector.detectFaces(imageBytes);
+      final faces1 = await detector.detectFacesFromBytes(imageBytes);
       expect(faces1, isNotEmpty);
       print('First lifecycle: detected ${faces1.length} face(s)');
 
@@ -82,7 +82,7 @@ void main() {
       expect(detector.isReady, true);
 
       // Should still work
-      final faces2 = await detector.detectFaces(imageBytes);
+      final faces2 = await detector.detectFacesFromBytes(imageBytes);
       expect(faces2, isNotEmpty);
       expect(faces2.length, faces1.length);
       print('Second lifecycle: detected ${faces2.length} face(s)');
@@ -97,8 +97,8 @@ void main() {
 
       await detector.initialize(model: FaceDetectionModel.backCamera);
       expect(detector.isReady, true);
-      final faces1 =
-          await detector.detectFaces(imageBytes, mode: FaceDetectionMode.fast);
+      final faces1 = await detector.detectFacesFromBytes(imageBytes,
+          mode: FaceDetectionMode.fast);
       expect(faces1, isNotEmpty);
       print('backCamera: ${faces1.length} face(s)');
 
@@ -106,8 +106,8 @@ void main() {
 
       await detector.initialize(model: FaceDetectionModel.frontCamera);
       expect(detector.isReady, true);
-      final faces2 =
-          await detector.detectFaces(imageBytes, mode: FaceDetectionMode.fast);
+      final faces2 = await detector.detectFacesFromBytes(imageBytes,
+          mode: FaceDetectionMode.fast);
       expect(faces2, isNotEmpty);
       print('frontCamera: ${faces2.length} face(s)');
 
@@ -120,8 +120,8 @@ void main() {
       final detector = FaceDetector();
 
       await detector.initialize();
-      final faces1 =
-          await detector.detectFaces(imageBytes, mode: FaceDetectionMode.full);
+      final faces1 = await detector.detectFacesFromBytes(imageBytes,
+          mode: FaceDetectionMode.full);
       expect(faces1, isNotEmpty);
       expect(faces1.first.mesh, isNotNull);
       expect(faces1.first.mesh!.length, 468);
@@ -129,8 +129,8 @@ void main() {
       detector.dispose();
       await detector.initialize();
 
-      final faces2 =
-          await detector.detectFaces(imageBytes, mode: FaceDetectionMode.full);
+      final faces2 = await detector.detectFacesFromBytes(imageBytes,
+          mode: FaceDetectionMode.full);
       expect(faces2, isNotEmpty);
       expect(faces2.first.mesh, isNotNull);
       expect(faces2.first.mesh!.length, 468);
@@ -145,8 +145,8 @@ void main() {
 
       await detector.initialize();
       expect(detector.isEmbeddingReady, true);
-      final faces1 =
-          await detector.detectFaces(imageBytes, mode: FaceDetectionMode.fast);
+      final faces1 = await detector.detectFacesFromBytes(imageBytes,
+          mode: FaceDetectionMode.fast);
       expect(faces1, isNotEmpty);
       final emb1 = await detector.getFaceEmbedding(faces1.first, imageBytes);
       expect(emb1.length, 192);
@@ -155,8 +155,8 @@ void main() {
       await detector.initialize();
       expect(detector.isEmbeddingReady, true);
 
-      final faces2 =
-          await detector.detectFaces(imageBytes, mode: FaceDetectionMode.fast);
+      final faces2 = await detector.detectFacesFromBytes(imageBytes,
+          mode: FaceDetectionMode.fast);
       expect(faces2, isNotEmpty);
       final emb2 = await detector.getFaceEmbedding(faces2.first, imageBytes);
       expect(emb2.length, 192);
@@ -208,7 +208,7 @@ void main() {
       for (int i = 0; i < 5; i++) {
         await detector.initialize();
         expect(detector.isReady, true);
-        final faces = await detector.detectFaces(imageBytes);
+        final faces = await detector.detectFacesFromBytes(imageBytes);
         expect(faces, isNotEmpty, reason: 'Cycle $i: should detect faces');
         detector.dispose();
         expect(detector.isReady, false);
@@ -237,7 +237,7 @@ void main() {
         // Create a small eye crop for inference
         final detector = FaceDetector();
         await detector.initialize();
-        final faces = await detector.detectFaces(
+        final faces = await detector.detectFacesFromBytes(
           imageBytes,
           mode: FaceDetectionMode.full,
         );
@@ -922,14 +922,14 @@ void main() {
   // 9. Post-dispose StateError enforcement on FaceDetector
   // ===========================================================================
   group('FaceDetector post-dispose StateError', () {
-    test('detectFaces() throws StateError after dispose', () async {
+    test('detectFacesFromBytes() throws StateError after dispose', () async {
       print('\n--- Testing detectFaces after dispose ---');
       final detector = FaceDetector();
       await detector.initialize();
       detector.dispose();
 
       expect(
-        () => detector.detectFaces(imageBytes),
+        () => detector.detectFacesFromBytes(imageBytes),
         throwsStateError,
       );
       print('Test passed');
@@ -959,7 +959,7 @@ void main() {
       await detector.initialize();
 
       // Get a valid face first
-      final faces = await detector.detectFaces(
+      final faces = await detector.detectFacesFromBytes(
         imageBytes,
         mode: FaceDetectionMode.fast,
       );
@@ -979,7 +979,7 @@ void main() {
       final detector = FaceDetector();
       await detector.initialize();
 
-      final faces = await detector.detectFaces(
+      final faces = await detector.detectFacesFromBytes(
         imageBytes,
         mode: FaceDetectionMode.fast,
       );
@@ -1004,7 +1004,7 @@ void main() {
       final detector = FaceDetector();
       await detector.initialize();
 
-      final faces = await detector.detectFaces(
+      final faces = await detector.detectFacesFromBytes(
         imageBytes,
         mode: FaceDetectionMode.fast,
       );
@@ -1185,7 +1185,7 @@ void main() {
       );
       expect(detector.isReady, true);
 
-      final faces = await detector.detectFaces(
+      final faces = await detector.detectFacesFromBytes(
         imageBytes,
         mode: FaceDetectionMode.fast,
       );
@@ -1203,7 +1203,7 @@ void main() {
       );
       expect(detector.isReady, true);
 
-      final faces = await detector.detectFaces(
+      final faces = await detector.detectFacesFromBytes(
         imageBytes,
         mode: FaceDetectionMode.fast,
       );

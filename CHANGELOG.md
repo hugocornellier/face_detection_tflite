@@ -1,3 +1,9 @@
+## 6.3.0
+
+* Rename `detectFaces` -> `detectFacesFromBytes` for clarity (input is encoded image bytes, vs. raw pixels in `detectFacesFromMatBytes`); `detectFaces` is kept as a deprecated alias and will be removed in a future release
+* Update flutter_litert -> 2.8.0
+* Complete Swift Package Manager migration: example uses CocoaPods only for the optional MLKit comparison benchmark
+
 ## 6.2.9
 
 * Remove unused Darwin podspecs for Dart-only iOS/macOS plugin registration.

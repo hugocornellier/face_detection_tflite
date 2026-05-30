@@ -12,8 +12,6 @@ This example app demonstrates the full capabilities of the `face_detection_tflit
 - Detailed performance metrics
 - Processing status indicators
 
-[📖 Still Image Guide](STILL_IMAGE_GUIDE.md)
-
 ### 📹 Live Camera Detection
 - Real-time face detection from camera
 - 5 detection models (Front, Back, Short, Full Range, Full Sparse)
@@ -21,9 +19,7 @@ This example app demonstrates the full capabilities of the `face_detection_tflit
 - Dynamic mode/model switching
 - FPS monitoring
 - Frame skip control (1/1 to 1/5)
-- Cross-platform (iOS, Android, macOS)
-
-[📖 Live Camera Guide](LIVE_CAMERA_GUIDE.md)
+- Cross-platform (iOS, Android, macOS, Windows, Linux)
 
 ## Quick Start
 
@@ -82,9 +78,9 @@ All colors are customizable via the color picker.
 
 - ✅ **iOS** - Full support with camera package
 - ✅ **Android** - Full support with camera package
-- ✅ **macOS** - Full support with camera_macos package
+- ✅ **macOS** - Full support with camera_desktop package
+- ✅ **Windows/Linux** - Full support with camera_desktop package
 - ✅ **Web** - Still image detection only
-- ✅ **Windows/Linux** - Still image detection only
 
 ## Technical Details
 
@@ -118,9 +114,6 @@ All colors are customizable via the color picker.
 
 ## Documentation
 
-- [📄 Face Detection Analysis](../LIVE_CAMERA_ANALYSIS.md) - Technical deep-dive
-- [📖 Live Camera Guide](LIVE_CAMERA_GUIDE.md) - User guide for live camera
-- [📖 Still Image Guide](STILL_IMAGE_GUIDE.md) - User guide for still images
 - [📚 Main Package README](../README.md) - Package documentation
 
 ## Troubleshooting

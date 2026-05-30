@@ -18,7 +18,7 @@ dependencies:
     path: ../
   flutter_colorpicker: ^1.1.0
   camera: ^0.12.0
-  camera_desktop: ^1.1.6
+  camera_desktop: ^1.1.7
   sensors_plus: ^6.1.1
   video_player: ^2.9.2
   path_provider: ^2.1.5
@@ -29,7 +29,7 @@ dev_dependencies:
   integration_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  flutter_litert: ^2.5.8
+  flutter_litert: ^2.8.0
   google_mlkit_face_detection: ^0.13.2
 
 hooks:
@@ -45,4 +45,5 @@ flutter:
   assets:
     - assets/samples/
     - assets/samples/embedding_test/
+    - assets/samples/demo/
     - assets/beach_background.jpg

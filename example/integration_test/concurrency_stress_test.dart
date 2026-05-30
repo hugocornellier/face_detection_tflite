@@ -48,7 +48,8 @@ void main() {
       final bytes = testImages['assets/samples/landmark-ex1.jpg']!;
 
       final futures = List.generate(5, (i) {
-        return detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+        return detector.detectFacesFromBytes(bytes,
+            mode: FaceDetectionMode.fast);
       });
 
       final results = await Future.wait(futures);
@@ -71,9 +72,9 @@ void main() {
       final bytes = testImages['assets/samples/landmark-ex1.jpg']!;
 
       final futures = [
-        detector.detectFaces(bytes, mode: FaceDetectionMode.fast),
-        detector.detectFaces(bytes, mode: FaceDetectionMode.standard),
-        detector.detectFaces(bytes, mode: FaceDetectionMode.full),
+        detector.detectFacesFromBytes(bytes, mode: FaceDetectionMode.fast),
+        detector.detectFacesFromBytes(bytes, mode: FaceDetectionMode.standard),
+        detector.detectFacesFromBytes(bytes, mode: FaceDetectionMode.full),
       ];
 
       final results = await Future.wait(futures);
@@ -103,8 +104,8 @@ void main() {
 
       final bytes = testImages['assets/samples/landmark-ex1.jpg']!;
 
-      final faces =
-          await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+      final faces = await detector.detectFacesFromBytes(bytes,
+          mode: FaceDetectionMode.fast);
       expect(faces, isNotEmpty);
 
       final futures = List.generate(3, (i) {
@@ -144,9 +145,9 @@ void main() {
       final bytes = testImages['assets/samples/landmark-ex1.jpg']!;
 
       final futures = [
-        detector1.detectFaces(bytes, mode: FaceDetectionMode.fast),
-        detector2.detectFaces(bytes, mode: FaceDetectionMode.standard),
-        detector3.detectFaces(bytes, mode: FaceDetectionMode.full),
+        detector1.detectFacesFromBytes(bytes, mode: FaceDetectionMode.fast),
+        detector2.detectFacesFromBytes(bytes, mode: FaceDetectionMode.standard),
+        detector3.detectFacesFromBytes(bytes, mode: FaceDetectionMode.full),
       ];
 
       final results = await Future.wait(futures);
@@ -169,8 +170,8 @@ void main() {
       final bytes = testImages['assets/samples/landmark-ex1.jpg']!;
 
       final futures = [
-        detector1.detectFaces(bytes, mode: FaceDetectionMode.full),
-        detector2.detectFaces(bytes, mode: FaceDetectionMode.full),
+        detector1.detectFacesFromBytes(bytes, mode: FaceDetectionMode.full),
+        detector2.detectFacesFromBytes(bytes, mode: FaceDetectionMode.full),
       ];
 
       final results = await Future.wait(futures);
@@ -195,8 +196,8 @@ void main() {
       final results = <List<Face>>[];
 
       for (int i = 0; i < numCalls; i++) {
-        final faces =
-            await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+        final faces = await detector.detectFacesFromBytes(bytes,
+            mode: FaceDetectionMode.fast);
         results.add(faces);
       }
 
@@ -220,7 +221,7 @@ void main() {
 
       for (int i = 0; i < 10; i++) {
         final mode = FaceDetectionMode.values[i % 3];
-        final faces = await detector.detectFaces(bytes, mode: mode);
+        final faces = await detector.detectFacesFromBytes(bytes, mode: mode);
         expect(faces, isNotEmpty, reason: 'Call $i with ${mode.name} failed');
       }
 
@@ -235,8 +236,8 @@ void main() {
 
       for (int i = 0; i < 15; i++) {
         final bytes = images[i % images.length];
-        final faces =
-            await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+        final faces = await detector.detectFacesFromBytes(bytes,
+            mode: FaceDetectionMode.fast);
         expect(faces, isNotNull, reason: 'Call $i failed');
       }
 
@@ -254,8 +255,8 @@ void main() {
       const iterations = 50;
 
       for (int i = 0; i < iterations; i++) {
-        final faces =
-            await detector.detectFaces(bytes, mode: FaceDetectionMode.full);
+        final faces = await detector.detectFacesFromBytes(bytes,
+            mode: FaceDetectionMode.full);
         expect(faces, isNotEmpty);
 
         if (i % 10 == 0) {
@@ -274,8 +275,8 @@ void main() {
 
       final bytes = testImages['assets/samples/landmark-ex1.jpg']!;
 
-      final faces =
-          await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+      final faces = await detector.detectFacesFromBytes(bytes,
+          mode: FaceDetectionMode.fast);
       expect(faces, isNotEmpty);
 
       const iterations = 30;
@@ -298,8 +299,8 @@ void main() {
         await detector.initialize();
 
         final bytes = testImages['assets/samples/landmark-ex1.jpg']!;
-        final faces =
-            await detector.detectFaces(bytes, mode: FaceDetectionMode.full);
+        final faces = await detector.detectFacesFromBytes(bytes,
+            mode: FaceDetectionMode.full);
         expect(faces, isNotEmpty);
 
         detector.dispose();
@@ -321,8 +322,8 @@ void main() {
       final faceCounts = <int>[];
 
       for (int i = 0; i < iterations; i++) {
-        final faces =
-            await detector.detectFaces(bytes, mode: FaceDetectionMode.full);
+        final faces = await detector.detectFacesFromBytes(bytes,
+            mode: FaceDetectionMode.full);
         faceCounts.add(faces.length);
 
         for (final face in faces) {
@@ -347,8 +348,8 @@ void main() {
       final bytes =
           testImages['assets/samples/group-shot-bounding-box-ex1.jpeg']!;
 
-      final faces =
-          await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+      final faces = await detector.detectFacesFromBytes(bytes,
+          mode: FaceDetectionMode.fast);
       expect(faces.length, greaterThan(1));
 
       const iterations = 5;
@@ -375,7 +376,8 @@ void main() {
       final bytes = testImages['assets/samples/landmark-ex1.jpg']!;
 
       final futures = List.generate(5, (i) {
-        return detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+        return detector.detectFacesFromBytes(bytes,
+            mode: FaceDetectionMode.fast);
       });
 
       final results = await Future.wait(futures);
@@ -398,8 +400,8 @@ void main() {
         await detector.initialize();
 
         final bytes = testImages['assets/samples/landmark-ex1.jpg']!;
-        final faces =
-            await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+        final faces = await detector.detectFacesFromBytes(bytes,
+            mode: FaceDetectionMode.fast);
         expect(faces, isNotEmpty);
 
         await detector.dispose();
@@ -419,7 +421,7 @@ void main() {
           testImages['assets/samples/group-shot-bounding-box-ex1.jpeg']!;
 
       for (int i = 0; i < 10; i++) {
-        final singleFaces = await detector.detectFaces(
+        final singleFaces = await detector.detectFacesFromBytes(
           singleFaceBytes,
           mode: FaceDetectionMode.fast,
         );
@@ -431,13 +433,13 @@ void main() {
         );
         expect(embedding.length, greaterThan(0));
 
-        final groupFaces = await detector.detectFaces(
+        final groupFaces = await detector.detectFacesFromBytes(
           groupBytes,
           mode: FaceDetectionMode.standard,
         );
         expect(groupFaces.length, greaterThan(1));
 
-        final fullFaces = await detector.detectFaces(
+        final fullFaces = await detector.detectFacesFromBytes(
           singleFaceBytes,
           mode: FaceDetectionMode.full,
         );
@@ -461,13 +463,13 @@ void main() {
       for (int i = 0; i < 10; i++) {
         if (i % 3 == 0) {
           try {
-            await detector.detectFaces(invalidBytes,
+            await detector.detectFacesFromBytes(invalidBytes,
                 mode: FaceDetectionMode.fast);
           } catch (e) {
             // Expected - invalid bytes should fail; testing recovery
           }
         } else {
-          final faces = await detector.detectFaces(
+          final faces = await detector.detectFacesFromBytes(
             validBytes,
             mode: FaceDetectionMode.fast,
           );
@@ -491,13 +493,15 @@ void main() {
       const benchmarkRuns = 10;
 
       for (int i = 0; i < warmupRuns; i++) {
-        await detector.detectFaces(bytes, mode: FaceDetectionMode.full);
+        await detector.detectFacesFromBytes(bytes,
+            mode: FaceDetectionMode.full);
       }
 
       final times = <int>[];
       for (int i = 0; i < benchmarkRuns; i++) {
         final sw = Stopwatch()..start();
-        await detector.detectFaces(bytes, mode: FaceDetectionMode.full);
+        await detector.detectFacesFromBytes(bytes,
+            mode: FaceDetectionMode.full);
         sw.stop();
         times.add(sw.elapsedMicroseconds);
       }

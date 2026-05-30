@@ -40,7 +40,7 @@ const kEmbeddingModel = 'mobilefacenet.tflite';
 /// final detector = FaceDetector();
 /// await detector.initialize();
 ///
-/// final faces = await detector.detectFaces(imageBytes);
+/// final faces = await detector.detectFacesFromBytes(imageBytes);
 /// final embedding = await detector.getFaceEmbedding(faces.first, imageBytes);
 /// ```
 class FaceEmbedding with _TfliteModelDisposable {

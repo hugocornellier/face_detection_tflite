@@ -45,8 +45,8 @@ void main() {
     test('should handle 1x1 PNG image', () async {
       final bytes = ImageGenerator.create1x1Png();
 
-      final faces =
-          await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+      final faces = await detector.detectFacesFromBytes(bytes,
+          mode: FaceDetectionMode.fast);
 
       expect(faces, isEmpty);
     });
@@ -129,8 +129,8 @@ void main() {
       final bytes = Uint8List(0);
 
       try {
-        final faces =
-            await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+        final faces = await detector.detectFacesFromBytes(bytes,
+            mode: FaceDetectionMode.fast);
         expect(faces, isEmpty);
       } catch (e) {
         expect(e, isNotNull);
@@ -141,8 +141,8 @@ void main() {
       final bytes = Uint8List.fromList(List.generate(100, (i) => i % 256));
 
       try {
-        final faces =
-            await detector.detectFaces(bytes, mode: FaceDetectionMode.fast);
+        final faces = await detector.detectFacesFromBytes(bytes,
+            mode: FaceDetectionMode.fast);
         expect(faces, isEmpty);
       } catch (e) {
         expect(e, isNotNull);
@@ -155,8 +155,8 @@ void main() {
           Uint8List.fromList(validPng.sublist(0, validPng.length ~/ 2));
 
       try {
-        final faces =
-            await detector.detectFaces(truncated, mode: FaceDetectionMode.fast);
+        final faces = await detector.detectFacesFromBytes(truncated,
+            mode: FaceDetectionMode.fast);
         expect(faces, isEmpty);
       } catch (e) {
         expect(e, isNotNull);
@@ -167,12 +167,13 @@ void main() {
       final invalidBytes = Uint8List.fromList([1, 2, 3, 4, 5]);
 
       try {
-        await detector.detectFaces(invalidBytes, mode: FaceDetectionMode.fast);
+        await detector.detectFacesFromBytes(invalidBytes,
+            mode: FaceDetectionMode.fast);
       } catch (e) {
         // Expected - invalid bytes should fail; testing recovery
       }
 
-      final faces = await detector.detectFaces(validFaceImage,
+      final faces = await detector.detectFacesFromBytes(validFaceImage,
           mode: FaceDetectionMode.fast);
       expect(faces, isNotEmpty, reason: 'Should recover after invalid input');
     });
@@ -220,14 +221,15 @@ void main() {
   group('Detection Mode Edge Cases', () {
     test('should handle mode switching on same image', () async {
       for (final mode in FaceDetectionMode.values) {
-        final faces = await detector.detectFaces(validFaceImage, mode: mode);
+        final faces =
+            await detector.detectFacesFromBytes(validFaceImage, mode: mode);
         expect(faces, isNotEmpty,
             reason: 'Mode ${mode.name} should detect face');
       }
     });
 
     test('fast mode should not have mesh or iris', () async {
-      final faces = await detector.detectFaces(
+      final faces = await detector.detectFacesFromBytes(
         validFaceImage,
         mode: FaceDetectionMode.fast,
       );
@@ -238,7 +240,7 @@ void main() {
     });
 
     test('standard mode should have mesh but not iris', () async {
-      final faces = await detector.detectFaces(
+      final faces = await detector.detectFacesFromBytes(
         validFaceImage,
         mode: FaceDetectionMode.standard,
       );
@@ -250,7 +252,7 @@ void main() {
     });
 
     test('full mode should have mesh and iris', () async {
-      final faces = await detector.detectFaces(
+      final faces = await detector.detectFacesFromBytes(
         validFaceImage,
         mode: FaceDetectionMode.full,
       );
@@ -264,7 +266,7 @@ void main() {
 
   group('Bounding Box Validation', () {
     test('bounding box should be within image bounds', () async {
-      final faces = await detector.detectFaces(
+      final faces = await detector.detectFacesFromBytes(
         validFaceImage,
         mode: FaceDetectionMode.fast,
       );
@@ -286,7 +288,7 @@ void main() {
     });
 
     test('landmarks should be within image bounds', () async {
-      final faces = await detector.detectFaces(
+      final faces = await detector.detectFacesFromBytes(
         validFaceImage,
         mode: FaceDetectionMode.fast,
       );
@@ -306,7 +308,7 @@ void main() {
     });
 
     test('mesh points should be within reasonable bounds', () async {
-      final faces = await detector.detectFaces(
+      final faces = await detector.detectFacesFromBytes(
         validFaceImage,
         mode: FaceDetectionMode.standard,
       );
@@ -337,7 +339,7 @@ void main() {
     });
 
     test('should detect all faces in group photo', () async {
-      final faces = await detector.detectFaces(
+      final faces = await detector.detectFacesFromBytes(
         groupImage,
         mode: FaceDetectionMode.fast,
       );
@@ -347,7 +349,7 @@ void main() {
     });
 
     test('all faces should have valid bounding boxes', () async {
-      final faces = await detector.detectFaces(
+      final faces = await detector.detectFacesFromBytes(
         groupImage,
         mode: FaceDetectionMode.fast,
       );
@@ -363,7 +365,7 @@ void main() {
     });
 
     test('bounding boxes should not overlap completely', () async {
-      final faces = await detector.detectFaces(
+      final faces = await detector.detectFacesFromBytes(
         groupImage,
         mode: FaceDetectionMode.fast,
       );
@@ -385,7 +387,7 @@ void main() {
     });
 
     test('all faces should have mesh in full mode', () async {
-      final faces = await detector.detectFaces(
+      final faces = await detector.detectFacesFromBytes(
         groupImage,
         mode: FaceDetectionMode.full,
       );
@@ -400,7 +402,7 @@ void main() {
 
   group('Serialization Edge Cases', () {
     test('Face.toMap/fromMap should preserve all data', () async {
-      final faces = await detector.detectFaces(
+      final faces = await detector.detectFacesFromBytes(
         validFaceImage,
         mode: FaceDetectionMode.full,
       );
@@ -426,7 +428,7 @@ void main() {
     });
 
     test('Face.toString should not crash', () async {
-      final faces = await detector.detectFaces(
+      final faces = await detector.detectFacesFromBytes(
         validFaceImage,
         mode: FaceDetectionMode.full,
       );
@@ -445,7 +447,7 @@ void main() {
           .load('assets/samples/group-shot-bounding-box-ex1.jpeg');
       final groupImage = data.buffer.asUint8List();
 
-      final faces = await detector.detectFaces(
+      final faces = await detector.detectFacesFromBytes(
         groupImage,
         mode: FaceDetectionMode.fast,
       );
@@ -469,7 +471,7 @@ void main() {
           .load('assets/samples/group-shot-bounding-box-ex1.jpeg');
       final groupImage = data.buffer.asUint8List();
 
-      final faces = await detector.detectFaces(
+      final faces = await detector.detectFacesFromBytes(
         groupImage,
         mode: FaceDetectionMode.fast,
       );
@@ -498,8 +500,8 @@ void main() {
       await isolate.initialize();
 
       final bytes = ImageGenerator.create1x1Png();
-      final faces =
-          await isolate.detectFaces(bytes, mode: FaceDetectionMode.fast);
+      final faces = await isolate.detectFacesFromBytes(bytes,
+          mode: FaceDetectionMode.fast);
 
       expect(faces, isEmpty);
 
@@ -510,7 +512,7 @@ void main() {
       final isolate = FaceDetector();
       await isolate.initialize();
 
-      final faces = await isolate.detectFaces(
+      final faces = await isolate.detectFacesFromBytes(
         validFaceImage,
         mode: FaceDetectionMode.fast,
       );
@@ -530,7 +532,7 @@ void main() {
       await isolate.dispose();
 
       expect(
-        () => isolate.detectFaces(validFaceImage),
+        () => isolate.detectFacesFromBytes(validFaceImage),
         throwsA(isA<StateError>()),
       );
     });

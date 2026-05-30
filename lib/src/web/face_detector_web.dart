@@ -19,7 +19,7 @@ import 'models/selfie_segmentation_web.dart';
 import 'types.dart';
 
 /// Per-stage timing accumulator for the web pipeline (microseconds). Populated
-/// by [FaceDetector.detectFaces] when [FaceDetector.debugTimings] is true.
+/// by [FaceDetector.detectFacesFromBytes] when [FaceDetector.debugTimings] is true.
 class WebDetectTimings {
   int decodeUs = 0;
   int detPreUs = 0;
@@ -91,7 +91,7 @@ class FaceDetector with WebGpuFallback {
   /// Last-call per-stage timings (set when [debugTimings] is true).
   WebDetectTimings? lastTimings;
 
-  /// When true, [detectFaces] populates [lastTimings].
+  /// When true, [detectFacesFromBytes] populates [lastTimings].
   bool debugTimings = false;
 
   bool get isReady => _detectorReady && _meshReady && _irisReady;
@@ -202,7 +202,7 @@ class FaceDetector with WebGpuFallback {
   ///
   /// Internally decodes via `createImageBitmap` (off-thread) and routes
   /// through the same pipeline used by [detectFacesFromVideo].
-  Future<List<Face>> detectFaces(
+  Future<List<Face>> detectFacesFromBytes(
     Uint8List imageBytes, {
     FaceDetectionMode mode = FaceDetectionMode.full,
   }) async {
@@ -213,6 +213,17 @@ class FaceDetector with WebGpuFallback {
     }
     return withFallback(() => _detectFacesInner(imageBytes, mode: mode));
   }
+
+  /// Deprecated alias for [detectFacesFromBytes].
+  ///
+  /// Renamed for clarity: the input is encoded image bytes (JPEG/PNG/...).
+  @Deprecated(
+    'Use detectFacesFromBytes instead. Will be removed in a future release.',
+  )
+  Future<List<Face>> detectFaces(
+    Uint8List imageBytes, {
+    FaceDetectionMode mode = FaceDetectionMode.full,
+  }) => detectFacesFromBytes(imageBytes, mode: mode);
 
   Future<List<Face>> _detectFacesInner(
     Uint8List imageBytes, {
@@ -480,7 +491,7 @@ class FaceDetector with WebGpuFallback {
       );
     }
     final detSw = Stopwatch()..start();
-    final faces = await detectFaces(imageBytes, mode: mode);
+    final faces = await detectFacesFromBytes(imageBytes, mode: mode);
     detSw.stop();
     final segSw = Stopwatch()..start();
     final mask = await getSegmentationMask(imageBytes);
@@ -569,7 +580,7 @@ class FaceDetector with WebGpuFallback {
   }) {
     throw UnsupportedError(
       'detectFacesFromFilepath is not supported on web. '
-      'Use detectFaces(bytes) instead.',
+      'Use detectFacesFromBytes(bytes) instead.',
     );
   }
 
@@ -579,7 +590,7 @@ class FaceDetector with WebGpuFallback {
   }) {
     throw UnsupportedError(
       'detectFacesFromMat is not supported on web. '
-      'Use detectFaces(bytes) instead.',
+      'Use detectFacesFromBytes(bytes) instead.',
     );
   }
 

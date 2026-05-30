@@ -64,7 +64,7 @@ void main() {
       final detector = FaceDetector();
       await detector.initialize();
 
-      final faces = await detector.detectFaces(landmarkBytes);
+      final faces = await detector.detectFacesFromBytes(landmarkBytes);
       expect(faces, isNotEmpty);
 
       final embedding =
@@ -81,7 +81,7 @@ void main() {
       final detector = FaceDetector();
       await detector.initialize();
 
-      final faces = await detector.detectFaces(landmarkBytes);
+      final faces = await detector.detectFacesFromBytes(landmarkBytes);
       expect(faces, isNotEmpty);
 
       final embedding =
@@ -215,7 +215,7 @@ void main() {
 
       final futures = <Future>[];
       for (int i = 0; i < 5; i++) {
-        futures.add(detector.detectFaces(
+        futures.add(detector.detectFacesFromBytes(
           landmarkBytes,
           mode: FaceDetectionMode.fast,
         ));

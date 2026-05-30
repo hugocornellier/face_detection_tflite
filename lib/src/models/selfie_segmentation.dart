@@ -99,7 +99,7 @@ const List<int> kSegmentationAllPersonClasses = <int>[
 /// await detector.initialize();
 /// await detector.initializeSegmentation();
 ///
-/// final faces = await detector.detectFaces(imageBytes);
+/// final faces = await detector.detectFacesFromBytes(imageBytes);
 /// final mask = await detector.getSegmentationMask(imageBytes);
 /// ```
 class SelfieSegmentation with _TfliteModelDisposable {
