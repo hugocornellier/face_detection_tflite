@@ -757,6 +757,15 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   FaceDetectionMode _detectionMode = FaceDetectionMode.full;
   FaceDetectionModel _detectionModel = FaceDetectionModel.backCamera;
 
+  // Live GPU-vs-XNNPACK benchmarking: toggle the delegate at runtime and log
+  // FPS + mean inference ms to the console each second.
+  bool _useGpu = false;
+  PerformanceConfig get _perfConfig => _useGpu
+      ? const PerformanceConfig.gpu()
+      : const PerformanceConfig.xnnpack();
+  final List<int> _recentInferenceMs = [];
+  int _detThisSec = 0;
+
   /// One-shot-per-orientation probe for iOS rotation debugging.
   /// See `_rotationFlagForFrame`. Used to settle whether iOS buffers are
   /// sensor-native (same as Android) or already rotated by the plugin.
@@ -813,7 +822,10 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     _faceDetector = null;
     await old?.dispose();
     _faceDetector = FaceDetector();
-    await _faceDetector!.initialize(model: _detectionModel);
+    await _faceDetector!.initialize(
+      model: _detectionModel,
+      performanceConfig: _perfConfig,
+    );
     await _faceDetector!.initializeSegmentation(
       config: SegmentationConfig(model: _liveSegmentationModel),
     );
@@ -848,6 +860,17 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       maxDim: maxDim,
     );
     return (faces: faces, segMask: null);
+  }
+
+  Future<void> _toggleAccelerator() async {
+    setState(() {
+      _useGpu = !_useGpu;
+      _recentInferenceMs.clear();
+    });
+    // ignore: avoid_print
+    print('[live-bench] switching accelerator -> '
+        '${_useGpu ? 'gpu' : 'xnnpack'}');
+    await _reinitDetectorIsolate();
   }
 
   Future<void> _switchLiveSegmentationModel(SegmentationModel model) async {
@@ -932,6 +955,21 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                       : Icons.flip_camera_android),
                   onPressed: _isSwitchingCamera ? null : _switchCamera,
                 ),
+              TextButton(
+                onPressed: _toggleAccelerator,
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(48, 36),
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                ),
+                child: Text(
+                  _useGpu ? 'GPU' : 'XNN',
+                  style: const TextStyle(
+                    color: Colors.amberAccent,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
               PopupMenuButton<void>(
                 tooltip: 'Settings',
                 icon: const Icon(Icons.settings, color: Colors.white),
@@ -1137,7 +1175,10 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         debugPrint('Detector isolate init failed (segmentation may be '
             'unavailable): $e');
         _faceDetector = FaceDetector();
-        await _faceDetector!.initialize(model: _detectionModel);
+        await _faceDetector!.initialize(
+          model: _detectionModel,
+          performanceConfig: _perfConfig,
+        );
       }
 
       final cameras = await availableCameras();
@@ -1267,6 +1308,16 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   Future<void> _processCameraImage(CameraImage image) async {
     if (_fpsCounter.tick() && mounted) {
       setState(() => _fps = _fpsCounter.fps);
+      final n = _recentInferenceMs.length;
+      final meanMs =
+          n == 0 ? 0 : (_recentInferenceMs.reduce((a, b) => a + b) / n).round();
+      // ignore: avoid_print
+      print('[live-bench] backend=${_useGpu ? 'gpu' : 'xnnpack'} '
+          'cameraFps=$_fps detPerSec=$_detThisSec meanInferMs=$meanMs '
+          'lastMs=$_detectionTimeMs faces=${_faces.length} '
+          'mode=${_detectionMode.name}');
+      _recentInferenceMs.clear();
+      _detThisSec = 0;
     }
 
     if (Platform.isIOS) {
@@ -1320,6 +1371,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
 
       final endTime = DateTime.now();
       final detectionTime = endTime.difference(startTime).inMilliseconds;
+      _recentInferenceMs.add(detectionTime);
+      _detThisSec++;
 
       if (mounted) {
         setState(() {

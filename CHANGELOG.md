@@ -1,3 +1,7 @@
+## 6.3.1
+
+* Update flutter_litert -> 2.8.3
+
 ## 6.3.0
 
 * Rename `detectFaces` -> `detectFacesFromBytes` for clarity (input is encoded image bytes, vs. raw pixels in `detectFacesFromMatBytes`); `detectFaces` is kept as a deprecated alias and will be removed in a future release
