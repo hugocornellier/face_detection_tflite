@@ -158,16 +158,23 @@ class SelfieSegmentation with _TfliteModelDisposable {
   /// ```
   static Future<SelfieSegmentation> create({
     SegmentationConfig config = const SegmentationConfig(),
+    ModelBytesLoader? loadModelBytes,
   }) async {
     final effectiveModel = config.model;
     final modelFile = segmentationModelFile(effectiveModel);
 
     final obj = await _createWithLoader(
       config: config,
-      loadInterpreter: (options) => Interpreter.fromAsset(
-        'packages/face_detection_tflite/assets/models/$modelFile',
-        options: options,
-      ),
+      loadInterpreter: (options) async {
+        if (loadModelBytes != null) {
+          final bytes = await loadModelBytes(modelFile);
+          return Interpreter.fromBuffer(bytes, options: options);
+        }
+        return Interpreter.fromAsset(
+          'packages/face_detection_tflite/assets/models/$modelFile',
+          options: options,
+        );
+      },
       loadErrorCode: SegmentationError.modelNotFound,
       loadErrorPrefix: 'Failed to load model $modelFile',
     );

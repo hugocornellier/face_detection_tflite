@@ -12,6 +12,7 @@ import 'package:web/web.dart' as web;
 
 import '../../shared/face_model_config.dart' show segmentationModelFile;
 import '../../shared/face_types.dart';
+import '../../shared/model_bytes_loader.dart';
 import '../../util/web_image_utils.dart';
 
 /// Selfie segmentation runner for web. Loads `selfie_segmenter.tflite`,
@@ -46,6 +47,7 @@ class SelfieSegmentationWeb {
   Future<void> initialize({
     SegmentationModel model = SegmentationModel.general,
     String liteRtAccelerator = 'auto',
+    ModelBytesLoader? loadModelBytes,
   }) async {
     if (_initialized) await dispose();
 
@@ -53,10 +55,15 @@ class SelfieSegmentationWeb {
     _isMulticlass = model == SegmentationModel.multiclass;
 
     final String fileName = segmentationModelFile(model);
-    final String assetPath =
-        'packages/face_detection_tflite/assets/models/$fileName';
-    final ByteData raw = await rootBundle.load(assetPath);
-    final bytes = raw.buffer.asUint8List();
+    final Uint8List bytes;
+    if (loadModelBytes != null) {
+      bytes = await loadModelBytes(fileName);
+    } else {
+      final ByteData raw = await rootBundle.load(
+        'packages/face_detection_tflite/assets/models/$fileName',
+      );
+      bytes = raw.buffer.asUint8List();
+    }
 
     final String resolved = liteRtAccelerator == 'auto'
         ? 'webgpu'

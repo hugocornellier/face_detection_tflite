@@ -87,6 +87,7 @@ class FaceDetector {
     int meshPoolSize = 3,
     bool withSegmentation = false,
     SegmentationConfig? segmentationConfig,
+    ModelBytesLoader? loadModelBytes,
     // Web-only knobs; accepted here for API parity but ignored on native.
     bool useLiteRt = false,
     String liteRtAccelerator = 'auto',
@@ -98,6 +99,7 @@ class FaceDetector {
       meshPoolSize: meshPoolSize,
       withSegmentation: withSegmentation,
       segmentationConfig: segmentationConfig,
+      loadModelBytes: loadModelBytes,
     );
     return detector;
   }
@@ -142,6 +144,12 @@ class FaceDetector {
   /// time, avoiding an extra model-load step later. Pass [segmentationConfig]
   /// to customize segmentation behaviour.
   ///
+  /// The [loadModelBytes] callback, when provided, sources every model's raw
+  /// TFLite bytes instead of the bundled package assets. It receives the bare
+  /// model file name (for example `face_landmark.tflite`) and must return the
+  /// full file contents. Use it to load models downloaded at runtime so they
+  /// do not need to ship inside the app binary.
+  ///
   /// Example:
   /// ```dart
   /// // Default (auto mode - optimal for each platform)
@@ -162,6 +170,7 @@ class FaceDetector {
     int meshPoolSize = 3,
     bool withSegmentation = false,
     SegmentationConfig? segmentationConfig,
+    ModelBytesLoader? loadModelBytes,
     // Web-only knobs; accepted here for API parity but ignored on native.
     bool useLiteRt = false,
     String liteRtAccelerator = 'auto',
@@ -174,47 +183,34 @@ class FaceDetector {
     IsolateRpcClient? segmentationRpc;
 
     try {
-      final faceDetectionPath =
-          'packages/face_detection_tflite/assets/models/${faceDetectionModelFile(model)}';
-      const faceLandmarkPath =
-          'packages/face_detection_tflite/assets/models/$kFaceLandmarkModel';
-      const irisLandmarkPath =
-          'packages/face_detection_tflite/assets/models/$kIrisLandmarkModel';
-      const embeddingPath =
-          'packages/face_detection_tflite/assets/models/$kEmbeddingModel';
-
-      final assetFutures = [
-        rootBundle.load(faceDetectionPath),
-        rootBundle.load(faceLandmarkPath),
-        rootBundle.load(irisLandmarkPath),
-        rootBundle.load(embeddingPath),
+      final modelFutures = [
+        _loadModelBytes(faceDetectionModelFile(model), loadModelBytes),
+        _loadModelBytes(kFaceLandmarkModel, loadModelBytes),
+        _loadModelBytes(kIrisLandmarkModel, loadModelBytes),
+        _loadModelBytes(kEmbeddingModel, loadModelBytes),
       ];
 
       if (withSegmentation) {
         final effectiveSegModel =
             segmentationConfig?.model ?? SegmentationModel.general;
         final segModelFile = segmentationModelFile(effectiveSegModel);
-        assetFutures.add(
-          rootBundle.load(
-            'packages/face_detection_tflite/assets/models/$segModelFile',
-          ),
-        );
+        modelFutures.add(_loadModelBytes(segModelFile, loadModelBytes));
       }
 
-      final results = await Future.wait(assetFutures);
+      final results = await Future.wait(modelFutures);
 
       await worker.initialize(
-        faceDetectionBytes: results[0].buffer.asUint8List(),
-        faceLandmarkBytes: results[1].buffer.asUint8List(),
-        irisLandmarkBytes: results[2].buffer.asUint8List(),
-        embeddingBytes: results[3].buffer.asUint8List(),
+        faceDetectionBytes: results[0],
+        faceLandmarkBytes: results[1],
+        irisLandmarkBytes: results[2],
+        embeddingBytes: results[3],
         model: model,
         performanceConfig: performanceConfig,
         meshPoolSize: meshPoolSize,
       );
 
       if (withSegmentation && results.length > 4) {
-        final segBytes = results[4].buffer.asUint8List();
+        final segBytes = results[4];
         final config = segmentationConfig ?? SegmentationConfig.safe;
         segmentationRpc = IsolateRpcClient();
         await _spawnSegmentationIsolate(
@@ -237,12 +233,30 @@ class FaceDetector {
     }
   }
 
+  /// Loads one model's raw bytes, via [loader] when provided or from the
+  /// bundled package assets otherwise.
+  static Future<Uint8List> _loadModelBytes(
+    String modelFileName,
+    ModelBytesLoader? loader,
+  ) async {
+    if (loader != null) {
+      return loader(modelFileName);
+    }
+    final data = await rootBundle.load(
+      'packages/face_detection_tflite/assets/models/$modelFileName',
+    );
+    return data.buffer.asUint8List();
+  }
+
   /// Initializes the optional segmentation model.
   ///
   /// Call this after [initialize] to enable segmentation features.
   /// Does nothing if segmentation is already initialized.
   ///
   /// [config]: Segmentation configuration. If null, uses [SegmentationConfig.safe].
+  ///
+  /// [loadModelBytes]: Optional override for sourcing the model bytes; see
+  /// [initialize].
   ///
   /// Throws [SegmentationException] on model load failure.
   ///
@@ -254,19 +268,20 @@ class FaceDetector {
   ///
   /// final mask = await detector.getSegmentationMask(imageBytes);
   /// ```
-  Future<void> initializeSegmentation({SegmentationConfig? config}) async {
+  Future<void> initializeSegmentation({
+    SegmentationConfig? config,
+    ModelBytesLoader? loadModelBytes,
+  }) async {
     _requireReady();
     if (_segmentationInitialized) return;
     final effectiveConfig = config ?? SegmentationConfig.safe;
     final segModelFile = segmentationModelFile(effectiveConfig.model);
     final segmentationRpc = IsolateRpcClient();
-    final data = await rootBundle.load(
-      'packages/face_detection_tflite/assets/models/$segModelFile',
-    );
+    final modelBytes = await _loadModelBytes(segModelFile, loadModelBytes);
     try {
       await _spawnSegmentationIsolate(
         rpc: segmentationRpc,
-        modelBytes: data.buffer.asUint8List(),
+        modelBytes: modelBytes,
         config: effectiveConfig,
       );
       _segmentationRpc = segmentationRpc;

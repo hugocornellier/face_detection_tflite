@@ -8,6 +8,7 @@ import 'package:flutter_litert/src/web/litertjs_interpreter.dart'
     show LiteRtInterpreter;
 import 'package:web/web.dart' as web;
 
+import '../../shared/model_bytes_loader.dart';
 import '../../util/web_image_utils.dart';
 
 /// 468-point face mesh runner for web. Uses LiteRT.js with auto WebGPU/WASM.
@@ -37,12 +38,21 @@ class FaceLandmarkModelWeb {
   int get inputWidth => _inW;
   int get inputHeight => _inH;
 
-  Future<void> initialize({String liteRtAccelerator = 'auto'}) async {
+  Future<void> initialize({
+    String liteRtAccelerator = 'auto',
+    ModelBytesLoader? loadModelBytes,
+  }) async {
     if (_initialized) await dispose();
-    const String assetPath =
-        'packages/face_detection_tflite/assets/models/face_landmark.tflite';
-    final ByteData raw = await rootBundle.load(assetPath);
-    final bytes = raw.buffer.asUint8List();
+    const String fileName = 'face_landmark.tflite';
+    final Uint8List bytes;
+    if (loadModelBytes != null) {
+      bytes = await loadModelBytes(fileName);
+    } else {
+      final ByteData raw = await rootBundle.load(
+        'packages/face_detection_tflite/assets/models/$fileName',
+      );
+      bytes = raw.buffer.asUint8List();
+    }
 
     final String resolved = liteRtAccelerator == 'auto'
         ? 'webgpu'
