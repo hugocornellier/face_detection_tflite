@@ -71,8 +71,9 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
   void onDetectorReady(String backend) {
     setState(() {
       _state = _CameraState.idle;
-      _statusMessage = 'Ready ($backend). Tap "Start camera" to begin.';
+      _statusMessage = 'Ready ($backend). Starting camera...';
     });
+    _startCamera();
   }
 
   @override
@@ -138,9 +139,13 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
         return;
       }
 
+      // Mirror the front camera so the preview behaves like a mirror, the
+      // same as the native example. The video frame and detections are
+      // composited onto this canvas, so flipping it mirrors both together.
       displayCanvas!
         ..width = video!.videoWidth
-        ..height = video!.videoHeight;
+        ..height = video!.videoHeight
+        ..style.transform = _facingMode == 'user' ? 'scaleX(-1)' : '';
 
       setState(() {
         _state = _CameraState.starting;

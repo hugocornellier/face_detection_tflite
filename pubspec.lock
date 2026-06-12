@@ -113,10 +113,11 @@ packages:
   flutter_litert:
     dependency: "direct main"
     description:
-      name: flutter_litert
-      sha256: e114b391ee8c600fe6d7489d0a0d6610166ec7982e5bf5eae6b968c0c1c18462
-      url: "https://pub.dev"
-    source: hosted
+      path: "."
+      ref: "95523d89654475e015a315435caf26337452b2c2"
+      resolved-ref: "95523d89654475e015a315435caf26337452b2c2"
+      url: "https://github.com/hugocornellier/flutter_litert.git"
+    source: git
     version: "2.8.3"
   flutter_test:
     dependency: "direct dev"

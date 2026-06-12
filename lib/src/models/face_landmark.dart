@@ -9,7 +9,8 @@ part of '../native/face_native_lib.dart';
 /// (local copy: `doc/model_cards/face_landmark_model_card.pdf`)
 class FaceLandmark with _TfliteModelDisposable {
   @override
-  final Interpreter _itp;
+  final Interpreter? _itp;
+  final CompiledModel? _compiledModel;
   final int _inW, _inH;
   late final int _bestIdx;
   late final TensorFloat32Views _views;
@@ -18,7 +19,17 @@ class FaceLandmark with _TfliteModelDisposable {
   late final List<List<List<List<double>>>> _input4dCache;
   late final Map<int, Object> _outputsCache;
 
-  FaceLandmark._(this._itp, this._inW, this._inH);
+  /// The model input width in pixels.
+  int get inputWidth => _inW;
+
+  /// The model input height in pixels.
+  int get inputHeight => _inH;
+
+  FaceLandmark._(this._itp, this._inW, this._inH) : _compiledModel = null;
+
+  FaceLandmark._compiled(CompiledModel compiledModel, this._inW, this._inH)
+    : _itp = null,
+      _compiledModel = compiledModel;
 
   /// Creates and initializes a face landmark (mesh) model instance.
   ///
@@ -78,6 +89,30 @@ class FaceLandmark with _TfliteModelDisposable {
     useIsolateInterpreter: false,
   );
 
+  /// Creates a face landmark model backed by LiteRT CompiledModel.
+  static Future<FaceLandmark> createCompiledFromBuffer(
+    Uint8List modelBytes,
+  ) async {
+    final CompiledModel compiledModel = _createCompiledModelWithFallback(
+      modelBytes,
+    );
+    final int side;
+    try {
+      side = _compiledSquareInputSide(compiledModel, 'Compiled face landmark');
+    } catch (_) {
+      compiledModel.close();
+      rethrow;
+    }
+    final obj = FaceLandmark._compiled(compiledModel, side, side);
+    try {
+      obj._initializeCompiledModel();
+      return obj;
+    } catch (_) {
+      obj.dispose();
+      rethrow;
+    }
+  }
+
   static Future<FaceLandmark> _createWithLoader({
     required FutureOr<Interpreter> Function(InterpreterOptions) load,
     InterpreterOptions? options,
@@ -99,9 +134,10 @@ class FaceLandmark with _TfliteModelDisposable {
   /// `_itp.invoke()` instead of spawning a nested isolate. This should be
   /// used when the model is already running inside a background isolate.
   Future<void> _initializeTensors({bool useIsolateInterpreter = true}) async {
+    final Interpreter itp = _itp!;
     int numElements(List<int> s) => s.fold(1, (a, b) => a * b);
 
-    final Map<int, OutputTensorInfo> outputInfo = collectOutputTensorInfo(_itp);
+    final Map<int, OutputTensorInfo> outputInfo = collectOutputTensorInfo(itp);
     final Map<int, List<int>> shapes = outputInfo.map(
       (int k, OutputTensorInfo v) => MapEntry(k, v.shape),
     );
@@ -116,7 +152,7 @@ class FaceLandmark with _TfliteModelDisposable {
       }
     }
     _bestIdx = bestIdx;
-    _views = TensorFloat32Views.capture(_itp);
+    _views = TensorFloat32Views.capture(itp);
     _scratchBuf = Float32List(_inH * _inW * 3);
 
     final int maxIndex = shapes.keys.isEmpty
@@ -138,8 +174,33 @@ class FaceLandmark with _TfliteModelDisposable {
     }
 
     if (useIsolateInterpreter) {
-      _iso = await InterpreterFactory.createIsolateIfNeeded(_itp, _delegate);
+      _iso = await InterpreterFactory.createIsolateIfNeeded(itp, _delegate);
     }
+  }
+
+  void _initializeCompiledModel() {
+    final CompiledModel compiledModel = _compiledModel!;
+    _scratchBuf = Float32List(_inH * _inW * 3);
+
+    int bestIdx = -1;
+    int bestLen = -1;
+    for (int i = 0; i < compiledModel.outputCount; i++) {
+      final int len = _compiledFloatCount(
+        compiledModel.outputByteSizes[i],
+        'Compiled face landmark output[$i]',
+      );
+      if (len > bestLen && len % 3 == 0) {
+        bestLen = len;
+        bestIdx = i;
+      }
+    }
+    if (bestIdx == -1) {
+      throw UnsupportedError(
+        'Compiled face landmark has no output with a float count divisible '
+        'by 3.',
+      );
+    }
+    _bestIdx = bestIdx;
   }
 
   /// Predicts the 468-point face mesh for an aligned face crop using cv.Mat.
@@ -165,6 +226,30 @@ class FaceLandmark with _TfliteModelDisposable {
     cv.Mat faceCrop, {
     Float32List? buffer,
   }) async {
+    final CompiledModel? compiledModel = _compiledModel;
+    if (compiledModel != null) {
+      // Copying runAsync is the official LiteRT pattern for host-side data
+      // (the C++ Write/Read API is lock+memcpy+unlock); the Metal accelerator
+      // only supports MetalBufferPacked tensor buffers, so host zero-copy is
+      // not available on the GPU path.
+      final ImageTensor pack = convertImageToTensor(
+        faceCrop,
+        outW: _inW,
+        outH: _inH,
+        buffer: buffer ?? _scratchBuf,
+      );
+      final List<Float32List> outputs = await compiledModel.runAsync([
+        pack.tensorNHWC,
+      ]);
+      return _unpackLandmarks(
+        outputs[_bestIdx],
+        _inW,
+        _inH,
+        pack.padding,
+        clamp: true,
+      );
+    }
+
     final ImageTensor pack = convertImageToTensor(
       faceCrop,
       outW: _inW,
@@ -174,7 +259,7 @@ class FaceLandmark with _TfliteModelDisposable {
 
     if (_iso == null) {
       _views.inputs[0].setAll(0, pack.tensorNHWC);
-      _itp.invoke();
+      _itp!.invoke();
       return _unpackLandmarks(
         _views.outputs[_bestIdx],
         _inW,
@@ -201,5 +286,9 @@ class FaceLandmark with _TfliteModelDisposable {
   ///
   /// **Note:** Most users should call [FaceDetector.dispose] instead, which
   /// automatically disposes all internal models (detection, mesh, and iris).
-  void dispose() => _doDispose();
+  void dispose() {
+    if (_disposed) return;
+    _compiledModel?.close();
+    _doDispose();
+  }
 }

@@ -10,6 +10,8 @@ import 'package:face_detection_tflite/face_detection_tflite.dart';
 import 'package:flutter/material.dart';
 import 'package:web/web.dart' as web;
 
+import 'segmentation_rendering.dart';
+
 /// View types registered once per platform-view, mapped to the canvas that
 /// should currently back them. Storing the live canvas (rather than capturing
 /// it inside the factory closure) keeps revisited screens from rendering into
@@ -63,8 +65,10 @@ mixin DetectionOverlayMixin<T extends StatefulWidget> on State<T> {
   bool showSegmentation = false;
   SegmentationModel segmentationModel = SegmentationModel.general;
   bool showVirtualBackground = false;
-  Color maskColor = const Color(0x6600FF00);
+  Color maskColor = const Color(0x8800FF00);
   double segmentationThreshold = 0.5;
+  final web.HTMLCanvasElement maskScratch = web.HTMLCanvasElement();
+  final web.HTMLCanvasElement personScratch = web.HTMLCanvasElement();
 
   // ---- LiteRT ----------------------------------------------------------
   bool useLiteRt = true;
@@ -258,53 +262,35 @@ mixin DetectionOverlayMixin<T extends StatefulWidget> on State<T> {
     if (w == 0 || h == 0) return;
 
     if (showVirtualBackground && mask != null) {
-      ctx.fillStyle = 'rgb(20,20,80)'.toJS;
-      ctx.fillRect(0, 0, w, h);
-    }
-    ctx.drawImage(v, 0, 0, w, h);
-
-    if (mask != null) {
-      drawMask(ctx, mask, w, h);
+      drawVirtualBackground(
+        ctx: ctx,
+        scratch: maskScratch,
+        composite: personScratch,
+        frame: v,
+        mask: mask,
+        destWidth: w,
+        destHeight: h,
+      );
+    } else {
+      ctx.drawImage(v, 0, 0, w, h);
+      if (mask != null) {
+        drawSegmentationOverlay(
+          ctx: ctx,
+          scratch: maskScratch,
+          mask: mask,
+          destWidth: w,
+          destHeight: h,
+          maskColor: maskColor,
+          threshold: segmentationThreshold,
+          showAllClasses: segmentationModel == SegmentationModel.multiclass,
+          mirrored: canvas.style.transform.contains('scaleX(-1)'),
+        );
+      }
     }
 
     for (final face in faces) {
       drawFace(ctx, face);
     }
-  }
-
-  void drawMask(
-    web.CanvasRenderingContext2D ctx,
-    SegmentationMask mask,
-    int w,
-    int h,
-  ) {
-    final upsampled = mask.upsample(
-      targetWidth: w,
-      targetHeight: h,
-      maxSize: 0,
-    );
-    final data = upsampled.data;
-    if (data.length != w * h) return;
-    final r = (maskColor.r * 255).round();
-    final g = (maskColor.g * 255).round();
-    final b = (maskColor.b * 255).round();
-    final a = (maskColor.a * 255).round();
-    final imageData = ctx.createImageData(w.toJS, h);
-    final rgba = imageData.data.toDart;
-    for (int i = 0; i < data.length; i++) {
-      final p = data[i].clamp(0.0, 1.0);
-      final off = i * 4;
-      final showFg = p >= segmentationThreshold;
-      if (showFg) {
-        rgba[off] = r;
-        rgba[off + 1] = g;
-        rgba[off + 2] = b;
-        rgba[off + 3] = a;
-      } else {
-        rgba[off + 3] = 0;
-      }
-    }
-    ctx.putImageData(imageData, 0, 0);
   }
 
   void drawFace(web.CanvasRenderingContext2D ctx, Face face) {
@@ -535,12 +521,12 @@ mixin DetectionOverlayMixin<T extends StatefulWidget> on State<T> {
                   children: [
                     const Text('Mask color:'),
                     for (final c in const <Color>[
-                      Color(0x6600FF00),
-                      Color(0x66FF0000),
-                      Color(0x660000FF),
-                      Color(0x66FFFF00),
-                      Color(0x66FF00FF),
-                      Color(0x6600FFFF),
+                      Color(0x8800FF00),
+                      Color(0x88FF0000),
+                      Color(0x880000FF),
+                      Color(0x88FFFF00),
+                      Color(0x88FF00FF),
+                      Color(0x8800FFFF),
                     ])
                       GestureDetector(
                         onTap: () => both(() => maskColor = c),

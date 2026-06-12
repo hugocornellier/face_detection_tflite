@@ -11,6 +11,7 @@ class _DetectionIsolateStartupData {
   final String performanceModeName;
   final int? numThreads;
   final int meshPoolSize;
+  final bool useCompiledModel;
 
   _DetectionIsolateStartupData({
     required this.sendPort,
@@ -22,6 +23,7 @@ class _DetectionIsolateStartupData {
     required this.performanceModeName,
     required this.numThreads,
     required this.meshPoolSize,
+    required this.useCompiledModel,
   });
 }
 
@@ -35,6 +37,7 @@ class _SegmentationIsolateStartupData {
   final bool validateModel;
   final String modelName;
   final int modelIndex;
+  final bool useCompiledModel;
 
   _SegmentationIsolateStartupData({
     required this.sendPort,
@@ -45,6 +48,7 @@ class _SegmentationIsolateStartupData {
     required this.validateModel,
     required this.modelName,
     required this.modelIndex,
+    required this.useCompiledModel,
   });
 }
 
@@ -61,6 +65,7 @@ class _FaceDetectorCore {
   IrisLandmark? _irisRight;
   FaceEmbedding? _embedding;
 
+  final _detectorLock = _InferenceLock();
   final _irisLeftLock = _InferenceLock();
   final _irisRightLock = _InferenceLock();
   final _embeddingLock = _InferenceLock();
@@ -80,39 +85,53 @@ class _FaceDetectorCore {
     required FaceDetectionModel model,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
     int meshPoolSize = 3,
+    bool useCompiledModel = false,
   }) async {
     try {
-      _detector = await FaceDetection.createFromBuffer(
-        faceDetectionBytes,
-        model,
-        performanceConfig: performanceConfig,
-      );
+      _detector = useCompiledModel
+          ? await FaceDetection.createCompiledFromBuffer(
+              faceDetectionBytes,
+              model,
+            )
+          : await FaceDetection.createFromBuffer(
+              faceDetectionBytes,
+              model,
+              performanceConfig: performanceConfig,
+            );
 
       _meshItems = [];
       for (int i = 0; i < meshPoolSize; i++) {
         _meshItems.add(
-          await FaceLandmark.createFromBuffer(
-            faceLandmarkBytes,
-            performanceConfig: performanceConfig,
-          ),
+          useCompiledModel
+              ? await FaceLandmark.createCompiledFromBuffer(faceLandmarkBytes)
+              : await FaceLandmark.createFromBuffer(
+                  faceLandmarkBytes,
+                  performanceConfig: performanceConfig,
+                ),
         );
       }
       _meshPool = RoundRobinPool(_meshItems);
 
-      _irisLeft = await IrisLandmark.createFromBuffer(
-        irisLandmarkBytes,
-        performanceConfig: performanceConfig,
-      );
-      _irisRight = await IrisLandmark.createFromBuffer(
-        irisLandmarkBytes,
-        performanceConfig: performanceConfig,
-      );
+      _irisLeft = useCompiledModel
+          ? await IrisLandmark.createCompiledFromBuffer(irisLandmarkBytes)
+          : await IrisLandmark.createFromBuffer(
+              irisLandmarkBytes,
+              performanceConfig: performanceConfig,
+            );
+      _irisRight = useCompiledModel
+          ? await IrisLandmark.createCompiledFromBuffer(irisLandmarkBytes)
+          : await IrisLandmark.createFromBuffer(
+              irisLandmarkBytes,
+              performanceConfig: performanceConfig,
+            );
 
       if (embeddingBytes != null) {
-        _embedding = await FaceEmbedding.createFromBuffer(
-          embeddingBytes,
-          performanceConfig: performanceConfig,
-        );
+        _embedding = useCompiledModel
+            ? await FaceEmbedding.createCompiledFromBuffer(embeddingBytes)
+            : await FaceEmbedding.createFromBuffer(
+                embeddingBytes,
+                performanceConfig: performanceConfig,
+              );
       }
     } catch (e) {
       _cleanupOnInitError();
@@ -142,12 +161,24 @@ class _FaceDetectorCore {
     final List<Detection> dets = await _detectDetections(image);
     if (dets.isEmpty) return <Face>[];
 
-    final List<(Detection, AlignedFace)?> alignedFaces =
-        <(Detection, AlignedFace)?>[];
+    final List<(Detection, AlignedFace?)?> alignedFaces =
+        <(Detection, AlignedFace?)?>[];
     for (final Detection det in dets) {
       try {
-        final aligned = await _estimateAlignedFace(image, det);
-        alignedFaces.add((det, aligned));
+        if (computeMesh) {
+          final aligned = await _estimateAlignedFace(image, det);
+          alignedFaces.add((det, aligned));
+        } else {
+          // Fast mode never uses the crop: compute only the alignment
+          // geometry, keeping the same degenerate-size drop condition as
+          // _estimateAlignedFace without paying for the warp.
+          final (theta: _, cx: _, cy: _, :size) = _computeFaceAlignment(
+            det,
+            width.toDouble(),
+            height.toDouble(),
+          );
+          alignedFaces.add(size.round() > 0 ? (det, null) : null);
+        }
       } catch (_) {
         alignedFaces.add(null);
       }
@@ -157,14 +188,15 @@ class _FaceDetectorCore {
     if (computeMesh) {
       meshResults = await Future.wait(
         alignedFaces.map((data) async {
-          if (data == null) return null;
+          final AlignedFace? aligned = data?.$2;
+          if (aligned == null) return null;
           try {
             return await _meshFromAlignedFace(
-              data.$2.faceCrop,
-              data.$2.cx,
-              data.$2.cy,
-              data.$2.size,
-              data.$2.theta,
+              aligned.faceCrop,
+              aligned.cx,
+              aligned.cy,
+              aligned.size,
+              aligned.theta,
             );
           } catch (_) {
             return null;
@@ -176,7 +208,7 @@ class _FaceDetectorCore {
     }
 
     for (final data in alignedFaces) {
-      data?.$2.faceCrop.dispose();
+      data?.$2?.faceCrop.dispose();
     }
 
     final List<List<Point>?> irisResults = List<List<Point>?>.filled(
@@ -266,6 +298,7 @@ class _FaceDetectorCore {
       alignment.cy,
       alignment.size,
       -alignment.theta,
+      outSize: _embedding!.inputWidth,
     );
 
     if (faceCrop == null) {
@@ -282,17 +315,26 @@ class _FaceDetectorCore {
   /// Disposes all model resources.
   void dispose() => _disposeFields();
 
+  /// Detection tensor scratch, reused across calls. Written only inside
+  /// [_detectorLock] - conversion must not run outside it, or a concurrent
+  /// request could overwrite the tensor while inference is still reading it.
+  Float32List? _detectionScratch;
+
   Future<List<Detection>> _detectDetections(cv.Mat image) async {
     final FaceDetection? d = _detector;
     if (d == null) throw StateError('FaceDetectorCore not initialized.');
 
-    final ImageTensor tensor = convertImageToTensor(
-      image,
-      outW: d.inputWidth,
-      outH: d.inputHeight,
-    );
-
-    return await d.callWithTensor(tensor);
+    return await _detectorLock.run(() {
+      final ImageTensor tensor = convertImageToTensor(
+        image,
+        outW: d.inputWidth,
+        outH: d.inputHeight,
+        buffer: _detectionScratch ??= Float32List(
+          d.inputWidth * d.inputHeight * 3,
+        ),
+      );
+      return d.callWithTensor(tensor);
+    });
   }
 
   Future<AlignedFace> _estimateAlignedFace(cv.Mat image, Detection det) async {
@@ -302,7 +344,17 @@ class _FaceDetectorCore {
       image.rows.toDouble(),
     );
 
-    final cv.Mat? faceCrop = extractAlignedSquare(image, cx, cy, size, -theta);
+    // Warp straight to the mesh model's input resolution: one resample
+    // instead of a full-size crop followed by a resize inside
+    // convertImageToTensor.
+    final cv.Mat? faceCrop = extractAlignedSquare(
+      image,
+      cx,
+      cy,
+      size,
+      -theta,
+      outSize: _meshItems.isNotEmpty ? _meshItems.first.inputWidth : null,
+    );
     if (faceCrop == null) {
       throw StateError('Failed to extract aligned face crop');
     }
@@ -356,12 +408,18 @@ class _FaceDetectorCore {
     final List<AlignedRoi> rois = roisFromMesh(meshAbs);
     if (rois.length < 2) return <Point>[];
 
+    // Eye crops are warped straight to the iris model's input resolution
+    // (single resample); the right-eye flip below then runs on the small
+    // crop. Flip-then-resize and resize-then-flip sample identically, so
+    // this matches the previous full-size-crop behavior.
+    final int irisInputSize = _irisLeft!.inputWidth;
     final cv.Mat? leftCrop = extractAlignedSquare(
       image,
       rois[0].cx,
       rois[0].cy,
       rois[0].size,
       rois[0].theta,
+      outSize: irisInputSize,
     );
     final cv.Mat? rightCropRaw = extractAlignedSquare(
       image,
@@ -369,6 +427,7 @@ class _FaceDetectorCore {
       rois[1].cy,
       rois[1].size,
       rois[1].theta,
+      outSize: irisInputSize,
     );
 
     if (leftCrop == null || rightCropRaw == null) {

@@ -25,6 +25,15 @@ dependencies:
   flutter_web_plugins:
     sdk: flutter
 
+# TEMPORARY (CompiledModel testing, do not publish with this):
+# use flutter_litert from the compiled-model branch instead of pub.dev,
+# pinned to a commit so fresh clones resolve reproducibly.
+dependency_overrides:
+  flutter_litert:
+    git:
+      url: https://github.com/hugocornellier/flutter_litert.git
+      ref: 95523d89654475e015a315435caf26337452b2c2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

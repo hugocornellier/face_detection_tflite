@@ -361,7 +361,7 @@ class SegmentationWorker extends IsolateWorkerBase {
     final int height = params['height'] as int;
     final int channels = params['channels'] as int;
 
-    final cv.Mat image = cv.Mat.fromList(
+    final cv.Mat image = matFromPackedBytes(
       height,
       width,
       cv.MatType.CV_8UC(channels),
@@ -388,13 +388,18 @@ class SegmentationWorker extends IsolateWorkerBase {
     final int originalWidth = image.cols;
     final int originalHeight = image.rows;
 
+    // Convert directly into the interpreter's input tensor view - skips both
+    // the per-call Float32List allocation and the extra copy.
     final ImageTensor pack = convertImageToTensor(
       image,
       outW: state.inputWidth,
       outH: state.inputHeight,
+      buffer: state.inputBuffer,
     );
 
-    state.inputBuffer.setAll(0, pack.tensorNHWC);
+    if (!identical(pack.tensorNHWC, state.inputBuffer)) {
+      state.inputBuffer.setAll(0, pack.tensorNHWC);
+    }
 
     state.interpreter.invoke();
 

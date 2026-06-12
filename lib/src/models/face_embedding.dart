@@ -45,14 +45,24 @@ const kEmbeddingModel = 'mobilefacenet.tflite';
 /// ```
 class FaceEmbedding with _TfliteModelDisposable {
   @override
-  final Interpreter _itp;
+  final Interpreter? _itp;
+  final CompiledModel? _compiledModel;
   final int _inW, _inH;
   late final TensorFloat32Views _views;
   late final List<int> _outputShape;
   late final List<List<List<List<double>>>> _input4dCache;
   late final int _embeddingDim;
 
-  FaceEmbedding._(this._itp, this._inW, this._inH);
+  /// Default tensor-conversion scratch, reused across calls (same pattern as
+  /// [IrisLandmark]). Callers running calls concurrently on one instance must
+  /// pass their own [call] buffer.
+  late final Float32List _scratchBuf = Float32List(_inW * _inH * 3);
+
+  FaceEmbedding._(this._itp, this._inW, this._inH) : _compiledModel = null;
+
+  FaceEmbedding._compiled(CompiledModel compiledModel, this._inW, this._inH)
+    : _itp = null,
+      _compiledModel = compiledModel;
 
   /// Creates and initializes a face embedding model instance.
   ///
@@ -104,6 +114,47 @@ class FaceEmbedding with _TfliteModelDisposable {
     useIsolateInterpreter: false,
   );
 
+  /// Creates a face embedding model backed by LiteRT CompiledModel.
+  static Future<FaceEmbedding> createCompiledFromBuffer(
+    Uint8List modelBytes,
+  ) async {
+    // MobileFaceNet fails strict-GPU compilation (unsupported ops) but runs
+    // ~3.7x faster than CPU with GPU|CPU partitioning, so use the fallback
+    // helper rather than pinning to either accelerator.
+    final CompiledModel compiledModel = _createCompiledModelWithFallback(
+      modelBytes,
+    );
+    final int side;
+    try {
+      side = _compiledSquareInputSide(compiledModel, 'Compiled face embedding');
+    } catch (_) {
+      compiledModel.close();
+      rethrow;
+    }
+    final obj = FaceEmbedding._compiled(compiledModel, side, side);
+    try {
+      obj._initializeCompiledModel();
+      return obj;
+    } catch (_) {
+      obj.dispose();
+      rethrow;
+    }
+  }
+
+  void _initializeCompiledModel() {
+    final CompiledModel compiledModel = _compiledModel!;
+    if (compiledModel.outputCount != 1) {
+      throw UnsupportedError(
+        'Compiled face embedding expects one output tensor; got '
+        '${compiledModel.outputCount}.',
+      );
+    }
+    _embeddingDim = _compiledFloatCount(
+      compiledModel.outputByteSizes.single,
+      'Compiled face embedding output[0]',
+    );
+  }
+
   static Future<FaceEmbedding> _createWithLoader({
     required FutureOr<Interpreter> Function(InterpreterOptions) load,
     InterpreterOptions? options,
@@ -126,12 +177,13 @@ class FaceEmbedding with _TfliteModelDisposable {
   /// used when the model is already running inside a background isolate
   /// (e.g. via [FaceDetector]) to avoid nested isolate issues.
   Future<void> _initializeTensors({bool useIsolateInterpreter = true}) async {
-    _outputShape = List<int>.unmodifiable(_itp.getOutputTensor(0).shape);
+    final Interpreter itp = _itp!;
+    _outputShape = List<int>.unmodifiable(itp.getOutputTensor(0).shape);
     _embeddingDim = _outputShape.last;
-    _views = TensorFloat32Views.capture(_itp);
+    _views = TensorFloat32Views.capture(itp);
     _input4dCache = createNHWCTensor4D(_inH, _inW);
     if (useIsolateInterpreter) {
-      _iso = await InterpreterFactory.createIsolateIfNeeded(_itp, _delegate);
+      _iso = await InterpreterFactory.createIsolateIfNeeded(itp, _delegate);
     }
   }
 
@@ -168,12 +220,24 @@ class FaceEmbedding with _TfliteModelDisposable {
       faceCrop,
       outW: _inW,
       outH: _inH,
-      buffer: buffer,
+      buffer: buffer ?? _scratchBuf,
     );
+
+    final CompiledModel? compiledModel = _compiledModel;
+    if (compiledModel != null) {
+      // Copying runAsync is the official LiteRT pattern for host-side data
+      // (the C++ Write/Read API is lock+memcpy+unlock); the Metal accelerator
+      // only supports MetalBufferPacked tensor buffers, so host zero-copy is
+      // not available on the GPU path.
+      final List<Float32List> outputs = await compiledModel.runAsync([
+        pack.tensorNHWC,
+      ]);
+      return _normalizeEmbeddingImpl(outputs[0]);
+    }
 
     if (_iso == null) {
       _views.inputs[0].setAll(0, pack.tensorNHWC);
-      _itp.invoke();
+      _itp!.invoke();
       return _normalizeEmbeddingImpl(Float32List.fromList(_views.outputs[0]));
     } else {
       fillNHWC4D(pack.tensorNHWC, _input4dCache, _inH, _inW);
@@ -268,7 +332,11 @@ class FaceEmbedding with _TfliteModelDisposable {
   ///
   /// **Note:** Most users should call [FaceDetector.dispose] instead, which
   /// automatically disposes all internal models (detection, mesh, iris, and embedding).
-  void dispose() => _doDispose();
+  void dispose() {
+    if (_disposed) return;
+    _compiledModel?.close();
+    _doDispose();
+  }
 }
 
 /// Computes alignment parameters for extracting a face crop suitable for embedding.

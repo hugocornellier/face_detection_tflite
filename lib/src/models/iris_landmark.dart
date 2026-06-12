@@ -32,7 +32,8 @@ List<List<double>> _transformIrisToAbsolute(
 /// (local copy: `doc/model_cards/iris_landmark_model_card.pdf`)
 class IrisLandmark with _TfliteModelDisposable {
   @override
-  final Interpreter _itp;
+  final Interpreter? _itp;
+  final CompiledModel? _compiledModel;
   final int _inW, _inH;
   late final TensorFloat32Views _views;
   late final Float32List _scratchBuf;
@@ -40,7 +41,17 @@ class IrisLandmark with _TfliteModelDisposable {
   late final List<List<List<List<double>>>> _input4dCache;
   late final Map<int, Object> _outputsCache;
 
-  IrisLandmark._(this._itp, this._inW, this._inH);
+  /// The model input width in pixels.
+  int get inputWidth => _inW;
+
+  /// The model input height in pixels.
+  int get inputHeight => _inH;
+
+  IrisLandmark._(this._itp, this._inW, this._inH) : _compiledModel = null;
+
+  IrisLandmark._compiled(CompiledModel compiledModel, this._inW, this._inH)
+    : _itp = null,
+      _compiledModel = compiledModel;
 
   /// Creates and initializes an iris landmark model instance.
   ///
@@ -109,10 +120,11 @@ class IrisLandmark with _TfliteModelDisposable {
   /// `_itp.invoke()` instead of spawning a nested isolate. This should be
   /// used when the model is already running inside a background isolate.
   Future<void> _initializeTensors({bool useIsolateInterpreter = true}) async {
-    _views = TensorFloat32Views.capture(_itp);
+    final Interpreter itp = _itp!;
+    _views = TensorFloat32Views.capture(itp);
     _scratchBuf = Float32List(_inH * _inW * 3);
 
-    final Map<int, OutputTensorInfo> outputInfo = collectOutputTensorInfo(_itp);
+    final Map<int, OutputTensorInfo> outputInfo = collectOutputTensorInfo(itp);
     _outShapes = outputInfo.map(
       (int k, OutputTensorInfo v) => MapEntry(k, v.shape),
     );
@@ -124,7 +136,55 @@ class IrisLandmark with _TfliteModelDisposable {
     });
 
     if (useIsolateInterpreter) {
-      _iso = await InterpreterFactory.createIsolateIfNeeded(_itp, _delegate);
+      _iso = await InterpreterFactory.createIsolateIfNeeded(itp, _delegate);
+    }
+  }
+
+  void _initializeCompiledModel() {
+    final CompiledModel compiledModel = _compiledModel!;
+    _scratchBuf = Float32List(_inH * _inW * 3);
+    if (compiledModel.outputCount < 1) {
+      throw UnsupportedError('Compiled iris landmark has no outputs.');
+    }
+    for (int i = 0; i < compiledModel.outputCount; i++) {
+      final int len = _compiledFloatCount(
+        compiledModel.outputByteSizes[i],
+        'Compiled iris landmark output[$i]',
+      );
+      if (len % 3 != 0) {
+        throw UnsupportedError(
+          'Compiled iris landmark output[$i] has $len floats, not divisible '
+          'by 3.',
+        );
+      }
+    }
+  }
+
+  /// Creates an iris landmark model backed by LiteRT CompiledModel.
+  static Future<IrisLandmark> createCompiledFromBuffer(
+    Uint8List modelBytes,
+  ) async {
+    // The 64x64 iris model is below the compute size where Metal dispatch
+    // pays off: measured in-app (macOS arm64, median), CompiledModel CPU runs
+    // it in ~0.50 ms vs ~0.68 ms for GPU|CPU async. Pin it to the CPU.
+    final CompiledModel compiledModel = CompiledModel.fromBuffer(
+      modelBytes,
+      accelerators: {Accelerator.cpu},
+    );
+    final int side;
+    try {
+      side = _compiledSquareInputSide(compiledModel, 'Compiled iris landmark');
+    } catch (_) {
+      compiledModel.close();
+      rethrow;
+    }
+    final obj = IrisLandmark._compiled(compiledModel, side, side);
+    try {
+      obj._initializeCompiledModel();
+      return obj;
+    } catch (_) {
+      obj.dispose();
+      rethrow;
     }
   }
 
@@ -289,6 +349,30 @@ class IrisLandmark with _TfliteModelDisposable {
   /// eyeCropMat.dispose();
   /// ```
   Future<List<List<double>>> call(cv.Mat eyeCrop, {Float32List? buffer}) async {
+    final CompiledModel? compiledModel = _compiledModel;
+    if (compiledModel != null) {
+      // Copying runAsync is the official LiteRT pattern for host-side data
+      // (the C++ Write/Read API is lock+memcpy+unlock); the Metal accelerator
+      // only supports MetalBufferPacked tensor buffers, so host zero-copy is
+      // not available on the GPU path.
+      final ImageTensor pack = convertImageToTensor(
+        eyeCrop,
+        outW: _inW,
+        outH: _inH,
+        buffer: buffer ?? _scratchBuf,
+      );
+      final List<Float32List> outputs = await compiledModel.runAsync([
+        pack.tensorNHWC,
+      ]);
+      final List<List<double>> lm = <List<double>>[];
+      for (final Float32List flat in outputs) {
+        lm.addAll(
+          _unpackLandmarks(flat, _inW, _inH, pack.padding, clamp: false),
+        );
+      }
+      return lm;
+    }
+
     final ImageTensor pack = convertImageToTensor(
       eyeCrop,
       outW: _inW,
@@ -302,7 +386,7 @@ class IrisLandmark with _TfliteModelDisposable {
   Future<List<List<double>>> _inferAndUnpack(ImageTensor pack) async {
     if (_iso == null) {
       _views.inputs[0].setAll(0, pack.tensorNHWC);
-      _itp.invoke();
+      _itp!.invoke();
 
       final List<List<double>> lm = <List<double>>[];
       for (final Float32List flat in _views.outputs) {
@@ -334,7 +418,11 @@ class IrisLandmark with _TfliteModelDisposable {
   ///
   /// **Note:** Most users should call [FaceDetector.dispose] instead, which
   /// automatically disposes all internal models (detection, mesh, and iris).
-  void dispose() => _doDispose();
+  void dispose() {
+    if (_disposed) return;
+    _compiledModel?.close();
+    _doDispose();
+  }
 }
 
 /// Test-only: exposes the private iris-to-absolute transform for unit tests.

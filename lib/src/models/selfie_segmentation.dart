@@ -104,7 +104,8 @@ const List<int> kSegmentationAllPersonClasses = <int>[
 /// ```
 class SelfieSegmentation with _TfliteModelDisposable {
   @override
-  final Interpreter _itp;
+  final Interpreter? _itp;
+  final CompiledModel? _compiledModel;
   final int _inW;
   final int _inH;
   final int _outChannels;
@@ -129,7 +130,17 @@ class SelfieSegmentation with _TfliteModelDisposable {
     this._outChannels,
     this._config,
     this._model,
-  );
+  ) : _compiledModel = null;
+
+  SelfieSegmentation._compiled(
+    CompiledModel compiledModel,
+    this._inW,
+    this._inH,
+    this._outChannels,
+    this._config,
+    this._model,
+  ) : _itp = null,
+      _compiledModel = compiledModel;
 
   /// Creates and initializes a selfie segmentation model instance.
   ///
@@ -206,6 +217,92 @@ class SelfieSegmentation with _TfliteModelDisposable {
     );
     await obj._initializeTensors(useIsolateInterpreter: false);
     return obj;
+  }
+
+  /// Creates a selfie segmentation model backed by LiteRT CompiledModel.
+  ///
+  /// All variants compile, including the binary general/landscape models
+  /// built on the `Convolution2DTransposeBias` custom op (verified to match
+  /// the Interpreter output on macOS arm64). Should a platform's LiteRT
+  /// runtime reject a model, this throws a [SegmentationException]; callers
+  /// that need guaranteed availability should fall back to
+  /// [createFromBuffer], as [FaceDetector]'s segmentation isolate does.
+  static Future<SelfieSegmentation> createCompiledFromBuffer(
+    Uint8List modelBytes, {
+    SegmentationConfig config = const SegmentationConfig(),
+  }) async {
+    final effectiveModel = config.model;
+    final inW = _segmentationInputWidth;
+    final inH = _inputHeightFor(effectiveModel);
+    final outChannels = _expectedOutputChannels(effectiveModel);
+
+    final CompiledModel compiledModel;
+    try {
+      compiledModel = _createCompiledModelWithFallback(modelBytes);
+    } catch (e) {
+      throw SegmentationException(
+        SegmentationError.interpreterCreationFailed,
+        'Failed to compile ${effectiveModel.name} segmentation model: $e',
+        e,
+      );
+    }
+    final obj = SelfieSegmentation._compiled(
+      compiledModel,
+      inW,
+      inH,
+      outChannels,
+      config,
+      effectiveModel,
+    );
+    try {
+      obj._initializeCompiledModel();
+      return obj;
+    } catch (_) {
+      obj.dispose();
+      rethrow;
+    }
+  }
+
+  void _initializeCompiledModel() {
+    final CompiledModel compiledModel = _compiledModel!;
+    if (compiledModel.inputCount != 1) {
+      throw SegmentationException(
+        SegmentationError.unexpectedTensorShape,
+        'Compiled ${_model.name} segmentation expects one input tensor; got '
+        '${compiledModel.inputCount}.',
+      );
+    }
+    final int inFloats = _compiledFloatCount(
+      compiledModel.inputByteSizes.single,
+      'Compiled ${_model.name} segmentation input[0]',
+    );
+    if (inFloats != _inH * _inW * 3) {
+      throw SegmentationException(
+        SegmentationError.unexpectedTensorShape,
+        'Compiled ${_model.name} segmentation input has $inFloats floats; '
+        'expected [1, $_inH, $_inW, 3].',
+      );
+    }
+    if (compiledModel.outputCount < 1) {
+      throw SegmentationException(
+        SegmentationError.unexpectedTensorShape,
+        'Compiled ${_model.name} segmentation has no outputs.',
+      );
+    }
+    final int outFloats = _compiledFloatCount(
+      compiledModel.outputByteSizes[0],
+      'Compiled ${_model.name} segmentation output[0]',
+    );
+    if (outFloats != _inH * _inW * _outChannels) {
+      throw SegmentationException(
+        SegmentationError.unexpectedTensorShape,
+        'Compiled ${_model.name} segmentation output has $outFloats floats; '
+        'expected [1, $_inH, $_inW, $_outChannels].',
+      );
+    }
+    _outW = _inW;
+    _outH = _inH;
+    _matTensorBuffer = Float32List(_inW * _inH * 3);
   }
 
   /// Shared factory logic for [create] and [createFromBuffer].
@@ -295,8 +392,9 @@ class SelfieSegmentation with _TfliteModelDisposable {
   /// `_itp.invoke()` instead of spawning a nested isolate. This should be
   /// used when the model is already running inside a background isolate.
   Future<void> _initializeTensors({bool useIsolateInterpreter = true}) async {
-    _inputTensor = _itp.getInputTensor(0);
-    _outputTensor = _itp.getOutputTensor(0);
+    final Interpreter itp = _itp!;
+    _inputTensor = itp.getInputTensor(0);
+    _outputTensor = itp.getOutputTensor(0);
     _inputBuf = _inputTensor.data.buffer.asFloat32List();
     _outputBuf = _outputTensor.data.buffer.asFloat32List();
 
@@ -311,7 +409,7 @@ class SelfieSegmentation with _TfliteModelDisposable {
     _matTensorBuffer = Float32List(_inW * _inH * 3);
 
     if (useIsolateInterpreter && _config.useIsolate) {
-      _iso = await InterpreterFactory.createIsolateIfNeeded(_itp, _delegate);
+      _iso = await InterpreterFactory.createIsolateIfNeeded(itp, _delegate);
     }
   }
 
@@ -418,11 +516,33 @@ class SelfieSegmentation with _TfliteModelDisposable {
       buffer: buffer ?? _matTensorBuffer,
     );
 
+    final CompiledModel? compiledModel = _compiledModel;
+    if (compiledModel != null) {
+      // Copying runAsync is the official LiteRT pattern for host-side data
+      // (the C++ Write/Read API is lock+memcpy+unlock); the Metal accelerator
+      // only supports MetalBufferPacked tensor buffers, so host zero-copy is
+      // not available on the GPU path.
+      final Float32List rawOutput;
+      try {
+        final List<Float32List> outputs = await compiledModel.runAsync([
+          pack.tensorNHWC,
+        ]);
+        rawOutput = outputs[0];
+      } catch (e) {
+        throw SegmentationException(
+          SegmentationError.inferenceFailed,
+          'Inference failed: $e',
+          e,
+        );
+      }
+      return _buildMask(rawOutput, image.cols, image.rows, pack.padding);
+    }
+
     final Float32List rawOutput;
     try {
       if (_iso == null) {
         _inputBuf.setAll(0, pack.tensorNHWC);
-        _itp.invoke();
+        _itp!.invoke();
         rawOutput = Float32List.fromList(_outputBuf);
       } else {
         fillNHWC4D(pack.tensorNHWC, _input4dCache, _inH, _inW);
@@ -603,7 +723,11 @@ class SelfieSegmentation with _TfliteModelDisposable {
   /// **Important:** If you are switching models (disposing one and immediately
   /// creating another), prefer [disposeAsync] which ensures the background
   /// isolate is fully terminated before freeing the native interpreter.
-  void dispose() => _doDispose();
+  void dispose() {
+    if (_disposed) return;
+    _compiledModel?.close();
+    _doDispose();
+  }
 
   /// Asynchronously releases all resources, ensuring the background isolate
   /// is fully terminated before freeing the native interpreter.
@@ -613,7 +737,11 @@ class SelfieSegmentation with _TfliteModelDisposable {
   /// being freed while the background isolate still references it.
   ///
   /// It is safe to call this multiple times.
-  Future<void> disposeAsync() => _doDisposeAsync();
+  Future<void> disposeAsync() async {
+    if (_disposed) return;
+    _compiledModel?.close();
+    await _doDisposeAsync();
+  }
 }
 
 /// Test-only: exposes the private class-probability computation for unit tests.

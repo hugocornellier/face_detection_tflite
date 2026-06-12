@@ -10,6 +10,8 @@ import 'package:face_detection_tflite/face_detection_tflite.dart';
 import 'package:flutter/material.dart';
 import 'package:web/web.dart' as web;
 
+import 'segmentation_rendering.dart';
+
 class StillImageScreen extends StatefulWidget {
   const StillImageScreen({super.key});
 
@@ -62,6 +64,7 @@ class _StillImageScreenState extends State<StillImageScreen> {
   bool _showBinaryMask = true;
   Color _maskColor = const Color(0x8800FF00);
   int? _multiclassClassIndex;
+  final web.HTMLCanvasElement _maskScratch = web.HTMLCanvasElement();
 
   // ---- LiteRT settings -------------------------------------------------
   bool _useLiteRt = true;
@@ -357,65 +360,18 @@ class _StillImageScreenState extends State<StillImageScreen> {
     int imageWidth,
     int imageHeight,
   ) {
-    final upsampled = mask.upsample(
-      targetWidth: imageWidth,
-      targetHeight: imageHeight,
-      maxSize: 0,
+    drawSegmentationOverlay(
+      ctx: ctx,
+      scratch: _maskScratch,
+      mask: mask,
+      destWidth: imageWidth,
+      destHeight: imageHeight,
+      maskColor: _maskColor,
+      threshold: _showBinaryMask ? _segmentationThreshold : -1.0,
+      classIndex: _multiclassClassIndex,
+      showAllClasses: _segmentationModel == SegmentationModel.multiclass &&
+          _multiclassClassIndex == null,
     );
-    if (_multiclassClassIndex != null && mask is MulticlassSegmentationMask) {
-      final classMask = (mask.upsample(
-        targetWidth: imageWidth,
-        targetHeight: imageHeight,
-        maxSize: 0,
-      )).data;
-      // Class-specific mask is approximate via base data; for the demo we
-      // re-use upsampled foreground when class-specific isn't available.
-      _paintMask(
-        ctx,
-        classMask,
-        imageWidth,
-        imageHeight,
-        _showBinaryMask ? _segmentationThreshold : -1.0,
-      );
-      return;
-    }
-    _paintMask(
-      ctx,
-      upsampled.data,
-      imageWidth,
-      imageHeight,
-      _showBinaryMask ? _segmentationThreshold : -1.0,
-    );
-  }
-
-  void _paintMask(
-    web.CanvasRenderingContext2D ctx,
-    Float32List data,
-    int width,
-    int height,
-    double threshold,
-  ) {
-    if (data.length != width * height) return;
-    final r = (_maskColor.r * 255).round();
-    final g = (_maskColor.g * 255).round();
-    final b = (_maskColor.b * 255).round();
-    final imageData = ctx.createImageData(width.toJS, height);
-    final rgba = imageData.data.toDart;
-    for (int i = 0; i < data.length; i++) {
-      final p = data[i].clamp(0.0, 1.0);
-      double a;
-      if (threshold < 0) {
-        a = p;
-      } else {
-        a = p >= threshold ? 1.0 : 0.0;
-      }
-      final off = i * 4;
-      rgba[off] = r;
-      rgba[off + 1] = g;
-      rgba[off + 2] = b;
-      rgba[off + 3] = (a * (_maskColor.a * 255)).round();
-    }
-    ctx.putImageData(imageData, 0, 0);
   }
 
   String _cssColor(Color c) {
@@ -698,7 +654,7 @@ class _StillImageScreenState extends State<StillImageScreen> {
                 ),
                 for (int i = 0; i < 6; i++)
                   ChoiceChip(
-                    label: Text('$i'),
+                    label: Text(kClassLabels[i]),
                     selected: _multiclassClassIndex == i,
                     onSelected: (_) => setBoth(() => _multiclassClassIndex = i),
                   ),

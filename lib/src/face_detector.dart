@@ -61,7 +61,7 @@ class FaceDetector {
   ///
   /// Downstream caches should include this value in their lookup key so
   /// stored results are ignored after an upgrade that changes behavior.
-  static const String modelVersion = '1.0.0';
+  static const String modelVersion = '1.0.1';
 
   /// Creates a new face detector instance.
   ///
@@ -87,6 +87,7 @@ class FaceDetector {
     int meshPoolSize = 3,
     bool withSegmentation = false,
     SegmentationConfig? segmentationConfig,
+    bool useCompiledModel = true,
     // Web-only knobs; accepted here for API parity but ignored on native.
     bool useLiteRt = false,
     String liteRtAccelerator = 'auto',
@@ -98,6 +99,7 @@ class FaceDetector {
       meshPoolSize: meshPoolSize,
       withSegmentation: withSegmentation,
       segmentationConfig: segmentationConfig,
+      useCompiledModel: useCompiledModel,
     );
     return detector;
   }
@@ -105,6 +107,7 @@ class FaceDetector {
   _FaceDetectorWorker? _worker;
   IsolateRpcClient? _segmentationRpc;
   bool _segmentationInitialized = false;
+  bool _useCompiledModel = true;
 
   /// Returns true if all models are loaded and ready for inference.
   ///
@@ -133,23 +136,29 @@ class FaceDetector {
   /// to have their meshes computed in parallel. Increase for better multi-face
   /// performance (at the cost of ~7-10MB memory per additional instance).
   ///
-  /// The [performanceConfig] parameter controls hardware acceleration delegates.
-  /// By default, auto mode selects the optimal delegate per platform:
-  /// - iOS: Metal GPU delegate
-  /// - Android/macOS/Linux/Windows: XNNPACK (2-5x SIMD acceleration)
+  /// The [performanceConfig] parameter controls classic Interpreter hardware
+  /// acceleration delegates when [useCompiledModel] is false.
   ///
   /// The [withSegmentation] flag initializes the segmentation model at the same
   /// time, avoiding an extra model-load step later. Pass [segmentationConfig]
   /// to customize segmentation behaviour.
   ///
+  /// The [useCompiledModel] flag defaults to true on this branch and runs the
+  /// face detection, mesh, iris, embedding, and segmentation models through
+  /// LiteRT CompiledModel (GPU with CPU fallback, async dispatch). If a
+  /// segmentation model fails to compile on the current platform's LiteRT
+  /// runtime, the segmentation isolate falls back to the Interpreter and
+  /// prints a debug message.
+  ///
   /// Example:
   /// ```dart
-  /// // Default (auto mode - optimal for each platform)
+  /// // Default: LiteRT CompiledModel.
   /// final detector = FaceDetector();
   /// await detector.initialize();
   ///
-  /// // Force CPU-only execution
+  /// // Force the classic Interpreter CPU path.
   /// await detector.initialize(
+  ///   useCompiledModel: false,
   ///   performanceConfig: PerformanceConfig.disabled,
   /// );
   ///
@@ -162,6 +171,7 @@ class FaceDetector {
     int meshPoolSize = 3,
     bool withSegmentation = false,
     SegmentationConfig? segmentationConfig,
+    bool useCompiledModel = true,
     // Web-only knobs; accepted here for API parity but ignored on native.
     bool useLiteRt = false,
     String liteRtAccelerator = 'auto',
@@ -169,6 +179,7 @@ class FaceDetector {
     if (isReady) {
       throw StateError('FaceDetector already initialized');
     }
+    _useCompiledModel = useCompiledModel;
 
     final worker = _FaceDetectorWorker();
     IsolateRpcClient? segmentationRpc;
@@ -211,6 +222,7 @@ class FaceDetector {
         model: model,
         performanceConfig: performanceConfig,
         meshPoolSize: meshPoolSize,
+        useCompiledModel: useCompiledModel,
       );
 
       if (withSegmentation && results.length > 4) {
@@ -877,6 +889,7 @@ class FaceDetector {
         validateModel: config.validateModel,
         modelName: segmentationModelFile(effectiveModel),
         modelIndex: effectiveModel.index,
+        useCompiledModel: _useCompiledModel,
       ),
       debugName: 'FaceDetector.segmentation',
     );
@@ -982,7 +995,7 @@ class FaceDetector {
     final int width = message['width'] as int;
     final int height = message['height'] as int;
     final int matTypeValue = message['matType'] as int;
-    return cv.Mat.fromList(height, width, cv.MatType(matTypeValue), bytes);
+    return matFromPackedBytes(height, width, cv.MatType(matTypeValue), bytes);
   }
 
   /// Builds the isolate-request field map for a [CameraFrame] payload, merged
@@ -1053,7 +1066,7 @@ class FaceDetector {
     switch (conversion) {
       case CameraFrameConversion.bgra2bgr:
       case CameraFrameConversion.rgba2bgr:
-        final bgraOrRgba = cv.Mat.fromList(
+        final bgraOrRgba = matFromPackedBytes(
           height,
           strideCols,
           cv.MatType.CV_8UC4,
@@ -1099,7 +1112,7 @@ class FaceDetector {
       case CameraFrameConversion.yuv2bgrNv12:
       case CameraFrameConversion.yuv2bgrNv21:
       case CameraFrameConversion.yuv2bgrI420:
-        final yuvMat = cv.Mat.fromList(
+        final yuvMat = matFromPackedBytes(
           height + height ~/ 2,
           width,
           cv.MatType.CV_8UC1,
@@ -1123,12 +1136,32 @@ class FaceDetector {
 
   ({Uint8List data, int width, int height, int matType}) _extractMatFields(
     cv.Mat image,
-  ) => (
-    data: image.data,
-    width: image.cols,
-    height: image.rows,
-    matType: image.type.value,
-  );
+  ) {
+    // Mat.data ignores row stride, so a non-continuous Mat (e.g. an ROI view
+    // from region()) would ship scrambled pixels - pack it into a continuous
+    // copy first.
+    if (!image.isContinuous) {
+      final cv.Mat packed = image.clone();
+      try {
+        final Uint8List view = packed.data;
+        final Uint8List copy = Uint8List(view.length)..setAll(0, view);
+        return (
+          data: copy,
+          width: packed.cols,
+          height: packed.rows,
+          matType: packed.type.value,
+        );
+      } finally {
+        packed.dispose();
+      }
+    }
+    return (
+      data: image.data,
+      width: image.cols,
+      height: image.rows,
+      matType: image.type.value,
+    );
+  }
 
   Future<DetectionWithSegmentationResult> _detectAndSegmentImpl({
     required String detectOp,
@@ -1198,6 +1231,7 @@ class FaceDetector {
           numThreads: data.numThreads,
         ),
         meshPoolSize: data.meshPoolSize,
+        useCompiledModel: data.useCompiledModel,
       );
 
       mainSendPort.send(workerReceivePort.sendPort);
@@ -1403,7 +1437,20 @@ class FaceDetector {
         useIsolate: false,
       );
 
-      segmenter = await SelfieSegmentation.createFromBuffer(
+      if (data.useCompiledModel) {
+        try {
+          segmenter = await SelfieSegmentation.createCompiledFromBuffer(
+            modelBytes,
+            config: config,
+          );
+        } catch (e) {
+          debugPrint(
+            'face_detection_tflite: CompiledModel segmentation unavailable '
+            'for ${data.modelName}; falling back to Interpreter: $e',
+          );
+        }
+      }
+      segmenter ??= await SelfieSegmentation.createFromBuffer(
         modelBytes,
         config: config,
       );
@@ -1629,6 +1676,7 @@ class _FaceDetectorWorker extends IsolateWorkerBase {
     required FaceDetectionModel model,
     required PerformanceConfig performanceConfig,
     required int meshPoolSize,
+    required bool useCompiledModel,
   }) async {
     await initWorker(
       (sendPort) => Isolate.spawn(
@@ -1649,6 +1697,7 @@ class _FaceDetectorWorker extends IsolateWorkerBase {
           performanceModeName: performanceConfig.mode.name,
           numThreads: performanceConfig.numThreads,
           meshPoolSize: meshPoolSize,
+          useCompiledModel: useCompiledModel,
         ),
         debugName: 'FaceDetector.detection',
       ),

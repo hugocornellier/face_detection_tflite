@@ -53,7 +53,7 @@ mixin _TfliteModelDisposable {
   Delegate? _delegate;
   bool _disposed = false;
 
-  Interpreter get _itp;
+  Interpreter? get _itp;
 
   void _doDispose() {
     if (_disposed) return;
@@ -61,7 +61,7 @@ mixin _TfliteModelDisposable {
     _delegate?.delete();
     _delegate = null;
     _iso?.close();
-    _itp.close();
+    _itp?.close();
   }
 
   Future<void> _doDisposeAsync() async {
@@ -69,10 +69,64 @@ mixin _TfliteModelDisposable {
     _disposed = true;
     final IsolateInterpreter? iso = _iso;
     if (iso != null) await iso.close();
-    _itp.close();
+    _itp?.close();
     _delegate?.delete();
     _delegate = null;
   }
+}
+
+/// Creates a [CompiledModel] preferring GPU with CPU fallback, retrying on
+/// CPU only when the GPU-capable runtime fails to initialize.
+CompiledModel _createCompiledModelWithFallback(Uint8List modelBytes) {
+  try {
+    return CompiledModel.fromBuffer(
+      modelBytes,
+      accelerators: {Accelerator.gpu, Accelerator.cpu},
+      // fp32 rather than the fp16 default: landmark regressions emit
+      // pixel-space coordinates that lose accuracy in fp16, and weak desktop
+      // GPU drivers have produced wrong fp16 results (Boot Camp D3D12).
+      precision: Precision.fp32,
+    );
+  } catch (e) {
+    debugPrint(
+      'face_detection_tflite: GPU CompiledModel compilation failed, '
+      'falling back to CPU only: $e',
+    );
+    return CompiledModel.fromBuffer(
+      modelBytes,
+      accelerators: {Accelerator.cpu},
+    );
+  }
+}
+
+/// Returns the float32 element count for a CompiledModel tensor of
+/// [byteSize] bytes, throwing if the size is not float32-aligned.
+int _compiledFloatCount(int byteSize, String label) {
+  if (byteSize % Float32List.bytesPerElement != 0) {
+    throw StateError('$label byte size $byteSize is not float32-aligned.');
+  }
+  return byteSize ~/ Float32List.bytesPerElement;
+}
+
+/// Derives the square input side for a CompiledModel whose single input is
+/// `[1, side, side, 3]` float32 (the shape of all landmark-style models).
+int _compiledSquareInputSide(CompiledModel compiledModel, String label) {
+  if (compiledModel.inputCount != 1) {
+    throw UnsupportedError(
+      '$label expects one input tensor; got ${compiledModel.inputCount}.',
+    );
+  }
+  final int floats = _compiledFloatCount(
+    compiledModel.inputByteSizes.single,
+    '$label input[0]',
+  );
+  final int side = math.sqrt(floats / 3).round();
+  if (side * side * 3 != floats) {
+    throw UnsupportedError(
+      '$label input has $floats floats; expected [1, side, side, 3].',
+    );
+  }
+  return side;
 }
 
 List<Detection> _detectionLetterboxRemoval(
@@ -279,28 +333,43 @@ ImageTensor convertImageToTensor(
     targetHeight: outH,
   );
 
-  final cv.Mat resized = cv.resize(src, (
-    lbp.newWidth,
-    lbp.newHeight,
-  ), interpolation: cv.INTER_LINEAR);
+  // Skip the resize when the source already matches the target geometry
+  // (crops warped directly to model input size hit this every call). A
+  // non-continuous source still goes through cv.resize so the conversion
+  // below always reads tightly packed rows, as it did before this fast path.
+  final bool needsResize =
+      inW != lbp.newWidth || inH != lbp.newHeight || !src.isContinuous;
+  final cv.Mat resized = needsResize
+      ? cv.resize(src, (
+          lbp.newWidth,
+          lbp.newHeight,
+        ), interpolation: cv.INTER_LINEAR)
+      : src;
 
-  final cv.Mat padded = cv.copyMakeBorder(
-    resized,
-    lbp.padTop,
-    lbp.padBottom,
-    lbp.padLeft,
-    lbp.padRight,
-    cv.BORDER_CONSTANT,
-    value: cv.Scalar.black,
-  );
-  resized.dispose();
+  final bool needsPad =
+      lbp.padTop != 0 ||
+      lbp.padBottom != 0 ||
+      lbp.padLeft != 0 ||
+      lbp.padRight != 0;
+  final cv.Mat padded = needsPad
+      ? cv.copyMakeBorder(
+          resized,
+          lbp.padTop,
+          lbp.padBottom,
+          lbp.padLeft,
+          lbp.padRight,
+          cv.BORDER_CONSTANT,
+          value: cv.Scalar.black,
+        )
+      : resized;
+  if (needsResize && needsPad) resized.dispose();
 
-  final Float32List tensor = bgrBytesToSignedFloat32(
-    bytes: padded.data,
+  final Float32List tensor = bgrMatToSignedFloat32(
+    padded,
     totalPixels: outW * outH,
     buffer: buffer,
   );
-  padded.dispose();
+  if (needsResize || needsPad) padded.dispose();
 
   final double padTopNorm = lbp.padTop / outH;
   final double padBottomNorm = lbp.padBottom / outH;
@@ -315,6 +384,73 @@ ImageTensor convertImageToTensor(
   );
 }
 
+/// Converts a continuous BGR `CV_8UC3` [cv.Mat] to a `[-1, 1]`-normalized
+/// RGB float tensor using OpenCV SIMD kernels (BGR→RGB swap + scaled float
+/// conversion) and a single memcpy into [buffer].
+///
+/// Falls back to the scalar Dart loop ([bgrBytesToSignedFloat32]) for
+/// non-`CV_8UC3` or non-continuous inputs.
+@visibleForTesting
+Float32List bgrMatToSignedFloat32(
+  cv.Mat mat, {
+  required int totalPixels,
+  Float32List? buffer,
+}) {
+  if (mat.type != cv.MatType.CV_8UC3 || !mat.isContinuous) {
+    return bgrBytesToSignedFloat32(
+      bytes: mat.data,
+      totalPixels: totalPixels,
+      buffer: buffer,
+    );
+  }
+  final cv.Mat rgb = cv.cvtColor(mat, cv.COLOR_BGR2RGB);
+  final cv.Mat f32 = rgb.convertTo(
+    cv.MatType.CV_32FC3,
+    alpha: 1.0 / 127.5,
+    beta: -1.0,
+  );
+  rgb.dispose();
+  final Uint8List raw = f32.data;
+  final Float32List view = Float32List.view(
+    raw.buffer,
+    raw.offsetInBytes,
+    totalPixels * 3,
+  );
+  final Float32List tensor = buffer ?? Float32List(totalPixels * 3);
+  tensor.setAll(0, view);
+  f32.dispose();
+  return tensor;
+}
+
+/// Rebuilds a tightly packed [cv.Mat] from raw [bytes] with a single memcpy.
+///
+/// [cv.Mat.fromList] routes every byte through a lazy `cast<int>` view and
+/// copies element-by-element (~8 ms for a 1080p BGR frame); allocating the
+/// Mat and copying into its native buffer is two orders of magnitude faster.
+/// Only valid for tightly packed (continuous) pixel data.
+///
+/// Throws [ArgumentError] if [bytes] does not match rows x cols x elemSize
+/// for [type].
+cv.Mat matFromPackedBytes(
+  int rows,
+  int cols,
+  cv.MatType type,
+  Uint8List bytes,
+) {
+  final cv.Mat mat = cv.Mat.create(rows: rows, cols: cols, type: type);
+  final Uint8List dst = mat.data;
+  if (dst.length != bytes.length) {
+    final int expected = dst.length;
+    mat.dispose();
+    throw ArgumentError(
+      'bytes.length ${bytes.length} does not match a '
+      '$rows x $cols Mat of type $type ($expected bytes)',
+    );
+  }
+  dst.setAll(0, bytes);
+  return mat;
+}
+
 /// Extracts a rotated square region from a cv.Mat using OpenCV's warpAffine.
 ///
 /// This function uses SIMD-accelerated warpAffine which is 10-50x faster
@@ -324,8 +460,15 @@ ImageTensor convertImageToTensor(
 /// - [src]: Source cv.Mat image
 /// - [cx]: Center X coordinate in pixels
 /// - [cy]: Center Y coordinate in pixels
-/// - [size]: Output square size in pixels
+/// - [size]: Side length of the square region in source pixels
 /// - [theta]: Rotation angle in radians (positive = counter-clockwise)
+/// - [outSize]: Optional output side length in pixels. When set, the warp
+///   scales the `size`-by-`size` source region directly to
+///   `outSize`-by-`outSize` in a single resample, equivalent to cropping at
+///   `size` and then `cv.resize`-ing to `outSize` (the scaled matrix uses the
+///   same pixel-center alignment as cv.resize). Use this to extract crops at
+///   a model's input resolution without paying for a full-size warp plus a
+///   second resample.
 ///
 /// Returns the cropped and rotated cv.Mat. Caller must dispose.
 /// Returns null if size is invalid.
@@ -334,20 +477,27 @@ cv.Mat? extractAlignedSquare(
   double cx,
   double cy,
   double size,
-  double theta,
-) {
+  double theta, {
+  int? outSize,
+}) {
   final int sizeInt = size.round();
   if (sizeInt <= 0) return null;
+  final int dstSize = outSize ?? sizeInt;
+  final double scale = dstSize / sizeInt;
 
   final double angleDegrees = -theta * 180.0 / math.pi;
 
   final cv.Mat rotMat = cv.getRotationMatrix2D(
     cv.Point2f(cx, cy),
     angleDegrees,
-    1.0,
+    scale,
   );
 
-  final double outCenter = sizeInt / 2.0;
+  // Pixel-center alignment matching crop-then-cv.resize: a resize by factor
+  // s samples src((x + 0.5) / s - 0.5), so the source center must land at
+  // dstSize / 2 + 0.5 * (s - 1) rather than dstSize / 2. Reduces to the
+  // plain crop placement when outSize is null (s == 1).
+  final double outCenter = dstSize / 2.0 + 0.5 * (scale - 1.0);
 
   final double tx = rotMat.at<double>(0, 2) + outCenter - cx;
   final double ty = rotMat.at<double>(1, 2) + outCenter - cy;
@@ -357,7 +507,7 @@ cv.Mat? extractAlignedSquare(
   final cv.Mat output = cv.warpAffine(
     src,
     rotMat,
-    (sizeInt, sizeInt),
+    (dstSize, dstSize),
     borderMode: cv.BORDER_CONSTANT,
     borderValue: cv.Scalar.black,
   );

@@ -360,7 +360,7 @@ For real-time face detection from a camera feed, use `detectFacesFromCameraImage
 > ```yaml
 > dependencies:
 >   camera: ^0.12.0
->   camera_desktop: ^1.1.7   # required for Windows, macOS, and Linux streaming
+>   camera_desktop: ^1.1.8   # required for Windows, macOS, and Linux streaming
 > ```
 
 ```dart
