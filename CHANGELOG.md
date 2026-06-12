@@ -1,3 +1,7 @@
+## 6.4.0
+
+* Add optional `loadModelBytes` callback (`ModelBytesLoader`) to `FaceDetector.initialize`, `FaceDetector.create`, `FaceDetector.initializeSegmentation` and `SelfieSegmentation.create` (native + web). When provided, model bytes are sourced from the callback (e.g. a download cache) instead of the bundled package assets, allowing apps to ship without the ~28MB of models in the binary.
+
 ## 6.3.1
 
 * Update flutter_litert -> 2.8.3

@@ -19,8 +19,10 @@ import 'package:flutter_litert/flutter_litert.dart' hide Detection;
 
 import '../shared/face_types.dart';
 import '../shared/face_model_config.dart';
+import '../shared/model_bytes_loader.dart';
 
 export '../dart_registration.dart';
+export '../shared/model_bytes_loader.dart';
 
 // Single source of truth for all public types and constants.
 export '../shared/face_types.dart';

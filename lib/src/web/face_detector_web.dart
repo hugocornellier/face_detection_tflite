@@ -12,6 +12,7 @@ import 'package:flutter_litert/src/web/web_detector_utils.dart'
     show decodeBitmap, WebGpuFallback;
 import 'package:web/web.dart' as web;
 
+import '../shared/model_bytes_loader.dart';
 import 'models/face_detection_model_web.dart';
 import 'models/face_landmark_model_web.dart';
 import 'models/iris_landmark_model_web.dart';
@@ -60,6 +61,7 @@ class FaceDetector with WebGpuFallback {
     int meshPoolSize = 3,
     bool withSegmentation = false,
     SegmentationConfig? segmentationConfig,
+    ModelBytesLoader? loadModelBytes,
     bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
   }) async {
@@ -70,6 +72,7 @@ class FaceDetector with WebGpuFallback {
       meshPoolSize: meshPoolSize,
       withSegmentation: withSegmentation,
       segmentationConfig: segmentationConfig,
+      loadModelBytes: loadModelBytes,
       useLiteRt: useLiteRt,
       liteRtAccelerator: liteRtAccelerator,
     );
@@ -113,6 +116,7 @@ class FaceDetector with WebGpuFallback {
   FaceDetectionModel _model = FaceDetectionModel.backCamera;
   bool _withSegmentation = false;
   SegmentationConfig? _segmentationConfig;
+  ModelBytesLoader? _loadModelBytes;
 
   @override
   Future<void> swapToWasm() async {
@@ -126,14 +130,25 @@ class FaceDetector with WebGpuFallback {
       // Best-effort: an interpreter that already errored may not dispose
       // cleanly. Continue to re-init regardless.
     }
-    await _detector.initialize(_model, liteRtAccelerator: 'wasm');
-    await _mesh.initialize(liteRtAccelerator: 'wasm');
-    await _iris.initialize(liteRtAccelerator: 'wasm');
+    await _detector.initialize(
+      _model,
+      liteRtAccelerator: 'wasm',
+      loadModelBytes: _loadModelBytes,
+    );
+    await _mesh.initialize(
+      liteRtAccelerator: 'wasm',
+      loadModelBytes: _loadModelBytes,
+    );
+    await _iris.initialize(
+      liteRtAccelerator: 'wasm',
+      loadModelBytes: _loadModelBytes,
+    );
     if (_withSegmentation) {
       _segmenter = SelfieSegmentationWeb();
       await _segmenter!.initialize(
         model: (_segmentationConfig ?? SegmentationConfig.safe).model,
         liteRtAccelerator: 'wasm',
+        loadModelBytes: _loadModelBytes,
       );
     }
   }
@@ -144,6 +159,7 @@ class FaceDetector with WebGpuFallback {
     int meshPoolSize = 3,
     bool withSegmentation = false,
     SegmentationConfig? segmentationConfig,
+    ModelBytesLoader? loadModelBytes,
     bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
   }) async {
@@ -154,11 +170,22 @@ class FaceDetector with WebGpuFallback {
     _model = model;
     _withSegmentation = withSegmentation;
     _segmentationConfig = segmentationConfig;
-    await _detector.initialize(model, liteRtAccelerator: liteRtAccelerator);
+    _loadModelBytes = loadModelBytes;
+    await _detector.initialize(
+      model,
+      liteRtAccelerator: liteRtAccelerator,
+      loadModelBytes: loadModelBytes,
+    );
     _detectorReady = true;
-    await _mesh.initialize(liteRtAccelerator: liteRtAccelerator);
+    await _mesh.initialize(
+      liteRtAccelerator: liteRtAccelerator,
+      loadModelBytes: loadModelBytes,
+    );
     _meshReady = true;
-    await _iris.initialize(liteRtAccelerator: liteRtAccelerator);
+    await _iris.initialize(
+      liteRtAccelerator: liteRtAccelerator,
+      loadModelBytes: loadModelBytes,
+    );
     _irisReady = true;
 
     if (withSegmentation) {
@@ -167,12 +194,16 @@ class FaceDetector with WebGpuFallback {
       await _segmenter!.initialize(
         model: cfg.model,
         liteRtAccelerator: liteRtAccelerator,
+        loadModelBytes: loadModelBytes,
       );
       _segmentationReady = true;
     }
   }
 
-  Future<void> initializeSegmentation({SegmentationConfig? config}) async {
+  Future<void> initializeSegmentation({
+    SegmentationConfig? config,
+    ModelBytesLoader? loadModelBytes,
+  }) async {
     if (!isReady) {
       throw StateError('FaceDetector must be initialized first.');
     }
@@ -182,6 +213,7 @@ class FaceDetector with WebGpuFallback {
     await _segmenter!.initialize(
       model: cfg.model,
       liteRtAccelerator: _liteRtAccelerator,
+      loadModelBytes: loadModelBytes ?? _loadModelBytes,
     );
     _segmentationReady = true;
   }

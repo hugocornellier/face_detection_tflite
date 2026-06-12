@@ -12,6 +12,7 @@ import 'package:web/web.dart' as web;
 import '../../shared/face_geometry.dart' show computeFaceAlignment;
 import '../../shared/face_model_config.dart';
 import '../../shared/face_types.dart';
+import '../../shared/model_bytes_loader.dart';
 import '../../util/web_image_utils.dart';
 
 /// Web BlazeFace runner. Auto-prefers WebGPU on the LiteRT.js path and
@@ -50,6 +51,7 @@ class FaceDetectionModelWeb {
   Future<void> initialize(
     FaceDetectionModel model, {
     String liteRtAccelerator = 'auto',
+    ModelBytesLoader? loadModelBytes,
   }) async {
     if (_initialized) await dispose();
 
@@ -59,10 +61,16 @@ class FaceDetectionModelWeb {
     _inH = opts.inputSizeHeight;
     _anchors = generateAnchors(opts);
 
-    final String assetPath =
-        'packages/face_detection_tflite/assets/models/${faceDetectionModelFile(model)}';
-    final ByteData raw = await rootBundle.load(assetPath);
-    final bytes = raw.buffer.asUint8List();
+    final String fileName = faceDetectionModelFile(model);
+    final Uint8List bytes;
+    if (loadModelBytes != null) {
+      bytes = await loadModelBytes(fileName);
+    } else {
+      final ByteData raw = await rootBundle.load(
+        'packages/face_detection_tflite/assets/models/$fileName',
+      );
+      bytes = raw.buffer.asUint8List();
+    }
 
     final String resolved = liteRtAccelerator == 'auto'
         ? 'webgpu'

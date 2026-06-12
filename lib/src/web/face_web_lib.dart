@@ -5,6 +5,7 @@
 library;
 
 export '../dart_registration.dart';
+export '../shared/model_bytes_loader.dart';
 export 'types.dart';
 export 'face_detector_web.dart' show FaceDetector, WebDetectTimings;
 
