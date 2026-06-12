@@ -1424,6 +1424,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         isPortrait ? 1.0 / cameraAspectRatio : cameraAspectRatio;
 
     final int turns = barQuarterTurns(_deviceOrientation);
+    final bool mirrorOverlayHorizontally =
+        (Platform.isAndroid && _isFrontCamera) || Platform.isWindows;
 
     return Scaffold(
       body: Stack(
@@ -1433,7 +1435,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
             cameraPreview: CameraPreview(_cameraController!),
             cameraAspectRatio: cameraAspectRatio,
             displayAspectRatio: displayAspectRatio,
-            mirrorHorizontally: Platform.isAndroid && _isFrontCamera,
+            mirrorHorizontally: mirrorOverlayHorizontally,
             sensorOrientation: _sensorOrientation ?? 0,
             deviceOrientation: deviceOrientation,
             isFrontCamera: _isFrontCamera,
