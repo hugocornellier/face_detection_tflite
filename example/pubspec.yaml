@@ -18,7 +18,7 @@ dependencies:
     path: ../
   flutter_colorpicker: ^1.1.0
   camera: ^0.12.0
-  camera_desktop: ^1.1.8
+  camera_desktop: ^1.2.0
   sensors_plus: ^6.1.1
   video_player: ^2.9.2
   path_provider: ^2.1.5
@@ -35,7 +35,7 @@ dependency_overrides:
   flutter_litert:
     git:
       url: https://github.com/hugocornellier/flutter_litert.git
-      ref: 95523d89654475e015a315435caf26337452b2c2
+      ref: eca39ff73ffc750cc3aa68f70e5ba733a2d8e0ab
 
 dev_dependencies:
   flutter_test:
