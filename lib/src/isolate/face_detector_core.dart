@@ -65,10 +65,10 @@ class _FaceDetectorCore {
   IrisLandmark? _irisRight;
   FaceEmbedding? _embedding;
 
-  final _detectorLock = _InferenceLock();
-  final _irisLeftLock = _InferenceLock();
-  final _irisRightLock = _InferenceLock();
-  final _embeddingLock = _InferenceLock();
+  final _detectorLock = AsyncLock();
+  final _irisLeftLock = AsyncLock();
+  final _irisRightLock = AsyncLock();
+  final _embeddingLock = AsyncLock();
 
   /// Returns true when the core has been initialized with model data.
   bool get isReady => _detector != null;

@@ -75,28 +75,15 @@ mixin _TfliteModelDisposable {
   }
 }
 
-/// Creates a [CompiledModel] preferring GPU with CPU fallback, retrying on
-/// CPU only when the GPU-capable runtime fails to initialize.
-CompiledModel _createCompiledModelWithFallback(Uint8List modelBytes) {
-  try {
-    return CompiledModel.fromBuffer(
-      modelBytes,
-      accelerators: {Accelerator.gpu, Accelerator.cpu},
-      // fp32 rather than the fp16 default: landmark regressions emit
-      // pixel-space coordinates that lose accuracy in fp16, and weak desktop
-      // GPU drivers have produced wrong fp16 results (Boot Camp D3D12).
-      precision: Precision.fp32,
-    );
-  } catch (e) {
-    debugPrint(
-      'face_detection_tflite: GPU CompiledModel compilation failed, '
-      'falling back to CPU only: $e',
-    );
-    return CompiledModel.fromBuffer(
-      modelBytes,
-      accelerators: {Accelerator.cpu},
-    );
-  }
+/// Logs the GPU->CPU CompiledModel fallback. Passed as the `onFallback`
+/// callback to [CompiledModel.fromBufferWithGpuFallback] so the shared litert
+/// helper handles the {gpu,cpu} fp32 attempt + CPU retry while preserving this
+/// package's diagnostic message.
+void _onGpuFallback(Object e) {
+  debugPrint(
+    'face_detection_tflite: GPU CompiledModel compilation failed, '
+    'falling back to CPU only: $e',
+  );
 }
 
 /// Returns the float32 element count for a CompiledModel tensor of
@@ -449,6 +436,116 @@ cv.Mat matFromPackedBytes(
   }
   dst.setAll(0, bytes);
   return mat;
+}
+
+/// Rebuilds a [cv.Mat] from a backend-neutral packed image [layout].
+cv.Mat matFromPackedLayout(
+  PackedImageLayout layout,
+  Uint8List bytes,
+  cv.MatType type,
+) {
+  final cv.Mat mat = cv.Mat.create(
+    rows: layout.rows,
+    cols: layout.cols,
+    type: type,
+  );
+  try {
+    layout.copyTo(mat.data, bytes);
+    return mat;
+  } catch (_) {
+    mat.dispose();
+    rethrow;
+  }
+}
+
+/// Decodes a [CameraFrame] into a 3-channel BGR [cv.Mat].
+///
+/// The layout and safe operation order come from `flutter_litert`
+/// ([CameraFrame.decodePlan]); this only maps that backend-neutral plan onto
+/// OpenCV primitives. Equivalent to the previous inline conversion: for
+/// 4-channel frames it resizes/rotates before dropping alpha; for packed YUV it
+/// colour-converts first (the packed layout can't be resized).
+cv.Mat cameraFrameToBgrMat(CameraFrame frame, {int? maxDim}) {
+  final CameraFrameDecodePlan plan = frame.decodePlan();
+  final cv.Mat source = matFromPackedLayout(
+    plan.sourceLayout,
+    frame.bytes,
+    plan.sourceLayout.channels == 4 ? cv.MatType.CV_8UC4 : cv.MatType.CV_8UC1,
+  );
+
+  cv.Mat maybeResize(cv.Mat m) {
+    if (maxDim == null || (m.cols <= maxDim && m.rows <= maxDim)) return m;
+    final double scale = maxDim / (m.cols > m.rows ? m.cols : m.rows);
+    final cv.Mat resized = cv.resize(m, (
+      (m.cols * scale).toInt(),
+      (m.rows * scale).toInt(),
+    ), interpolation: cv.INTER_LINEAR);
+    m.dispose();
+    return resized;
+  }
+
+  int? rotateFlag() {
+    return switch (plan.rotation) {
+      CameraFrameRotation.cw90 => cv.ROTATE_90_CLOCKWISE,
+      CameraFrameRotation.cw180 => cv.ROTATE_180,
+      CameraFrameRotation.cw270 => cv.ROTATE_90_COUNTERCLOCKWISE,
+      null => null,
+    };
+  }
+
+  cv.Mat maybeRotate(cv.Mat m) {
+    final int? flag = rotateFlag();
+    if (flag == null) return m;
+    final cv.Mat rotated = cv.rotate(m, flag);
+    m.dispose();
+    return rotated;
+  }
+
+  final int cvtCode = switch (plan.conversion) {
+    CameraFrameConversion.bgra2bgr => cv.COLOR_BGRA2BGR,
+    CameraFrameConversion.rgba2bgr => cv.COLOR_RGBA2BGR,
+    CameraFrameConversion.yuv2bgrNv12 => cv.COLOR_YUV2BGR_NV12,
+    CameraFrameConversion.yuv2bgrNv21 => cv.COLOR_YUV2BGR_NV21,
+    CameraFrameConversion.yuv2bgrI420 => cv.COLOR_YUV2BGR_I420,
+  };
+
+  switch (plan.order) {
+    case CameraFrameDecodeOrder.resizeRotateThenColorConvert:
+      cv.Mat current = plan.hasStridePadding
+          ? source.region(cv.Rect(0, 0, plan.visibleWidth, plan.visibleHeight))
+          : source;
+
+      if (maxDim != null && (current.cols > maxDim || current.rows > maxDim)) {
+        final double scale =
+            maxDim /
+            (current.cols > current.rows ? current.cols : current.rows);
+        final cv.Mat resized = cv.resize(current, (
+          (current.cols * scale).toInt(),
+          (current.rows * scale).toInt(),
+        ), interpolation: cv.INTER_LINEAR);
+        if (!identical(current, source)) current.dispose();
+        current = resized;
+      }
+
+      final int? flag = rotateFlag();
+      if (flag != null) {
+        final cv.Mat rotated = cv.rotate(current, flag);
+        if (!identical(current, source)) current.dispose();
+        current = rotated;
+      }
+
+      final cv.Mat bgr = cv.cvtColor(current, cvtCode);
+      if (!identical(current, source)) current.dispose();
+      source.dispose();
+      return bgr;
+
+    case CameraFrameDecodeOrder.colorConvertThenResizeRotate:
+      cv.Mat current = cv.cvtColor(source, cvtCode);
+      source.dispose();
+      current = maybeResize(current);
+      current = maybeRotate(current);
+      return current;
+  }
 }
 
 /// Extracts a rotated square region from a cv.Mat using OpenCV's warpAffine.

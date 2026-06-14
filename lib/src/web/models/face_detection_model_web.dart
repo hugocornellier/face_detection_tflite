@@ -12,7 +12,6 @@ import 'package:web/web.dart' as web;
 import '../../shared/face_geometry.dart' show computeFaceAlignment;
 import '../../shared/face_model_config.dart';
 import '../../shared/face_types.dart';
-import '../../util/web_image_utils.dart';
 
 /// Web BlazeFace runner. Auto-prefers WebGPU on the LiteRT.js path and
 /// otherwise falls back to WASM SIMD.

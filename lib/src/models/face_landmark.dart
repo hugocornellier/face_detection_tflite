@@ -93,8 +93,9 @@ class FaceLandmark with _TfliteModelDisposable {
   static Future<FaceLandmark> createCompiledFromBuffer(
     Uint8List modelBytes,
   ) async {
-    final CompiledModel compiledModel = _createCompiledModelWithFallback(
+    final CompiledModel compiledModel = CompiledModel.fromBufferWithGpuFallback(
       modelBytes,
+      onFallback: _onGpuFallback,
     );
     final int side;
     try {

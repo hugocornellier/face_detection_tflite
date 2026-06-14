@@ -11,6 +11,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:camera/camera.dart';
 import 'package:face_detection_tflite/face_detection_tflite.dart';
+import 'package:flutter_litert/flutter_litert.dart' show OneEuroFilter;
 import 'package:opencv_dart/opencv.dart' as cv;
 import 'package:path_provider/path_provider.dart';
 import 'package:sensors_plus/sensors_plus.dart';
@@ -151,80 +152,136 @@ class HomeScreen extends StatelessWidget {
         title: const Text('Face Detection Demo'),
       ),
       body: _ScrollableCentered(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Choose Detection Mode',
-                style: Theme.of(context).textTheme.headlineMedium,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 32),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: IntrinsicHeight(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _buildModeCard(
-                        context,
-                        icon: Icons.videocam,
-                        title: 'Live Camera',
-                        description:
-                            'Real-time face detection from camera feed',
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (context) =>
-                                    const LiveCameraScreen()),
-                          );
-                        },
-                      ),
-                      const SizedBox(width: 12),
-                      _buildModeCard(
-                        context,
-                        icon: Icons.image,
-                        title: 'Still Image',
-                        description:
-                            'Detect faces in photos from gallery or camera',
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (context) => const Example()),
-                          );
-                        },
-                      ),
-                      const SizedBox(width: 12),
-                      _buildModeCard(
-                        context,
-                        icon: Icons.movie_creation_outlined,
-                        title: 'Video File',
-                        description:
-                            'Process an MP4 frame-by-frame with smoothed '
-                            'face detection',
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (context) =>
-                                    const VideoFileScreen()),
-                          );
-                        },
-                      ),
-                    ],
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 720),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Text(
+                    'Choose a Demo',
+                    style: Theme.of(context).textTheme.headlineMedium,
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 28),
+                _buildSection(
+                  context,
+                  'Face Detection / Segmentation',
+                  [
+                    _buildModeCard(
+                      context,
+                      icon: Icons.videocam,
+                      title: 'Live Camera',
+                      description: 'Real-time face detection from camera feed',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (context) => const LiveCameraScreen()),
+                        );
+                      },
+                    ),
+                    _buildModeCard(
+                      context,
+                      icon: Icons.image,
+                      title: 'Still Image',
+                      description:
+                          'Detect faces in photos from gallery or camera',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (context) => const Example()),
+                        );
+                      },
+                    ),
+                    _buildModeCard(
+                      context,
+                      icon: Icons.movie_creation_outlined,
+                      title: 'Video File',
+                      description:
+                          'Process an MP4 frame-by-frame with smoothed '
+                          'face detection',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (context) => const VideoFileScreen()),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 28),
+                _buildSection(
+                  context,
+                  'Embeddings / Facial Recognition',
+                  [
+                    _buildModeCard(
+                      context,
+                      icon: Icons.face_retouching_natural,
+                      title: 'Face Recognition',
+                      description:
+                          'Compare two photos and measure face similarity',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (context) => const EmbeddingsScreen()),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildSection(
+    BuildContext context,
+    String title,
+    List<Widget> cards,
+  ) {
+    final List<Widget> row = [];
+    for (int i = 0; i < cards.length; i++) {
+      if (i > 0) row.add(const SizedBox(width: 12));
+      row.add(cards[i]);
+    }
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            title,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[700],
+                ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: IntrinsicHeight(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: row,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -765,7 +822,6 @@ class _ExampleState extends State<Example> {
       ),
     );
   }
-
 }
 
 class LiveCameraScreen extends StatefulWidget {
@@ -2626,8 +2682,8 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
             if (maxX > minX && maxY > minY) {
               cv.ellipse(
                 mat,
-                cv.Point(((minX + maxX) / 2).round(),
-                    ((minY + maxY) / 2).round()),
+                cv.Point(
+                    ((minX + maxX) / 2).round(), ((minY + maxY) / 2).round()),
                 cv.Point(((maxX - minX) / 2).round().clamp(1, w),
                     ((maxY - minY) / 2).round().clamp(1, h)),
                 0,
@@ -3326,55 +3382,10 @@ class _OutputVideoPlayerState extends State<_OutputVideoPlayer> {
   }
 }
 
-// ─────────────────────────── One-Euro Filter ──────────────────────────────
-
-class _OneEuroFilter {
-  final double minCutoff;
-  final double beta;
-  final double dCutoff;
-
-  double? _xPrev;
-  double _dxPrev = 0.0;
-  double? _tPrev;
-
-  _OneEuroFilter({this.minCutoff = 1.0, this.beta = 0.1, this.dCutoff = 1.0});
-
-  static double _alpha(double cutoff, double dt) {
-    final tau = 1.0 / (2 * math.pi * cutoff);
-    return 1.0 / (1.0 + tau / dt);
-  }
-
-  double filter(double x, double tSec) {
-    if (_xPrev == null || _tPrev == null) {
-      _xPrev = x;
-      _tPrev = tSec;
-      _dxPrev = 0.0;
-      return x;
-    }
-    final dt = (tSec - _tPrev!).clamp(1e-6, 1.0);
-    final dx = (x - _xPrev!) / dt;
-    final aD = _alpha(dCutoff, dt);
-    final dxHat = aD * dx + (1 - aD) * _dxPrev;
-    final cutoff = minCutoff + beta * dxHat.abs();
-    final a = _alpha(cutoff, dt);
-    final xHat = a * x + (1 - a) * _xPrev!;
-    _xPrev = xHat;
-    _dxPrev = dxHat;
-    _tPrev = tSec;
-    return xHat;
-  }
-
-  void reset() {
-    _xPrev = null;
-    _tPrev = null;
-    _dxPrev = 0.0;
-  }
-}
-
 // ─────────────────────────── Face Smoother ────────────────────────────────
 
 class _FaceTrack {
-  final Map<int, List<_OneEuroFilter>> filters = {};
+  final Map<int, List<OneEuroFilter>> filters = {};
   double lastLeft = 0, lastTop = 0, lastRight = 0, lastBottom = 0;
   bool hasBox = false;
   int missedFrames = 0;
@@ -3455,8 +3466,8 @@ class FaceSmoother {
       var fs = track.filters[i];
       if (fs == null) {
         fs = [
-          _OneEuroFilter(minCutoff: 1.0, beta: 0.1, dCutoff: 1.0),
-          _OneEuroFilter(minCutoff: 1.0, beta: 0.1, dCutoff: 1.0),
+          OneEuroFilter(minCutoff: 1.0, beta: 0.1, dCutoff: 1.0),
+          OneEuroFilter(minCutoff: 1.0, beta: 0.1, dCutoff: 1.0),
         ];
         track.filters[i] = fs;
       }
@@ -3473,8 +3484,8 @@ class FaceSmoother {
       var fs = track.filters[key];
       if (fs == null) {
         fs = [
-          _OneEuroFilter(minCutoff: 1.0, beta: 0.1, dCutoff: 1.0),
-          _OneEuroFilter(minCutoff: 1.0, beta: 0.1, dCutoff: 1.0),
+          OneEuroFilter(minCutoff: 1.0, beta: 0.1, dCutoff: 1.0),
+          OneEuroFilter(minCutoff: 1.0, beta: 0.1, dCutoff: 1.0),
         ];
         track.filters[key] = fs;
       }
@@ -3508,5 +3519,448 @@ class FaceSmoother {
     final union = aa + bb - inter;
     if (union <= 0) return 0;
     return inter / union;
+  }
+}
+
+/// Holds the picked image and its computed embedding for one comparison slot.
+class _FaceSlot {
+  Uint8List? bytes;
+  Float32List? embedding;
+  bool isLoading = false;
+}
+
+/// Verdict styling derived from the raw cosine similarity score.
+class _Verdict {
+  final String label;
+  final Color color;
+  final IconData icon;
+  const _Verdict(this.label, this.color, this.icon);
+}
+
+/// Picks two photos, extracts a face embedding from each, and reports how
+/// similar the two faces are (MobileFaceNet embeddings + cosine similarity).
+class EmbeddingsScreen extends StatefulWidget {
+  const EmbeddingsScreen({super.key});
+  @override
+  State<EmbeddingsScreen> createState() => _EmbeddingsScreenState();
+}
+
+class _EmbeddingsScreenState extends State<EmbeddingsScreen> {
+  FaceDetector? _detector;
+  bool _initializing = true;
+
+  final _FaceSlot _a = _FaceSlot();
+  final _FaceSlot _b = _FaceSlot();
+
+  @override
+  void initState() {
+    super.initState();
+    _init();
+  }
+
+  Future<void> _init() async {
+    try {
+      _detector = FaceDetector();
+      await _detector!.initialize(model: FaceDetectionModel.backCamera);
+    } catch (_) {}
+    if (mounted) setState(() => _initializing = false);
+  }
+
+  @override
+  void dispose() {
+    _detector?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickFor(_FaceSlot slot) async {
+    if (_detector == null || !_detector!.isReady) return;
+
+    final ImagePicker picker = ImagePicker();
+    final XFile? picked =
+        await picker.pickImage(source: ImageSource.gallery, imageQuality: 100);
+    if (picked == null) return;
+
+    setState(() {
+      slot.bytes = null;
+      slot.embedding = null;
+      slot.isLoading = true;
+    });
+
+    try {
+      final Uint8List bytes = await picked.readAsBytes();
+      // Only the BlazeFace eye keypoints are needed for embedding alignment,
+      // so the lightweight `fast` detection mode is enough here.
+      final List<Face> faces = await _detector!
+          .detectFacesFromBytes(bytes, mode: FaceDetectionMode.fast);
+
+      Float32List? embedding;
+      if (faces.isNotEmpty) {
+        final Face face = _largestFace(faces);
+        embedding = await _detector!.getFaceEmbedding(face, bytes);
+      }
+
+      if (!mounted) return;
+      setState(() {
+        slot.bytes = bytes;
+        slot.embedding = embedding;
+        slot.isLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        slot.embedding = null;
+        slot.isLoading = false;
+      });
+    }
+  }
+
+  Face _largestFace(List<Face> faces) {
+    Face best = faces.first;
+    double bestArea = _faceArea(best);
+    for (final Face f in faces.skip(1)) {
+      final double a = _faceArea(f);
+      if (a > bestArea) {
+        best = f;
+        bestArea = a;
+      }
+    }
+    return best;
+  }
+
+  double _faceArea(Face f) {
+    final box = f.boundingBox;
+    return math.max(0.0, box.right - box.left) *
+        math.max(0.0, box.bottom - box.top);
+  }
+
+  void _reset() {
+    setState(() {
+      for (final _FaceSlot slot in [_a, _b]) {
+        slot.bytes = null;
+        slot.embedding = null;
+        slot.isLoading = false;
+      }
+    });
+  }
+
+  double? get _cosine {
+    final Float32List? a = _a.embedding;
+    final Float32List? b = _b.embedding;
+    if (a == null || b == null) return null;
+    return FaceDetector.compareFaces(a, b);
+  }
+
+  /// Maps the raw cosine score (where ~0.6 already means "same person") onto a
+  /// more intuitive 0-100% scale via piecewise-linear interpolation.
+  double _calibratedPercent(double cosine) {
+    const List<List<double>> anchors = [
+      [0.0, 0.0],
+      [0.3, 45.0],
+      [0.5, 72.0],
+      [0.65, 86.0],
+      [0.8, 95.0],
+      [1.0, 100.0],
+    ];
+    if (cosine <= anchors.first[0]) return 0.0;
+    if (cosine >= anchors.last[0]) return 100.0;
+    for (int i = 1; i < anchors.length; i++) {
+      if (cosine <= anchors[i][0]) {
+        final double c0 = anchors[i - 1][0];
+        final double p0 = anchors[i - 1][1];
+        final double c1 = anchors[i][0];
+        final double p1 = anchors[i][1];
+        final double t = (cosine - c0) / (c1 - c0);
+        return p0 + t * (p1 - p0);
+      }
+    }
+    return 100.0;
+  }
+
+  _Verdict _verdictFor(double cosine) {
+    if (cosine >= 0.6) {
+      return const _Verdict('Same person', Color(0xFF2E7D32), Icons.verified);
+    }
+    if (cosine >= 0.5) {
+      return const _Verdict('Likely the same person', Color(0xFF558B2F),
+          Icons.thumb_up_alt_outlined);
+    }
+    if (cosine >= 0.3) {
+      return const _Verdict('Uncertain', Color(0xFFEF6C00), Icons.help_outline);
+    }
+    return const _Verdict(
+        'Different people', Color(0xFFC62828), Icons.cancel_outlined);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool anyPicked = _a.bytes != null || _b.bytes != null;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Face Recognition'),
+        actions: [
+          IconButton(
+            tooltip: 'Reset',
+            onPressed: anyPicked ? _reset : null,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: _initializing
+            ? const Center(child: CircularProgressIndicator())
+            : LayoutBuilder(
+                builder: (context, constraints) {
+                  final bool wide = constraints.maxWidth >= 640;
+                  final Widget slotA = _buildSlot(context, 'Image A', _a);
+                  final Widget slotB = _buildSlot(context, 'Image B', _b);
+                  final Widget slots = wide
+                      ? Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: slotA),
+                            const SizedBox(width: 16),
+                            Expanded(child: slotB),
+                          ],
+                        )
+                      : Column(
+                          children: [
+                            slotA,
+                            const SizedBox(height: 16),
+                            slotB,
+                          ],
+                        );
+
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.all(16),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 820),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            slots,
+                            const SizedBox(height: 20),
+                            _buildResult(context),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+      ),
+    );
+  }
+
+  Widget _buildSlot(BuildContext context, String label, _FaceSlot slot) {
+    return Card(
+      elevation: 2,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: slot.isLoading ? null : () => _pickFor(slot),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AspectRatio(
+              aspectRatio: 4 / 3,
+              child: Container(
+                width: double.infinity,
+                color: Colors.grey.shade100,
+                child: _slotPreview(slot),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: Theme.of(context).textTheme.titleSmall,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  _slotStatus(slot),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _slotPreview(_FaceSlot slot) {
+    if (slot.isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (slot.bytes == null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.add_a_photo_outlined,
+                size: 40, color: Colors.grey.shade400),
+            const SizedBox(height: 8),
+            Text('Tap to pick', style: TextStyle(color: Colors.grey.shade600)),
+          ],
+        ),
+      );
+    }
+    return Image.memory(
+      slot.bytes!,
+      fit: BoxFit.contain,
+      width: double.infinity,
+    );
+  }
+
+  Widget _slotStatus(_FaceSlot slot) {
+    if (slot.isLoading) {
+      return const SizedBox(
+        width: 16,
+        height: 16,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+    if (slot.bytes == null) return const SizedBox.shrink();
+    if (slot.embedding != null) {
+      return _statusChip(Icons.check_circle, 'Face found', Colors.green);
+    }
+    return _statusChip(Icons.error_outline, 'No face', Colors.orange);
+  }
+
+  Widget _statusChip(IconData icon, String text, MaterialColor color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.shade50,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color.shade700),
+          const SizedBox(width: 4),
+          Text(text, style: TextStyle(fontSize: 12, color: color.shade700)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResult(BuildContext context) {
+    final double? cosine = _cosine;
+    final bool processing = _a.isLoading || _b.isLoading;
+    final bool bothPicked = _a.bytes != null && _b.bytes != null;
+
+    Widget content;
+    if (cosine != null) {
+      final double pct = _calibratedPercent(cosine);
+      final _Verdict v = _verdictFor(cosine);
+      content = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  '${pct.round()}%',
+                  style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: v.color,
+                      ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'match',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: Colors.grey[600],
+                      ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: LinearProgressIndicator(
+              value: (pct / 100).clamp(0.0, 1.0),
+              minHeight: 10,
+              backgroundColor: Colors.grey.shade200,
+              valueColor: AlwaysStoppedAnimation<Color>(v.color),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Icon(v.icon, color: v.color, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  v.label,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: v.color,
+                        fontWeight: FontWeight.w600,
+                      ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Cosine similarity: ${cosine.toStringAsFixed(2)}',
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: Colors.grey[600]),
+          ),
+        ],
+      );
+    } else if (processing) {
+      content = Row(
+        children: const [
+          SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          SizedBox(width: 12),
+          Expanded(child: Text('Analyzing faces...')),
+        ],
+      );
+    } else {
+      final String msg = !bothPicked
+          ? 'Pick a photo for both Image A and Image B to compare faces.'
+          : 'A clear face is needed in both photos to compare them.';
+      content = Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, color: Colors.grey[500], size: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              msg,
+              style: TextStyle(color: Colors.grey[700]),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: content,
+      ),
+    );
   }
 }

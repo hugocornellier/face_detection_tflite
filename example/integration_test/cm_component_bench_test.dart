@@ -166,7 +166,7 @@ void main() {
     }
 
     mat.dispose();
-    print('\nCOMPONENT BENCH — p50 ms, macOS (speedup = interp/compiled)');
+    print('\nCOMPONENT BENCH: p50 ms, macOS (speedup = interp/compiled)');
     for (final r in rows) {
       print(r);
     }

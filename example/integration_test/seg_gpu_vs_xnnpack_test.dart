@@ -1,7 +1,7 @@
 // ignore_for_file: avoid_print
 
 // End-to-end multiclass segmentation benchmark: GPU vs XNNPACK.
-// selfie_multiclass is a single large conv model (static shape) — the case
+// selfie_multiclass is a single large conv model (static shape): the case
 // where the raw-invoke sweep showed ~9x for GPU. This checks whether that
 // survives the SelfieSegmentation pipeline (decode/resize + invoke + mask).
 //

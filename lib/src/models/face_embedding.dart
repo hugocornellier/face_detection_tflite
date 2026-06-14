@@ -121,8 +121,9 @@ class FaceEmbedding with _TfliteModelDisposable {
     // MobileFaceNet fails strict-GPU compilation (unsupported ops) but runs
     // ~3.7x faster than CPU with GPU|CPU partitioning, so use the fallback
     // helper rather than pinning to either accelerator.
-    final CompiledModel compiledModel = _createCompiledModelWithFallback(
+    final CompiledModel compiledModel = CompiledModel.fromBufferWithGpuFallback(
       modelBytes,
+      onFallback: _onGpuFallback,
     );
     final int side;
     try {

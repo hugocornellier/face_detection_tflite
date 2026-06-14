@@ -112,7 +112,7 @@ void main() {
     () async {
       // general/landscape use the Convolution2DTransposeBias custom op; the
       // segmentation isolate compiles it where the runtime supports it and
-      // falls back to the Interpreter otherwise — either way the pipeline
+      // falls back to the Interpreter otherwise; either way the pipeline
       // must produce a usable mask.
       final detector = await FaceDetector.create(
         withSegmentation: true,
@@ -138,7 +138,7 @@ void main() {
 
   test('binary (custom-op) model compiles and matches Interpreter', () async {
     // The general model uses the Convolution2DTransposeBias custom op, yet
-    // LiteRT Next compiles it — verify the compiled output actually matches
+    // LiteRT Next compiles it; verify the compiled output actually matches
     // the Interpreter rather than trusting compilation success.
     final segBytes = (await rootBundle.load(
       'packages/face_detection_tflite/assets/models/${testModelFileFor(SegmentationModel.general)}',

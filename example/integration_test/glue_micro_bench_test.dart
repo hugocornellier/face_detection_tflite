@@ -1,7 +1,7 @@
 // ignore_for_file: avoid_print
 
 // Micro-benchmarks for the pipeline glue: (1) Mat reconstruction from raw
-// bytes — the current Mat.fromList element-loop vs Mat.create + typed-data
+// bytes: the current Mat.fromList element-loop vs Mat.create + typed-data
 // memcpy; (2) the isolate RPC floor, measured by running FULL mode on a tiny
 // black image (no faces -> detection only, overhead-dominated).
 //

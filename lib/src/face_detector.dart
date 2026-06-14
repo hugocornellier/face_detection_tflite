@@ -1027,111 +1027,18 @@ class FaceDetector {
   /// (`INTER_LINEAR`) interpolates each channel independently, and the
   /// BGRA→BGR conversion is a per-pixel alpha drop.
   static cv.Mat _matFromCameraFrameMessage(Map message, Uint8List bytes) {
-    final int width = message['width'] as int;
-    final int height = message['height'] as int;
-    final int strideCols = message['strideCols'] as int;
-    final conversion =
-        CameraFrameConversion.values[message['conversion'] as int];
     final int? rotationIndex = message['rotation'] as int?;
-    final int? maxDim = message['maxDim'] as int?;
-
-    int? rotateFlag() {
-      if (rotationIndex == null) return null;
-      return switch (CameraFrameRotation.values[rotationIndex]) {
-        CameraFrameRotation.cw90 => cv.ROTATE_90_CLOCKWISE,
-        CameraFrameRotation.cw180 => cv.ROTATE_180,
-        CameraFrameRotation.cw270 => cv.ROTATE_90_COUNTERCLOCKWISE,
-      };
-    }
-
-    cv.Mat maybeResize(cv.Mat m) {
-      if (maxDim == null || (m.cols <= maxDim && m.rows <= maxDim)) return m;
-      final double scale = maxDim / (m.cols > m.rows ? m.cols : m.rows);
-      final resized = cv.resize(m, (
-        (m.cols * scale).toInt(),
-        (m.rows * scale).toInt(),
-      ), interpolation: cv.INTER_LINEAR);
-      m.dispose();
-      return resized;
-    }
-
-    cv.Mat maybeRotate(cv.Mat m) {
-      final flag = rotateFlag();
-      if (flag == null) return m;
-      final rotated = cv.rotate(m, flag);
-      m.dispose();
-      return rotated;
-    }
-
-    switch (conversion) {
-      case CameraFrameConversion.bgra2bgr:
-      case CameraFrameConversion.rgba2bgr:
-        final bgraOrRgba = matFromPackedBytes(
-          height,
-          strideCols,
-          cv.MatType.CV_8UC4,
-          bytes,
-        );
-        // `cropped` is a view into bgraOrRgba when stride padding is present;
-        // track it so we only dispose intermediates we allocated.
-        cv.Mat current = strideCols != width
-            ? bgraOrRgba.region(cv.Rect(0, 0, width, height))
-            : bgraOrRgba;
-
-        // Resize on 4-channel BGRA (shrinks the buffer before cvtColor/rotate).
-        if (maxDim != null &&
-            (current.cols > maxDim || current.rows > maxDim)) {
-          final double scale =
-              maxDim /
-              (current.cols > current.rows ? current.cols : current.rows);
-          final resized = cv.resize(current, (
-            (current.cols * scale).toInt(),
-            (current.rows * scale).toInt(),
-          ), interpolation: cv.INTER_LINEAR);
-          if (!identical(current, bgraOrRgba)) current.dispose();
-          current = resized;
-        }
-
-        // Rotate on the (now small) 4-channel buffer.
-        final flag = rotateFlag();
-        if (flag != null) {
-          final rotated = cv.rotate(current, flag);
-          if (!identical(current, bgraOrRgba)) current.dispose();
-          current = rotated;
-        }
-
-        // cvtColor last, on the smallest + upright buffer.
-        final cvtCode = conversion == CameraFrameConversion.bgra2bgr
-            ? cv.COLOR_BGRA2BGR
-            : cv.COLOR_RGBA2BGR;
-        final bgr = cv.cvtColor(current, cvtCode);
-        if (!identical(current, bgraOrRgba)) current.dispose();
-        bgraOrRgba.dispose();
-        return bgr;
-
-      case CameraFrameConversion.yuv2bgrNv12:
-      case CameraFrameConversion.yuv2bgrNv21:
-      case CameraFrameConversion.yuv2bgrI420:
-        final yuvMat = matFromPackedBytes(
-          height + height ~/ 2,
-          width,
-          cv.MatType.CV_8UC1,
-          bytes,
-        );
-        final cvtCode = switch (conversion) {
-          CameraFrameConversion.yuv2bgrNv12 => cv.COLOR_YUV2BGR_NV12,
-          CameraFrameConversion.yuv2bgrNv21 => cv.COLOR_YUV2BGR_NV21,
-          CameraFrameConversion.yuv2bgrI420 => cv.COLOR_YUV2BGR_I420,
-          _ => cv.COLOR_YUV2BGR_NV12,
-        };
-        // cvtColor must run first - the packed YUV layout can't be resized.
-        cv.Mat current = cv.cvtColor(yuvMat, cvtCode);
-        yuvMat.dispose();
-        // Then resize → rotate so rotate runs on the small buffer.
-        current = maybeResize(current);
-        current = maybeRotate(current);
-        return current;
-    }
+    final CameraFrame frame = CameraFrame(
+      bytes: bytes,
+      width: message['width'] as int,
+      height: message['height'] as int,
+      strideCols: message['strideCols'] as int,
+      conversion: CameraFrameConversion.values[message['conversion'] as int],
+      rotation: rotationIndex == null
+          ? null
+          : CameraFrameRotation.values[rotationIndex],
+    );
+    return cameraFrameToBgrMat(frame, maxDim: message['maxDim'] as int?);
   }
 
   ({Uint8List data, int width, int height, int matType}) _extractMatFields(
@@ -1715,24 +1622,6 @@ const int _kLeftIrisEnd = 76;
 const int _kRightIrisStart = 147;
 const int _kRightIrisEnd = 152;
 
-/// A lightweight sequential lock that chains futures to prevent concurrent access
-/// to shared mutable buffers (e.g., TFLite interpreter buffers).
-class _InferenceLock {
-  Future<void> _lock = Future.value();
-
-  Future<T> run<T>(Future<T> Function() fn) async {
-    final previous = _lock;
-    final completer = Completer<void>();
-    _lock = completer.future;
-    try {
-      await previous;
-      return await fn();
-    } finally {
-      completer.complete();
-    }
-  }
-}
-
 /// Computes face alignment geometry from detection keypoints.
 ({double theta, double cx, double cy, double size}) _computeFaceAlignment(
   Detection det,
@@ -1815,7 +1704,7 @@ List<Point> testTransformMeshToAbsolute(
 /// Test-only: returns a fresh inference-lock `run` function for unit tests.
 @visibleForTesting
 Future<T> Function<T>(Future<T> Function() fn) testCreateInferenceLockRunner() {
-  final lock = _InferenceLock();
+  final lock = AsyncLock();
   return lock.run;
 }
 

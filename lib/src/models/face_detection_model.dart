@@ -135,8 +135,9 @@ class FaceDetection {
     final int inH = opts.inputSizeHeight;
     final List<List<double>> anchors = generateAnchors(opts);
 
-    final CompiledModel compiledModel = _createCompiledModelWithFallback(
+    final CompiledModel compiledModel = CompiledModel.fromBufferWithGpuFallback(
       modelBytes,
+      onFallback: _onGpuFallback,
     );
     final obj = FaceDetection._compiled(compiledModel, inW, inH, anchors);
     try {

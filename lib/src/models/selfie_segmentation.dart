@@ -238,7 +238,10 @@ class SelfieSegmentation with _TfliteModelDisposable {
 
     final CompiledModel compiledModel;
     try {
-      compiledModel = _createCompiledModelWithFallback(modelBytes);
+      compiledModel = CompiledModel.fromBufferWithGpuFallback(
+        modelBytes,
+        onFallback: _onGpuFallback,
+      );
     } catch (e) {
       throw SegmentationException(
         SegmentationError.interpreterCreationFailed,

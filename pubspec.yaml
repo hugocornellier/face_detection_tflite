@@ -1,6 +1,6 @@
 name: face_detection_tflite
 description: "Advanced face & landmark detection, embedding and segmentation using on-device TFLite models."
-version: 6.3.1
+version: 6.4.0
 
 repository: https://github.com/hugocornellier/face_detection_tflite
 homepage: https://github.com/hugocornellier/face_detection_tflite
@@ -19,20 +19,11 @@ dependencies:
   flutter:
     sdk: flutter
   opencv_dart: ^2.2.1+4
-  flutter_litert: ^2.8.3
+  flutter_litert: ^3.0.0
   meta: ^1.17.0
   web: ^1.1.1
   flutter_web_plugins:
     sdk: flutter
-
-# TEMPORARY (CompiledModel testing, do not publish with this):
-# use flutter_litert from the compiled-model branch instead of pub.dev,
-# pinned to a commit so fresh clones resolve reproducibly.
-dependency_overrides:
-  flutter_litert:
-    git:
-      url: https://github.com/hugocornellier/flutter_litert.git
-      ref: eca39ff73ffc750cc3aa68f70e5ba733a2d8e0ab
 
 dev_dependencies:
   flutter_test:
