@@ -1,6 +1,7 @@
 ## 6.4.0
 
 * Add optional `loadModelBytes` callback (`ModelBytesLoader`) to `FaceDetector.initialize`, `FaceDetector.create`, `FaceDetector.initializeSegmentation` and `SelfieSegmentation.create` (native + web). When provided, model bytes are sourced from the callback (e.g. a download cache) instead of the bundled package assets, allowing apps to ship without the ~28MB of models in the binary.
+* Add `ReleaseModelLoader`, a built-in opt-in `ModelBytesLoader` that downloads the models from the package's GitHub Release on first use, caches them (on disk natively, in memory on web), and verifies each download against a known SHA-256 checksum (`kModelSha256Sums`). Pass an instance as `loadModelBytes:` to download instead of bundling, without writing your own downloader; the `loadModelBytes` callback remains the escape hatch for custom sources. Adds `http`, `crypto` and `path_provider` dependencies.
 
 ## 6.3.1
 

@@ -85,6 +85,47 @@ All TFLite models are sourced from Google's [MediaPipe](https://mediapipe.dev/) 
 | Multiclass Segmentation | `selfie_multiclass.tflite` | [multiclass_segmentation_model_card.pdf](doc/model_cards/multiclass_segmentation_model_card.pdf) |
 | Face Embedding (192-dim) | `mobilefacenet.tflite` | [mobilefacenet_paper.pdf](doc/model_cards/mobilefacenet_paper.pdf) · [arXiv 1804.07573](https://arxiv.org/abs/1804.07573) |
 
+### Loading models at runtime (smaller app binary)
+
+The models add ~28 MB to your app. They ship bundled as package assets and load
+automatically, so by default you don't have to do anything. If you'd rather keep
+them out of your binary and fetch them on demand, exclude the package's
+`assets/models/**` from your build and pass a `loadModelBytes` callback so the
+detector sources bytes from elsewhere:
+
+```dart
+await detector.initialize(
+  model: FaceDetectionModel.shortRange,
+  loadModelBytes: (fileName) async {
+    // Return the raw bytes for `fileName`, e.g. from your own cache.
+    return myCache.read(fileName);
+  },
+);
+```
+
+For the common case, the package ships a ready-made loader, `ReleaseModelLoader`,
+that downloads the models from this package's GitHub Release on first use, caches
+them (on disk on native platforms, in memory on web), and verifies every download
+against a built-in SHA-256 checksum table. It is callable, so pass an instance
+directly:
+
+```dart
+final modelLoader = ReleaseModelLoader(
+  // optional: report download progress to your UI
+  onProgress: (file, received, total) => debugPrint('$file $received/$total'),
+);
+
+await detector.initialize(
+  model: FaceDetectionModel.shortRange,
+  loadModelBytes: modelLoader,
+);
+await detector.initializeSegmentation(loadModelBytes: modelLoader);
+```
+
+Reuse one `ReleaseModelLoader` across detectors so concurrent and repeat requests
+for the same file share a single download. `loadModelBytes` remains the escape
+hatch for any custom source (a different host, app documents, a picked file…).
+
 ## Bounding Boxes
 
 <img src="assets/screenshots/group-shot-bounding-box-ex1.png" width="600" alt="Bounding Boxes">

@@ -6,6 +6,13 @@ library;
 
 export '../dart_registration.dart';
 export '../shared/model_bytes_loader.dart';
+export '../shared/release_model_loader.dart'
+    show
+        ReleaseModelLoader,
+        ModelDownloadProgress,
+        ModelChecksumException,
+        kDefaultModelReleaseBaseUrl,
+        kModelSha256Sums;
 export 'types.dart';
 export 'face_detector_web.dart' show FaceDetector, WebDetectTimings;
 

@@ -23,6 +23,13 @@ import '../shared/model_bytes_loader.dart';
 
 export '../dart_registration.dart';
 export '../shared/model_bytes_loader.dart';
+export '../shared/release_model_loader.dart'
+    show
+        ReleaseModelLoader,
+        ModelDownloadProgress,
+        ModelChecksumException,
+        kDefaultModelReleaseBaseUrl,
+        kModelSha256Sums;
 
 // Single source of truth for all public types and constants.
 export '../shared/face_types.dart';
