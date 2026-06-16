@@ -383,30 +383,45 @@ Float32List bgrMatToSignedFloat32(
   required int totalPixels,
   Float32List? buffer,
 }) {
-  if (mat.type != cv.MatType.CV_8UC3 || !mat.isContinuous) {
-    return bgrBytesToSignedFloat32(
-      bytes: mat.data,
-      totalPixels: totalPixels,
-      buffer: buffer,
-    );
+  // BGRA (4ch) and grayscale (1ch) inputs must be color-converted to 3-channel
+  // BGR first: both the SIMD path below and the byte fallback assume 3
+  // bytes/pixel, so a non-BGR stride overruns the buffer (BGRA) or under-reads
+  // it (grayscale) and corrupts the tensor.
+  cv.Mat? owned;
+  cv.Mat src = mat;
+  if (mat.type == cv.MatType.CV_8UC4) {
+    src = owned = cv.cvtColor(mat, cv.COLOR_BGRA2BGR);
+  } else if (mat.type == cv.MatType.CV_8UC1) {
+    src = owned = cv.cvtColor(mat, cv.COLOR_GRAY2BGR);
   }
-  final cv.Mat rgb = cv.cvtColor(mat, cv.COLOR_BGR2RGB);
-  final cv.Mat f32 = rgb.convertTo(
-    cv.MatType.CV_32FC3,
-    alpha: 1.0 / 127.5,
-    beta: -1.0,
-  );
-  rgb.dispose();
-  final Uint8List raw = f32.data;
-  final Float32List view = Float32List.view(
-    raw.buffer,
-    raw.offsetInBytes,
-    totalPixels * 3,
-  );
-  final Float32List tensor = buffer ?? Float32List(totalPixels * 3);
-  tensor.setAll(0, view);
-  f32.dispose();
-  return tensor;
+  try {
+    if (src.type != cv.MatType.CV_8UC3 || !src.isContinuous) {
+      return bgrBytesToSignedFloat32(
+        bytes: src.data,
+        totalPixels: totalPixels,
+        buffer: buffer,
+      );
+    }
+    final cv.Mat rgb = cv.cvtColor(src, cv.COLOR_BGR2RGB);
+    final cv.Mat f32 = rgb.convertTo(
+      cv.MatType.CV_32FC3,
+      alpha: 1.0 / 127.5,
+      beta: -1.0,
+    );
+    rgb.dispose();
+    final Uint8List raw = f32.data;
+    final Float32List view = Float32List.view(
+      raw.buffer,
+      raw.offsetInBytes,
+      totalPixels * 3,
+    );
+    final Float32List tensor = buffer ?? Float32List(totalPixels * 3);
+    tensor.setAll(0, view);
+    f32.dispose();
+    return tensor;
+  } finally {
+    owned?.dispose();
+  }
 }
 
 /// Rebuilds a tightly packed [cv.Mat] from raw [bytes] with a single memcpy.

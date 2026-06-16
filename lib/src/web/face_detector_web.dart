@@ -60,7 +60,7 @@ class FaceDetector with WebGpuFallback {
     int meshPoolSize = 3,
     bool withSegmentation = false,
     SegmentationConfig? segmentationConfig,
-    bool useCompiledModel = true,
+    bool useCompiledModel = false,
     bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
   }) async {
@@ -146,7 +146,7 @@ class FaceDetector with WebGpuFallback {
     int meshPoolSize = 3,
     bool withSegmentation = false,
     SegmentationConfig? segmentationConfig,
-    bool useCompiledModel = true,
+    bool useCompiledModel = false,
     bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
   }) async {

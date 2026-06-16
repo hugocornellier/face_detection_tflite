@@ -1,7 +1,7 @@
 ## 6.4.0
 
-* Update flutter_litert -> 3.0.0
-* Move inference to the LiteRT Next `CompiledModel` API. Models now run through `CompiledModel.fromBufferWithGpuFallback`, which selects GPU acceleration when the device supports it and falls back to CPU automatically, replacing the manual GPU/Metal/CoreML delegate setup.
+* Update flutter_litert -> 3.1.1
+* Add optional LiteRT Next `CompiledModel` inference via `CompiledModel.fromBufferWithGpuFallback` (GPU with automatic CPU fallback); enable with `useCompiledModel: true`. The default engine remains the Interpreter, so existing code is unchanged.
 * Decode camera frames through the shared flutter_litert `CameraFrameDecodePlan` helper.
 
 ## 6.3.1

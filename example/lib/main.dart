@@ -381,7 +381,10 @@ class _ExampleState extends State<Example> {
     try {
       await _faceDetector?.dispose();
       _faceDetector = FaceDetector();
-      await _faceDetector!.initialize(model: _detectionModel);
+      await _faceDetector!.initialize(
+        model: _detectionModel,
+        useCompiledModel: true,
+      );
     } catch (_) {}
     setState(() {});
   }
@@ -3561,7 +3564,10 @@ class _EmbeddingsScreenState extends State<EmbeddingsScreen> {
   Future<void> _init() async {
     try {
       _detector = FaceDetector();
-      await _detector!.initialize(model: FaceDetectionModel.backCamera);
+      await _detector!.initialize(
+        model: FaceDetectionModel.backCamera,
+        useCompiledModel: true,
+      );
     } catch (_) {}
     if (mounted) setState(() => _initializing = false);
   }

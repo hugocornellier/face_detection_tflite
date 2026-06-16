@@ -87,7 +87,7 @@ class FaceDetector {
     int meshPoolSize = 3,
     bool withSegmentation = false,
     SegmentationConfig? segmentationConfig,
-    bool useCompiledModel = true,
+    bool useCompiledModel = false,
     // Web-only knobs; accepted here for API parity but ignored on native.
     bool useLiteRt = false,
     String liteRtAccelerator = 'auto',
@@ -107,7 +107,7 @@ class FaceDetector {
   _FaceDetectorWorker? _worker;
   IsolateRpcClient? _segmentationRpc;
   bool _segmentationInitialized = false;
-  bool _useCompiledModel = true;
+  bool _useCompiledModel = false;
 
   /// Returns true if all models are loaded and ready for inference.
   ///
@@ -171,7 +171,7 @@ class FaceDetector {
     int meshPoolSize = 3,
     bool withSegmentation = false,
     SegmentationConfig? segmentationConfig,
-    bool useCompiledModel = true,
+    bool useCompiledModel = false,
     // Web-only knobs; accepted here for API parity but ignored on native.
     bool useLiteRt = false,
     String liteRtAccelerator = 'auto',
@@ -240,9 +240,11 @@ class FaceDetector {
       _worker = worker;
       _segmentationRpc = segmentationRpc;
     } catch (e) {
-      segmentationRpc?.failAllAndDispose(disposeOp: 'dispose');
+      await segmentationRpc?.disposeGracefully(disposeOp: 'dispose');
       if (worker.isReady) {
-        await worker.dispose();
+        // Graceful: let the detection isolate free its native models instead of
+        // being force-killed mid-cleanup (the init-failure path leaked them).
+        await worker.disposeGracefully();
       }
       _segmentationInitialized = false;
       rethrow;
@@ -284,7 +286,7 @@ class FaceDetector {
       _segmentationRpc = segmentationRpc;
       _segmentationInitialized = true;
     } catch (_) {
-      segmentationRpc.failAllAndDispose(disposeOp: 'dispose');
+      await segmentationRpc.disposeGracefully(disposeOp: 'dispose');
       rethrow;
     }
   }
@@ -308,13 +310,15 @@ class FaceDetector {
     FaceDetectionMode mode = FaceDetectionMode.full,
   }) async {
     _requireReady();
-    final List<dynamic> result = await _sendDetectionRequest<List<dynamic>>(
-      'detect',
-      {
+    final List<dynamic> result;
+    try {
+      result = await _sendDetectionRequest<List<dynamic>>('detect', {
         'bytes': TransferableTypedData.fromList([imageBytes]),
         'mode': mode.name,
-      },
-    );
+      });
+    } catch (e) {
+      rethrowOrFormatException(e, imageBytes);
+    }
     return _deserializeFacesFast(result);
   }
 
@@ -843,15 +847,23 @@ class FaceDetector {
   /// After calling dispose, you must call [initialize] again before
   /// running any detections.
   Future<void> dispose() async {
+    // Flip ALL ready-state synchronously (before any await) so an un-awaited
+    // dispose() immediately reports not-ready: a later call throws StateError
+    // via the _require* guards instead of a null-check TypeError on a
+    // half-torn-down handle, and a second dispose() is a no-op rather than
+    // disposing the same worker twice.
     final segmentationRpc = _segmentationRpc;
-    _segmentationRpc = null;
-    segmentationRpc?.failAllAndDispose(disposeOp: 'dispose');
-    _segmentationInitialized = false;
-
     final worker = _worker;
+    _segmentationRpc = null;
+    _segmentationInitialized = false;
     _worker = null;
+
+    await segmentationRpc?.disposeGracefully(disposeOp: 'dispose');
     if (worker != null && worker.isReady) {
-      await worker.dispose();
+      // Graceful shutdown: await the isolate's dispose ack before force-killing
+      // so it can free its native TFLite interpreters instead of being reaped
+      // mid-cleanup by Isolate.kill(priority: immediate).
+      await worker.disposeGracefully();
     }
   }
 
@@ -1003,15 +1015,7 @@ class FaceDetector {
   Map<String, dynamic> _cameraFrameFields(
     CameraFrame frame,
     Map<String, dynamic> extra,
-  ) => {
-    'bytes': TransferableTypedData.fromList([frame.bytes]),
-    'width': frame.width,
-    'height': frame.height,
-    'strideCols': frame.strideCols,
-    'conversion': frame.conversion.index,
-    'rotation': frame.rotation?.index,
-    ...extra,
-  };
+  ) => cameraFrameRpcFields(frame, extra);
 
   /// Decodes a [CameraFrame] message into a 3-channel BGR [cv.Mat]. Runs
   /// inside the detection / segmentation isolate - all OpenCV work happens off
@@ -1027,18 +1031,10 @@ class FaceDetector {
   /// (`INTER_LINEAR`) interpolates each channel independently, and the
   /// BGRA→BGR conversion is a per-pixel alpha drop.
   static cv.Mat _matFromCameraFrameMessage(Map message, Uint8List bytes) {
-    final int? rotationIndex = message['rotation'] as int?;
-    final CameraFrame frame = CameraFrame(
-      bytes: bytes,
-      width: message['width'] as int,
-      height: message['height'] as int,
-      strideCols: message['strideCols'] as int,
-      conversion: CameraFrameConversion.values[message['conversion'] as int],
-      rotation: rotationIndex == null
-          ? null
-          : CameraFrameRotation.values[rotationIndex],
+    return cameraFrameToBgrMat(
+      cameraFrameFromRpcMessage(message, bytes),
+      maxDim: message['maxDim'] as int?,
     );
-    return cameraFrameToBgrMat(frame, maxDim: message['maxDim'] as int?);
   }
 
   ({Uint8List data, int width, int height, int matType}) _extractMatFields(
@@ -1149,169 +1145,136 @@ class FaceDetector {
       return;
     }
 
-    workerReceivePort.listen((message) async {
-      if (message is! Map) return;
+    FaceDetectionMode parseMode(Map message) => FaceDetectionMode.values
+        .firstWhere((m) => m.name == message['mode'] as String);
 
-      final int? id = message['id'] as int?;
-      final String? op = message['op'] as String?;
-
-      if (id == null || op == null) return;
-
+    Future<Object?> runDetect(
+      _FaceDetectorCore c,
+      cv.Mat mat,
+      FaceDetectionMode mode,
+    ) async {
       try {
-        switch (op) {
-          case 'detect':
-            if (core == null) {
-              mainSendPort.send({
-                'id': id,
-                'error': 'FaceDetectorCore not initialized in isolate',
-              });
-              return;
-            }
-            final Uint8List imageBytes = _extractBytes(message);
-            final mode = FaceDetectionMode.values.firstWhere(
-              (m) => m.name == message['mode'] as String,
-            );
-            final cv.Mat mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
-            try {
-              final faces = await core!.detectFacesDirect(mat, mode: mode);
-              mainSendPort.send({
-                'id': id,
-                'result': faces.map(_faceToFastMap).toList(),
-              });
-            } finally {
-              mat.dispose();
-            }
-
-          case 'detectMat':
-            if (core == null) {
-              mainSendPort.send({
-                'id': id,
-                'error': 'FaceDetectorCore not initialized in isolate',
-              });
-              return;
-            }
-            final Uint8List matBytes = _extractBytes(message);
-            final mode = FaceDetectionMode.values.firstWhere(
-              (m) => m.name == message['mode'] as String,
-            );
-            final mat = _matFromMessage(message, matBytes);
-            try {
-              final faces = await core!.detectFacesDirect(mat, mode: mode);
-              mainSendPort.send({
-                'id': id,
-                'result': faces.map(_faceToFastMap).toList(),
-              });
-            } finally {
-              mat.dispose();
-            }
-
-          case 'detectCameraFrame':
-            if (core == null) {
-              mainSendPort.send({
-                'id': id,
-                'error': 'FaceDetectorCore not initialized in isolate',
-              });
-              return;
-            }
-            final Uint8List frameBytes = _extractBytes(message);
-            final mode = FaceDetectionMode.values.firstWhere(
-              (m) => m.name == message['mode'] as String,
-            );
-            final frameMat = _matFromCameraFrameMessage(message, frameBytes);
-            try {
-              final faces = await core!.detectFacesDirect(frameMat, mode: mode);
-              mainSendPort.send({
-                'id': id,
-                'result': faces.map(_faceToFastMap).toList(),
-              });
-            } finally {
-              frameMat.dispose();
-            }
-
-          case 'embedding':
-            if (core == null || !core!.isEmbeddingReady) {
-              mainSendPort.send({
-                'id': id,
-                'error': 'Embedding not initialized in isolate',
-              });
-              return;
-            }
-            final Uint8List imageBytes = _extractBytes(message);
-            final face = Face.fromMap(
-              Map<String, dynamic>.from(message['face'] as Map),
-            );
-            final cv.Mat mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
-            try {
-              final embedding = await core!.getFaceEmbeddingDirect(face, mat);
-              mainSendPort.send({'id': id, 'result': embedding.toList()});
-            } finally {
-              mat.dispose();
-            }
-
-          case 'embeddingMat':
-            if (core == null || !core!.isEmbeddingReady) {
-              mainSendPort.send({
-                'id': id,
-                'error': 'Embedding not initialized in isolate',
-              });
-              return;
-            }
-            final Uint8List embMatBytes = _extractBytes(message);
-            final embMatFace = Face.fromMap(
-              Map<String, dynamic>.from(message['face'] as Map),
-            );
-            final embMat = _matFromMessage(message, embMatBytes);
-            try {
-              final embedding = await core!.getFaceEmbeddingDirect(
-                embMatFace,
-                embMat,
-              );
-              mainSendPort.send({'id': id, 'result': embedding.toList()});
-            } finally {
-              embMat.dispose();
-            }
-
-          case 'embeddings':
-            if (core == null || !core!.isEmbeddingReady) {
-              mainSendPort.send({
-                'id': id,
-                'error': 'Embedding not initialized in isolate',
-              });
-              return;
-            }
-            final Uint8List imageBytes = _extractBytes(message);
-            final List<Face> faces = _deserializeFaces(
-              message['faces'] as List,
-            );
-            final cv.Mat image = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
-            try {
-              final embeddings = <Float32List?>[];
-              for (final face in faces) {
-                try {
-                  embeddings.add(
-                    await core!.getFaceEmbeddingDirect(face, image),
-                  );
-                } catch (_) {
-                  embeddings.add(null);
-                }
-              }
-              mainSendPort.send({
-                'id': id,
-                'result': embeddings.map((e) => e?.toList()).toList(),
-              });
-            } finally {
-              image.dispose();
-            }
-
-          case 'dispose':
-            core?.dispose();
-            core = null;
-            workerReceivePort.close();
-        }
-      } catch (e, st) {
-        mainSendPort.send({'id': id, 'error': '$e\n$st'});
+        final faces = await c.detectFacesDirect(mat, mode: mode);
+        return faces.map(_faceToFastMap).toList();
+      } finally {
+        mat.dispose();
       }
-    });
+    }
+
+    Future<Object?> runEmbed(_FaceDetectorCore c, cv.Mat mat, Face face) async {
+      try {
+        final embedding = await c.getFaceEmbeddingDirect(face, mat);
+        return embedding.toList();
+      } finally {
+        mat.dispose();
+      }
+    }
+
+    serveIsolateRpc(
+      mainSendPort: mainSendPort,
+      receivePort: workerReceivePort,
+      handlers: {
+        'detect': (message) {
+          final c = core;
+          if (c == null) {
+            throw IsolateRpcExactError(
+              'FaceDetectorCore not initialized in isolate',
+            );
+          }
+          final mode = parseMode(message);
+          final mat = cv.imdecode(_extractBytes(message), cv.IMREAD_COLOR);
+          if (mat.isEmpty) {
+            mat.dispose();
+            throwDecodeFailure();
+          }
+          return runDetect(c, mat, mode);
+        },
+        'detectMat': (message) {
+          final c = core;
+          if (c == null) {
+            throw IsolateRpcExactError(
+              'FaceDetectorCore not initialized in isolate',
+            );
+          }
+          final mode = parseMode(message);
+          return runDetect(
+            c,
+            _matFromMessage(message, _extractBytes(message)),
+            mode,
+          );
+        },
+        'detectCameraFrame': (message) {
+          final c = core;
+          if (c == null) {
+            throw IsolateRpcExactError(
+              'FaceDetectorCore not initialized in isolate',
+            );
+          }
+          final mode = parseMode(message);
+          return runDetect(
+            c,
+            _matFromCameraFrameMessage(message, _extractBytes(message)),
+            mode,
+          );
+        },
+        'embedding': (message) {
+          final c = core;
+          if (c == null || !c.isEmbeddingReady) {
+            throw IsolateRpcExactError('Embedding not initialized in isolate');
+          }
+          final face = Face.fromMap(
+            Map<String, dynamic>.from(message['face'] as Map),
+          );
+          return runEmbed(
+            c,
+            cv.imdecode(_extractBytes(message), cv.IMREAD_COLOR),
+            face,
+          );
+        },
+        'embeddingMat': (message) {
+          final c = core;
+          if (c == null || !c.isEmbeddingReady) {
+            throw IsolateRpcExactError('Embedding not initialized in isolate');
+          }
+          final face = Face.fromMap(
+            Map<String, dynamic>.from(message['face'] as Map),
+          );
+          return runEmbed(
+            c,
+            _matFromMessage(message, _extractBytes(message)),
+            face,
+          );
+        },
+        'embeddings': (message) async {
+          final c = core;
+          if (c == null || !c.isEmbeddingReady) {
+            throw IsolateRpcExactError('Embedding not initialized in isolate');
+          }
+          final List<Face> faces = _deserializeFaces(message['faces'] as List);
+          final cv.Mat image = cv.imdecode(
+            _extractBytes(message),
+            cv.IMREAD_COLOR,
+          );
+          try {
+            final embeddings = <Float32List?>[];
+            for (final face in faces) {
+              try {
+                embeddings.add(await c.getFaceEmbeddingDirect(face, image));
+              } catch (_) {
+                embeddings.add(null);
+              }
+            }
+            return embeddings.map((e) => e?.toList()).toList();
+          } finally {
+            image.dispose();
+          }
+        },
+      },
+      onDispose: () async {
+        core?.dispose();
+        core = null;
+      },
+    );
   }
 
   /// Segmentation isolate entry point - handles selfie segmentation.
@@ -1370,109 +1333,90 @@ class FaceDetector {
       return;
     }
 
-    workerReceivePort.listen((message) async {
-      if (message is! Map) return;
-
-      final int? id = message['id'] as int?;
-      final String? op = message['op'] as String?;
-
-      if (id == null || op == null) return;
-
+    Future<Object?> runSegment(
+      Future<SegmentationMask> Function() produce,
+      int outputFormatIndex,
+      double binaryThreshold, {
+      cv.Mat? mat,
+    }) async {
       try {
-        switch (op) {
-          case 'segment':
-            if (segmenter == null) {
-              mainSendPort.send({
-                'id': id,
-                'error': 'Segmentation not initialized in isolate',
-              });
-              return;
-            }
-            final Uint8List imageBytes = _extractBytes(message);
-            final int outputFormatIndex = message['outputFormat'] as int;
-            final double binaryThreshold = message['binaryThreshold'] as double;
-            try {
-              final mask = await segmenter!.callFromBytes(imageBytes);
-              final serialized = _serializeMask(
-                mask,
-                IsolateOutputFormat.values[outputFormatIndex],
-                binaryThreshold,
-              );
-              mainSendPort.send({'id': id, 'result': serialized});
-            } on SegmentationException catch (e) {
-              mainSendPort.send({
-                'id': id,
-                'error': 'SegmentationException(${e.code}): ${e.message}',
-              });
-            }
-
-          case 'segmentMat':
-            if (segmenter == null) {
-              mainSendPort.send({
-                'id': id,
-                'error': 'Segmentation not initialized in isolate',
-              });
-              return;
-            }
-            final Uint8List matBytes = _extractBytes(message);
-            final int outputFormatIndex = message['outputFormat'] as int;
-            final double binaryThreshold = message['binaryThreshold'] as double;
-            final mat = _matFromMessage(message, matBytes);
-            try {
-              final mask = await segmenter!.call(mat);
-              final serialized = _serializeMask(
-                mask,
-                IsolateOutputFormat.values[outputFormatIndex],
-                binaryThreshold,
-              );
-              mainSendPort.send({'id': id, 'result': serialized});
-            } on SegmentationException catch (e) {
-              mainSendPort.send({
-                'id': id,
-                'error': 'SegmentationException(${e.code}): ${e.message}',
-              });
-            } finally {
-              mat.dispose();
-            }
-
-          case 'segmentCameraFrame':
-            if (segmenter == null) {
-              mainSendPort.send({
-                'id': id,
-                'error': 'Segmentation not initialized in isolate',
-              });
-              return;
-            }
-            final Uint8List frameBytes = _extractBytes(message);
-            final int outputFormatIndex = message['outputFormat'] as int;
-            final double binaryThreshold = message['binaryThreshold'] as double;
-            final frameMat = _matFromCameraFrameMessage(message, frameBytes);
-            try {
-              final mask = await segmenter!.call(frameMat);
-              final serialized = _serializeMask(
-                mask,
-                IsolateOutputFormat.values[outputFormatIndex],
-                binaryThreshold,
-              );
-              mainSendPort.send({'id': id, 'result': serialized});
-            } on SegmentationException catch (e) {
-              mainSendPort.send({
-                'id': id,
-                'error': 'SegmentationException(${e.code}): ${e.message}',
-              });
-            } finally {
-              frameMat.dispose();
-            }
-
-          case 'dispose':
-            segmenter?.dispose();
-            segmenter = null;
-            workerReceivePort.close();
-        }
-      } catch (e, st) {
-        mainSendPort.send({'id': id, 'error': '$e\n$st'});
+        final mask = await produce();
+        return _serializeMask(
+          mask,
+          IsolateOutputFormat.values[outputFormatIndex],
+          binaryThreshold,
+        );
+      } on SegmentationException catch (e) {
+        // Preserve the exact wire format (no "Bad state:"/stack wrapping).
+        throw IsolateRpcExactError(
+          'SegmentationException(${e.code}): ${e.message}',
+        );
+      } finally {
+        mat?.dispose();
       }
-    });
+    }
+
+    serveIsolateRpc(
+      mainSendPort: mainSendPort,
+      receivePort: workerReceivePort,
+      handlers: {
+        'segment': (message) {
+          final s = segmenter;
+          if (s == null) {
+            throw IsolateRpcExactError(
+              'Segmentation not initialized in isolate',
+            );
+          }
+          final bytes = _extractBytes(message);
+          return runSegment(
+            () => s.callFromBytes(bytes),
+            message['outputFormat'] as int,
+            message['binaryThreshold'] as double,
+          );
+        },
+        'segmentMat': (message) {
+          final s = segmenter;
+          if (s == null) {
+            throw IsolateRpcExactError(
+              'Segmentation not initialized in isolate',
+            );
+          }
+          final outputFormat = message['outputFormat'] as int;
+          final binaryThreshold = message['binaryThreshold'] as double;
+          final mat = _matFromMessage(message, _extractBytes(message));
+          return runSegment(
+            () => s.call(mat),
+            outputFormat,
+            binaryThreshold,
+            mat: mat,
+          );
+        },
+        'segmentCameraFrame': (message) {
+          final s = segmenter;
+          if (s == null) {
+            throw IsolateRpcExactError(
+              'Segmentation not initialized in isolate',
+            );
+          }
+          final outputFormat = message['outputFormat'] as int;
+          final binaryThreshold = message['binaryThreshold'] as double;
+          final frameMat = _matFromCameraFrameMessage(
+            message,
+            _extractBytes(message),
+          );
+          return runSegment(
+            () => s.call(frameMat),
+            outputFormat,
+            binaryThreshold,
+            mat: frameMat,
+          );
+        },
+      },
+      onDispose: () async {
+        segmenter?.dispose();
+        segmenter = null;
+      },
+    );
   }
 
   /// Serializes a segmentation mask for isolate transfer.

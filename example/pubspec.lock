@@ -159,7 +159,7 @@ packages:
       path: ".."
       relative: true
     source: path
-    version: "6.3.1"
+    version: "6.4.0"
   fake_async:
     dependency: transitive
     description:
@@ -278,10 +278,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_litert
-      sha256: a4326267802917fa23b19e8d585b2373d60e0210abd3cf58848103f555d89767
+      sha256: "1dd5baa507a347ec0832081105fd4d4c53b8a64556d4583d8690a6b95cb92954"
       url: "https://pub.dev"
     source: hosted
-    version: "3.0.0"
+    version: "3.1.1"
   flutter_plugin_android_lifecycle:
     dependency: transitive
     description:

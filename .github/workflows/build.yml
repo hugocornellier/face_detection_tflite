@@ -117,8 +117,18 @@ jobs:
           restore-keys: gradle-${{ runner.os }}-
 
       - name: Build APK (debug)
-        run: flutter build apk --debug
         working-directory: example
+        # Retry to ride out the flaky Android NDK side-by-side download
+        # ("Archive is not a ZIP archive") that intermittently corrupts on the
+        # CI runner; the re-download almost always succeeds on the next attempt.
+        run: |
+          for attempt in 1 2 3; do
+            if flutter build apk --debug; then exit 0; fi
+            echo "::warning::build attempt $attempt failed; retrying"
+            sleep 10
+          done
+          echo "::error::flutter build apk failed after 3 attempts"
+          exit 1
 
   build-ios:
     name: Build iOS (${{ matrix.flutter-channel }})
