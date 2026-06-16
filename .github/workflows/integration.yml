@@ -87,10 +87,6 @@ jobs:
             isolate_mat_debug_test.dart
             coverage_gaps_test.dart
           )
-          # Tests that need a real GPU/Metal context. GitHub's macOS runners are
-          # frequently GPU-less, so a failure here is a warning, not a job
-          # failure (these pass locally and on GPU-equipped runners).
-          GPU_OPTIONAL=" gpu_delegate_test.dart "
           FAILED=()
           for f in "${TEST_FILES[@]}"; do
             echo "========================================="
@@ -99,18 +95,26 @@ jobs:
             # Retry to ride out the flaky macOS integration-harness issue
             # "Failed to foreground app; open returned 1".
             ok=0
+            last=""
             for attempt in 1 2 3; do
               pkill -9 -f "face_detection_tflite_example" 2>/dev/null || true
               sleep 2
-              if flutter test "integration_test/$f" -d macos; then
+              last=$(flutter test "integration_test/$f" -d macos 2>&1)
+              rc=$?
+              echo "$last"
+              if [ "$rc" -eq 0 ]; then
                 ok=1
                 break
               fi
               echo "::warning::attempt $attempt failed for $f"
             done
             if [ "$ok" -ne 1 ]; then
-              if [[ "$GPU_OPTIONAL" == *" $f "* ]]; then
-                echo "::warning::$f failed after retries (GPU-only test; runner likely has no GPU) - not failing the job"
+              # GitHub's macOS runners are frequently GPU-less. A GPU/Metal
+              # accelerator that can't initialize surfaces as "failed
+              # precondition"; treat that as a warning (these tests pass locally
+              # and on GPU-equipped runners). Any other failure fails the job.
+              if printf '%s' "$last" | grep -q 'failed precondition'; then
+                echo "::warning::$f hit a GPU 'failed precondition' on a likely GPU-less runner - not failing the job"
               else
                 FAILED+=("$f")
                 echo "::error::FAILED: $f"
