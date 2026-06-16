@@ -99,8 +99,7 @@ jobs:
             for attempt in 1 2 3; do
               pkill -9 -f "face_detection_tflite_example" 2>/dev/null || true
               sleep 2
-              last=$(flutter test "integration_test/$f" -d macos 2>&1)
-              rc=$?
+              last=$(flutter test "integration_test/$f" -d macos 2>&1) && rc=0 || rc=$?
               echo "$last"
               if [ "$rc" -eq 0 ]; then
                 ok=1
