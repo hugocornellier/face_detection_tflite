@@ -12,6 +12,8 @@ class _DetectionIsolateStartupData {
   final int? numThreads;
   final int meshPoolSize;
   final bool useCompiledModel;
+  final List<int> acceleratorIndices;
+  final int precisionIndex;
 
   _DetectionIsolateStartupData({
     required this.sendPort,
@@ -24,6 +26,8 @@ class _DetectionIsolateStartupData {
     required this.numThreads,
     required this.meshPoolSize,
     required this.useCompiledModel,
+    required this.acceleratorIndices,
+    required this.precisionIndex,
   });
 }
 
@@ -38,6 +42,8 @@ class _SegmentationIsolateStartupData {
   final String modelName;
   final int modelIndex;
   final bool useCompiledModel;
+  final List<int> acceleratorIndices;
+  final int precisionIndex;
 
   _SegmentationIsolateStartupData({
     required this.sendPort,
@@ -49,6 +55,8 @@ class _SegmentationIsolateStartupData {
     required this.modelName,
     required this.modelIndex,
     required this.useCompiledModel,
+    required this.acceleratorIndices,
+    required this.precisionIndex,
   });
 }
 
@@ -86,12 +94,16 @@ class _FaceDetectorCore {
     PerformanceConfig performanceConfig = const PerformanceConfig(),
     int meshPoolSize = 3,
     bool useCompiledModel = false,
+    Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
+    Precision precision = Precision.fp16,
   }) async {
     try {
       _detector = useCompiledModel
           ? await FaceDetection.createCompiledFromBuffer(
               faceDetectionBytes,
               model,
+              accelerators: accelerators,
+              precision: precision,
             )
           : await FaceDetection.createFromBuffer(
               faceDetectionBytes,
@@ -103,7 +115,11 @@ class _FaceDetectorCore {
       for (int i = 0; i < meshPoolSize; i++) {
         _meshItems.add(
           useCompiledModel
-              ? await FaceLandmark.createCompiledFromBuffer(faceLandmarkBytes)
+              ? await FaceLandmark.createCompiledFromBuffer(
+                  faceLandmarkBytes,
+                  accelerators: accelerators,
+                  precision: precision,
+                )
               : await FaceLandmark.createFromBuffer(
                   faceLandmarkBytes,
                   performanceConfig: performanceConfig,
@@ -112,6 +128,10 @@ class _FaceDetectorCore {
       }
       _meshPool = RoundRobinPool(_meshItems);
 
+      // Iris landmark is intentionally pinned to CPU regardless of user
+      // preference: the 64x64 model is below the compute size where GPU
+      // dispatch pays off (CPU runs ~0.50 ms vs ~0.68 ms GPU|CPU on macOS
+      // arm64). The accelerators/precision params are NOT forwarded here.
       _irisLeft = useCompiledModel
           ? await IrisLandmark.createCompiledFromBuffer(irisLandmarkBytes)
           : await IrisLandmark.createFromBuffer(
@@ -127,7 +147,11 @@ class _FaceDetectorCore {
 
       if (embeddingBytes != null) {
         _embedding = useCompiledModel
-            ? await FaceEmbedding.createCompiledFromBuffer(embeddingBytes)
+            ? await FaceEmbedding.createCompiledFromBuffer(
+                embeddingBytes,
+                accelerators: accelerators,
+                precision: precision,
+              )
             : await FaceEmbedding.createFromBuffer(
                 embeddingBytes,
                 performanceConfig: performanceConfig,

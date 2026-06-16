@@ -116,15 +116,24 @@ class FaceEmbedding with _TfliteModelDisposable {
 
   /// Creates a face embedding model backed by LiteRT CompiledModel.
   static Future<FaceEmbedding> createCompiledFromBuffer(
-    Uint8List modelBytes,
-  ) async {
+    Uint8List modelBytes, {
+    Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
+    Precision precision = Precision.fp16,
+  }) async {
     // MobileFaceNet fails strict-GPU compilation (unsupported ops) but runs
     // ~3.7x faster than CPU with GPU|CPU partitioning, so use the fallback
     // helper rather than pinning to either accelerator.
-    final CompiledModel compiledModel = CompiledModel.fromBufferWithGpuFallback(
-      modelBytes,
-      onFallback: _onGpuFallback,
-    );
+    final CompiledModel compiledModel = _isDefaultAccelerators(accelerators)
+        ? CompiledModel.fromBufferWithGpuFallback(
+            modelBytes,
+            precision: precision,
+            onFallback: _onGpuFallback,
+          )
+        : CompiledModel.fromBuffer(
+            modelBytes,
+            accelerators: accelerators,
+            precision: precision,
+          );
     final int side;
     try {
       side = _compiledSquareInputSide(compiledModel, 'Compiled face embedding');

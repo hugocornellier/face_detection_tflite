@@ -611,36 +611,73 @@ flutter build web
 
 ### Hardware Acceleration
 
-The package automatically selects the best acceleration strategy for each platform:
+`FaceDetector` runs on one of two inference engines, selected at init:
 
-| Platform | Default Delegate | Speedup | Notes |
-|----------|-----------------|---------|-------|
-| **macOS** | XNNPACK | 2-5x | SIMD vectorization (NEON on ARM, AVX on x86) |
-| **Linux** | XNNPACK | 2-5x | SIMD vectorization |
-| **iOS** | Metal GPU | 2-4x | Hardware GPU acceleration |
-| **Android** | XNNPACK | 2-5x | ARM NEON SIMD acceleration |
-| **Windows** | XNNPACK | 2-5x | SIMD vectorization (AVX on x86) |
+- **Interpreter** (default). Classic TFLite. CPU via XNNPACK on every platform. GPU only via the platform delegates below, which are deprecated and platform-limited.
+- **CompiledModel** (opt-in: `useCompiledModel: true`). LiteRT Next. Auto-selects GPU/NPU with automatic CPU fallback on every platform, and it is faster on CPU too (parity-checked: roughly 1.4x to 3.5x vs the plain Interpreter, at or above XNNPACK on most models).
 
-No configuration needed: just call `FaceDetector.create()` (or `initialize()`) and you get the optimal performance for your platform.
+| Platform | Interpreter GPU (default engine) | CompiledModel GPU (`useCompiledModel: true`) |
+|----------|:---:|:---:|
+| Android | ✅ `GpuDelegateV2`* | ✅ |
+| iOS / macOS | ✅ Metal* | ✅ |
+| **Windows / Linux** | ❌ CPU only (XNNPACK) | ✅ |
+| Web | WebGPU via `liteRtAccelerator` | (n/a) |
+
+> \*Interpreter GPU/Metal delegates are deprecated (removed in flutter_litert 4.0.0). **On Windows and Linux, GPU is available only through CompiledModel**, because the Interpreter has no desktop GPU delegate.
+
+```dart
+// Default (Interpreter): CPU everywhere; GPU on Android and Apple only.
+final detector = await FaceDetector.create();
+
+// CompiledModel: GPU/NPU where available, automatic CPU fallback.
+// This is the only GPU path on Windows and Linux.
+final detector = await FaceDetector.create(useCompiledModel: true);
+```
+
+### Accelerator selection (CompiledModel)
+
+When `useCompiledModel: true`, two optional parameters control the LiteRT Next backend. They have no effect on the default Interpreter engine.
+
+- `accelerators` (`Set<Accelerator>`, default `{Accelerator.gpu, Accelerator.cpu}`). The accelerators the backend may use. The runtime picks the fastest available and falls back through the set. If none initialize it throws, so include `Accelerator.cpu` to guarantee a fallback. The default requests GPU with CPU fallback.
+- `precision` (`Precision`, default `Precision.fp16`). Numeric precision for the compiled graph. `Precision.fp32` trades speed for accuracy.
+
+```dart
+// CPU only, using CompiledModel's fast CPU runtime.
+await FaceDetector.create(
+  useCompiledModel: true,
+  accelerators: {Accelerator.cpu},
+);
+
+// GPU only. Throws if the GPU backend cannot initialize.
+await FaceDetector.create(
+  useCompiledModel: true,
+  accelerators: {Accelerator.gpu},
+);
+
+// NPU first, CPU fallback, at fp32 precision.
+await FaceDetector.create(
+  useCompiledModel: true,
+  accelerators: {Accelerator.npu, Accelerator.cpu},
+  precision: Precision.fp32,
+);
+```
+
+`initializeSegmentation()` accepts the same `accelerators` and `precision` parameters. Under CompiledModel, the iris model always runs on CPU for numerical stability, regardless of the `accelerators` you request. `Accelerator` and `Precision` are exported from the package.
 
 ### Advanced Performance Configuration
 
-The `performanceConfig` parameter works on both `create()` and `initialize()`.
+`performanceConfig` tunes the **Interpreter** engine only. It has no effect when `useCompiledModel: true`.
 
 ```dart
 // Auto mode (default): optimal for each platform
 final detector = await FaceDetector.create();
-// Equivalent to:
-final detector = await FaceDetector.create(
-  performanceConfig: PerformanceConfig.auto(),
-);
 
 // Force XNNPACK (all native platforms)
 final detector = await FaceDetector.create(
   performanceConfig: PerformanceConfig.xnnpack(numThreads: 4),
 );
 
-// Force GPU delegate (iOS recommended, Android experimental)
+// Force the Interpreter GPU delegate (Android and Apple only; deprecated, prefer CompiledModel)
 final detector = await FaceDetector.create(
   performanceConfig: PerformanceConfig.gpu(),
 );

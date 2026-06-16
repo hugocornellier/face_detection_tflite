@@ -230,6 +230,8 @@ class SelfieSegmentation with _TfliteModelDisposable {
   static Future<SelfieSegmentation> createCompiledFromBuffer(
     Uint8List modelBytes, {
     SegmentationConfig config = const SegmentationConfig(),
+    Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
+    Precision precision = Precision.fp16,
   }) async {
     final effectiveModel = config.model;
     final inW = _segmentationInputWidth;
@@ -238,10 +240,17 @@ class SelfieSegmentation with _TfliteModelDisposable {
 
     final CompiledModel compiledModel;
     try {
-      compiledModel = CompiledModel.fromBufferWithGpuFallback(
-        modelBytes,
-        onFallback: _onGpuFallback,
-      );
+      compiledModel = _isDefaultAccelerators(accelerators)
+          ? CompiledModel.fromBufferWithGpuFallback(
+              modelBytes,
+              precision: precision,
+              onFallback: _onGpuFallback,
+            )
+          : CompiledModel.fromBuffer(
+              modelBytes,
+              accelerators: accelerators,
+              precision: precision,
+            );
     } catch (e) {
       throw SegmentationException(
         SegmentationError.interpreterCreationFailed,

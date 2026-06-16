@@ -88,6 +88,8 @@ class FaceDetector {
     bool withSegmentation = false,
     SegmentationConfig? segmentationConfig,
     bool useCompiledModel = false,
+    Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
+    Precision precision = Precision.fp16,
     // Web-only knobs; accepted here for API parity but ignored on native.
     bool useLiteRt = false,
     String liteRtAccelerator = 'auto',
@@ -100,6 +102,8 @@ class FaceDetector {
       withSegmentation: withSegmentation,
       segmentationConfig: segmentationConfig,
       useCompiledModel: useCompiledModel,
+      accelerators: accelerators,
+      precision: precision,
     );
     return detector;
   }
@@ -108,6 +112,8 @@ class FaceDetector {
   IsolateRpcClient? _segmentationRpc;
   bool _segmentationInitialized = false;
   bool _useCompiledModel = false;
+  Set<Accelerator> _accelerators = const {Accelerator.gpu, Accelerator.cpu};
+  Precision _precision = Precision.fp16;
 
   /// Returns true if all models are loaded and ready for inference.
   ///
@@ -143,23 +149,27 @@ class FaceDetector {
   /// time, avoiding an extra model-load step later. Pass [segmentationConfig]
   /// to customize segmentation behaviour.
   ///
-  /// The [useCompiledModel] flag defaults to true on this branch and runs the
-  /// face detection, mesh, iris, embedding, and segmentation models through
-  /// LiteRT CompiledModel (GPU with CPU fallback, async dispatch). If a
-  /// segmentation model fails to compile on the current platform's LiteRT
-  /// runtime, the segmentation isolate falls back to the Interpreter and
-  /// prints a debug message.
+  /// The [useCompiledModel] flag opts into the LiteRT CompiledModel engine for
+  /// the face detection, mesh, iris, embedding, and segmentation models (GPU
+  /// with CPU fallback, async dispatch). It defaults to false, which uses the
+  /// classic Interpreter. Use [accelerators] and [precision] to control the
+  /// CompiledModel backend. If a segmentation model fails to compile on the
+  /// current platform's LiteRT runtime, the segmentation isolate falls back to
+  /// the Interpreter and prints a debug message.
   ///
   /// Example:
   /// ```dart
-  /// // Default: LiteRT CompiledModel.
+  /// // Default: classic Interpreter.
   /// final detector = FaceDetector();
   /// await detector.initialize();
   ///
-  /// // Force the classic Interpreter CPU path.
+  /// // Opt into LiteRT CompiledModel (GPU with CPU fallback).
+  /// await detector.initialize(useCompiledModel: true);
+  ///
+  /// // CompiledModel, CPU only.
   /// await detector.initialize(
-  ///   useCompiledModel: false,
-  ///   performanceConfig: PerformanceConfig.disabled,
+  ///   useCompiledModel: true,
+  ///   accelerators: {Accelerator.cpu},
   /// );
   ///
   /// // Include segmentation from the start
@@ -172,6 +182,8 @@ class FaceDetector {
     bool withSegmentation = false,
     SegmentationConfig? segmentationConfig,
     bool useCompiledModel = false,
+    Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
+    Precision precision = Precision.fp16,
     // Web-only knobs; accepted here for API parity but ignored on native.
     bool useLiteRt = false,
     String liteRtAccelerator = 'auto',
@@ -180,6 +192,8 @@ class FaceDetector {
       throw StateError('FaceDetector already initialized');
     }
     _useCompiledModel = useCompiledModel;
+    _accelerators = accelerators;
+    _precision = precision;
 
     final worker = _FaceDetectorWorker();
     IsolateRpcClient? segmentationRpc;
@@ -223,6 +237,8 @@ class FaceDetector {
         performanceConfig: performanceConfig,
         meshPoolSize: meshPoolSize,
         useCompiledModel: useCompiledModel,
+        accelerators: accelerators,
+        precision: precision,
       );
 
       if (withSegmentation && results.length > 4) {
@@ -268,9 +284,15 @@ class FaceDetector {
   ///
   /// final mask = await detector.getSegmentationMask(imageBytes);
   /// ```
-  Future<void> initializeSegmentation({SegmentationConfig? config}) async {
+  Future<void> initializeSegmentation({
+    SegmentationConfig? config,
+    Set<Accelerator>? accelerators,
+    Precision? precision,
+  }) async {
     _requireReady();
     if (_segmentationInitialized) return;
+    if (accelerators != null) _accelerators = accelerators;
+    if (precision != null) _precision = precision;
     final effectiveConfig = config ?? SegmentationConfig.safe;
     final segModelFile = segmentationModelFile(effectiveConfig.model);
     final segmentationRpc = IsolateRpcClient();
@@ -902,6 +924,8 @@ class FaceDetector {
         modelName: segmentationModelFile(effectiveModel),
         modelIndex: effectiveModel.index,
         useCompiledModel: _useCompiledModel,
+        acceleratorIndices: _accelerators.map((a) => a.index).toList(),
+        precisionIndex: _precision.index,
       ),
       debugName: 'FaceDetector.segmentation',
     );
@@ -1122,6 +1146,11 @@ class FaceDetector {
         (m) => m.name == data.performanceModeName,
       );
 
+      final Set<Accelerator> accelerators = data.acceleratorIndices
+          .map((i) => Accelerator.values[i])
+          .toSet();
+      final Precision precision = Precision.values[data.precisionIndex];
+
       core = _FaceDetectorCore();
       await core.initializeFromBuffers(
         faceDetectionBytes: faceDetectionBytes,
@@ -1135,6 +1164,8 @@ class FaceDetector {
         ),
         meshPoolSize: data.meshPoolSize,
         useCompiledModel: data.useCompiledModel,
+        accelerators: accelerators,
+        precision: precision,
       );
 
       mainSendPort.send(workerReceivePort.sendPort);
@@ -1308,10 +1339,16 @@ class FaceDetector {
       );
 
       if (data.useCompiledModel) {
+        final Set<Accelerator> accelerators = data.acceleratorIndices
+            .map((i) => Accelerator.values[i])
+            .toSet();
+        final Precision precision = Precision.values[data.precisionIndex];
         try {
           segmenter = await SelfieSegmentation.createCompiledFromBuffer(
             modelBytes,
             config: config,
+            accelerators: accelerators,
+            precision: precision,
           );
         } catch (e) {
           debugPrint(
@@ -1528,6 +1565,8 @@ class _FaceDetectorWorker extends IsolateWorkerBase {
     required PerformanceConfig performanceConfig,
     required int meshPoolSize,
     required bool useCompiledModel,
+    Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
+    Precision precision = Precision.fp16,
   }) async {
     await initWorker(
       (sendPort) => Isolate.spawn(
@@ -1549,6 +1588,8 @@ class _FaceDetectorWorker extends IsolateWorkerBase {
           numThreads: performanceConfig.numThreads,
           meshPoolSize: meshPoolSize,
           useCompiledModel: useCompiledModel,
+          acceleratorIndices: accelerators.map((a) => a.index).toList(),
+          precisionIndex: precision.index,
         ),
         debugName: 'FaceDetector.detection',
       ),

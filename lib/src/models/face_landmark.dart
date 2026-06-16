@@ -91,12 +91,21 @@ class FaceLandmark with _TfliteModelDisposable {
 
   /// Creates a face landmark model backed by LiteRT CompiledModel.
   static Future<FaceLandmark> createCompiledFromBuffer(
-    Uint8List modelBytes,
-  ) async {
-    final CompiledModel compiledModel = CompiledModel.fromBufferWithGpuFallback(
-      modelBytes,
-      onFallback: _onGpuFallback,
-    );
+    Uint8List modelBytes, {
+    Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
+    Precision precision = Precision.fp16,
+  }) async {
+    final CompiledModel compiledModel = _isDefaultAccelerators(accelerators)
+        ? CompiledModel.fromBufferWithGpuFallback(
+            modelBytes,
+            precision: precision,
+            onFallback: _onGpuFallback,
+          )
+        : CompiledModel.fromBuffer(
+            modelBytes,
+            accelerators: accelerators,
+            precision: precision,
+          );
     final int side;
     try {
       side = _compiledSquareInputSide(compiledModel, 'Compiled face landmark');

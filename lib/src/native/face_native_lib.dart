@@ -41,6 +41,8 @@ export '../shared/face_geometry.dart' show eyeRoisFromMesh, faceDetectionToRoi;
 
 export 'package:flutter_litert/flutter_litert.dart'
     show
+        Accelerator,
+        Precision,
         PerformanceMode,
         PerformanceConfig,
         createNHWCTensor4D,

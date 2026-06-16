@@ -119,8 +119,10 @@ class FaceDetection {
   /// Creates a face detection model backed by LiteRT CompiledModel.
   static Future<FaceDetection> createCompiledFromBuffer(
     Uint8List modelBytes,
-    FaceDetectionModel model,
-  ) async {
+    FaceDetectionModel model, {
+    Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
+    Precision precision = Precision.fp16,
+  }) async {
     if (model == FaceDetectionModel.fullSparse) {
       // Upstream LiteRT bug (reproduced in Google's own Python API): GPU
       // compilation of this model's DENSIFY op aborts the process with an
@@ -135,10 +137,17 @@ class FaceDetection {
     final int inH = opts.inputSizeHeight;
     final List<List<double>> anchors = generateAnchors(opts);
 
-    final CompiledModel compiledModel = CompiledModel.fromBufferWithGpuFallback(
-      modelBytes,
-      onFallback: _onGpuFallback,
-    );
+    final CompiledModel compiledModel = _isDefaultAccelerators(accelerators)
+        ? CompiledModel.fromBufferWithGpuFallback(
+            modelBytes,
+            precision: precision,
+            onFallback: _onGpuFallback,
+          )
+        : CompiledModel.fromBuffer(
+            modelBytes,
+            accelerators: accelerators,
+            precision: precision,
+          );
     final obj = FaceDetection._compiled(compiledModel, inW, inH, anchors);
     try {
       obj._initializeCompiledModel();

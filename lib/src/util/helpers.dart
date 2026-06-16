@@ -86,6 +86,15 @@ void _onGpuFallback(Object e) {
   );
 }
 
+/// Returns true when [accelerators] matches the default {gpu, cpu} set,
+/// which selects [CompiledModel.fromBufferWithGpuFallback]. Any other set
+/// uses [CompiledModel.fromBuffer] directly.
+bool _isDefaultAccelerators(Set<Accelerator> accelerators) {
+  return accelerators.length == 2 &&
+      accelerators.contains(Accelerator.gpu) &&
+      accelerators.contains(Accelerator.cpu);
+}
+
 /// Returns the float32 element count for a CompiledModel tensor of
 /// [byteSize] bytes, throwing if the size is not float32-aligned.
 int _compiledFloatCount(int byteSize, String label) {
