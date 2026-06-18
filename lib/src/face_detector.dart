@@ -1176,28 +1176,76 @@ class FaceDetector {
       return;
     }
 
+    // One-entry source-decode cache (issue #3): reuse the decoded source Mat
+    // across a detect+embedding pair on the same encoded bytes — e.g. a
+    // single-face photo whose embedding is requested right after detection —
+    // avoiding a second full decode of the same image (~16 ms at 12 MP). The
+    // Mat-bytes paths (detectMat/embeddingMat) don't decode and never touch
+    // this cache, so intervening warped-frame detections can't evict it.
+    cv.Mat? cachedSrcMat;
+    Uint8List? cachedSrcBytes;
+
+    bool bytesEqual(Uint8List a, Uint8List b) {
+      if (identical(a, b)) return true;
+      if (a.length != b.length) return false;
+      for (int i = 0; i < a.length; i++) {
+        if (a[i] != b[i]) return false;
+      }
+      return true;
+    }
+
+    // Returns the decoded source Mat for [bytes], reusing the cached one when
+    // the encoded bytes match. The returned Mat is owned by the cache, so
+    // callers must pass disposeMat: false. Throws on decode failure, matching
+    // the prior inline imdecode behavior.
+    cv.Mat decodeSourceCached(Uint8List bytes) {
+      final cached = cachedSrcMat;
+      final cachedBytes = cachedSrcBytes;
+      if (cached != null &&
+          cachedBytes != null &&
+          !cached.isEmpty &&
+          bytesEqual(bytes, cachedBytes)) {
+        return cached;
+      }
+      final mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
+      if (mat.isEmpty) {
+        mat.dispose();
+        throwDecodeFailure();
+      }
+      cachedSrcMat?.dispose();
+      cachedSrcMat = mat;
+      cachedSrcBytes = bytes;
+      return mat;
+    }
+
     FaceDetectionMode parseMode(Map message) => FaceDetectionMode.values
         .firstWhere((m) => m.name == message['mode'] as String);
 
     Future<Object?> runDetect(
       _FaceDetectorCore c,
       cv.Mat mat,
-      FaceDetectionMode mode,
-    ) async {
+      FaceDetectionMode mode, {
+      bool disposeMat = true,
+    }) async {
       try {
         final faces = await c.detectFacesDirect(mat, mode: mode);
         return faces.map(_faceToFastMap).toList();
       } finally {
-        mat.dispose();
+        if (disposeMat) mat.dispose();
       }
     }
 
-    Future<Object?> runEmbed(_FaceDetectorCore c, cv.Mat mat, Face face) async {
+    Future<Object?> runEmbed(
+      _FaceDetectorCore c,
+      cv.Mat mat,
+      Face face, {
+      bool disposeMat = true,
+    }) async {
       try {
         final embedding = await c.getFaceEmbeddingDirect(face, mat);
         return embedding.toList();
       } finally {
-        mat.dispose();
+        if (disposeMat) mat.dispose();
       }
     }
 
@@ -1213,12 +1261,10 @@ class FaceDetector {
             );
           }
           final mode = parseMode(message);
-          final mat = cv.imdecode(_extractBytes(message), cv.IMREAD_COLOR);
-          if (mat.isEmpty) {
-            mat.dispose();
-            throwDecodeFailure();
-          }
-          return runDetect(c, mat, mode);
+          // Cache the decoded source so a following 'embedding' on the same
+          // bytes can reuse it instead of decoding again.
+          final mat = decodeSourceCached(_extractBytes(message));
+          return runDetect(c, mat, mode, disposeMat: false);
         },
         'detectMat': (message) {
           final c = core;
@@ -1256,11 +1302,10 @@ class FaceDetector {
           final face = Face.fromMap(
             Map<String, dynamic>.from(message['face'] as Map),
           );
-          return runEmbed(
-            c,
-            cv.imdecode(_extractBytes(message), cv.IMREAD_COLOR),
-            face,
-          );
+          // Reuse the source Mat decoded by the preceding 'detect' on the same
+          // bytes; falls back to a fresh decode (and caches it) on a miss.
+          final mat = decodeSourceCached(_extractBytes(message));
+          return runEmbed(c, mat, face, disposeMat: false);
         },
         'embeddingMat': (message) {
           final c = core;
@@ -1302,6 +1347,9 @@ class FaceDetector {
         },
       },
       onDispose: () async {
+        cachedSrcMat?.dispose();
+        cachedSrcMat = null;
+        cachedSrcBytes = null;
         core?.dispose();
         core = null;
       },

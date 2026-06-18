@@ -1,3 +1,7 @@
+## 6.4.1
+
+* Performance: when `getFaceEmbedding` follows `detectFacesFromBytes` on the same encoded image, the detection isolate now reuses the already-decoded image instead of decoding it a second time (one-entry cache keyed by an exact byte match). Saves a full image decode per detect+embed pair (~16 ms at 12 MP; scales with resolution). No API change, and detection and embedding results are byte-identical. The raw-pixel APIs (`detectFacesFromMatBytes`, `getFaceEmbeddingFromMatBytes`) are unaffected; the cache holds at most one decoded frame and is released on dispose.
+
 ## 6.4.0
 
 * Update flutter_litert -> 3.1.1
