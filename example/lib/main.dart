@@ -2561,8 +2561,15 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
       }
     }
 
-    final colorSmall = cv.Mat.fromList(vh, vw, cv.MatType.CV_8UC3, colorData);
-    final selSmall = cv.Mat.fromList(vh, vw, cv.MatType.CV_8UC1, selData);
+    // Write the packed bytes straight into each Mat's native buffer. Mat.fromList
+    // takes a List<num> and copies element-by-element; create + data.setAll is a
+    // single memcpy and byte-identical for tightly packed data.
+    final colorSmall =
+        cv.Mat.create(rows: vh, cols: vw, type: cv.MatType.CV_8UC3);
+    colorSmall.data.setAll(0, colorData);
+    final selSmall =
+        cv.Mat.create(rows: vh, cols: vw, type: cv.MatType.CV_8UC1);
+    selSmall.data.setAll(0, selData);
     final colorBig = cv.resize(colorSmall, (frame.cols, frame.rows),
         interpolation: cv.INTER_NEAREST);
     final selBig = cv.resize(selSmall, (frame.cols, frame.rows),
