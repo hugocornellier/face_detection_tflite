@@ -1,2 +1,10 @@
 #include "../../Flutter/Flutter-Release.xcconfig"
 #include "Warnings.xcconfig"
+
+// Build arm64 only for release/profile. The example depends on opencv_dart,
+// whose dartcv4 prebuilt has a broken x86_64 slice that fails to link in release
+// (Undefined symbols for architecture x86_64). Every target we run on is Apple
+// Silicon, so excluding x86_64 lets the release build link cleanly. The Profile
+// build configuration shares this xcconfig (see project.pbxproj), so it also
+// covers profile builds.
+EXCLUDED_ARCHS = x86_64

@@ -2,8 +2,16 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- App Sandbox is disabled for this example app. opencv_dart's dartcv
+	     compiles OpenCV from source and, on machines with Homebrew jasper
+	     installed, links libjasper.7.dylib by absolute path under /opt/homebrew.
+	     The sandbox blocks reading /opt/homebrew at runtime, so in release the
+	     dartcv load fails and the detection isolate silently yields no results
+	     (the live camera shows, but no detections). Disabling the sandbox lets
+	     the example run in release whether or not the build machine has jasper.
+	     This is a local example app, not a shipped product. -->
 	<key>com.apple.security.app-sandbox</key>
-	<true/>
+	<false/>
 	<key>com.apple.security.device.camera</key>
 	<true/>
 	<key>com.apple.security.personal-information.photos-library</key>
