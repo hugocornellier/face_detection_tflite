@@ -140,6 +140,94 @@ jobs:
           fi
           echo "All ${#TEST_FILES[@]} test files passed."
 
+  integration-ios:
+    name: Integration iOS (${{ matrix.flutter-channel }})
+    runs-on: macos-15
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        flutter-channel: [stable, beta]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ matrix.flutter-channel }}
+          cache: true
+
+      - name: Select Xcode 16.4
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
+          xcodebuild -version
+          test "$(xcodebuild -version | head -n 1)" = "Xcode 16.4"
+
+      - name: Disable Swift Package Manager
+        run: flutter config --no-enable-swift-package-manager
+
+      - name: Install example dependencies
+        run: flutter pub get
+        working-directory: example
+
+      - name: Boot iOS simulator
+        run: |
+          UDID=$(xcrun simctl list devices available --json | python3 -c "
+          import json, sys
+          devices = json.load(sys.stdin)['devices']
+          iphones = [d for runtime in devices.values() for d in runtime if 'iPhone' in d['name']]
+          print(iphones[0]['udid'])
+          ")
+          echo "Booting $UDID"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          open -a Simulator --args -CurrentDeviceUDID "$UDID" || true
+          echo "SIMULATOR_UDID=$UDID" >> "$GITHUB_ENV"
+
+      - name: Run integration tests on iOS simulator
+        working-directory: example
+        run: |
+          set +e
+          attempt_timeout=1500
+          max=2
+          rc=1
+          for attempt in $(seq 1 "$max"); do
+            timeout_marker="$RUNNER_TEMP/ios-test-timeout-$attempt"
+            rm -f "$timeout_marker"
+            echo "::group::iOS integration tests (attempt $attempt/$max)"
+            flutter test integration_test/face_detection_integration_test.dart \
+              -d "$SIMULATOR_UDID" --timeout 600s &
+            pid=$!
+            ( sleep "$attempt_timeout"
+              if kill -0 "$pid" 2>/dev/null; then
+                touch "$timeout_marker"
+                echo "::warning::iOS attempt exceeded ${attempt_timeout}s; killing"
+                kill -TERM "$pid" 2>/dev/null
+                sleep 15
+                kill -KILL "$pid" 2>/dev/null
+              fi ) &
+            watchdog=$!
+            wait "$pid"
+            rc=$?
+            kill -TERM "$watchdog" 2>/dev/null
+            wait "$watchdog" 2>/dev/null
+            if [ -f "$timeout_marker" ]; then
+              rc=124
+            fi
+            rm -f "$timeout_marker"
+            echo "::endgroup::"
+            if [ "$rc" -eq 0 ]; then
+              echo "iOS integration tests passed on attempt $attempt"
+              break
+            fi
+            echo "::warning::iOS attempt $attempt failed/timed out (rc=$rc)"
+            if [ "$attempt" -lt "$max" ]; then
+              xcrun simctl shutdown "$SIMULATOR_UDID" 2>/dev/null || true
+              xcrun simctl boot "$SIMULATOR_UDID" 2>/dev/null || true
+              xcrun simctl bootstatus "$SIMULATOR_UDID" -b
+            fi
+          done
+          exit "$rc"
+
   integration-android:
     name: Integration Android (${{ matrix.flutter-channel }})
     runs-on: ubuntu-latest
