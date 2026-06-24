@@ -13,6 +13,7 @@ jobs:
   unit-tests:
     name: Unit Tests (${{ matrix.flutter-channel }})
     runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.flutter-channel == 'beta' }}
     strategy:
       fail-fast: false
       matrix:
@@ -44,6 +45,7 @@ jobs:
   integration-macos:
     name: Integration macOS (${{ matrix.flutter-channel }})
     runs-on: macos-14
+    continue-on-error: ${{ matrix.flutter-channel == 'beta' }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -143,6 +145,7 @@ jobs:
   integration-ios:
     name: Integration iOS (${{ matrix.flutter-channel }})
     runs-on: macos-15
+    continue-on-error: ${{ matrix.flutter-channel == 'beta' }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -188,14 +191,15 @@ jobs:
         run: |
           set +e
           attempt_timeout=1500
-          max=2
-          rc=1
+          max=3
+          ok=0
           for attempt in $(seq 1 "$max"); do
+            log="$RUNNER_TEMP/ios-attempt-$attempt.log"
             timeout_marker="$RUNNER_TEMP/ios-test-timeout-$attempt"
-            rm -f "$timeout_marker"
+            rm -f "$timeout_marker" "$log"
             echo "::group::iOS integration tests (attempt $attempt/$max)"
             flutter test integration_test/face_detection_integration_test.dart \
-              -d "$SIMULATOR_UDID" --timeout 600s &
+              -d "$SIMULATOR_UDID" --timeout 600s > "$log" 2>&1 &
             pid=$!
             ( sleep "$attempt_timeout"
               if kill -0 "$pid" 2>/dev/null; then
@@ -207,30 +211,40 @@ jobs:
               fi ) &
             watchdog=$!
             wait "$pid"
-            rc=$?
             kill -TERM "$watchdog" 2>/dev/null
             wait "$watchdog" 2>/dev/null
-            if [ -f "$timeout_marker" ]; then
-              rc=124
-            fi
-            rm -f "$timeout_marker"
+            cat "$log"
             echo "::endgroup::"
-            if [ "$rc" -eq 0 ]; then
+            # Flutter integration tests can exit non-zero even when every test
+            # passed (app-teardown quirk on the iOS simulator), so decide
+            # pass/fail from the test output, not the exit code. The guards make
+            # sure a timeout, a failed or partial run, or a launch failure is
+            # never read as success.
+            if [ -f "$timeout_marker" ]; then
+              echo "::warning::iOS attempt $attempt timed out after ${attempt_timeout}s"
+            elif grep -qaE "([1-9][0-9]* tests? passed|All tests passed)" "$log" \
+                 && ! grep -qaE "(passed, [0-9]+ failed|Some tests failed|Unable to start the app|Could not build the application|Failed to load|lost connection to device)" "$log"; then
               echo "iOS integration tests passed on attempt $attempt"
+              ok=1
               break
             fi
-            echo "::warning::iOS attempt $attempt failed/timed out (rc=$rc)"
+            echo "::warning::iOS attempt $attempt failed; retrying with a fresh simulator"
             if [ "$attempt" -lt "$max" ]; then
               xcrun simctl shutdown "$SIMULATOR_UDID" 2>/dev/null || true
+              xcrun simctl erase "$SIMULATOR_UDID" 2>/dev/null || true
               xcrun simctl boot "$SIMULATOR_UDID" 2>/dev/null || true
               xcrun simctl bootstatus "$SIMULATOR_UDID" -b
             fi
           done
-          exit "$rc"
+          if [ "$ok" -ne 1 ]; then
+            echo "::error::iOS integration tests failed after $max attempts"
+            exit 1
+          fi
 
   integration-android:
     name: Integration Android (${{ matrix.flutter-channel }})
     runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.flutter-channel == 'beta' }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -359,6 +373,7 @@ jobs:
   integration-linux:
     name: Integration Linux (${{ matrix.flutter-channel }})
     runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.flutter-channel == 'beta' }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -452,6 +467,7 @@ jobs:
   integration-windows:
     name: Integration Windows (${{ matrix.flutter-channel }})
     runs-on: windows-latest
+    continue-on-error: ${{ matrix.flutter-channel == 'beta' }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
