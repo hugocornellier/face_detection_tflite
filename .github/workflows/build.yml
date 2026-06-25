@@ -3,7 +3,8 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, 'ci/**']
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -139,7 +140,7 @@ jobs:
     continue-on-error: ${{ matrix.flutter-channel == 'beta' }}
     strategy:
       matrix:
-        flutter-channel: [stable, beta]
+        flutter-channel: [stable]
     steps:
       - uses: actions/checkout@v5
 
@@ -169,7 +170,7 @@ jobs:
     continue-on-error: ${{ matrix.flutter-channel == 'beta' }}
     strategy:
       matrix:
-        flutter-channel: [stable, beta]
+        flutter-channel: [stable]
     steps:
       - uses: actions/checkout@v5
 

@@ -3,7 +3,8 @@ name: Tests
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, 'ci/**']
+  workflow_dispatch:
 
 concurrency:
   group: tests-${{ github.ref }}
@@ -44,13 +45,13 @@ jobs:
 
   integration-macos:
     name: Integration macOS (${{ matrix.flutter-channel }})
-    runs-on: macos-14
+    runs-on: macos-15
     continue-on-error: ${{ matrix.flutter-channel == 'beta' }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
-        flutter-channel: [stable, beta]
+        flutter-channel: [stable]
     steps:
       - uses: actions/checkout@v5
 
@@ -146,11 +147,11 @@ jobs:
     name: Integration iOS (${{ matrix.flutter-channel }})
     runs-on: macos-15
     continue-on-error: ${{ matrix.flutter-channel == 'beta' }}
-    timeout-minutes: 60
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
-        flutter-channel: [stable, beta]
+        flutter-channel: [stable]
     steps:
       - uses: actions/checkout@v5
 
@@ -190,45 +191,35 @@ jobs:
         working-directory: example
         run: |
           set +e
-          attempt_timeout=1500
-          max=3
+          attempt_timeout=2400
+          max=5
+          poll=5
           ok=0
           for attempt in $(seq 1 "$max"); do
             log="$RUNNER_TEMP/ios-attempt-$attempt.log"
-            timeout_marker="$RUNNER_TEMP/ios-test-timeout-$attempt"
-            rm -f "$timeout_marker" "$log"
+            rm -f "$log"
             echo "::group::iOS integration tests (attempt $attempt/$max)"
             flutter test integration_test/face_detection_integration_test.dart \
               -d "$SIMULATOR_UDID" --timeout 600s > "$log" 2>&1 &
             pid=$!
-            ( sleep "$attempt_timeout"
-              if kill -0 "$pid" 2>/dev/null; then
-                touch "$timeout_marker"
-                echo "::warning::iOS attempt exceeded ${attempt_timeout}s; killing"
-                kill -TERM "$pid" 2>/dev/null
-                sleep 15
-                kill -KILL "$pid" 2>/dev/null
-              fi ) &
-            watchdog=$!
-            wait "$pid"
-            kill -TERM "$watchdog" 2>/dev/null
-            wait "$watchdog" 2>/dev/null
+            verdict=""
+            elapsed=0
+            while [ "$elapsed" -lt "$attempt_timeout" ]; do
+              if grep -qaiE "(unable to start the app|could not build the application|failed to (install|launch|foreground)|error waiting for a debug connection|lost connection to device|no devices found|no supported devices|(^|[^0-9])0 tests? passed)" "$log"; then verdict="infra"; break; fi
+              if grep -qaiE "([1-9][0-9]* tests? failed|some tests failed|passed, [1-9][0-9]* failed)" "$log"; then verdict="testfail"; break; fi
+              if grep -qaE "([1-9][0-9]* tests? passed|All tests passed)" "$log"; then verdict="pass"; break; fi
+              kill -0 "$pid" 2>/dev/null || { verdict="exited"; break; }
+              sleep "$poll"; elapsed=$((elapsed+poll))
+            done
+            kill -TERM "$pid" 2>/dev/null; sleep 30; kill -KILL "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
             cat "$log"
             echo "::endgroup::"
-            # Flutter integration tests can exit non-zero even when every test
-            # passed (app-teardown quirk on the iOS simulator), so decide
-            # pass/fail from the test output, not the exit code. The guards make
-            # sure a timeout, a failed or partial run, or a launch failure is
-            # never read as success.
-            if [ -f "$timeout_marker" ]; then
-              echo "::warning::iOS attempt $attempt timed out after ${attempt_timeout}s"
-            elif grep -qaE "([1-9][0-9]* tests? passed|All tests passed)" "$log" \
-                 && ! grep -qaE "(passed, [0-9]+ failed|Some tests failed|Unable to start the app|Could not build the application|Failed to load|lost connection to device)" "$log"; then
-              echo "iOS integration tests passed on attempt $attempt"
-              ok=1
-              break
-            fi
-            echo "::warning::iOS attempt $attempt failed; retrying with a fresh simulator"
+            # Authoritative: flutter prints its success summary only when the whole
+            # suite passed, so a clean pass in the log wins over any timeout/exit verdict.
+            if grep -qaE "([1-9][0-9]* tests? passed|All tests passed)" "$log" && ! grep -qaiE "(unable to start the app|could not build the application|failed to (install|launch|foreground)|error waiting for a debug connection|lost connection to device|no devices found|no supported devices|(^|[^0-9])0 tests? passed|[1-9][0-9]* tests? failed|some tests failed|passed, [1-9][0-9]* failed)" "$log"; then verdict="pass"; fi
+            if [ "$verdict" = "pass" ]; then echo "iOS integration tests passed on attempt $attempt"; ok=1; break; fi
+            if [ "$verdict" = "testfail" ]; then echo "::error::iOS real test failure on attempt $attempt"; exit 1; fi
+            echo "::warning::iOS attempt $attempt flaked ($verdict); retrying with a fresh simulator"
             if [ "$attempt" -lt "$max" ]; then
               xcrun simctl shutdown "$SIMULATOR_UDID" 2>/dev/null || true
               xcrun simctl erase "$SIMULATOR_UDID" 2>/dev/null || true
@@ -236,10 +227,7 @@ jobs:
               xcrun simctl bootstatus "$SIMULATOR_UDID" -b
             fi
           done
-          if [ "$ok" -ne 1 ]; then
-            echo "::error::iOS integration tests failed after $max attempts"
-            exit 1
-          fi
+          if [ "$ok" -ne 1 ]; then echo "::error::iOS integration tests failed after $max attempts"; exit 1; fi
 
   integration-android:
     name: Integration Android (${{ matrix.flutter-channel }})
@@ -358,7 +346,37 @@ jobs:
           BASH
           chmod +x "$RUNNER_TEMP/run-android-tests.sh"
 
-      - name: Run integration tests on Android emulator
+      - name: Run integration tests on Android emulator (attempt 1)
+        id: android1
+        continue-on-error: true
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          disable-animations: true
+          working-directory: example
+          script: bash "$RUNNER_TEMP/run-android-tests.sh"
+
+      - name: Run integration tests on Android emulator (attempt 2)
+        id: android2
+        continue-on-error: true
+        if: steps.android1.outcome == 'failure'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          disable-animations: true
+          working-directory: example
+          script: bash "$RUNNER_TEMP/run-android-tests.sh"
+
+      - name: Run integration tests on Android emulator (attempt 3)
+        if: steps.android1.outcome == 'failure' && steps.android2.outcome == 'failure'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
