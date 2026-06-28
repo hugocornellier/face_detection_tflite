@@ -17,7 +17,7 @@ dependencies:
   face_detection_tflite:
     path: ../
   # Direct dependency so the example can import OneEuroFilter from flutter_litert.
-  flutter_litert: ^3.1.4
+  flutter_litert: ^3.2.0
   flutter_colorpicker: ^1.1.0
   camera: ^0.12.0
   camera_desktop: ^1.2.1

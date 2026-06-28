@@ -1,3 +1,10 @@
+## 6.5.0
+
+* Update flutter_litert -> 3.2.0
+* Import native-only flutter_litert APIs via `package:flutter_litert/native.dart` so they resolve under static analysis (flutter_litert 3.2.0 moved `InterpreterFactory`, `IsolateRpcClient`, `IsolateWorkerBase`, and `TensorFloat32Views` behind the native conditional export). No runtime or API change.
+* Default the public entry's conditional export to the web implementation, gating native behind `dart.library.io`, restoring WASM compatibility (pub.dev WASM-ready). No behavior change on any platform.
+* Add `package:face_detection_tflite/face_detection_tflite_native.dart`, a native-only entry point that re-exports the native implementation (isolate workers, model runners, overlay and UI helpers) for code that runs only on native platforms.
+
 ## 6.4.1
 
 * Performance: when `getFaceEmbedding` follows `detectFacesFromBytes` on the same encoded image, the detection isolate now reuses the already-decoded image instead of decoding it a second time (one-entry cache keyed by an exact byte match). Saves a full image decode per detect+embed pair (~16 ms at 12 MP; scales with resolution). No API change, and detection and embedding results are byte-identical. The raw-pixel APIs (`detectFacesFromMatBytes`, `getFaceEmbeddingFromMatBytes`) are unaffected; the cache holds at most one decoded frame and is released on dispose.

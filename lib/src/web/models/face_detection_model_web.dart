@@ -5,8 +5,6 @@ import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_litert/flutter_litert.dart' hide Detection;
-import 'package:flutter_litert/src/web/litertjs_interpreter.dart'
-    show LiteRtInterpreter;
 import 'package:web/web.dart' as web;
 
 import '../../shared/face_geometry.dart' show computeFaceAlignment;

@@ -1,8 +1,8 @@
 import 'dart:typed_data';
 
-import 'package:face_detection_tflite/face_detection_tflite.dart';
+import 'package:face_detection_tflite/src/native/face_native_lib.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_litert/flutter_litert.dart' show Interpreter, Tensor;
+import 'package:flutter_litert/native.dart' show Interpreter, Tensor;
 
 void main() {
   group('Private helper wrappers', () {

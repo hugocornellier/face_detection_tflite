@@ -9,5 +9,5 @@
 ///   `flutter_litert` + `opencv_dart`.
 library;
 
-export 'src/native/face_native_lib.dart'
-    if (dart.library.js_interop) 'src/web/face_web_lib.dart';
+export 'src/web/face_web_lib.dart'
+    if (dart.library.io) 'src/native/face_native_lib.dart';

@@ -15,7 +15,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
-import 'package:flutter_litert/flutter_litert.dart' hide Detection;
+import 'package:flutter_litert/native.dart' hide Detection;
 
 import '../shared/face_types.dart';
 import '../shared/face_model_config.dart';

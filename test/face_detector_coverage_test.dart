@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:face_detection_tflite/face_detection_tflite.dart';
+import 'package:face_detection_tflite/src/native/face_native_lib.dart';
 import 'test_config.dart';
 
 void main() {

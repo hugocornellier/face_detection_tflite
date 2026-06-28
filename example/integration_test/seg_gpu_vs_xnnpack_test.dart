@@ -11,7 +11,7 @@ import 'dart:math';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:face_detection_tflite/face_detection_tflite.dart';
+import 'package:face_detection_tflite/face_detection_tflite_native.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 
 const int warmup = 10;
