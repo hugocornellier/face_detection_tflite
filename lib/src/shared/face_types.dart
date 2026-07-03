@@ -11,43 +11,107 @@ import 'dart:ui' show Size;
 import 'package:flutter_litert/flutter_litert.dart'
     show BoundingBox, PerformanceConfig, Point;
 
+import 'face_geometry.dart' show headEulerAnglesFromMesh, rollFromEyes;
+
 /// Identifies specific facial landmarks returned by face detection.
 enum FaceLandmarkType {
+  /// Left eye center.
   leftEye,
+
+  /// Right eye center.
   rightEye,
+
+  /// Tip of the nose.
   noseTip,
+
+  /// Center of the mouth.
   mouth,
+
+  /// Left ear tragion (the small notch in front of the ear).
   leftEyeTragion,
+
+  /// Right ear tragion (the small notch in front of the ear).
   rightEyeTragion,
 }
 
 /// Face detection model variants.
 enum FaceDetectionModel {
+  /// Front-facing camera model, tuned for close-range selfie framing.
   frontCamera,
+
+  /// Rear-facing camera model, tuned for longer-range scenes.
   backCamera,
+
+  /// Short-range model for faces near the camera.
   shortRange,
+
+  /// Full-range model covering near and far faces.
   full,
+
+  /// Full-range model with a sparse (faster, lighter) architecture.
   fullSparse,
 }
 
 /// Detection mode controls which features are computed.
-enum FaceDetectionMode { fast, standard, full }
+enum FaceDetectionMode {
+  /// Detection only: bounding box and the 6 keypoints, no mesh (fastest).
+  fast,
+
+  /// Adds the 468-point face mesh on top of [fast].
+  standard,
+
+  /// Adds iris and eye tracking on top of [standard] (most detailed, default).
+  full,
+}
 
 /// Pixel format for RGBA output from segmentation masks.
-enum PixelFormat { rgba, bgra, argb }
+enum PixelFormat {
+  /// Red, green, blue, alpha byte order.
+  rgba,
+
+  /// Blue, green, red, alpha byte order.
+  bgra,
+
+  /// Alpha, red, green, blue byte order.
+  argb,
+}
 
 /// Output format options for isolate-based segmentation transfer.
-enum IsolateOutputFormat { float32, uint8, binary }
+enum IsolateOutputFormat {
+  /// Per-pixel float confidences in the range 0.0 to 1.0.
+  float32,
+
+  /// Per-pixel 8-bit grayscale values in the range 0 to 255.
+  uint8,
+
+  /// Per-pixel binary mask (foreground or background).
+  binary,
+}
 
 /// Error codes for segmentation operations.
 enum SegmentationError {
+  /// The model file could not be located.
   modelNotFound,
+
+  /// The TFLite interpreter failed to initialize.
   interpreterCreationFailed,
+
+  /// A hardware delegate was unavailable and inference fell back to CPU.
   delegateFallback,
+
+  /// The input image could not be decoded.
   imageDecodeFailed,
+
+  /// The input image was smaller than the model requires.
   imageTooSmall,
+
+  /// A model tensor had an unexpected shape.
   unexpectedTensorShape,
+
+  /// Inference failed at runtime.
   inferenceFailed,
+
+  /// The operation ran out of memory.
   outOfMemory,
 }
 
@@ -70,7 +134,16 @@ class SegmentationException implements Exception {
 }
 
 /// Selects which segmentation model variant to use.
-enum SegmentationModel { general, landscape, multiclass }
+enum SegmentationModel {
+  /// General-purpose 256x256 person/background model.
+  general,
+
+  /// Landscape 144x256 model tuned for wide/video framing.
+  landscape,
+
+  /// 256x256 model that segments 6 body-part classes.
+  multiclass,
+}
 
 /// Segmentation class indices for the multiclass model output.
 class SegmentationClass {
@@ -522,8 +595,12 @@ List<Point> _clampedContour(List<Point> mesh) =>
 class FaceMesh {
   final List<Point> _points;
 
+  /// Face-presence confidence from the mesh model, 0.0 to 1.0 (higher is more
+  /// confident the crop is a face). Null when the model does not report it.
+  final double? score;
+
   /// Creates a face mesh from 468 points.
-  FaceMesh(this._points) : assert(_points.length == kMeshPoints);
+  FaceMesh(this._points, {this.score}) : assert(_points.length == kMeshPoints);
 
   /// The 468 mesh points with depth.
   List<Point> get points => _points;
@@ -540,11 +617,14 @@ class FaceMesh {
   /// Converts this mesh to a map for isolate serialization.
   Map<String, dynamic> toMap() => {
     'points': _points.map((p) => p.toMap()).toList(),
+    if (score != null) 'score': score,
   };
 
   /// Creates a face mesh from a map.
-  factory FaceMesh.fromMap(Map<String, dynamic> map) =>
-      FaceMesh((map['points'] as List).map((p) => Point.fromMap(p)).toList());
+  factory FaceMesh.fromMap(Map<String, dynamic> map) => FaceMesh(
+    (map['points'] as List).map((p) => Point.fromMap(p)).toList(),
+    score: (map['score'] as num?)?.toDouble(),
+  );
 }
 
 /// Eye tracking data: iris center + iris contour + eye mesh.
@@ -714,6 +794,44 @@ Point irisCenterFromPoints(List<Point> pts) {
   return pts[bestIdx];
 }
 
+/// Head orientation as Euler angles in degrees, matching the sign conventions
+/// documented by Google ML Kit's `Face`:
+///
+/// - [x] (pitch): rotation about the horizontal axis. Positive when the face
+///   tilts up.
+/// - [y] (yaw): rotation about the vertical axis. Positive when the face turns
+///   toward the right side of the image.
+/// - [z] (roll): rotation about the axis pointing out of the image. Positive
+///   for a counter-clockwise tilt within the image plane.
+class HeadEulerAngles {
+  /// Pitch in degrees (up/down).
+  final double x;
+
+  /// Yaw in degrees (left/right).
+  final double y;
+
+  /// Roll in degrees (in-plane tilt).
+  final double z;
+
+  /// Creates head Euler angles from pitch [x], yaw [y], and roll [z] degrees.
+  const HeadEulerAngles(this.x, this.y, this.z);
+
+  /// Serializes to a map for isolate transfer.
+  Map<String, dynamic> toMap() => {'x': x, 'y': y, 'z': z};
+
+  /// Creates head Euler angles from a serialized map.
+  factory HeadEulerAngles.fromMap(Map<String, dynamic> map) => HeadEulerAngles(
+    (map['x'] as num).toDouble(),
+    (map['y'] as num).toDouble(),
+    (map['z'] as num).toDouble(),
+  );
+
+  @override
+  String toString() =>
+      'HeadEulerAngles(x: ${x.toStringAsFixed(1)}, '
+      'y: ${y.toStringAsFixed(1)}, z: ${z.toStringAsFixed(1)})';
+}
+
 /// Outputs for a single detected face.
 class Face {
   /// Underlying detection (bbox + 6 keypoints).
@@ -732,6 +850,8 @@ class Face {
   final BoundingBox boundingBox;
 
   late final EyePair? _cachedEyes = _computeEyes();
+
+  late final HeadEulerAngles? _cachedHeadAngles = _computeHeadAngles();
 
   /// Creates a face detection result.
   Face({
@@ -781,8 +901,58 @@ class Face {
     );
   }
 
+  /// Detection confidence in the range 0.0 to 1.0 (higher is more confident).
+  ///
+  /// In practice only faces scoring at or above the detector threshold are
+  /// returned, so this is effectively bounded below by that threshold. It
+  /// reflects confidence that a face is present, not landmark or mesh quality.
+  double get score => detectionData.score;
+
+  /// Mesh model's face-presence confidence, 0.0 to 1.0 (higher is more
+  /// confident). Null in fast mode (no mesh) or when the model omits it.
+  /// Convenience proxy for `mesh?.score`.
+  double? get meshScore => mesh?.score;
+
   /// Comprehensive eye tracking data for both eyes (null when no iris data).
   EyePair? get eyes => _cachedEyes;
+
+  /// Head orientation as Euler angles (pitch/yaw/roll in degrees), or null when
+  /// it cannot be estimated. Derived from the 468-point mesh when available; in
+  /// fast mode (no mesh) only roll ([HeadEulerAngles.z]) is estimated from the
+  /// detection's eye keypoints, with pitch and yaw reported as 0.
+  ///
+  /// Sign conventions match Google ML Kit; see [HeadEulerAngles].
+  HeadEulerAngles? get headEulerAngles => _cachedHeadAngles;
+
+  /// Head pitch in degrees (up/down); positive tilts the face up. Null when
+  /// unavailable. See [headEulerAngles].
+  double? get headEulerAngleX => _cachedHeadAngles?.x;
+
+  /// Head yaw in degrees (left/right); positive turns the face toward the right
+  /// side of the image. Null when unavailable. See [headEulerAngles].
+  double? get headEulerAngleY => _cachedHeadAngles?.y;
+
+  /// Head roll in degrees (in-plane tilt); positive is counter-clockwise. Null
+  /// when unavailable. See [headEulerAngles].
+  double? get headEulerAngleZ => _cachedHeadAngles?.z;
+
+  HeadEulerAngles? _computeHeadAngles() {
+    final FaceMesh? m = mesh;
+    if (m != null) {
+      final HeadEulerAngles? angles = headEulerAnglesFromMesh(m.points);
+      if (angles != null) return angles;
+    }
+    // Fast-mode fallback: roll only, from the detection's eye keypoints scaled
+    // to pixel coordinates via the original image size (which is always known).
+    final List<double> kp = detectionData.keypointsXY;
+    final int li = FaceLandmarkType.leftEye.index * 2;
+    final int ri = FaceLandmarkType.rightEye.index * 2;
+    if (kp.length <= ri + 1) return null;
+    final double w = originalSize.width, h = originalSize.height;
+    final Point left = Point(kp[li] * w, kp[li + 1] * h);
+    final Point right = Point(kp[ri] * w, kp[ri + 1] * h);
+    return HeadEulerAngles(0.0, 0.0, rollFromEyes(left, right));
+  }
 
   EyePair? _computeEyes() {
     if (irisPoints.isEmpty) return null;

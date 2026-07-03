@@ -230,6 +230,44 @@ void main() {
       expect(restored[100].x, 100.0);
       expect(restored[100].z, 300.0);
     });
+
+    test('score defaults to null', () {
+      final points = List.generate(468, (i) => Point(0, 0));
+      final mesh = FaceMesh(points);
+      expect(mesh.score, isNull);
+    });
+
+    test('score stores provided value', () {
+      final points = List.generate(468, (i) => Point(0, 0));
+      final mesh = FaceMesh(points, score: 0.87);
+      expect(mesh.score, 0.87);
+    });
+
+    test('toMap omits score when null', () {
+      final points = List.generate(468, (i) => Point(0, 0));
+      final map = FaceMesh(points).toMap();
+      expect(map.containsKey('score'), isFalse);
+    });
+
+    test('toMap includes score when present', () {
+      final points = List.generate(468, (i) => Point(0, 0));
+      final map = FaceMesh(points, score: 0.42).toMap();
+      expect(map['score'], 0.42);
+    });
+
+    test('toMap and fromMap round trip preserves score', () {
+      final points = List.generate(468, (i) => Point(0, 0));
+      final restored = FaceMesh.fromMap(FaceMesh(points, score: 0.73).toMap());
+      expect(restored.score, 0.73);
+    });
+
+    test('fromMap yields null score when absent', () {
+      final points = List.generate(468, (i) => Point(0, 0));
+      // Simulate a legacy map without the score key.
+      final map = FaceMesh(points).toMap();
+      final restored = FaceMesh.fromMap(map);
+      expect(restored.score, isNull);
+    });
   });
 
   // =========================================================================
@@ -337,6 +375,49 @@ void main() {
       final restored = Face.fromMap(map);
       expect(restored.mesh, isNotNull);
       expect(restored.mesh!.length, 468);
+    });
+
+    Face buildFace({FaceMesh? mesh, double detectionScore = 0.95}) => Face(
+      detection: Detection(
+        boundingBox: const RectF(0.1, 0.2, 0.8, 0.9),
+        score: detectionScore,
+        keypointsXY: TestUtils.generateValidKeypoints(),
+        imageSize: const Size(640, 480),
+      ),
+      mesh: mesh,
+      irises: [],
+      originalSize: const Size(640, 480),
+    );
+
+    test('score getter proxies detection score', () {
+      expect(buildFace(detectionScore: 0.82).score, 0.82);
+    });
+
+    test('meshScore is null when there is no mesh', () {
+      expect(buildFace(mesh: null).meshScore, isNull);
+    });
+
+    test('meshScore is null when mesh omits score', () {
+      final mesh = FaceMesh(List.generate(468, (i) => Point(0, 0)));
+      expect(buildFace(mesh: mesh).meshScore, isNull);
+    });
+
+    test('meshScore proxies mesh score', () {
+      final mesh = FaceMesh(
+        List.generate(468, (i) => Point(0, 0)),
+        score: 0.66,
+      );
+      expect(buildFace(mesh: mesh).meshScore, 0.66);
+    });
+
+    test('toMap and fromMap preserves mesh score', () {
+      final mesh = FaceMesh(
+        List.generate(468, (i) => Point(0, 0)),
+        score: 0.91,
+      );
+      final restored = Face.fromMap(buildFace(mesh: mesh).toMap());
+      expect(restored.meshScore, 0.91);
+      expect(restored.mesh!.score, 0.91);
     });
   });
 
@@ -805,6 +886,81 @@ void main() {
       expect(
         PixelFormat.values.map((p) => p.name),
         containsAll(['rgba', 'bgra', 'argb']),
+      );
+    });
+  });
+
+  // =========================================================================
+  // Public enums (value stability)
+  // =========================================================================
+  group('Public enum values', () {
+    test('FaceLandmarkType has the 6 expected values', () {
+      expect(FaceLandmarkType.values.length, 6);
+      expect(
+        FaceLandmarkType.values.map((e) => e.name),
+        containsAll([
+          'leftEye',
+          'rightEye',
+          'noseTip',
+          'mouth',
+          'leftEyeTragion',
+          'rightEyeTragion',
+        ]),
+      );
+    });
+
+    test('FaceDetectionModel has the 5 expected variants', () {
+      expect(FaceDetectionModel.values.length, 5);
+      expect(
+        FaceDetectionModel.values.map((e) => e.name),
+        containsAll([
+          'frontCamera',
+          'backCamera',
+          'shortRange',
+          'full',
+          'fullSparse',
+        ]),
+      );
+    });
+
+    test('FaceDetectionMode has fast, standard, full', () {
+      expect(FaceDetectionMode.values.length, 3);
+      expect(
+        FaceDetectionMode.values.map((e) => e.name),
+        containsAll(['fast', 'standard', 'full']),
+      );
+    });
+
+    test('IsolateOutputFormat has float32, uint8, binary', () {
+      expect(IsolateOutputFormat.values.length, 3);
+      expect(
+        IsolateOutputFormat.values.map((e) => e.name),
+        containsAll(['float32', 'uint8', 'binary']),
+      );
+    });
+
+    test('SegmentationModel has general, landscape, multiclass', () {
+      expect(SegmentationModel.values.length, 3);
+      expect(
+        SegmentationModel.values.map((e) => e.name),
+        containsAll(['general', 'landscape', 'multiclass']),
+      );
+    });
+
+    test('SegmentationError has the 8 expected codes', () {
+      expect(SegmentationError.values.length, 8);
+      expect(
+        SegmentationError.values.map((e) => e.name),
+        containsAll([
+          'modelNotFound',
+          'interpreterCreationFailed',
+          'delegateFallback',
+          'imageDecodeFailed',
+          'imageTooSmall',
+          'unexpectedTensorShape',
+          'inferenceFailed',
+          'outOfMemory',
+        ]),
       );
     });
   });

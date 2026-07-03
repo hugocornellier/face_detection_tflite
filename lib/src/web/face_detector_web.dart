@@ -12,6 +12,7 @@ import 'package:flutter_litert/src/web/web_detector_utils.dart'
     show decodeBitmap, WebGpuFallback;
 import 'package:web/web.dart' as web;
 
+import '../shared/face_geometry.dart' show transformMeshFlatToAbsolute;
 import 'models/face_detection_model_web.dart';
 import 'models/face_landmark_model_web.dart';
 import 'models/iris_landmark_model_web.dart';
@@ -390,7 +391,7 @@ class FaceDetector with WebGpuFallback {
         sw.reset();
       }
 
-      final List<Point> meshPoints = _transformMeshToAbsolute(
+      final List<Point> meshPoints = transformMeshFlatToAbsolute(
         mesh.landmarks,
         align.cx,
         align.cy,
@@ -467,7 +468,9 @@ class FaceDetector with WebGpuFallback {
             keypointsXY: d.keypointsXY,
             imageSize: imgSize,
           ),
-          mesh: meshPoints.length == kMeshPoints ? FaceMesh(meshPoints) : null,
+          mesh: meshPoints.length == kMeshPoints
+              ? FaceMesh(meshPoints, score: mesh.score)
+              : null,
           irises: irisPoints,
           originalSize: imgSize,
         ),
@@ -744,34 +747,6 @@ class FaceDetector with WebGpuFallback {
   }
 
   // ---------------------------------------------------------------------------
-
-  /// Inverse of the rotation+scale crop in [FaceLandmarkModelWeb.runOnCrop].
-  /// Mesh landmarks come back in the model's input pixel space; this maps
-  /// them back to original-image absolute coordinates.
-  List<Point> _transformMeshToAbsolute(
-    Float32List flat,
-    double cx,
-    double cy,
-    double size,
-    double theta,
-    int inW,
-    int inH,
-  ) {
-    final int n = flat.length ~/ 3;
-    final List<Point> out = List<Point>.filled(n, const Point(0, 0, 0));
-    final double ct = math.cos(theta);
-    final double st = math.sin(theta);
-    final double scale = size / inW;
-    for (int i = 0; i < n; i++) {
-      final double mx = flat[i * 3] - inW / 2.0;
-      final double my = flat[i * 3 + 1] - inH / 2.0;
-      final double mz = flat[i * 3 + 2];
-      final double rx = ct * mx - st * my;
-      final double ry = st * mx + ct * my;
-      out[i] = Point(cx + rx * scale, cy + ry * scale, mz * size);
-    }
-    return out;
-  }
 
   /// Inverse of the rotation+scale eye crop in [IrisLandmarkModelWeb.runOnEyeCrop].
   List<Point> _transformIrisToAbsolute(

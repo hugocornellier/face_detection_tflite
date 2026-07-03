@@ -13,6 +13,10 @@ class FaceLandmark with _TfliteModelDisposable {
   final CompiledModel? _compiledModel;
   final int _inW, _inH;
   late final int _bestIdx;
+
+  /// Index of the single-element face-presence score output, or -1 if the
+  /// model does not expose one.
+  int _scoreIdx = -1;
   late final TensorFloat32Views _views;
   late final Float32List _scratchBuf;
   late final List<List<int>> _outShapes;
@@ -154,14 +158,17 @@ class FaceLandmark with _TfliteModelDisposable {
 
     int bestIdx = -1;
     int bestLen = -1;
+    int scoreIdx = -1;
     for (final MapEntry<int, List<int>> e in shapes.entries) {
       final int len = numElements(e.value);
       if (len > bestLen && len % 3 == 0) {
         bestLen = len;
         bestIdx = e.key;
       }
+      if (len == 1 && scoreIdx == -1) scoreIdx = e.key;
     }
     _bestIdx = bestIdx;
+    _scoreIdx = scoreIdx;
     _views = TensorFloat32Views.capture(itp);
     _scratchBuf = Float32List(_inH * _inW * 3);
 
@@ -194,6 +201,7 @@ class FaceLandmark with _TfliteModelDisposable {
 
     int bestIdx = -1;
     int bestLen = -1;
+    int scoreIdx = -1;
     for (int i = 0; i < compiledModel.outputCount; i++) {
       final int len = _compiledFloatCount(
         compiledModel.outputByteSizes[i],
@@ -203,6 +211,7 @@ class FaceLandmark with _TfliteModelDisposable {
         bestLen = len;
         bestIdx = i;
       }
+      if (len == 1 && scoreIdx == -1) scoreIdx = i;
     }
     if (bestIdx == -1) {
       throw UnsupportedError(
@@ -211,6 +220,7 @@ class FaceLandmark with _TfliteModelDisposable {
       );
     }
     _bestIdx = bestIdx;
+    _scoreIdx = scoreIdx;
   }
 
   /// Predicts the 468-point face mesh for an aligned face crop using cv.Mat.
@@ -226,6 +236,9 @@ class FaceLandmark with _TfliteModelDisposable {
   ///
   /// Returns a list of 468 3D landmark points in normalized coordinates.
   ///
+  /// This is the stable, backward-compatible entry point. Use [callWithScore]
+  /// if you also need the model's face-presence confidence.
+  ///
   /// Example:
   /// ```dart
   /// final faceCropMat = cv.imdecode(bytes, cv.IMREAD_COLOR);
@@ -233,6 +246,24 @@ class FaceLandmark with _TfliteModelDisposable {
   /// faceCropMat.dispose();
   /// ```
   Future<List<List<double>>> call(
+    cv.Mat faceCrop, {
+    Float32List? buffer,
+  }) async => (await callWithScore(faceCrop, buffer: buffer)).landmarks;
+
+  /// Returns the 468 3D landmark points in normalized coordinates plus the
+  /// model's face-presence [score] in the range 0.0 to 1.0 (higher means more
+  /// confident the crop contains a face). [score] is null when the model does
+  /// not expose a presence output.
+  ///
+  /// Example:
+  /// ```dart
+  /// final faceCropMat = cv.imdecode(bytes, cv.IMREAD_COLOR);
+  /// final result = await faceLandmark.callWithScore(faceCropMat);
+  /// final meshPoints = result.landmarks;
+  /// final presence = result.score;
+  /// faceCropMat.dispose();
+  /// ```
+  Future<({List<List<double>> landmarks, double? score})> callWithScore(
     cv.Mat faceCrop, {
     Float32List? buffer,
   }) async {
@@ -251,12 +282,16 @@ class FaceLandmark with _TfliteModelDisposable {
       final List<Float32List> outputs = await compiledModel.runAsync([
         pack.tensorNHWC,
       ]);
-      return _unpackLandmarks(
-        outputs[_bestIdx],
-        _inW,
-        _inH,
-        pack.padding,
-        clamp: true,
+      return (
+        landmarks: _unpackLandmarks(
+          outputs[_bestIdx],
+          _inW,
+          _inH,
+          pack.padding,
+          clamp: true,
+          normalizeZ: true,
+        ),
+        score: _scoreIdx == -1 ? null : sigmoidClipped(outputs[_scoreIdx][0]),
       );
     }
 
@@ -270,22 +305,41 @@ class FaceLandmark with _TfliteModelDisposable {
     if (_iso == null) {
       _views.inputs[0].setAll(0, pack.tensorNHWC);
       _itp!.invoke();
-      return _unpackLandmarks(
-        _views.outputs[_bestIdx],
-        _inW,
-        _inH,
-        pack.padding,
-        clamp: true,
+      return (
+        landmarks: _unpackLandmarks(
+          _views.outputs[_bestIdx],
+          _inW,
+          _inH,
+          pack.padding,
+          clamp: true,
+          normalizeZ: true,
+        ),
+        score: _scoreIdx == -1
+            ? null
+            : sigmoidClipped(_views.outputs[_scoreIdx][0]),
       );
     } else {
       fillNHWC4D(pack.tensorNHWC, _input4dCache, _inH, _inW);
       final List<List<List<List<List<double>>>>> inputs = [_input4dCache];
       await _iso!.runForMultipleInputs(inputs, _outputsCache);
 
-      final dynamic best = _outputsCache[_bestIdx];
-
-      final Float32List bestFlat = flattenDynamicTensor(best);
-      return _unpackLandmarks(bestFlat, _inW, _inH, pack.padding, clamp: true);
+      final Float32List bestFlat = flattenDynamicTensor(
+        _outputsCache[_bestIdx],
+      );
+      final double? score = _scoreIdx == -1
+          ? null
+          : sigmoidClipped(flattenDynamicTensor(_outputsCache[_scoreIdx])[0]);
+      return (
+        landmarks: _unpackLandmarks(
+          bestFlat,
+          _inW,
+          _inH,
+          pack.padding,
+          clamp: true,
+          normalizeZ: true,
+        ),
+        score: score,
+      );
     }
   }
 

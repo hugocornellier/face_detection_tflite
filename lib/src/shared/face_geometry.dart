@@ -9,7 +9,8 @@ import 'dart:typed_data';
 
 import 'package:flutter_litert/flutter_litert.dart' show Point;
 
-import 'face_types.dart' show AlignedRoi, Detection, FaceLandmarkType, RectF;
+import 'face_types.dart'
+    show AlignedRoi, Detection, FaceLandmarkType, HeadEulerAngles, RectF;
 
 /// Computes the rotation, center, and size of the aligned face ROI from a
 /// detection's eye/mouth keypoints.
@@ -96,7 +97,9 @@ List<Point> transformMeshFlatToAbsolute(
     final double mz = flat[i * 3 + 2];
     final double rx = ct * mx - st * my;
     final double ry = st * mx + ct * my;
-    out[i] = Point(cx + rx * scale, cy + ry * scale, mz * size);
+    // Scale z the same way as x/y (by `scale`, not `size`) so depth is in the
+    // same units as the 2D coordinates; needed for head-pose estimation.
+    out[i] = Point(cx + rx * scale, cy + ry * scale, mz * scale);
   }
   return out;
 }
@@ -162,6 +165,94 @@ List<AlignedRoi> eyeRoisFromMesh(List<Point> meshAbs) {
   }
 
   return [fromCorners(33, 133), fromCorners(362, 263)];
+}
+
+/// Canonical MediaPipe face-mesh indices used to derive head orientation.
+///
+/// These four landmarks span the two head axes: forehead->chin (vertical) and
+/// left cheek->right cheek (horizontal). "Left"/"right" here are in image
+/// space (left = smaller x).
+const int kMeshForeheadTop = 10;
+const int kMeshChinBottom = 152;
+const int kMeshLeftCheek = 234;
+const int kMeshRightCheek = 454;
+
+double _degrees(double radians) => radians * 180.0 / math.pi;
+
+/// Estimates head Euler angles (pitch, yaw, roll in degrees) from the 468-point
+/// face mesh in absolute image coordinates.
+///
+/// Builds an orthonormal head reference frame from four canonical landmarks
+/// (forehead, chin, and both cheeks) using their 3D positions, then reads the
+/// Euler angles off the resulting rotation matrix. Returns null when the mesh
+/// is too short or lacks depth information (mesh points always carry z, so this
+/// only guards against malformed input).
+HeadEulerAngles? headEulerAnglesFromMesh(List<Point> mesh) {
+  if (mesh.length <= kMeshRightCheek) return null;
+  final Point foreheadTop = mesh[kMeshForeheadTop];
+  final Point chinBottom = mesh[kMeshChinBottom];
+  final Point leftCheek = mesh[kMeshLeftCheek];
+  final Point rightCheek = mesh[kMeshRightCheek];
+  if (foreheadTop.z == null ||
+      chinBottom.z == null ||
+      leftCheek.z == null ||
+      rightCheek.z == null) {
+    return null;
+  }
+
+  // Image coordinate frame: x right, y down, z away from camera. The head
+  // right axis runs left cheek -> right cheek; the head down axis runs
+  // forehead -> chin.
+  double rx = rightCheek.x - leftCheek.x;
+  double ry = rightCheek.y - leftCheek.y;
+  double rz = rightCheek.z! - leftCheek.z!;
+  double dx = chinBottom.x - foreheadTop.x;
+  double dy = chinBottom.y - foreheadTop.y;
+  double dz = chinBottom.z! - foreheadTop.z!;
+
+  double rLen = math.sqrt(rx * rx + ry * ry + rz * rz);
+  double dLen = math.sqrt(dx * dx + dy * dy + dz * dz);
+  if (rLen < 1e-6 || dLen < 1e-6) return null;
+  rx /= rLen;
+  ry /= rLen;
+  rz /= rLen;
+  dx /= dLen;
+  dy /= dLen;
+  dz /= dLen;
+
+  // Gram-Schmidt: make the down axis orthogonal to the right axis.
+  final double dDotR = dx * rx + dy * ry + dz * rz;
+  dx -= dDotR * rx;
+  dy -= dDotR * ry;
+  dz -= dDotR * rz;
+  dLen = math.sqrt(dx * dx + dy * dy + dz * dz);
+  if (dLen < 1e-6) return null;
+  dx /= dLen;
+  dy /= dLen;
+  dz /= dLen;
+
+  // Head backward axis = right x down (right-handed), z-component only. Points
+  // away from the face front (behind the head) for a frontal pose.
+  final double bz = rx * dy - ry * dx;
+
+  // The rotation matrix has columns [right, down, back] in world (image)
+  // coordinates, so its bottom row is [rz, dz, bz]. Aerospace ZYX
+  // (yaw-pitch-roll) extraction only needs that row plus (rx, ry).
+  final double pitch = math.atan2(dz, bz);
+  final double yaw = math.asin((-rz).clamp(-1.0, 1.0));
+  final double roll = math.atan2(ry, rx);
+
+  // Flip signs to match ML Kit semantics (see [HeadEulerAngles]).
+  return HeadEulerAngles(_degrees(-pitch), _degrees(-yaw), _degrees(-roll));
+}
+
+/// Estimates head roll (in-plane tilt) in degrees from two eye keypoints in
+/// absolute image coordinates. Used as a fast-mode fallback when no mesh is
+/// available. Positive for a counter-clockwise tilt, matching [HeadEulerAngles].
+double rollFromEyes(Point leftEye, Point rightEye) {
+  final double dx = rightEye.x - leftEye.x;
+  final double dy = rightEye.y - leftEye.y;
+  return _degrees(-math.atan2(dy, dx));
 }
 
 /// Expands a face bounding box and turns it into a square ROI suitable for

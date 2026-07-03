@@ -208,7 +208,7 @@ class _FaceDetectorCore {
       }
     }
 
-    final List<List<Point>?> meshResults;
+    final List<({List<Point> points, double? score})?> meshResults;
     if (computeMesh) {
       meshResults = await Future.wait(
         alignedFaces.map((data) async {
@@ -228,7 +228,10 @@ class _FaceDetectorCore {
         }),
       );
     } else {
-      meshResults = List<List<Point>?>.filled(alignedFaces.length, null);
+      meshResults = List<({List<Point> points, double? score})?>.filled(
+        alignedFaces.length,
+        null,
+      );
     }
 
     for (final data in alignedFaces) {
@@ -241,7 +244,7 @@ class _FaceDetectorCore {
     );
     if (computeIris) {
       for (int i = 0; i < meshResults.length; i++) {
-        final meshPx = meshResults[i];
+        final meshPx = meshResults[i]?.points;
         if (meshPx == null || meshPx.isEmpty) continue;
         try {
           irisResults[i] = await _irisFromMesh(image, meshPx);
@@ -255,7 +258,8 @@ class _FaceDetectorCore {
       if (aligned == null) continue;
 
       final Detection det = aligned.$1;
-      final List<Point> meshPx = meshResults[i] ?? <Point>[];
+      final List<Point> meshPx = meshResults[i]?.points ?? <Point>[];
+      final double? meshScore = meshResults[i]?.score;
       final List<Point> irisPx = irisResults[i] ?? <Point>[];
 
       List<double> kp = det.keypointsXY;
@@ -287,7 +291,7 @@ class _FaceDetectorCore {
       faces.add(
         Face(
           detection: refinedDet,
-          mesh: meshPx.isNotEmpty ? FaceMesh(meshPx) : null,
+          mesh: meshPx.isNotEmpty ? FaceMesh(meshPx, score: meshScore) : null,
           irises: irisPx,
           originalSize: imgSize,
         ),
@@ -392,16 +396,21 @@ class _FaceDetectorCore {
     );
   }
 
-  Future<List<Point>> _meshFromAlignedFace(
+  Future<({List<Point> points, double? score})> _meshFromAlignedFace(
     cv.Mat faceCrop,
     double cx,
     double cy,
     double size,
     double theta,
   ) async {
-    if (_meshPool == null || _meshPool!.isEmpty) return <Point>[];
-    final lmNorm = await _meshPool!.withItem((fl) => fl.call(faceCrop));
-    return _transformMeshToAbsolute(lmNorm, cx, cy, size, theta);
+    if (_meshPool == null || _meshPool!.isEmpty) {
+      return (points: <Point>[], score: null);
+    }
+    final res = await _meshPool!.withItem((fl) => fl.callWithScore(faceCrop));
+    return (
+      points: _transformMeshToAbsolute(res.landmarks, cx, cy, size, theta),
+      score: res.score,
+    );
   }
 
   /// Eye crop extraction (warpAffine) is done serially to avoid opencv_dart

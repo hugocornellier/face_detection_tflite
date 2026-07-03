@@ -1,6 +1,7 @@
 // ignore_for_file: implementation_imports, public_member_api_docs
 
 import 'dart:js_interop';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
@@ -74,7 +75,10 @@ class FaceLandmarkModelWeb {
         landmarksLen = n;
       }
     }
-    if (landmarksIdx < 0 || scoreIdx < 0) {
+    // Only the landmark output is required. The face-presence score output is
+    // optional (mirrors native, where `_scoreIdx == -1` yields a null score),
+    // so a mesh-only model still works instead of failing to initialize.
+    if (landmarksIdx < 0) {
       throw StateError(
         'Face landmark model outputs do not match expected shapes. Got '
         '${[for (final t in outs) t.shape]}',
@@ -84,7 +88,7 @@ class FaceLandmarkModelWeb {
     _scoreIdx = scoreIdx;
     _landmarksLen = landmarksLen;
     _landmarksOut = Float32List(landmarksLen);
-    _scoreOut = Float32List(1);
+    _scoreOut = scoreIdx < 0 ? null : Float32List(1);
     _inputBuffer = Float32List(_inH * _inW * 3);
 
     _canvas = web.HTMLCanvasElement()
@@ -112,7 +116,7 @@ class FaceLandmarkModelWeb {
   ///
   /// [bitmap] should be the source image. [cx], [cy], [size], [theta] specify
   /// the rotation-aware crop. Output is the model's tensor as Float32List.
-  Future<({Float32List landmarks, double score})> runOnCrop(
+  Future<({Float32List landmarks, double? score})> runOnCrop(
     JSObject canvasSource, {
     required double cx,
     required double cy,
@@ -142,15 +146,24 @@ class FaceLandmarkModelWeb {
     final input = _inputBuffer!;
     rgbaToSignedRgbFloat32(Uint8List.view(rgba.buffer), input);
 
+    final scoreOut = _scoreOut;
     await _liteRtItp!.runForMultipleInputs(
       <Object>[input],
-      <int, Object>{_landmarksIdx: _landmarksOut!, _scoreIdx: _scoreOut!},
+      <int, Object>{_landmarksIdx: _landmarksOut!, _scoreIdx: ?scoreOut},
     );
 
     return (
       landmarks: Float32List.fromList(_landmarksOut!),
-      score: _scoreOut![0],
+      score: scoreOut == null ? null : _sigmoidClipped(scoreOut[0]),
     );
+  }
+
+  // Comparison-based clip to +/-80 then logistic, matching the native
+  // `sigmoidClipped` exactly (including NaN: `clip` propagates NaN, unlike
+  // `num.clamp` which would coerce NaN to the upper bound).
+  static double _sigmoidClipped(double x) {
+    final double v = x < -80.0 ? -80.0 : (x > 80.0 ? 80.0 : x);
+    return 1.0 / (1.0 + math.exp(-v));
   }
 
   int get landmarksLen => _landmarksLen;

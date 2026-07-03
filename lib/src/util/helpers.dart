@@ -168,6 +168,7 @@ List<List<double>> _unpackLandmarks(
   int inH,
   List<double> padding, {
   bool clamp = true,
+  bool normalizeZ = false,
 }) {
   final double pt = padding[0],
       pb = padding[1],
@@ -183,7 +184,12 @@ List<List<double>> _unpackLandmarks(
     final int i3 = i * 3;
     double x = (flat[i3] * invW - pl) * invSx;
     double y = (flat[i3 + 1] * invH - pt) * invSy;
-    final double z = flat[i3 + 2];
+    // The model emits z in input-pixel units (roughly the same scale as raw x).
+    // When [normalizeZ] is set (mesh path), rescale it to match the normalized
+    // x/y so depth is consistent with the 2D coordinates; downstream code that
+    // multiplies by the ROI size then yields a z in the same units as x/y.
+    // Iris landmarks leave z untouched (their z is not used geometrically).
+    final double z = normalizeZ ? flat[i3 + 2] * invW * invSx : flat[i3 + 2];
     if (clamp) {
       x = clamp01(x);
       y = clamp01(y);
@@ -268,7 +274,15 @@ List<List<double>> testUnpackLandmarks(
   int inH,
   List<double> padding, {
   bool clamp = true,
-}) => _unpackLandmarks(flat, inW, inH, padding, clamp: clamp);
+  bool normalizeZ = false,
+}) => _unpackLandmarks(
+  flat,
+  inW,
+  inH,
+  padding,
+  clamp: clamp,
+  normalizeZ: normalizeZ,
+);
 
 /// Test-only: exposes the private weighted-NMS logic for unit tests.
 @visibleForTesting

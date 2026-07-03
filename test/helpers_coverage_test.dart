@@ -186,6 +186,35 @@ void main() {
       expect(result[1][0], closeTo(0.5, 0.0001));
       expect(result[2][0], closeTo(1.0, 0.0001));
     });
+
+    test('normalizeZ scales z like x (mesh path)', () {
+      // z=64 in a 128-wide input, no padding: z -> 64/128 = 0.5, same
+      // transform as x. Without normalizeZ it stays in input-pixel units.
+      final flat = Float32List.fromList([64.0, 64.0, 64.0]);
+      final normalized = testUnpackLandmarks(flat, 128, 128, [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+      ], normalizeZ: true);
+      expect(normalized[0][2], closeTo(0.5, 0.0001));
+
+      final raw = testUnpackLandmarks(flat, 128, 128, [0.0, 0.0, 0.0, 0.0]);
+      expect(raw[0][2], closeTo(64.0, 0.0001));
+    });
+
+    test('normalizeZ applies horizontal padding scale to z', () {
+      // padding left=right=0.25 -> sx = 0.5: z = (64/128) / 0.5 = 1.0.
+      // z is not clamped even though clamp defaults to true.
+      final flat = Float32List.fromList([64.0, 64.0, 64.0]);
+      final result = testUnpackLandmarks(flat, 128, 128, [
+        0.0,
+        0.0,
+        0.25,
+        0.25,
+      ], normalizeZ: true);
+      expect(result[0][2], closeTo(1.0, 0.0001));
+    });
   });
 
   group('testNms', () {

@@ -106,6 +106,80 @@ Rect boundsOf(Iterable<Offset> pts) {
   return Rect.fromLTRB(minX, minY, maxX, maxY);
 }
 
+/// Builds the compact per-face info text drawn by [drawFaceInfoLabel]:
+/// detection confidence (plus mesh confidence when available) on the first
+/// line, head pose Euler angles on the second. In fast mode (no mesh) only
+/// roll is shown, since pitch/yaw are not estimated there.
+String faceInfoLabelText(Face face) {
+  final StringBuffer buf = StringBuffer(
+    'score ${face.score.toStringAsFixed(2)}',
+  );
+  final double? meshScore = face.meshScore;
+  if (meshScore != null) {
+    buf.write('  mesh ${meshScore.toStringAsFixed(2)}');
+  }
+  final HeadEulerAngles? angles = face.headEulerAngles;
+  if (angles != null) {
+    buf.write('\n');
+    if (face.mesh != null) {
+      buf
+        ..write('P ${angles.x.toStringAsFixed(0)}°  ')
+        ..write('Y ${angles.y.toStringAsFixed(0)}°  ')
+        ..write('R ${angles.z.toStringAsFixed(0)}°');
+    } else {
+      buf.write('R ${angles.z.toStringAsFixed(0)}°');
+    }
+  }
+  return buf.toString();
+}
+
+/// Draws [faceInfoLabelText] for [face] as a translucent card anchored just
+/// above [faceRect] (falling back to inside its top edge when there is no
+/// room), clamped to [canvasSize].
+void drawFaceInfoLabel(
+  Canvas canvas,
+  Size canvasSize,
+  Face face,
+  Rect faceRect,
+) {
+  final TextPainter tp = TextPainter(
+    text: TextSpan(
+      text: faceInfoLabelText(face),
+      style: const TextStyle(
+        color: Colors.white,
+        fontSize: 11,
+        height: 1.35,
+        fontWeight: FontWeight.w600,
+      ),
+    ),
+    textDirection: TextDirection.ltr,
+  )..layout();
+
+  const double padH = 6;
+  const double padV = 4;
+  const double gap = 4;
+  final double boxW = tp.width + padH * 2;
+  final double boxH = tp.height + padV * 2;
+
+  double left = faceRect.left;
+  double top = faceRect.top - gap - boxH;
+  if (top < 0) top = faceRect.top + gap;
+  if (left + boxW > canvasSize.width) left = canvasSize.width - boxW;
+  if (left < 0) left = 0;
+  if (top + boxH > canvasSize.height) {
+    top = math.max(0, canvasSize.height - boxH);
+  }
+
+  canvas.drawRRect(
+    RRect.fromRectAndRadius(
+      Rect.fromLTWH(left, top, boxW, boxH),
+      const Radius.circular(4),
+    ),
+    Paint()..color = const Color(0xB3000000),
+  );
+  tp.paint(canvas, Offset(left + padH, top + padV));
+}
+
 class DetectionsPainter extends CustomPainter {
   final List<Face> faces;
   final Rect imageRectOnCanvas;
@@ -117,6 +191,10 @@ class DetectionsPainter extends CustomPainter {
   final bool showIrises;
   final bool showEyeContours;
   final bool showEyeMesh;
+
+  /// When true, draws a per-face info card with detection/mesh confidence and
+  /// head pose Euler angles (see [faceInfoLabelText]).
+  final bool showPoseAndScores;
   final Color boundingBoxColor;
   final Color landmarkColor;
   final Color meshColor;
@@ -139,6 +217,7 @@ class DetectionsPainter extends CustomPainter {
     required this.showIrises,
     required this.showEyeContours,
     required this.showEyeMesh,
+    this.showPoseAndScores = false,
     required this.boundingBoxColor,
     required this.landmarkColor,
     required this.meshColor,
@@ -193,6 +272,17 @@ class DetectionsPainter extends CustomPainter {
           oy + boundingBox.bottomRight.y * scaleY,
         );
         canvas.drawRect(rect, boxPaint);
+      }
+
+      if (showPoseAndScores) {
+        final BoundingBox bb = face.boundingBox;
+        final ui.Rect faceRect = Rect.fromLTRB(
+          ox + bb.topLeft.x * scaleX,
+          oy + bb.topLeft.y * scaleY,
+          ox + bb.bottomRight.x * scaleX,
+          oy + bb.bottomRight.y * scaleY,
+        );
+        drawFaceInfoLabel(canvas, size, face, faceRect);
       }
 
       if (showLandmarks) {
@@ -353,6 +443,7 @@ class DetectionsPainter extends CustomPainter {
         old.showIrises != showIrises ||
         old.showEyeContours != showEyeContours ||
         old.showEyeMesh != showEyeMesh ||
+        old.showPoseAndScores != showPoseAndScores ||
         old.boundingBoxColor != boundingBoxColor ||
         old.landmarkColor != landmarkColor ||
         old.meshColor != meshColor ||
@@ -377,6 +468,10 @@ class CameraDetectionPainter extends CustomPainter {
   final bool isFrontCamera;
   final bool mirrorHorizontally;
 
+  /// When true, draws a per-face info card with detection/mesh confidence and
+  /// head pose Euler angles (see [faceInfoLabelText]).
+  final bool showPoseAndScores;
+
   CameraDetectionPainter({
     required this.faces,
     required this.imageSize,
@@ -387,6 +482,7 @@ class CameraDetectionPainter extends CustomPainter {
     required this.deviceOrientation,
     required this.isFrontCamera,
     required this.mirrorHorizontally,
+    this.showPoseAndScores = false,
   });
 
   @override
@@ -459,6 +555,10 @@ class CameraDetectionPainter extends CustomPainter {
         math.max(p1.dy, p2.dy),
       );
       canvas.drawRect(rect, boxPaint);
+
+      if (showPoseAndScores) {
+        drawFaceInfoLabel(canvas, size, face, rect);
+      }
 
       for (final landmark in face.landmarks.values) {
         final transformed = transformPoint(landmark.x, landmark.y);
@@ -538,7 +638,8 @@ class CameraDetectionPainter extends CustomPainter {
         old.sensorOrientation != sensorOrientation ||
         old.deviceOrientation != deviceOrientation ||
         old.isFrontCamera != isFrontCamera ||
-        old.mirrorHorizontally != mirrorHorizontally;
+        old.mirrorHorizontally != mirrorHorizontally ||
+        old.showPoseAndScores != showPoseAndScores;
   }
 }
 
@@ -987,6 +1088,10 @@ class FaceDetectionCameraOverlay extends StatelessWidget {
   /// [kSegmentationClassColors].
   final List<Color> segmentationClassColors;
 
+  /// When true, the detection painter draws a per-face info card with
+  /// detection/mesh confidence and head pose Euler angles.
+  final bool showPoseAndScores;
+
   const FaceDetectionCameraOverlay({
     super.key,
     required this.cameraPreview,
@@ -1006,6 +1111,7 @@ class FaceDetectionCameraOverlay extends StatelessWidget {
     this.segmentationColor = const Color(0x8800FF00),
     this.segmentationShowAllClasses = false,
     this.segmentationClassColors = kSegmentationClassColors,
+    this.showPoseAndScores = false,
   });
 
   @override
@@ -1057,6 +1163,7 @@ class FaceDetectionCameraOverlay extends StatelessWidget {
                   deviceOrientation: deviceOrientation,
                   isFrontCamera: isFrontCamera,
                   mirrorHorizontally: mirrorHorizontally,
+                  showPoseAndScores: showPoseAndScores,
                 ),
               ),
           ],

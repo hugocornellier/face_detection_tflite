@@ -1,6 +1,6 @@
 // ignore_for_file: avoid_print
 
-import 'dart:math' show sqrt;
+import 'dart:math' show max, min, sqrt;
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -124,6 +124,35 @@ void main() {
         expect(face.mesh, isNotNull);
         expect(face.mesh!.points.length, 468);
 
+        // Detection confidence: filtered at >= 0.5, so always in [0.5, 1.0].
+        expect(face.score, greaterThanOrEqualTo(0.5));
+        expect(face.score, lessThanOrEqualTo(1.0));
+
+        // Mesh presence score is populated in full mode and sigmoid-bounded.
+        expect(face.meshScore, isNotNull);
+        expect(face.meshScore, greaterThanOrEqualTo(0.0));
+        expect(face.meshScore, lessThanOrEqualTo(1.0));
+        expect(face.meshScore, face.mesh!.score);
+
+        // Mesh z is scaled like x/y since 6.6.0: the depth spread must be on
+        // the order of the face size, not ~inputWidth times larger (old bug).
+        final List<double> zs =
+            face.mesh!.points.map((p) => p.z ?? 0.0).toList();
+        final double zRange = zs.reduce(max) - zs.reduce(min);
+        expect(zRange, greaterThan(0));
+        expect(zRange, lessThan(face.originalSize.width));
+
+        // Head pose comes from the mesh in full mode. The sample photo is
+        // roughly frontal; the old unscaled-z bug produced ~90 degree values.
+        final HeadEulerAngles? angles = face.headEulerAngles;
+        expect(angles, isNotNull);
+        expect(face.headEulerAngleX, angles!.x);
+        expect(face.headEulerAngleY, angles.y);
+        expect(face.headEulerAngleZ, angles.z);
+        expect(angles.x.abs(), lessThan(60));
+        expect(angles.y.abs(), lessThan(60));
+        expect(angles.z.abs(), lessThan(60));
+
         expect(face.irisPoints, isNotEmpty);
 
         expect(face.originalSize.width, greaterThan(0));
@@ -233,6 +262,18 @@ void main() {
 
         expect(face.mesh, isNull);
         expect(face.irisPoints, isEmpty);
+
+        // Detector score is always present; mesh score is null without a mesh.
+        expect(face.score, greaterThanOrEqualTo(0.5));
+        expect(face.meshScore, isNull);
+
+        // Fast mode has no mesh: pitch/yaw fall back to 0, roll comes from
+        // the eye keypoints.
+        expect(face.headEulerAngles, isNotNull);
+        expect(face.headEulerAngleX, 0.0);
+        expect(face.headEulerAngleY, 0.0);
+        expect(face.headEulerAngleZ, isNotNull);
+        expect(face.headEulerAngleZ!.abs(), lessThan(60));
       }
     });
 
@@ -254,6 +295,15 @@ void main() {
         expect(face.boundingBox.width, greaterThan(0));
         expect(face.mesh, isNotNull);
         expect(face.mesh!.points.length, 468);
+
+        // Mesh score becomes available as soon as the mesh is computed.
+        expect(face.meshScore, isNotNull);
+        expect(face.meshScore, greaterThanOrEqualTo(0.0));
+        expect(face.meshScore, lessThanOrEqualTo(1.0));
+
+        // Mesh-based head pose (all three axes) is available in standard mode.
+        expect(face.headEulerAngles, isNotNull);
+        expect(face.headEulerAngleY!.abs(), lessThan(60));
 
         expect(face.irisPoints, isEmpty);
       }

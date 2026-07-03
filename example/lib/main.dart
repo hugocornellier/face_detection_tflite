@@ -349,6 +349,7 @@ class _ExampleState extends State<Example> {
   bool _showEyeContours = true;
   bool _showEyeMesh = true;
   bool _showLandmarkLabels = false;
+  bool _showPoseAndScores = true;
   bool _hasProcessedMesh = false;
   bool _hasProcessedIris = false;
 
@@ -587,6 +588,8 @@ class _ExampleState extends State<Example> {
                                     (v) => _showEyeMesh = v),
                                 cb('Landmark Labels', _showLandmarkLabels,
                                     (v) => _showLandmarkLabels = v),
+                                cb('Scores & Pose', _showPoseAndScores,
+                                    (v) => _showPoseAndScores = v),
                               ],
                             ),
                             const SizedBox(height: 8),
@@ -760,6 +763,7 @@ class _ExampleState extends State<Example> {
                                 showIrises: _showIrises,
                                 showEyeContours: _showEyeContours,
                                 showEyeMesh: _showEyeMesh,
+                                showPoseAndScores: _showPoseAndScores,
                                 boundingBoxColor: _boundingBoxColor,
                                 landmarkColor: _landmarkColor,
                                 meshColor: _meshColor,
@@ -866,6 +870,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   /// See `_rotationFlagForFrame`. Used to settle whether iOS buffers are
   /// sensor-native (same as Android) or already rotated by the plugin.
   DeviceOrientation? _iosProbeOrientation;
+
+  bool _showPoseAndScores = true;
 
   bool _showSegmentation = false;
   SegmentationMask? _segmentationMask;
@@ -1208,6 +1214,26 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                       if (mounted) setMenuState(() {});
                     },
                   ),
+              ],
+            ),
+            const Divider(color: Colors.white24, height: 24),
+            const Text('OVERLAY', style: sectionLabelStyle),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Scores & Head Pose',
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
+                ),
+                Switch(
+                  value: _showPoseAndScores,
+                  activeTrackColor: Colors.blue,
+                  onChanged: (value) {
+                    update(() => _showPoseAndScores = value);
+                  },
+                ),
               ],
             ),
             const Divider(color: Colors.white24, height: 24),
@@ -1567,6 +1593,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
             segmentationColor: _segmentationColor,
             segmentationShowAllClasses:
                 _liveSegmentationModel == SegmentationModel.multiclass,
+            showPoseAndScores: _showPoseAndScores,
           ),
           _positionedTopBar(turns),
         ],
@@ -2220,6 +2247,7 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
   bool _showEyeContours = true;
   bool _showEyeMesh = true;
   bool _showLandmarkLabels = false;
+  bool _showPoseAndScores = true;
 
   Color _boundingBoxColor = const Color(0xFF00FFCC);
   Color _landmarkColor = const Color(0xFF89CFF0);
@@ -2582,6 +2610,71 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
     }
   }
 
+  /// Draws the score/mesh-score line and head pose line for [face], stacked
+  /// above its bounding box (mirroring the on-screen painters' info card).
+  /// Hershey fonts are ASCII-only, so degree signs are omitted.
+  void _drawFaceInfoOnMat(cv.Mat mat, Face face) {
+    final w = mat.cols;
+    final h = mat.rows;
+    final bb = face.boundingBox;
+
+    final scoreLine = StringBuffer(
+      'score ${(face.score * 100).toStringAsFixed(0)}%',
+    );
+    final meshScore = face.meshScore;
+    if (meshScore != null) {
+      scoreLine.write(' mesh ${(meshScore * 100).toStringAsFixed(0)}%');
+    }
+    final angles = face.headEulerAngles;
+    final lines = <String>[
+      scoreLine.toString(),
+      if (angles != null)
+        face.mesh != null
+            ? 'P ${angles.x.toStringAsFixed(0)} '
+                'Y ${angles.y.toStringAsFixed(0)} '
+                'R ${angles.z.toStringAsFixed(0)}'
+            : 'R ${angles.z.toStringAsFixed(0)}',
+    ];
+
+    final bboxColor = _bgr(_boundingBoxColor);
+    final black = cv.Scalar(0, 0, 0);
+    final l = bb.left.toInt().clamp(0, w - 1);
+    final t = bb.top.toInt().clamp(0, h - 1);
+
+    const double fontScale = 0.6;
+    const int thickness = 2;
+    final sizes = [
+      for (final line in lines)
+        cv.getTextSize(line, cv.FONT_HERSHEY_SIMPLEX, fontScale, thickness).$1,
+    ];
+    final lineHeights = [for (final s in sizes) s.height + 8];
+    final int blockH = lineHeights.fold(0, (a, b) => a + b);
+
+    // Stack the block just above the box; fall back to inside its top edge.
+    int top = t - blockH < 0 ? t : t - blockH;
+    for (int i = 0; i < lines.length; i++) {
+      final labelTop = top.clamp(0, h - 1);
+      final labelW = (sizes[i].width + 8).clamp(1, w - l);
+      final labelH = lineHeights[i].clamp(1, h - labelTop);
+      cv.rectangle(
+        mat,
+        cv.Rect(l, labelTop, labelW, labelH),
+        bboxColor,
+        thickness: -1,
+      );
+      cv.putText(
+        mat,
+        lines[i],
+        cv.Point(l + 4, labelTop + sizes[i].height + 2),
+        cv.FONT_HERSHEY_SIMPLEX,
+        fontScale,
+        black,
+        thickness: thickness,
+      );
+      top += lineHeights[i];
+    }
+  }
+
   /// Draws the enabled overlays onto [mat] with OpenCV, mirroring what
   /// DetectionsPainter draws on screen for the Still Image mode.
   void _drawFacesOnMat(cv.Mat mat, List<Face> faces) {
@@ -2606,27 +2699,34 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
           thickness: math.max(1, _boundingBoxThickness.round()),
         );
 
-        final label =
-            'Face ${(face.detectionData.score * 100).toStringAsFixed(0)}%';
-        final (sz, _) = cv.getTextSize(label, cv.FONT_HERSHEY_SIMPLEX, 0.6, 2);
-        final labelTop = (t - sz.height - 8).clamp(0, h - 1);
-        final labelW = (sz.width + 8).clamp(1, w - l);
-        final labelH = (sz.height + 8).clamp(1, h - labelTop);
-        cv.rectangle(
-          mat,
-          cv.Rect(l, labelTop, labelW, labelH),
-          bboxColor,
-          thickness: -1,
-        );
-        cv.putText(
-          mat,
-          label,
-          cv.Point(l + 4, labelTop + sz.height + 2),
-          cv.FONT_HERSHEY_SIMPLEX,
-          0.6,
-          black,
-          thickness: 2,
-        );
+        if (!_showPoseAndScores) {
+          final label =
+              'Face ${(face.detectionData.score * 100).toStringAsFixed(0)}%';
+          final (sz, _) =
+              cv.getTextSize(label, cv.FONT_HERSHEY_SIMPLEX, 0.6, 2);
+          final labelTop = (t - sz.height - 8).clamp(0, h - 1);
+          final labelW = (sz.width + 8).clamp(1, w - l);
+          final labelH = (sz.height + 8).clamp(1, h - labelTop);
+          cv.rectangle(
+            mat,
+            cv.Rect(l, labelTop, labelW, labelH),
+            bboxColor,
+            thickness: -1,
+          );
+          cv.putText(
+            mat,
+            label,
+            cv.Point(l + 4, labelTop + sz.height + 2),
+            cv.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            black,
+            thickness: 2,
+          );
+        }
+      }
+
+      if (_showPoseAndScores) {
+        _drawFaceInfoOnMat(mat, face);
       }
 
       if (_showLandmarks) {
@@ -2854,6 +2954,8 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
                                     (v) => _showEyeMesh = v),
                                 cb('Landmark Labels', _showLandmarkLabels,
                                     (v) => _showLandmarkLabels = v),
+                                cb('Scores & Pose', _showPoseAndScores,
+                                    (v) => _showPoseAndScores = v),
                               ],
                             ),
                             const SizedBox(height: 8),

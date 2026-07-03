@@ -1,3 +1,14 @@
+## 6.6.0
+
+* Update flutter_litert -> 3.2.1 (Android Gradle Plugin 9.x build fix; faster `Interpreter.run`/`CompiledModel.run` and reduced per-frame allocations in the camera YUV path). No API change.
+* Add head pose estimation: `Face.headEulerAngles` (and the `headEulerAngleX`/`headEulerAngleY`/`headEulerAngleZ` getters) report pitch, yaw and roll in degrees, following Google ML Kit's sign conventions. Pitch and yaw are derived from the 468-point 3D mesh (`standard`/`full` modes); in `fast` mode only roll is estimated from the eye keypoints. All values are computed on demand from existing outputs, so there is no added inference cost.
+* Fix: face mesh `z` coordinates are now scaled consistently with `x`/`y` (previously z was left in the model's input-pixel units, making it roughly the input width times larger than x/y). This makes the mesh usable for 3D geometry such as head pose. Rendering that uses only `x`/`y`, and iris landmarks, are unaffected.
+* Expose detection confidence: `Face.score` surfaces the detector's face-presence confidence (previously computed but not exposed). See the README "Detection Score" section.
+* Expose mesh confidence: `Face.meshScore` (and `FaceMesh.score`) report the face-mesh model's own face-presence confidence, populated in `standard`/`full` modes and null in `fast` mode. Both are derived from an existing model output, so there is no added inference cost.
+* Add `FaceLandmark.callWithScore()` returning both landmarks and the mesh presence score. `FaceLandmark.call()` keeps its existing `Future<List<List<double>>>` return type, so this is a non-breaking addition.
+* Overlay helpers: `DetectionsPainter`, `CameraDetectionPainter` and `FaceDetectionCameraOverlay` gain an opt-in `showPoseAndScores` flag (default false) that draws a per-face info card with detection/mesh confidence and head pose angles. The example app enables it by default in the still image, live camera and video modes, with a toggle in each mode's settings.
+* Docs: documented all public enum values (`FaceLandmarkType`, `FaceDetectionMode`, `SegmentationError`, etc.) and added a README section for `detectFacesWithSegmentation` / `DetectionWithSegmentationResult`.
+
 ## 6.5.0
 
 * Update flutter_litert -> 3.2.0

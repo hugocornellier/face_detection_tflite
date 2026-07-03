@@ -983,6 +983,7 @@ class FaceDetector {
       'imgH': f.originalSize.height,
       if (f.mesh != null)
         'mesh': TransferableTypedData.fromList([_packPoints(f.mesh!.points)]),
+      if (f.mesh?.score != null) 'meshScore': f.mesh!.score,
       if (f.irisPoints.isNotEmpty)
         'iris': TransferableTypedData.fromList([_packPoints(f.irisPoints)]),
     };
@@ -1008,7 +1009,10 @@ class FaceDetector {
       FaceMesh? mesh;
       final meshTd = map['mesh'] as TransferableTypedData?;
       if (meshTd != null) {
-        mesh = FaceMesh(_unpackPoints(meshTd.materialize().asFloat32List()));
+        mesh = FaceMesh(
+          _unpackPoints(meshTd.materialize().asFloat32List()),
+          score: (map['meshScore'] as num?)?.toDouble(),
+        );
       }
       List<Point> irisPoints = const [];
       final irisTd = map['iris'] as TransferableTypedData?;

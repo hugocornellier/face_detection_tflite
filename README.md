@@ -25,6 +25,7 @@ Runs 100% offline/on-device. Highly performant: full detection runs in ~35ms per
 - On-device face detection, runs fully offline
 - Face landmarks, bounding boxes & eye tracking (iris + 71-point eye mesh)
 - 468 point mesh with 3D depth information (x, y, z coordinates)
+- Head pose: pitch, yaw & roll Euler angles (ML Kit compatible conventions)
 - Selfie segmentation: separate person from background, or use multiclass model for 6-class body part segmentation (hair, face, body, clothes, etc.)
 - Face recognition (embeddings): identify/compare faces across images
 - Truly cross-platform: compatible with Android, iOS, macOS, Windows, Linux and Web
@@ -126,6 +127,54 @@ print('Center: (${center.x}, ${center.y})');
 final List<Point> allCorners = boundingBox.corners;
 ```
 
+## Detection Score
+
+Each detected face carries a confidence score: how sure the detector is that the
+box actually contains a face.
+
+```dart
+final double score = face.score;
+
+print('Confidence: ${(score * 100).toStringAsFixed(1)}%');
+```
+
+Key things to know:
+
+- **Range is 0.0 to 1.0**, where higher means more confident.
+- **In practice you only ever see scores of 0.5 or higher.** Anything below 0.5
+  is filtered out internally and never returned, so 0.5 is effectively the floor.
+- It reflects only "is this a face", not the quality of the landmarks, mesh, or
+  any recognition/matching result.
+- It is not a calibrated probability. Treat it as a relative confidence value,
+  useful for ranking faces or applying your own stricter cutoff (for example,
+  keeping only faces above 0.9).
+
+```dart
+// Example: keep only high-confidence faces
+final strongFaces = faces.where((f) => f.score >= 0.9).toList();
+```
+
+### Mesh Score
+
+When a face mesh is computed (standard or full mode), the mesh model reports its
+own separate confidence that the aligned crop really is a face. Read it via
+`face.meshScore` (a convenience proxy for `face.mesh?.score`):
+
+```dart
+final double? meshScore = face.meshScore;
+if (meshScore != null) {
+  print('Mesh confidence: ${(meshScore * 100).toStringAsFixed(1)}%');
+}
+```
+
+- **Range is 0.0 to 1.0**, higher means more confident.
+- **Null in fast mode** (no mesh is computed) or if the model omits the output.
+- It is distinct from `face.score`: `face.score` comes from the detector, while
+  `meshScore` comes from the mesh model on the aligned crop. A low `meshScore`
+  can flag a crop the mesh model was unsure about (for example a bad alignment).
+- Like `face.score`, it reflects "is this a face", not lighting, blur, or pose,
+  so it is not a face-quality metric.
+
 ## Landmarks
 
 <img src="assets/screenshots/landmark-ex1.png" width="600" alt="Facial Landmarks">
@@ -156,6 +205,42 @@ for (final point in landmarks.values) {
   print('Landmark: (${point.x}, ${point.y})');
 }
 ```
+
+## Head Pose (Euler Angles)
+
+Each `Face` exposes the head orientation as pitch, yaw and roll in degrees. The
+sign conventions match Google ML Kit, so code migrating from
+`google_mlkit_face_detection` can read the same values:
+
+| Getter | Axis | Positive direction |
+|--------|------|--------------------|
+| `headEulerAngleX` | pitch | face tilts up |
+| `headEulerAngleY` | yaw | face turns toward the right side of the image |
+| `headEulerAngleZ` | roll | counter-clockwise in-plane tilt |
+
+```dart
+final angles = face.headEulerAngles; // HeadEulerAngles? (null if unavailable)
+if (angles != null) {
+  print('pitch: ${angles.x}, yaw: ${angles.y}, roll: ${angles.z}');
+}
+
+// Or read each axis directly (each is a double?):
+final double? pitch = face.headEulerAngleX;
+final double? yaw   = face.headEulerAngleY;
+final double? roll  = face.headEulerAngleZ;
+```
+
+Pitch and yaw are derived from the 468-point 3D mesh, so they require a
+detection mode that computes the mesh (`standard` or `full`). In `fast` mode
+there is no mesh, so only roll is estimated (from the eye keypoints) and
+pitch/yaw are reported as `0`.
+
+These angles are estimates from the mesh geometry, not a calibrated pose
+solver. Roll is the most reliable; yaw is good; pitch is the noisiest axis
+(it depends on the mesh's relative depth, which is approximate). This mirrors
+the accuracy characteristics of ML Kit's own head-angle outputs, and is
+suitable for gaze/attention cues, filtering non-frontal faces, and AR
+alignment rather than precise metrology.
 
 ## Face Mesh
 
@@ -406,6 +491,8 @@ All inference runs automatically in a background isolate: the UI thread is never
 
 Generate 192-dimensional identity vectors to compare faces across images. Useful for identifying the same person in different photos.
 
+Alignment is handled for you: pass the full image plus the detected `Face`, and the library uses the face's eye landmarks to affine-warp a straightened, scaled crop that is fed to the embedding model. You do not need to crop or align the face yourself. This corrects in-plane rotation and scale (not yaw/pitch), and applies to every embedding method (`getFaceEmbedding`, `getFaceEmbeddingFromMat`, `getFaceEmbeddingFromMatBytes`, `getFaceEmbeddings`). The `Face` must be a real detection result with eye landmarks, or the call throws.
+
 ```dart
 final detector = await FaceDetector.create();
 
@@ -485,6 +572,27 @@ final mask = await detector.getSegmentationMask(imageBytes);
 
 await detector.dispose();
 ```
+
+#### Faces + mask in one call
+
+If you need both the faces and the mask from a single frame, use
+`detectFacesWithSegmentation()`. It runs detection and segmentation together and
+returns a `DetectionWithSegmentationResult`:
+
+```dart
+final result = await detector.detectFacesWithSegmentation(imageBytes);
+
+final List<Face> faces        = result.faces;
+final SegmentationMask? mask  = result.segmentationMask; // null if unavailable
+
+// Per-stage timings (milliseconds)
+print('Detection:    ${result.detectionTimeMs}ms');
+print('Segmentation: ${result.segmentationTimeMs}ms');
+print('Total:        ${result.totalTimeMs}ms');
+```
+
+`totalTimeMs` is the **larger** of the two stage times, not their sum, because
+detection and segmentation run concurrently.
 
 ### Model Variants
 
