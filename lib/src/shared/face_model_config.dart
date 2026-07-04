@@ -27,6 +27,9 @@ const String kFaceLandmarkModel = 'face_landmark.tflite';
 /// Asset filename for the iris landmark model.
 const String kIrisLandmarkModel = 'iris_landmark.tflite';
 
+/// Asset filename for the MediaPipe Blendshape V2 face classification model.
+const String kFaceBlendshapesModel = 'face_blendshapes.tflite';
+
 /// Asset filename for the MobileFaceNet embedding model.
 const String kEmbeddingModel = 'mobilefacenet.tflite';
 

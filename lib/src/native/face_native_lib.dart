@@ -18,7 +18,9 @@ import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:flutter_litert/native.dart' hide Detection;
 
 import '../shared/face_types.dart';
+import '../shared/face_gates.dart';
 import '../shared/face_model_config.dart';
+import '../shared/blendshape_input.dart';
 
 export '../dart_registration.dart';
 
@@ -33,11 +35,14 @@ export '../shared/face_model_config.dart'
         kModelNameFullSparse,
         kFaceLandmarkModel,
         kIrisLandmarkModel,
+        kFaceBlendshapesModel,
         kEmbeddingModel,
         kSegmentationGeneralModel,
         kSegmentationLandscapeModel,
         kSegmentationMulticlassModel;
 export '../shared/face_geometry.dart' show eyeRoisFromMesh, faceDetectionToRoi;
+export '../shared/blendshape_input.dart'
+    show Blendshape, kBlendshapeNames, kBlendshapeCount;
 
 export 'package:flutter_litert/flutter_litert.dart'
     show
@@ -87,6 +92,7 @@ part '../isolate/face_detector_core.dart';
 part '../models/face_detection_model.dart';
 part '../models/face_landmark.dart';
 part '../models/iris_landmark.dart';
+part '../models/face_blendshapes.dart';
 part '../models/face_embedding.dart';
 part '../models/selfie_segmentation.dart';
 part '../isolate/segmentation_worker.dart';

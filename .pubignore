@@ -44,6 +44,7 @@ app.*.map.json
 
 # Exclude from pub.dev archive (referenced via GitHub URLs)
 assets/screenshots/
+assets/demos/
 example/assets/
 
 # Reference model-card PDFs: not loaded at runtime, linked from the README.

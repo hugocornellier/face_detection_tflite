@@ -12,6 +12,7 @@ import 'package:flutter_litert/flutter_litert.dart'
     show BoundingBox, PerformanceConfig, Point;
 
 import 'face_geometry.dart' show headEulerAnglesFromMesh, rollFromEyes;
+import 'blendshape_input.dart' show Blendshape, kBlendshapeCount;
 
 /// Identifies specific facial landmarks returned by face detection.
 enum FaceLandmarkType {
@@ -32,6 +33,66 @@ enum FaceLandmarkType {
 
   /// Right ear tragion (the small notch in front of the ear).
   rightEyeTragion,
+}
+
+/// Named facial contours, mirroring Google ML Kit's `FaceContourType`.
+///
+/// Each value maps to an ordered group of points on the 468-point face mesh
+/// (see [faceContourMeshIndices]); read them with [Face.getContour] or
+/// [Face.contours]. Contours are only available when a mesh was computed
+/// ([FaceDetectionMode.standard] or [FaceDetectionMode.full]); in
+/// [FaceDetectionMode.fast] the getters return null.
+///
+/// As in ML Kit, "left"/"right" are subject-relative: [leftEye] is the
+/// SUBJECT'S left eye, which appears on the RIGHT of an unmirrored image. This
+/// matches the convention used by [Face.leftEyeOpenProbability].
+enum FaceContourType {
+  /// The 36-point oval outlining the whole face (silhouette).
+  face,
+
+  /// Upper edge of the subject's left eyebrow (5 points).
+  leftEyebrowTop,
+
+  /// Lower edge of the subject's left eyebrow (5 points).
+  leftEyebrowBottom,
+
+  /// Upper edge of the subject's right eyebrow (5 points).
+  rightEyebrowTop,
+
+  /// Lower edge of the subject's right eyebrow (5 points).
+  rightEyebrowBottom,
+
+  /// Outline of the subject's left eye (16 points).
+  leftEye,
+
+  /// Outline of the subject's right eye (16 points).
+  rightEye,
+
+  /// Top edge of the upper lip (11 points).
+  upperLipTop,
+
+  /// Bottom edge of the upper lip, i.e. the top of the mouth opening
+  /// (11 points).
+  upperLipBottom,
+
+  /// Top edge of the lower lip, i.e. the bottom of the mouth opening
+  /// (11 points).
+  lowerLipTop,
+
+  /// Bottom edge of the lower lip (11 points).
+  lowerLipBottom,
+
+  /// Bridge of the nose, from between the eyes down to the tip (6 points).
+  noseBridge,
+
+  /// Base of the nose across the nostrils (5 points).
+  noseBottom,
+
+  /// A single point at the center of the subject's left cheek.
+  leftCheek,
+
+  /// A single point at the center of the subject's right cheek.
+  rightCheek,
 }
 
 /// Face detection model variants.
@@ -588,6 +649,98 @@ const List<List<int>> eyeLandmarkConnections = [
   [8, 14],
 ];
 
+/// Ordered 468-point face-mesh indices for each [FaceContourType].
+///
+/// These are Google MediaPipe's canonical `FACEMESH_*` connection sets, chained
+/// into a single ordered polyline per contour so that connecting consecutive
+/// points renders the outline. Point counts and ordering therefore follow
+/// MediaPipe, not ML Kit's proprietary contour model, but the semantic groups
+/// (and the subject-relative left/right convention) match ML Kit's
+/// `FaceContourType`. Every index is in `[0, 468)`.
+const Map<FaceContourType, List<int>> faceContourMeshIndices = {
+  // FACEMESH_FACE_OVAL, walked as one closed loop (last connects back to first).
+  FaceContourType.face: [
+    10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, //
+    397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, //
+    172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109,
+  ],
+  // FACEMESH_LEFT_EYEBROW, split into its upper and lower arcs (outer -> inner).
+  FaceContourType.leftEyebrowTop: [300, 293, 334, 296, 336],
+  FaceContourType.leftEyebrowBottom: [276, 283, 282, 295, 285],
+  // FACEMESH_RIGHT_EYEBROW, split into its upper and lower arcs (outer -> inner).
+  FaceContourType.rightEyebrowTop: [70, 63, 105, 66, 107],
+  FaceContourType.rightEyebrowBottom: [46, 53, 52, 65, 55],
+  // FACEMESH_LEFT_EYE / FACEMESH_RIGHT_EYE, full rings (outer corner, over the
+  // top lid to the inner corner, back along the bottom lid).
+  FaceContourType.leftEye: [
+    263, 466, 388, 387, 386, 385, 384, 398, //
+    362, 382, 381, 380, 374, 373, 390, 249,
+  ],
+  FaceContourType.rightEye: [
+    33, 246, 161, 160, 159, 158, 157, 173, //
+    133, 155, 154, 153, 145, 144, 163, 7,
+  ],
+  // FACEMESH_LIPS, four arcs: outer-upper/inner-upper/inner-lower/outer-lower.
+  FaceContourType.upperLipTop: [
+    61,
+    185,
+    40,
+    39,
+    37,
+    0,
+    267,
+    269,
+    270,
+    409,
+    291,
+  ],
+  FaceContourType.upperLipBottom: [
+    78,
+    191,
+    80,
+    81,
+    82,
+    13,
+    312,
+    311,
+    310,
+    415,
+    308,
+  ],
+  FaceContourType.lowerLipTop: [
+    78,
+    95,
+    88,
+    178,
+    87,
+    14,
+    317,
+    402,
+    318,
+    324,
+    308,
+  ],
+  FaceContourType.lowerLipBottom: [
+    61,
+    146,
+    91,
+    181,
+    84,
+    17,
+    314,
+    405,
+    321,
+    375,
+    291,
+  ],
+  // FACEMESH_NOSE: the dorsal midline and the nostril base.
+  FaceContourType.noseBridge: [168, 6, 197, 195, 5, 4],
+  FaceContourType.noseBottom: [98, 97, 2, 326, 327],
+  // Single canonical cheek-center landmarks (no MediaPipe connection set).
+  FaceContourType.leftCheek: [280],
+  FaceContourType.rightCheek: [50],
+};
+
 List<Point> _clampedContour(List<Point> mesh) =>
     mesh.length >= kMaxEyeLandmark ? mesh.sublist(0, kMaxEyeLandmark) : mesh;
 
@@ -832,6 +985,37 @@ class HeadEulerAngles {
       'y: ${y.toStringAsFixed(1)}, z: ${z.toStringAsFixed(1)})';
 }
 
+/// All 52 MediaPipe Blendshape V2 coefficients for a detected face.
+///
+/// Values are in the range 0.0 to 1.0. Names follow the official MediaPipe /
+/// Apple ARKit convention, in which "left" and "right" are relative to the
+/// **subject** (see [Blendshape]). Populated only in [FaceDetectionMode.full];
+/// access via [Face.blendshapes].
+///
+/// This is a superset of what Google ML Kit exposes: ML Kit surfaces only smile
+/// and eye-open likelihoods, which [Face.smilingProbability] and the eye-open
+/// probability getters derive from these coefficients.
+class FaceBlendshapes {
+  /// Creates a blendshape result from 52 coefficients in tensor order.
+  FaceBlendshapes(List<double> scores)
+    : assert(scores.length == kBlendshapeCount),
+      scores = List<double>.unmodifiable(scores);
+
+  /// The 52 coefficients in `[0, 1]`, indexed in [Blendshape] tensor order.
+  final List<double> scores;
+
+  /// The coefficient for blendshape [b].
+  double operator [](Blendshape b) => scores[b.index];
+
+  /// Serializes to a map for isolate transfer.
+  Map<String, dynamic> toMap() => {'scores': scores};
+
+  /// Creates a blendshape result from a serialized map.
+  factory FaceBlendshapes.fromMap(Map<String, dynamic> map) => FaceBlendshapes(
+    (map['scores'] as List).map((e) => (e as num).toDouble()).toList(),
+  );
+}
+
 /// Outputs for a single detected face.
 class Face {
   /// Underlying detection (bbox + 6 keypoints).
@@ -843,6 +1027,10 @@ class Face {
   /// Raw iris/eye points (152 points = 76 per eye in full mode, else empty).
   final List<Point> irisPoints;
 
+  /// Raw 52 blendshape coefficients (full mode only), or null when not
+  /// computed. Exposed through [blendshapes] and the probability getters.
+  final List<double>? _blendshapeScores;
+
   /// Original source image dimensions.
   final Size originalSize;
 
@@ -853,14 +1041,21 @@ class Face {
 
   late final HeadEulerAngles? _cachedHeadAngles = _computeHeadAngles();
 
+  late final FaceBlendshapes? _cachedBlendshapes = _computeBlendshapes();
+
   /// Creates a face detection result.
+  ///
+  /// [blendshapeScores] carries the 52 blendshape coefficients (full mode
+  /// only); pass null when they were not computed.
   Face({
     required Detection detection,
     required this.mesh,
     required List<Point> irises,
     required this.originalSize,
+    List<double>? blendshapeScores,
   }) : detectionData = detection,
        irisPoints = irises,
+       _blendshapeScores = blendshapeScores,
        boundingBox = _computeBoundingBox(detection.boundingBox, originalSize);
 
   static BoundingBox _computeBoundingBox(RectF r, Size originalSize) {
@@ -913,6 +1108,26 @@ class Face {
   /// Convenience proxy for `mesh?.score`.
   double? get meshScore => mesh?.score;
 
+  /// This face's visible width as a fraction of the source image width, always
+  /// in the range 0.0 to 1.0.
+  ///
+  /// Inspired by Google ML Kit's `minFaceSize` (the ratio of the face/head width
+  /// to the image width), this is the value to compare against a
+  /// minimum-face-size threshold. The width is clipped to the image bounds
+  /// before the ratio is taken, so a detection box that extends past the image
+  /// edge (which the native pipeline allows, unlike the web pipeline which
+  /// clamps boxes) still yields a fraction in `[0, 1]` and, importantly, the
+  /// same value on every platform. Returns 0.0 when the source image width is
+  /// unknown or the face lies entirely outside the image.
+  double get widthFraction {
+    final double w = originalSize.width;
+    if (w <= 0) return 0.0;
+    final double left = boundingBox.topLeft.x;
+    final double right = boundingBox.topRight.x;
+    final double visible = math.min(right, w) - math.max(left, 0.0);
+    return visible > 0 ? visible / w : 0.0;
+  }
+
   /// Comprehensive eye tracking data for both eyes (null when no iris data).
   EyePair? get eyes => _cachedEyes;
 
@@ -935,6 +1150,55 @@ class Face {
   /// Head roll in degrees (in-plane tilt); positive is counter-clockwise. Null
   /// when unavailable. See [headEulerAngles].
   double? get headEulerAngleZ => _cachedHeadAngles?.z;
+
+  /// All 52 MediaPipe Blendshape V2 coefficients, or null when not computed
+  /// (fast/standard modes, or the blendshape stage could not run). See
+  /// [FaceBlendshapes]; only populated in [FaceDetectionMode.full].
+  FaceBlendshapes? get blendshapes => _cachedBlendshapes;
+
+  /// Probability that the face is smiling, 0.0 to 1.0, or null when not
+  /// computed. The average of the `mouthSmileLeft` and `mouthSmileRight`
+  /// blendshapes; semantics match Google ML Kit's `smilingProbability`.
+  double? get smilingProbability {
+    final FaceBlendshapes? b = _cachedBlendshapes;
+    if (b == null) return null;
+    final double v =
+        (b[Blendshape.mouthSmileLeft] + b[Blendshape.mouthSmileRight]) / 2.0;
+    return v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v);
+  }
+
+  /// Probability that the SUBJECT'S left eye is open, 0.0 to 1.0, or null when
+  /// not computed. Computed as `1 - eyeBlinkLeft`; semantics match Google ML
+  /// Kit's `leftEyeOpenProbability`.
+  ///
+  /// NOTE: "left" is subject-relative (the ML Kit / ARKit convention), i.e. the
+  /// eye that appears on the RIGHT of an unmirrored image. That is the OPPOSITE
+  /// eye from [eyes]`?.leftEye`, which is image-relative. If the app
+  /// horizontally flips frames before detection (common for a selfie preview),
+  /// subject left/right swap, exactly as they do in ML Kit.
+  double? get leftEyeOpenProbability {
+    final FaceBlendshapes? b = _cachedBlendshapes;
+    if (b == null) return null;
+    final double v = 1.0 - b[Blendshape.eyeBlinkLeft];
+    return v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v);
+  }
+
+  /// Probability that the SUBJECT'S right eye is open, 0.0 to 1.0, or null when
+  /// not computed. Computed as `1 - eyeBlinkRight`; semantics match Google ML
+  /// Kit's `rightEyeOpenProbability`. See [leftEyeOpenProbability] for the
+  /// subject-relative caveat.
+  double? get rightEyeOpenProbability {
+    final FaceBlendshapes? b = _cachedBlendshapes;
+    if (b == null) return null;
+    final double v = 1.0 - b[Blendshape.eyeBlinkRight];
+    return v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v);
+  }
+
+  FaceBlendshapes? _computeBlendshapes() {
+    final List<double>? s = _blendshapeScores;
+    if (s == null || s.length != kBlendshapeCount) return null;
+    return FaceBlendshapes(s);
+  }
 
   HeadEulerAngles? _computeHeadAngles() {
     final FaceMesh? m = mesh;
@@ -992,11 +1256,34 @@ class Face {
     return FaceLandmarks(landmarkMap);
   }
 
+  /// The mesh points for a named [FaceContourType], in absolute pixel
+  /// coordinates and ordered so that connecting consecutive points draws the
+  /// outline (see [faceContourMeshIndices]).
+  ///
+  /// Mirrors Google ML Kit's `face.getContour(type).points`. Returns null when
+  /// no mesh is available ([FaceDetectionMode.fast]); otherwise a non-empty
+  /// list (a single point for [FaceContourType.leftCheek] /
+  /// [FaceContourType.rightCheek]).
+  List<Point>? getContour(FaceContourType type) {
+    final FaceMesh? m = mesh;
+    if (m == null) return null;
+    final List<int> indices = faceContourMeshIndices[type]!;
+    return [for (final i in indices) m[i]];
+  }
+
+  /// All [FaceContourType] contours keyed by type, or null when no mesh is
+  /// available ([FaceDetectionMode.fast]). See [getContour].
+  Map<FaceContourType, List<Point>>? get contours {
+    if (mesh == null) return null;
+    return {for (final type in FaceContourType.values) type: getContour(type)!};
+  }
+
   /// Serializes this face to a map for isolate transfer.
   Map<String, dynamic> toMap() => {
     'detection': detectionData.toMap(),
     if (mesh != null) 'mesh': mesh!.toMap(),
     'irisPoints': irisPoints.map((p) => p.toMap()).toList(),
+    if (_blendshapeScores != null) 'blendshapeScores': _blendshapeScores,
     'originalSize': {
       'width': originalSize.width,
       'height': originalSize.height,
@@ -1008,6 +1295,11 @@ class Face {
     detection: Detection.fromMap(map['detection']),
     mesh: map['mesh'] != null ? FaceMesh.fromMap(map['mesh']) : null,
     irises: (map['irisPoints'] as List).map((p) => Point.fromMap(p)).toList(),
+    blendshapeScores: map['blendshapeScores'] != null
+        ? (map['blendshapeScores'] as List)
+              .map((e) => (e as num).toDouble())
+              .toList()
+        : null,
     originalSize: Size(
       map['originalSize']['width'],
       map['originalSize']['height'],

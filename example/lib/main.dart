@@ -350,6 +350,7 @@ class _ExampleState extends State<Example> {
   bool _showEyeMesh = true;
   bool _showLandmarkLabels = false;
   bool _showPoseAndScores = true;
+  bool _showClassification = true;
   bool _hasProcessedMesh = false;
   bool _hasProcessedIris = false;
 
@@ -371,6 +372,17 @@ class _ExampleState extends State<Example> {
   double _eyeMeshSize = 0.8;
 
   FaceDetectionModel _detectionModel = FaceDetectionModel.backCamera;
+
+  // Demo-only detection gates, applied as a live post-filter so the sliders
+  // update instantly without re-creating the detector. The same values can be
+  // passed to FaceDetector.create(minScore:, minFaceSize:) to have the detector
+  // enforce them directly.
+  double _minScore = 0.0;
+  double _minFaceSize = 0.0;
+
+  List<Face> _gatedFaces(List<Face> faces) => faces
+      .where((f) => f.score >= _minScore && f.widthFraction >= _minFaceSize)
+      .toList();
 
   @override
   void initState() {
@@ -590,6 +602,8 @@ class _ExampleState extends State<Example> {
                                     (v) => _showLandmarkLabels = v),
                                 cb('Scores & Pose', _showPoseAndScores,
                                     (v) => _showPoseAndScores = v),
+                                cb('Smile & Eyes', _showClassification,
+                                    (v) => _showClassification = v),
                               ],
                             ),
                             const SizedBox(height: 8),
@@ -631,6 +645,17 @@ class _ExampleState extends State<Example> {
                                 (v) => _meshSize = v),
                             sl('Eye Mesh', _eyeMeshSize, 0.1, 10.0,
                                 (v) => _eyeMeshSize = v),
+                            const SizedBox(height: 8),
+                          ],
+                        ),
+                        ExpansionTile(
+                          title: const Text('Detection gates',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          children: [
+                            sl('minScore', _minScore, 0.0, 1.0,
+                                (v) => _minScore = v),
+                            sl('minFaceSize', _minFaceSize, 0.0, 1.0,
+                                (v) => _minFaceSize = v),
                             const SizedBox(height: 8),
                           ],
                         ),
@@ -752,7 +777,7 @@ class _ExampleState extends State<Example> {
                             child: CustomPaint(
                               size: Size(imageRect.width, imageRect.height),
                               painter: DetectionsPainter(
-                                faces: _faces,
+                                faces: _gatedFaces(_faces),
                                 imageRectOnCanvas: Rect.fromLTWH(
                                     0, 0, imageRect.width, imageRect.height),
                                 originalImageSize: _originalSize!,
@@ -764,6 +789,7 @@ class _ExampleState extends State<Example> {
                                 showEyeContours: _showEyeContours,
                                 showEyeMesh: _showEyeMesh,
                                 showPoseAndScores: _showPoseAndScores,
+                                showClassification: _showClassification,
                                 boundingBoxColor: _boundingBoxColor,
                                 landmarkColor: _landmarkColor,
                                 meshColor: _meshColor,
@@ -872,6 +898,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   DeviceOrientation? _iosProbeOrientation;
 
   bool _showPoseAndScores = true;
+  bool _showClassification = true;
 
   bool _showSegmentation = false;
   SegmentationMask? _segmentationMask;
@@ -1236,6 +1263,23 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                 ),
               ],
             ),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Smile & Eyes',
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
+                ),
+                Switch(
+                  value: _showClassification,
+                  activeTrackColor: Colors.blue,
+                  onChanged: (value) {
+                    update(() => _showClassification = value);
+                  },
+                ),
+              ],
+            ),
             const Divider(color: Colors.white24, height: 24),
             const Text('SEGMENTATION', style: sectionLabelStyle),
             const SizedBox(height: 4),
@@ -1594,6 +1638,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
             segmentationShowAllClasses:
                 _liveSegmentationModel == SegmentationModel.multiclass,
             showPoseAndScores: _showPoseAndScores,
+            showClassification: _showClassification,
           ),
           _positionedTopBar(turns),
         ],
@@ -2214,6 +2259,17 @@ class VideoFileScreen extends StatefulWidget {
 
 class _VideoFileScreenState extends State<VideoFileScreen> {
   FaceDetector? _detector;
+
+  // Demo-only detection gates, applied as a live post-filter so the sliders
+  // update instantly without re-creating the detector. The same values can be
+  // passed to FaceDetector.create(minScore:, minFaceSize:) to have the detector
+  // enforce them directly.
+  double _minScore = 0.0;
+  double _minFaceSize = 0.0;
+
+  List<Face> _gatedFaces(List<Face> faces) => faces
+      .where((f) => f.score >= _minScore && f.widthFraction >= _minFaceSize)
+      .toList();
   bool _isInitialized = false;
   bool _isProcessing = false;
   bool _cancelRequested = false;
@@ -2248,6 +2304,7 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
   bool _showEyeMesh = true;
   bool _showLandmarkLabels = false;
   bool _showPoseAndScores = true;
+  bool _showClassification = true;
 
   Color _boundingBoxColor = const Color(0xFF00FFCC);
   Color _landmarkColor = const Color(0xFF89CFF0);
@@ -2487,7 +2544,7 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
         if (segMask != null) {
           _blendMaskOnMat(frame, segMask, multiclass: segMulticlass);
         }
-        _drawFacesOnMat(frame, faces);
+        _drawFacesOnMat(frame, _gatedFaces(faces));
         writer.write(frame);
 
         idx++;
@@ -2626,15 +2683,21 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
       scoreLine.write(' mesh ${(meshScore * 100).toStringAsFixed(0)}%');
     }
     final angles = face.headEulerAngles;
+    final smile = face.smilingProbability;
     final lines = <String>[
-      scoreLine.toString(),
-      if (angles != null)
+      if (_showPoseAndScores) scoreLine.toString(),
+      if (_showPoseAndScores && angles != null)
         face.mesh != null
             ? 'P ${angles.x.toStringAsFixed(0)} '
                 'Y ${angles.y.toStringAsFixed(0)} '
                 'R ${angles.z.toStringAsFixed(0)}'
             : 'R ${angles.z.toStringAsFixed(0)}',
+      if (_showClassification && smile != null)
+        'smile ${smile.toStringAsFixed(2)} '
+            'eyeL ${face.leftEyeOpenProbability!.toStringAsFixed(2)} '
+            'eyeR ${face.rightEyeOpenProbability!.toStringAsFixed(2)}',
     ];
+    if (lines.isEmpty) return;
 
     final bboxColor = _bgr(_boundingBoxColor);
     final black = cv.Scalar(0, 0, 0);
@@ -2699,7 +2762,7 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
           thickness: math.max(1, _boundingBoxThickness.round()),
         );
 
-        if (!_showPoseAndScores) {
+        if (!_showPoseAndScores && !_showClassification) {
           final label =
               'Face ${(face.detectionData.score * 100).toStringAsFixed(0)}%';
           final (sz, _) =
@@ -2725,7 +2788,7 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
         }
       }
 
-      if (_showPoseAndScores) {
+      if (_showPoseAndScores || _showClassification) {
         _drawFaceInfoOnMat(mat, face);
       }
 
@@ -2956,6 +3019,8 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
                                     (v) => _showLandmarkLabels = v),
                                 cb('Scores & Pose', _showPoseAndScores,
                                     (v) => _showPoseAndScores = v),
+                                cb('Smile & Eyes', _showClassification,
+                                    (v) => _showClassification = v),
                               ],
                             ),
                             const SizedBox(height: 8),
@@ -3050,6 +3115,17 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
                                 (v) => _meshSize = v),
                             sl('Eye Mesh', _eyeMeshSize, 0.1, 10.0,
                                 (v) => _eyeMeshSize = v),
+                            const SizedBox(height: 8),
+                          ],
+                        ),
+                        ExpansionTile(
+                          title: const Text('Detection gates',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          children: [
+                            sl('minScore', _minScore, 0.0, 1.0,
+                                (v) => _minScore = v),
+                            sl('minFaceSize', _minFaceSize, 0.0, 1.0,
+                                (v) => _minFaceSize = v),
                             const SizedBox(height: 8),
                           ],
                         ),
@@ -3609,8 +3685,12 @@ class FaceSmoother {
 
     return Face(
       detection: face.detectionData,
-      mesh: FaceMesh(smoothedPoints),
+      // Preserve the mesh presence score and blendshape scores; the smoother
+      // only filters point positions, so dropping them here would blank out
+      // the mesh-score and classification overlays in video mode.
+      mesh: FaceMesh(smoothedPoints, score: mesh.score),
       irises: smoothedIrises,
+      blendshapeScores: face.blendshapes?.scores,
       originalSize: face.originalSize,
     );
   }

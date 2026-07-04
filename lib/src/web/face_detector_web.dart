@@ -12,7 +12,10 @@ import 'package:flutter_litert/src/web/web_detector_utils.dart'
     show decodeBitmap, WebGpuFallback;
 import 'package:web/web.dart' as web;
 
+import '../shared/blendshape_input.dart' show packBlendshapeInput;
+import '../shared/face_gates.dart' show applyFaceGates, validateFaceGates;
 import '../shared/face_geometry.dart' show transformMeshFlatToAbsolute;
+import 'models/face_blendshapes_model_web.dart';
 import 'models/face_detection_model_web.dart';
 import 'models/face_landmark_model_web.dart';
 import 'models/iris_landmark_model_web.dart';
@@ -29,6 +32,7 @@ class WebDetectTimings {
   int meshInferUs = 0;
   int irisPreUs = 0;
   int irisInferUs = 0;
+  int blendshapeInferUs = 0;
   int totalUs = 0;
   int detections = 0;
 
@@ -40,6 +44,7 @@ class WebDetectTimings {
     'mesh_infer_us': meshInferUs,
     'iris_pre_us': irisPreUs,
     'iris_infer_us': irisInferUs,
+    'blendshape_infer_us': blendshapeInferUs,
     'total_us': totalUs,
     'detections': detections,
   };
@@ -51,7 +56,7 @@ class WebDetectTimings {
 /// detect-from-bytes use case. Native-only methods (filepath, mat, camera
 /// frames) throw [UnsupportedError] on web.
 class FaceDetector with WebGpuFallback {
-  static const String modelVersion = '1.0.0';
+  static const String modelVersion = '1.1.0';
 
   FaceDetector();
 
@@ -64,6 +69,8 @@ class FaceDetector with WebGpuFallback {
     bool useCompiledModel = false,
     bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
+    double minScore = 0.0,
+    double minFaceSize = 0.0,
   }) async {
     final detector = FaceDetector();
     await detector.initialize(
@@ -75,6 +82,8 @@ class FaceDetector with WebGpuFallback {
       useCompiledModel: useCompiledModel,
       useLiteRt: useLiteRt,
       liteRtAccelerator: liteRtAccelerator,
+      minScore: minScore,
+      minFaceSize: minFaceSize,
     );
     return detector;
   }
@@ -82,14 +91,29 @@ class FaceDetector with WebGpuFallback {
   final FaceDetectionModelWeb _detector = FaceDetectionModelWeb();
   final FaceLandmarkModelWeb _mesh = FaceLandmarkModelWeb();
   final IrisLandmarkModelWeb _iris = IrisLandmarkModelWeb();
+  final FaceBlendshapesModelWeb _blendshapes = FaceBlendshapesModelWeb();
   SelfieSegmentationWeb? _segmenter;
 
   bool _detectorReady = false;
   bool _meshReady = false;
   bool _irisReady = false;
+  bool _blendshapesReady = false;
   bool _segmentationReady = false;
 
   String _liteRtAccelerator = 'auto';
+  double _minScore = 0.0;
+  double _minFaceSize = 0.0;
+
+  /// Minimum detection confidence (0.0 to 1.0) a face must have to be returned.
+  /// Defaults to 0.0 (no additional filtering above the internal 0.5 floor).
+  double get minScore => _minScore;
+
+  /// Minimum face size (face width / image width, 0.0 to 1.0) a detection must
+  /// have to be returned. Defaults to 0.0 (no filtering).
+  double get minFaceSize => _minFaceSize;
+
+  List<Face> _applyGates(List<Face> faces) =>
+      applyFaceGates(faces, minScore: _minScore, minFaceSize: _minFaceSize);
 
   /// Last-call per-stage timings (set when [debugTimings] is true).
   WebDetectTimings? lastTimings;
@@ -97,7 +121,8 @@ class FaceDetector with WebGpuFallback {
   /// When true, [detectFacesFromBytes] populates [lastTimings].
   bool debugTimings = false;
 
-  bool get isReady => _detectorReady && _meshReady && _irisReady;
+  bool get isReady =>
+      _detectorReady && _meshReady && _irisReady && _blendshapesReady;
   bool get isEmbeddingReady => false;
   bool get isSegmentationReady => _segmentationReady;
 
@@ -109,6 +134,7 @@ class FaceDetector with WebGpuFallback {
       _detector.activeAccelerator ??
       _mesh.activeAccelerator ??
       _iris.activeAccelerator ??
+      _blendshapes.activeAccelerator ??
       _segmenter?.activeAccelerator;
 
   // Cached init args so [swapToWasm] can re-init the runners with the same
@@ -124,6 +150,7 @@ class FaceDetector with WebGpuFallback {
       await _detector.dispose();
       await _mesh.dispose();
       await _iris.dispose();
+      await _blendshapes.dispose();
       await _segmenter?.dispose();
     } catch (_) {
       // Best-effort: an interpreter that already errored may not dispose
@@ -132,6 +159,7 @@ class FaceDetector with WebGpuFallback {
     await _detector.initialize(_model, liteRtAccelerator: 'wasm');
     await _mesh.initialize(liteRtAccelerator: 'wasm');
     await _iris.initialize(liteRtAccelerator: 'wasm');
+    await _blendshapes.initialize(liteRtAccelerator: 'wasm');
     if (_withSegmentation) {
       _segmenter = SelfieSegmentationWeb();
       await _segmenter!.initialize(
@@ -150,10 +178,15 @@ class FaceDetector with WebGpuFallback {
     bool useCompiledModel = false,
     bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
+    double minScore = 0.0,
+    double minFaceSize = 0.0,
   }) async {
     if (isReady) {
       throw StateError('FaceDetector already initialized');
     }
+    validateFaceGates(minScore: minScore, minFaceSize: minFaceSize);
+    _minScore = minScore;
+    _minFaceSize = minFaceSize;
     _liteRtAccelerator = liteRtAccelerator;
     _model = model;
     _withSegmentation = withSegmentation;
@@ -164,6 +197,8 @@ class FaceDetector with WebGpuFallback {
     _meshReady = true;
     await _iris.initialize(liteRtAccelerator: liteRtAccelerator);
     _irisReady = true;
+    await _blendshapes.initialize(liteRtAccelerator: liteRtAccelerator);
+    _blendshapesReady = true;
 
     if (withSegmentation) {
       final cfg = segmentationConfig ?? SegmentationConfig.safe;
@@ -194,11 +229,13 @@ class FaceDetector with WebGpuFallback {
     await _detector.dispose();
     await _mesh.dispose();
     await _iris.dispose();
+    await _blendshapes.dispose();
     await _segmenter?.dispose();
     _segmenter = null;
     _detectorReady = false;
     _meshReady = false;
     _irisReady = false;
+    _blendshapesReady = false;
     _segmentationReady = false;
   }
 
@@ -346,7 +383,7 @@ class FaceDetector with WebGpuFallback {
 
     final imgSize = Size(imageWidth.toDouble(), imageHeight.toDouble());
     if (mode == FaceDetectionMode.fast || dets.isEmpty) {
-      return <Face>[
+      return _applyGates(<Face>[
         for (final d in dets)
           Face(
             detection: d.imageSize == null
@@ -361,7 +398,7 @@ class FaceDetector with WebGpuFallback {
             irises: const <Point>[],
             originalSize: imgSize,
           ),
-      ];
+      ]);
     }
 
     final List<Face> faces = <Face>[];
@@ -460,6 +497,23 @@ class FaceDetector with WebGpuFallback {
         irisPoints = <Point>[...leftPts, ...rightPts];
       }
 
+      // Blendshape classification: repack the mesh + iris points and run one
+      // sub-millisecond WASM inference. Full mode only; null when the packer
+      // rejects the input or the model produces a NaN.
+      List<double>? blendshapeScores;
+      if (mode == FaceDetectionMode.full) {
+        final Float32List? packed = packBlendshapeInput(meshPoints, irisPoints);
+        if (packed != null) {
+          if (timings != null) sw.start();
+          blendshapeScores = await _blendshapes.run(packed);
+          if (timings != null) {
+            sw.stop();
+            timings.blendshapeInferUs += sw.elapsedMicroseconds;
+            sw.reset();
+          }
+        }
+      }
+
       faces.add(
         Face(
           detection: Detection(
@@ -472,11 +526,12 @@ class FaceDetector with WebGpuFallback {
               ? FaceMesh(meshPoints, score: mesh.score)
               : null,
           irises: irisPoints,
+          blendshapeScores: blendshapeScores,
           originalSize: imgSize,
         ),
       );
     }
-    return faces;
+    return _applyGates(faces);
   }
 
   /// Detects faces and returns a [SegmentationMask] alongside the faces.

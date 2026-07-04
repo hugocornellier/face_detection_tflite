@@ -61,7 +61,7 @@ class FaceDetector {
   ///
   /// Downstream caches should include this value in their lookup key so
   /// stored results are ignored after an upgrade that changes behavior.
-  static const String modelVersion = '1.0.1';
+  static const String modelVersion = '1.1.0';
 
   /// Creates a new face detector instance.
   ///
@@ -90,6 +90,8 @@ class FaceDetector {
     bool useCompiledModel = false,
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
     Precision precision = Precision.fp16,
+    double minScore = 0.0,
+    double minFaceSize = 0.0,
     // Web-only knobs; accepted here for API parity but ignored on native.
     bool useLiteRt = false,
     String liteRtAccelerator = 'auto',
@@ -104,6 +106,8 @@ class FaceDetector {
       useCompiledModel: useCompiledModel,
       accelerators: accelerators,
       precision: precision,
+      minScore: minScore,
+      minFaceSize: minFaceSize,
     );
     return detector;
   }
@@ -114,6 +118,27 @@ class FaceDetector {
   bool _useCompiledModel = false;
   Set<Accelerator> _accelerators = const {Accelerator.gpu, Accelerator.cpu};
   Precision _precision = Precision.fp16;
+  double _minScore = 0.0;
+  double _minFaceSize = 0.0;
+
+  /// Minimum detection confidence (0.0 to 1.0) a face must have to be returned.
+  ///
+  /// Configured via [create]/[initialize]. Defaults to 0.0 (no additional
+  /// filtering). Because the detector already discards candidates below its
+  /// internal confidence floor (0.5), values at or below that floor have no
+  /// effect; only values above it tighten the results further.
+  double get minScore => _minScore;
+
+  /// Minimum face size a detection must have to be returned, expressed as face
+  /// width divided by image width (0.0 to 1.0), matching Google ML Kit's
+  /// `minFaceSize`.
+  ///
+  /// Configured via [create]/[initialize]. Defaults to 0.0 (no filtering).
+  double get minFaceSize => _minFaceSize;
+
+  /// Applies the configured [minScore]/[minFaceSize] gates to [faces].
+  List<Face> _applyGates(List<Face> faces) =>
+      applyFaceGates(faces, minScore: _minScore, minFaceSize: _minFaceSize);
 
   /// Returns true if all models are loaded and ready for inference.
   ///
@@ -157,6 +182,14 @@ class FaceDetector {
   /// current platform's LiteRT runtime, the segmentation isolate falls back to
   /// the Interpreter and prints a debug message.
   ///
+  /// The [minScore] and [minFaceSize] parameters gate which detections are
+  /// returned. [minScore] drops faces below a confidence threshold; note the
+  /// detector already applies an internal floor of 0.5, so only values above
+  /// 0.5 tighten results further. [minFaceSize] drops faces whose width, as a
+  /// fraction of the image width, is below the threshold (matching Google ML
+  /// Kit's `minFaceSize`). Both default to 0.0 (no filtering) and must be in
+  /// the inclusive range `[0.0, 1.0]`, or [ArgumentError] is thrown.
+  ///
   /// Example:
   /// ```dart
   /// // Default: classic Interpreter.
@@ -184,6 +217,8 @@ class FaceDetector {
     bool useCompiledModel = false,
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
     Precision precision = Precision.fp16,
+    double minScore = 0.0,
+    double minFaceSize = 0.0,
     // Web-only knobs; accepted here for API parity but ignored on native.
     bool useLiteRt = false,
     String liteRtAccelerator = 'auto',
@@ -191,9 +226,15 @@ class FaceDetector {
     if (isReady) {
       throw StateError('FaceDetector already initialized');
     }
+    // Validate gates before loading any model so bad configuration fails fast.
+    // Ordered after the isReady check so a double-initialize still throws the
+    // documented StateError regardless of the argument values.
+    validateFaceGates(minScore: minScore, minFaceSize: minFaceSize);
     _useCompiledModel = useCompiledModel;
     _accelerators = accelerators;
     _precision = precision;
+    _minScore = minScore;
+    _minFaceSize = minFaceSize;
 
     final worker = _FaceDetectorWorker();
     IsolateRpcClient? segmentationRpc;
@@ -207,12 +248,15 @@ class FaceDetector {
           'packages/face_detection_tflite/assets/models/$kIrisLandmarkModel';
       const embeddingPath =
           'packages/face_detection_tflite/assets/models/$kEmbeddingModel';
+      const faceBlendshapesPath =
+          'packages/face_detection_tflite/assets/models/$kFaceBlendshapesModel';
 
       final assetFutures = [
         rootBundle.load(faceDetectionPath),
         rootBundle.load(faceLandmarkPath),
         rootBundle.load(irisLandmarkPath),
         rootBundle.load(embeddingPath),
+        rootBundle.load(faceBlendshapesPath),
       ];
 
       if (withSegmentation) {
@@ -233,6 +277,7 @@ class FaceDetector {
         faceLandmarkBytes: results[1].buffer.asUint8List(),
         irisLandmarkBytes: results[2].buffer.asUint8List(),
         embeddingBytes: results[3].buffer.asUint8List(),
+        faceBlendshapesBytes: results[4].buffer.asUint8List(),
         model: model,
         performanceConfig: performanceConfig,
         meshPoolSize: meshPoolSize,
@@ -241,8 +286,8 @@ class FaceDetector {
         precision: precision,
       );
 
-      if (withSegmentation && results.length > 4) {
-        final segBytes = results[4].buffer.asUint8List();
+      if (withSegmentation && results.length > 5) {
+        final segBytes = results[5].buffer.asUint8List();
         final config = segmentationConfig ?? SegmentationConfig.safe;
         segmentationRpc = IsolateRpcClient();
         await _spawnSegmentationIsolate(
@@ -341,7 +386,7 @@ class FaceDetector {
     } catch (e) {
       rethrowOrFormatException(e, imageBytes);
     }
-    return _deserializeFacesFast(result);
+    return _applyGates(_deserializeFacesFast(result));
   }
 
   /// Deprecated alias for [detectFacesFromBytes].
@@ -442,7 +487,7 @@ class FaceDetector {
         'mode': mode.name,
       },
     );
-    return _deserializeFacesFast(result);
+    return _applyGates(_deserializeFacesFast(result));
   }
 
   /// Detects faces directly from a [CameraFrame] produced by
@@ -464,7 +509,7 @@ class FaceDetector {
       'detectCameraFrame',
       _cameraFrameFields(frame, {'mode': mode.name, 'maxDim': maxDim}),
     );
-    return _deserializeFacesFast(result);
+    return _applyGates(_deserializeFacesFast(result));
   }
 
   /// One-call wrapper for live camera streams: takes a `CameraImage`-shaped
@@ -986,6 +1031,10 @@ class FaceDetector {
       if (f.mesh?.score != null) 'meshScore': f.mesh!.score,
       if (f.irisPoints.isNotEmpty)
         'iris': TransferableTypedData.fromList([_packPoints(f.irisPoints)]),
+      // 52 floats (208 bytes) ride as a plain Float32List; too small to bother
+      // with zero-copy TransferableTypedData.
+      if (f.blendshapes != null)
+        'blendshape': Float32List.fromList(f.blendshapes!.scores),
     };
   }
 
@@ -1019,10 +1068,17 @@ class FaceDetector {
       if (irisTd != null) {
         irisPoints = _unpackPoints(irisTd.materialize().asFloat32List());
       }
+      final blendshapeRaw = map['blendshape'];
+      final List<double>? blendshapeScores = blendshapeRaw is List<double>
+          ? blendshapeRaw
+          : (blendshapeRaw as List?)
+                ?.map((e) => (e as num).toDouble())
+                .toList();
       return Face(
         detection: detection,
         mesh: mesh,
         irises: irisPoints,
+        blendshapeScores: blendshapeScores,
         originalSize: imgSize,
       );
     }).toList();
@@ -1105,7 +1161,7 @@ class FaceDetector {
     final results = await Future.wait([
       _sendDetectionRequest<List<dynamic>>(detectOp, detectFields).then((r) {
         detectionStopwatch.stop();
-        return _deserializeFacesFast(r);
+        return _applyGates(_deserializeFacesFast(r));
       }),
       _sendSegmentationRequest<Map<String, dynamic>>(
         segmentOp,
@@ -1141,6 +1197,9 @@ class FaceDetector {
       final irisLandmarkBytes = data.irisLandmarkBytes
           .materialize()
           .asUint8List();
+      final faceBlendshapesBytes = data.faceBlendshapesBytes
+          .materialize()
+          .asUint8List();
       final embeddingBytes = data.embeddingBytes.materialize().asUint8List();
 
       final model = FaceDetectionModel.values.firstWhere(
@@ -1160,6 +1219,7 @@ class FaceDetector {
         faceDetectionBytes: faceDetectionBytes,
         faceLandmarkBytes: faceLandmarkBytes,
         irisLandmarkBytes: irisLandmarkBytes,
+        faceBlendshapesBytes: faceBlendshapesBytes,
         embeddingBytes: embeddingBytes,
         model: model,
         performanceConfig: PerformanceConfig(
@@ -1613,6 +1673,7 @@ class _FaceDetectorWorker extends IsolateWorkerBase {
     required Uint8List faceLandmarkBytes,
     required Uint8List irisLandmarkBytes,
     required Uint8List embeddingBytes,
+    required Uint8List faceBlendshapesBytes,
     required FaceDetectionModel model,
     required PerformanceConfig performanceConfig,
     required int meshPoolSize,
@@ -1633,6 +1694,9 @@ class _FaceDetectorWorker extends IsolateWorkerBase {
           ]),
           irisLandmarkBytes: TransferableTypedData.fromList([
             irisLandmarkBytes,
+          ]),
+          faceBlendshapesBytes: TransferableTypedData.fromList([
+            faceBlendshapesBytes,
           ]),
           embeddingBytes: TransferableTypedData.fromList([embeddingBytes]),
           modelName: model.name,

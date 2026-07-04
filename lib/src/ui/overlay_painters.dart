@@ -110,7 +110,10 @@ Rect boundsOf(Iterable<Offset> pts) {
 /// detection confidence (plus mesh confidence when available) on the first
 /// line, head pose Euler angles on the second. In fast mode (no mesh) only
 /// roll is shown, since pitch/yaw are not estimated there.
-String faceInfoLabelText(Face face) {
+///
+/// When [showClassification] is true and the face carries blendshape scores
+/// (full mode), a third line shows the smile and per-eye open probabilities.
+String faceInfoLabelText(Face face, {bool showClassification = false}) {
   final StringBuffer buf = StringBuffer(
     'score ${face.score.toStringAsFixed(2)}',
   );
@@ -130,6 +133,15 @@ String faceInfoLabelText(Face face) {
       buf.write('R ${angles.z.toStringAsFixed(0)}°');
     }
   }
+  if (showClassification) {
+    final double? smile = face.smilingProbability;
+    if (smile != null) {
+      buf
+        ..write('\nsmile ${smile.toStringAsFixed(2)}  ')
+        ..write('eyeL ${face.leftEyeOpenProbability!.toStringAsFixed(2)}  ')
+        ..write('eyeR ${face.rightEyeOpenProbability!.toStringAsFixed(2)}');
+    }
+  }
   return buf.toString();
 }
 
@@ -140,11 +152,12 @@ void drawFaceInfoLabel(
   Canvas canvas,
   Size canvasSize,
   Face face,
-  Rect faceRect,
-) {
+  Rect faceRect, {
+  bool showClassification = false,
+}) {
   final TextPainter tp = TextPainter(
     text: TextSpan(
-      text: faceInfoLabelText(face),
+      text: faceInfoLabelText(face, showClassification: showClassification),
       style: const TextStyle(
         color: Colors.white,
         fontSize: 11,
@@ -195,6 +208,10 @@ class DetectionsPainter extends CustomPainter {
   /// When true, draws a per-face info card with detection/mesh confidence and
   /// head pose Euler angles (see [faceInfoLabelText]).
   final bool showPoseAndScores;
+
+  /// Whether to append smile / eye-open probabilities to the per-face info
+  /// card (full mode only). Opt-in; independent of [showPoseAndScores].
+  final bool showClassification;
   final Color boundingBoxColor;
   final Color landmarkColor;
   final Color meshColor;
@@ -218,6 +235,7 @@ class DetectionsPainter extends CustomPainter {
     required this.showEyeContours,
     required this.showEyeMesh,
     this.showPoseAndScores = false,
+    this.showClassification = false,
     required this.boundingBoxColor,
     required this.landmarkColor,
     required this.meshColor,
@@ -274,7 +292,7 @@ class DetectionsPainter extends CustomPainter {
         canvas.drawRect(rect, boxPaint);
       }
 
-      if (showPoseAndScores) {
+      if (showPoseAndScores || showClassification) {
         final BoundingBox bb = face.boundingBox;
         final ui.Rect faceRect = Rect.fromLTRB(
           ox + bb.topLeft.x * scaleX,
@@ -282,7 +300,13 @@ class DetectionsPainter extends CustomPainter {
           ox + bb.bottomRight.x * scaleX,
           oy + bb.bottomRight.y * scaleY,
         );
-        drawFaceInfoLabel(canvas, size, face, faceRect);
+        drawFaceInfoLabel(
+          canvas,
+          size,
+          face,
+          faceRect,
+          showClassification: showClassification,
+        );
       }
 
       if (showLandmarks) {
@@ -444,6 +468,7 @@ class DetectionsPainter extends CustomPainter {
         old.showEyeContours != showEyeContours ||
         old.showEyeMesh != showEyeMesh ||
         old.showPoseAndScores != showPoseAndScores ||
+        old.showClassification != showClassification ||
         old.boundingBoxColor != boundingBoxColor ||
         old.landmarkColor != landmarkColor ||
         old.meshColor != meshColor ||
@@ -472,6 +497,10 @@ class CameraDetectionPainter extends CustomPainter {
   /// head pose Euler angles (see [faceInfoLabelText]).
   final bool showPoseAndScores;
 
+  /// Whether to append smile / eye-open probabilities to the per-face info
+  /// card (full mode only). Opt-in; independent of [showPoseAndScores].
+  final bool showClassification;
+
   CameraDetectionPainter({
     required this.faces,
     required this.imageSize,
@@ -483,6 +512,7 @@ class CameraDetectionPainter extends CustomPainter {
     required this.isFrontCamera,
     required this.mirrorHorizontally,
     this.showPoseAndScores = false,
+    this.showClassification = false,
   });
 
   @override
@@ -556,8 +586,14 @@ class CameraDetectionPainter extends CustomPainter {
       );
       canvas.drawRect(rect, boxPaint);
 
-      if (showPoseAndScores) {
-        drawFaceInfoLabel(canvas, size, face, rect);
+      if (showPoseAndScores || showClassification) {
+        drawFaceInfoLabel(
+          canvas,
+          size,
+          face,
+          rect,
+          showClassification: showClassification,
+        );
       }
 
       for (final landmark in face.landmarks.values) {
@@ -639,7 +675,8 @@ class CameraDetectionPainter extends CustomPainter {
         old.deviceOrientation != deviceOrientation ||
         old.isFrontCamera != isFrontCamera ||
         old.mirrorHorizontally != mirrorHorizontally ||
-        old.showPoseAndScores != showPoseAndScores;
+        old.showPoseAndScores != showPoseAndScores ||
+        old.showClassification != showClassification;
   }
 }
 
@@ -1092,6 +1129,10 @@ class FaceDetectionCameraOverlay extends StatelessWidget {
   /// detection/mesh confidence and head pose Euler angles.
   final bool showPoseAndScores;
 
+  /// Whether to append smile / eye-open probabilities to the per-face info
+  /// card (full mode only). Opt-in; independent of [showPoseAndScores].
+  final bool showClassification;
+
   const FaceDetectionCameraOverlay({
     super.key,
     required this.cameraPreview,
@@ -1112,6 +1153,7 @@ class FaceDetectionCameraOverlay extends StatelessWidget {
     this.segmentationShowAllClasses = false,
     this.segmentationClassColors = kSegmentationClassColors,
     this.showPoseAndScores = false,
+    this.showClassification = false,
   });
 
   @override
@@ -1164,6 +1206,7 @@ class FaceDetectionCameraOverlay extends StatelessWidget {
                   isFrontCamera: isFrontCamera,
                   mirrorHorizontally: mirrorHorizontally,
                   showPoseAndScores: showPoseAndScores,
+                  showClassification: showClassification,
                 ),
               ),
           ],

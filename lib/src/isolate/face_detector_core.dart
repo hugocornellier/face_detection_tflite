@@ -6,6 +6,7 @@ class _DetectionIsolateStartupData {
   final TransferableTypedData faceDetectionBytes;
   final TransferableTypedData faceLandmarkBytes;
   final TransferableTypedData irisLandmarkBytes;
+  final TransferableTypedData faceBlendshapesBytes;
   final TransferableTypedData embeddingBytes;
   final String modelName;
   final String performanceModeName;
@@ -20,6 +21,7 @@ class _DetectionIsolateStartupData {
     required this.faceDetectionBytes,
     required this.faceLandmarkBytes,
     required this.irisLandmarkBytes,
+    required this.faceBlendshapesBytes,
     required this.embeddingBytes,
     required this.modelName,
     required this.performanceModeName,
@@ -71,11 +73,13 @@ class _FaceDetectorCore {
   List<FaceLandmark> _meshItems = [];
   IrisLandmark? _irisLeft;
   IrisLandmark? _irisRight;
+  FaceBlendshapesModel? _blendshapes;
   FaceEmbedding? _embedding;
 
   final _detectorLock = AsyncLock();
   final _irisLeftLock = AsyncLock();
   final _irisRightLock = AsyncLock();
+  final _blendshapesLock = AsyncLock();
   final _embeddingLock = AsyncLock();
 
   /// Returns true when the core has been initialized with model data.
@@ -89,6 +93,7 @@ class _FaceDetectorCore {
     required Uint8List faceDetectionBytes,
     required Uint8List faceLandmarkBytes,
     required Uint8List irisLandmarkBytes,
+    Uint8List? faceBlendshapesBytes,
     Uint8List? embeddingBytes,
     required FaceDetectionModel model,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
@@ -144,6 +149,17 @@ class _FaceDetectorCore {
               irisLandmarkBytes,
               performanceConfig: performanceConfig,
             );
+
+      // Blendshape classification (smile / eye-open). Like iris, this is a
+      // small model pinned to the CPU regardless of user preference: a
+      // 292-in / 52-out MLP is well below the GPU-dispatch payoff threshold.
+      if (faceBlendshapesBytes != null) {
+        _blendshapes = useCompiledModel
+            ? await FaceBlendshapesModel.createCompiledFromBuffer(
+                faceBlendshapesBytes,
+              )
+            : await FaceBlendshapesModel.createFromBuffer(faceBlendshapesBytes);
+      }
 
       if (embeddingBytes != null) {
         _embedding = useCompiledModel
@@ -252,6 +268,28 @@ class _FaceDetectorCore {
       }
     }
 
+    // Blendshape classification: repack the mesh + iris points into the model's
+    // 146-landmark input and run one sub-millisecond inference per face. Only
+    // in full mode (iris present); failures leave that face's scores null.
+    final List<Float32List?> blendshapeResults = List<Float32List?>.filled(
+      dets.length,
+      null,
+    );
+    if (computeIris && _blendshapes != null) {
+      for (int i = 0; i < meshResults.length; i++) {
+        final meshPx = meshResults[i]?.points;
+        final irisPx = irisResults[i];
+        if (meshPx == null || irisPx == null) continue;
+        final Float32List? packed = packBlendshapeInput(meshPx, irisPx);
+        if (packed == null) continue;
+        try {
+          blendshapeResults[i] = await _blendshapesLock.run(
+            () => _blendshapes!.call(packed),
+          );
+        } catch (_) {}
+      }
+    }
+
     final List<Face> faces = <Face>[];
     for (int i = 0; i < dets.length; i++) {
       final aligned = alignedFaces[i];
@@ -293,6 +331,7 @@ class _FaceDetectorCore {
           detection: refinedDet,
           mesh: meshPx.isNotEmpty ? FaceMesh(meshPx, score: meshScore) : null,
           irises: irisPx,
+          blendshapeScores: blendshapeResults[i],
           originalSize: imgSize,
         ),
       );
@@ -511,10 +550,12 @@ class _FaceDetectorCore {
     _meshPool = null;
     d(() => _irisLeft?.dispose());
     d(() => _irisRight?.dispose());
+    d(() => _blendshapes?.dispose());
     d(() => _embedding?.dispose());
     _detector = null;
     _irisLeft = null;
     _irisRight = null;
+    _blendshapes = null;
     _embedding = null;
   }
 

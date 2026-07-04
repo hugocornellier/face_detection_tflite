@@ -48,6 +48,7 @@ mixin DetectionOverlayMixin<T extends StatefulWidget> on State<T> {
   bool showIrises = true;
   bool showEyeContours = true;
   bool showEyeMesh = false;
+  bool showClassification = true;
 
   // ---- Colors / sizes --------------------------------------------------
   final Color boundingBoxColor = const Color(0xFF00FFCC);
@@ -301,6 +302,19 @@ mixin DetectionOverlayMixin<T extends StatefulWidget> on State<T> {
       final br = face.boundingBox.bottomRight;
       ctx.strokeRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
     }
+    if (showClassification && face.smilingProbability != null) {
+      final tl = face.boundingBox.topLeft;
+      final text = 'smile ${face.smilingProbability!.toStringAsFixed(2)}  '
+          'eyeL ${face.leftEyeOpenProbability!.toStringAsFixed(2)}  '
+          'eyeR ${face.rightEyeOpenProbability!.toStringAsFixed(2)}';
+      ctx.font = '13px sans-serif';
+      final double tw = ctx.measureText(text).width.toDouble();
+      final double ty = tl.y > 20 ? tl.y - 6 : tl.y + 16;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)'.toJS;
+      ctx.fillRect(tl.x - 2, ty - 13, tw + 6, 17);
+      ctx.fillStyle = '#ffffff'.toJS;
+      ctx.fillText(text, tl.x + 1, ty);
+    }
     if (showMesh && face.mesh != null) {
       ctx.fillStyle = cssColor(meshColor).toJS;
       for (final p in face.mesh!.points) {
@@ -467,6 +481,12 @@ mixin DetectionOverlayMixin<T extends StatefulWidget> on State<T> {
                 title: const Text('Eye mesh'),
                 value: showEyeMesh,
                 onChanged: (v) => both(() => showEyeMesh = v ?? false),
+              ),
+              SwitchListTile(
+                dense: true,
+                title: const Text('Smile & eye-open'),
+                value: showClassification,
+                onChanged: (v) => both(() => showClassification = v),
               ),
               const Divider(),
               SwitchListTile(

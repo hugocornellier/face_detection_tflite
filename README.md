@@ -12,13 +12,18 @@
 </p>
 
 Flutter implementation of Google's MediaPipe face and facial landmark detection models using LiteRT (formerly TensorFlow Lite).
-Runs 100% offline/on-device. Highly performant: full detection runs in ~35ms per face, with a fast mode around 27ms. All work on a background isolate so the UI thread is never blocked.
+Runs 100% offline/on-device. Highly performant: full detection runs in ~8ms per face, with a fast mode around 3.5ms. All work on a background isolate so the UI thread is never blocked.
 
 > **~5.5x faster than Google ML Kit** on equivalent face detection tasks ([benchmark source](example/integration_test/mlkit_benchmark_test.dart))<sup>[†](#mlkit-comparison-benchmark)</sup>
 
-| Face Mesh, Iris Detection, Eye Tracking | Multi-Face Detection |
-|---|---|
-| ![Face Mesh, Iris Detection, Eye Tracking](assets/screenshots/full-detection-ex1.png) | ![Multi-Face Detection](assets/screenshots/group-shot-bounding-box-ex1.png) |
+<p align="center">
+  <img src="assets/demos/mesh-iris-portrait.webp" alt="On-device 468-point face mesh with iris and eye tracking and head pose" width="760"><br>
+  <sub><i>468-point face mesh, iris + eye tracking and head pose, fully on-device</i></sub>
+</p>
+<p align="center">
+  <img src="assets/demos/detection-and-segmentation.webp" alt="Full detection (left) and 6-class segmentation (right) of the same clip, frame-locked" width="880"><br>
+  <sub><i>Full detection (left) and 6-class segmentation (right), same clip</i></sub>
+</p>
 
 ## Features
 
@@ -26,6 +31,8 @@ Runs 100% offline/on-device. Highly performant: full detection runs in ~35ms per
 - Face landmarks, bounding boxes & eye tracking (iris + 71-point eye mesh)
 - 468 point mesh with 3D depth information (x, y, z coordinates)
 - Head pose: pitch, yaw & roll Euler angles (ML Kit compatible conventions)
+- Face classification: smile probability + per-eye open probability (ML Kit compatible), plus all 52 MediaPipe blendshape coefficients
+- Named face contours (ML Kit `FaceContourType` compatible): face oval, eyebrows, eyes, lips, nose and cheeks, derived from the mesh
 - Selfie segmentation: separate person from background, or use multiclass model for 6-class body part segmentation (hair, face, body, clothes, etc.)
 - Face recognition (embeddings): identify/compare faces across images
 - Truly cross-platform: compatible with Android, iOS, macOS, Windows, Linux and Web
@@ -82,9 +89,12 @@ All TFLite models are sourced from Google's [MediaPipe](https://mediapipe.dev/) 
 | Face Detection (full range sparse) | `face_detection_full_range_sparse.tflite` | [blazeface_full_range_sparse_model_card.pdf](doc/model_cards/blazeface_full_range_sparse_model_card.pdf) · [mediapipe.page.link/blazeface-back-sparse-mc](https://mediapipe.page.link/blazeface-back-sparse-mc) |
 | Face Mesh (468-point landmark) | `face_landmark.tflite` | [face_landmark_model_card.pdf](doc/model_cards/face_landmark_model_card.pdf) · [mediapipe.page.link/facemesh-mc](https://mediapipe.page.link/facemesh-mc) |
 | Iris Landmark (76-point) | `iris_landmark.tflite` | [iris_landmark_model_card.pdf](doc/model_cards/iris_landmark_model_card.pdf) · [mediapipe.page.link/iris-mc](https://mediapipe.page.link/iris-mc) |
+| Face Blendshapes (52-coefficient) | `face_blendshapes.tflite` | [blendshape_v2_model_card.pdf](doc/model_cards/blendshape_v2_model_card.pdf) · [official PDF](https://storage.googleapis.com/mediapipe-assets/Model%20Card%20Blendshape%20V2.pdf) |
 | Selfie Segmentation | `selfie_segmenter.tflite`, `selfie_segmenter_landscape.tflite` | [selfie_segmentation_model_card.pdf](doc/model_cards/selfie_segmentation_model_card.pdf) · [mediapipe.page.link/selfiesegmentation-mc](https://mediapipe.page.link/selfiesegmentation-mc) |
 | Multiclass Segmentation | `selfie_multiclass.tflite` | [multiclass_segmentation_model_card.pdf](doc/model_cards/multiclass_segmentation_model_card.pdf) |
 | Face Embedding (192-dim) | `mobilefacenet.tflite` | [mobilefacenet_paper.pdf](doc/model_cards/mobilefacenet_paper.pdf) · [arXiv 1804.07573](https://arxiv.org/abs/1804.07573) |
+
+`face_blendshapes.tflite` (955,312 bytes, SHA-256 `4f36dded049db18d76048567439b2a7f58f1daabc00d78bfe8f3ad396a2d2082`) is extracted from Google's official `face_landmarker.task` float16 v1 bundle. All models are Apache 2.0 licensed.
 
 ## Bounding Boxes
 
@@ -175,6 +185,66 @@ if (meshScore != null) {
 - Like `face.score`, it reflects "is this a face", not lighting, blur, or pose,
   so it is not a face-quality metric.
 
+## Detection Gates (minScore & minFaceSize)
+
+`FaceDetector.create()` accepts two optional gates that filter which faces come
+back. Both default to `0.0` (no filtering, so existing behavior is unchanged),
+and they apply on every platform and through every detection entry point.
+
+```dart
+final detector = await FaceDetector.create(
+  minScore: 0.9,      // keep only faces with confidence >= 0.9
+  minFaceSize: 0.15,  // keep only faces at least 15% of the image width
+);
+```
+
+### `minScore`
+
+Drops faces whose `face.score` is below the threshold, in the range `0.0` to
+`1.0`. The comparison is inclusive, so a face exactly at the threshold is kept.
+
+Because the detector already discards everything below its internal confidence
+floor of `0.5` (this matches MediaPipe's default `min_detection_confidence`), a
+`minScore` at or below `0.5` has no effect: only values above `0.5` tighten the
+results. It cannot surface faces below `0.5`, and there is no way to loosen the
+floor from this API.
+
+### `minFaceSize`
+
+Drops faces whose width, as a fraction of the image width, is below the
+threshold (range `0.0` to `1.0`, inclusive). That fraction is exposed on every
+face as `face.widthFraction`:
+
+```dart
+final double frac = face.widthFraction; // face width / image width, always 0..1
+```
+
+`minFaceSize` is inspired by Google ML Kit's `setMinFaceSize` (same head-width /
+image-width ratio) with two deliberate differences:
+
+- **Default is `0.0` here, `0.1` in ML Kit.** Defaulting to no filtering means
+  adding the option never silently changes existing results.
+- **It is a strict post-detection filter, not a detection-time hint.** ML Kit
+  documents `minFaceSize` as the "smallest desired face size" that trades speed
+  for small-face recall. Here the full detection runs and small faces are then
+  removed, so `minFaceSize` changes what you get back, not how fast detection
+  runs. `widthFraction` is measured on the detector's bounding box (clipped to
+  the image), which approximates but is not identical to ML Kit's head
+  measurement.
+
+### Notes
+
+- Invalid values (NaN, or outside `[0.0, 1.0]`) throw `ArgumentError` from
+  `create()` / `initialize()`.
+- These are filters, not a performance optimization: in `standard` and `full`
+  modes the mesh and iris models still run on every detected face before gating,
+  so the landmark cost is not saved.
+- Native and web filter identically, including for faces near the image border
+  (`widthFraction` uses the visible, image-clipped width on both).
+- For ad-hoc or per-call filtering you can also use `face.score` /
+  `face.widthFraction` directly, for example
+  `faces.where((f) => f.widthFraction >= 0.15)`.
+
 ## Landmarks
 
 <img src="assets/screenshots/landmark-ex1.png" width="600" alt="Facial Landmarks">
@@ -242,6 +312,63 @@ the accuracy characteristics of ML Kit's own head-angle outputs, and is
 suitable for gaze/attention cues, filtering non-frontal faces, and AR
 alignment rather than precise metrology.
 
+## Face Classification (Smile & Eye-Open)
+
+In `FaceDetectionMode.full`, each `Face` is classified by MediaPipe's
+Blendshape V2 model into 52 expression coefficients, from which this package
+exposes the same smile and eye-open likelihoods as Google ML Kit, plus the full
+coefficient set (which ML Kit does not provide):
+
+| Getter | Range | Meaning |
+|--------|-------|---------|
+| `smilingProbability` | 0.0 to 1.0 | mean of the `mouthSmileLeft`/`mouthSmileRight` blendshapes |
+| `leftEyeOpenProbability` | 0.0 to 1.0 | `1 - eyeBlinkLeft` (the subject's left eye) |
+| `rightEyeOpenProbability` | 0.0 to 1.0 | `1 - eyeBlinkRight` (the subject's right eye) |
+| `blendshapes` | `FaceBlendshapes?` | all 52 coefficients, indexed by the `Blendshape` enum |
+
+```dart
+final faces = await detector.detectFacesFromBytes(bytes,
+    mode: FaceDetectionMode.full);
+for (final face in faces) {
+  // null in fast/standard modes, or if the stage could not run.
+  final double? smile = face.smilingProbability;
+  final double? leftOpen = face.leftEyeOpenProbability;
+  final double? rightOpen = face.rightEyeOpenProbability;
+  if (smile != null) {
+    print('smile $smile  eyesOpen $leftOpen / $rightOpen');
+  }
+
+  // All 52 coefficients (a superset of ML Kit), indexed by name:
+  final FaceBlendshapes? bs = face.blendshapes;
+  if (bs != null) {
+    final double jawOpen = bs[Blendshape.jawOpen];
+    final double browUp = bs[Blendshape.browInnerUp];
+    print('jawOpen $jawOpen  browInnerUp $browUp');
+  }
+}
+```
+
+**Migrating from ML Kit.** ML Kit's `smilingProbability`,
+`leftEyeOpenProbability` and `rightEyeOpenProbability` require
+`enableClassification` on the `FaceDetectorOptions`. Here there is no separate
+flag: run in `FaceDetectionMode.full` and the values are populated (the model
+is a 292-input / 52-output MLP that runs in well under a millisecond, so there
+is no added cost worth gating). The getters return `null` in `fast`/`standard`
+modes, mirroring ML Kit's `null` when classification is disabled.
+
+**Left/right are subject-relative.** As in ML Kit and ARKit,
+`leftEyeOpenProbability` refers to the **subject's** left eye, i.e. the eye that
+appears on the **right** side of an unmirrored image. This is the opposite eye
+from `face.eyes?.leftEye`, which is image-relative. If your app horizontally
+flips frames before detection (common for a selfie preview), subject left/right
+swap, exactly as they do in ML Kit.
+
+These are model confidences, not geometric measurements, and are independent: a
+wink yields one low and one high eye value, and a smile with closed eyes is
+representable. Like ML Kit's classifications, they are most reliable on
+near-frontal faces (ML Kit only computes them for a Euler Y between -18 and 18
+degrees); this model degrades more gracefully but still favors frontal poses.
+
 ## Face Mesh
 
 <img src="assets/screenshots/mesh-ex1.png" width="600" alt="Face Mesh">
@@ -301,6 +428,67 @@ relative depth (scale-dependent). 3D coordinates are always computed for mesh an
     print('Nose tip depth: ${noseTip.z}');
   }
   ```
+
+## Face Contours
+
+Named facial contours, mirroring Google ML Kit's `FaceContourType`. Each
+contour is an ordered group of mesh points you can connect to draw the outline
+of a facial feature. Read them with `face.getContour(type)` (or `face.contours`
+for all of them at once):
+
+```dart
+final faces = await detector.detectFacesFromBytes(bytes,
+    mode: FaceDetectionMode.standard); // any mode that computes a mesh
+
+for (final face in faces) {
+  // null in fast mode (no mesh); otherwise the ordered points in pixels.
+  final List<Point>? oval = face.getContour(FaceContourType.face);
+  if (oval != null) {
+    for (int i = 0; i < oval.length - 1; i++) {
+      canvas.drawLine(
+        Offset(oval[i].x, oval[i].y),
+        Offset(oval[i + 1].x, oval[i + 1].y),
+        paint,
+      );
+    }
+  }
+
+  // Or grab everything at once (null in fast mode):
+  final Map<FaceContourType, List<Point>>? all = face.contours;
+}
+```
+
+### Available contours
+
+| `FaceContourType` | Points | Feature |
+|-------------------|:------:|---------|
+| `face` | 36 | Face oval / silhouette |
+| `leftEyebrowTop` / `leftEyebrowBottom` | 5 each | Subject's left eyebrow (upper / lower edge) |
+| `rightEyebrowTop` / `rightEyebrowBottom` | 5 each | Subject's right eyebrow (upper / lower edge) |
+| `leftEye` / `rightEye` | 16 each | Eye outline (full ring) |
+| `upperLipTop` / `upperLipBottom` | 11 each | Upper lip (outer edge / inner mouth line) |
+| `lowerLipTop` / `lowerLipBottom` | 11 each | Lower lip (inner mouth line / outer edge) |
+| `noseBridge` | 6 | Nose bridge, between the eyes down to the tip |
+| `noseBottom` | 5 | Nose base across the nostrils |
+| `leftCheek` / `rightCheek` | 1 each | Center of each cheek |
+
+Key things to know:
+
+- **Requires a mesh.** Contours are read off the 468-point mesh, so they are
+  populated in `FaceDetectionMode.standard` and `full`. In `fast` mode there is
+  no mesh, so `getContour` and `contours` return `null` (mirroring ML Kit's
+  `null` when contours are disabled).
+- **Left/right are subject-relative.** As in ML Kit, `leftEye` is the
+  **subject's** left eye, which appears on the **right** of an unmirrored image.
+  This is the same convention as `leftEyeOpenProbability`, and the opposite of
+  image-relative `eyes?.leftEye`.
+- **Derived from MediaPipe, not ML Kit's contour model.** The points come from
+  Google MediaPipe's canonical `FACEMESH_*` connection sets, so the semantic
+  groups match ML Kit's `FaceContourType`, but the exact point counts and
+  ordering follow MediaPipe. The raw index tables are exposed as
+  `faceContourMeshIndices` if you want to map or extend them yourself. Because
+  the full 468-point mesh is always available via `face.mesh`, you are never
+  limited to these named groups.
 
 ## Eye Tracking (Iris + Eye Mesh)
 
@@ -369,11 +557,11 @@ This package supports three detection modes that determine which facial features
 
 | Mode | Features | Est. Time per Face* |
 |------|----------|---------------------|
-| **Full** (default) | Bounding boxes, landmarks, 468-point mesh, eye tracking (iris + 71-point eye mesh) | ~35ms               |
-| **Standard** | Bounding boxes, landmarks, 468-point mesh | ~31ms               |
-| **Fast** | Bounding boxes, landmarks | ~27ms               |
+| **Full** (default) | Bounding boxes, landmarks, 468-point mesh, named contours, eye tracking (iris + 71-point eye mesh), classification (smile / eye-open / 52 blendshapes) | ~8ms                |
+| **Standard** | Bounding boxes, landmarks, 468-point mesh, named contours | ~5ms                |
+| **Fast** | Bounding boxes, landmarks | ~3.5ms              |
 
-*Est. times per face are based on 640x480 resolution on modern hardware. Performance scales with image size and number of faces.
+*Measured on Apple Silicon (M-series) with the default CPU (XNNPACK) engine: a single face at 1280x853, mean of 10 runs after warmup. Performance scales with image size and number of faces, and varies with hardware.
 
 ### Code Examples
 

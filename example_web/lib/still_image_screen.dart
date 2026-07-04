@@ -41,6 +41,7 @@ class _StillImageScreenState extends State<StillImageScreen> {
   bool _showEyeContours = true;
   bool _showEyeMesh = true;
   bool _showLandmarkLabels = false;
+  bool _showClassification = true;
 
   // ---- Colors ----------------------------------------------------------
   Color _boundingBoxColor = const Color(0xFF00FFCC);
@@ -55,6 +56,16 @@ class _StillImageScreenState extends State<StillImageScreen> {
   double _landmarkSize = 3.0;
   double _meshSize = 1.25;
   double _eyeMeshSize = 0.8;
+
+  // ---- Detection gates -------------------------------------------------
+  // Demo-only: mirrors the minScore / minFaceSize options on
+  // FaceDetector.create(). Applied as a post-filter and re-run on change.
+  double _minScore = 0.0;
+  double _minFaceSize = 0.0;
+
+  List<Face> _gatedFaces(List<Face> faces) => faces
+      .where((f) => f.score >= _minScore && f.widthFraction >= _minFaceSize)
+      .toList();
 
   // ---- Segmentation ----------------------------------------------------
   bool _showSegmentation = false;
@@ -211,10 +222,11 @@ class _StillImageScreenState extends State<StillImageScreen> {
       if (_showSegmentation && _detector!.isSegmentationReady) {
         mask = await _detector!.getSegmentationMask(_pickedBytes!);
       }
-      await _drawAnnotations(faces, mask);
+      final shown = _gatedFaces(faces);
+      await _drawAnnotations(shown, mask);
       setState(() {
-        _status =
-            'Detected ${faces.length} face(s) in ${sw.elapsedMilliseconds}ms';
+        _status = 'Detected ${faces.length} face(s), showing ${shown.length} '
+            'in ${sw.elapsedMilliseconds}ms';
       });
     } catch (e) {
       setState(() => _status = 'Error: $e');
@@ -273,6 +285,20 @@ class _StillImageScreenState extends State<StillImageScreen> {
       final tl = face.boundingBox.topLeft;
       final br = face.boundingBox.bottomRight;
       ctx.strokeRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+    }
+
+    if (_showClassification && face.smilingProbability != null) {
+      final tl = face.boundingBox.topLeft;
+      final text = 'smile ${face.smilingProbability!.toStringAsFixed(2)}  '
+          'eyeL ${face.leftEyeOpenProbability!.toStringAsFixed(2)}  '
+          'eyeR ${face.rightEyeOpenProbability!.toStringAsFixed(2)}';
+      ctx.font = '13px sans-serif';
+      final double tw = ctx.measureText(text).width.toDouble();
+      final double ty = tl.y > 20 ? tl.y - 6 : tl.y + 16;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)'.toJS;
+      ctx.fillRect(tl.x - 2, ty - 13, tw + 6, 17);
+      ctx.fillStyle = '#ffffff'.toJS;
+      ctx.fillText(text, tl.x + 1, ty);
     }
 
     if (_showMesh && face.mesh != null) {
@@ -447,6 +473,13 @@ class _StillImageScreenState extends State<StillImageScreen> {
                 ),
                 CheckboxListTile(
                   dense: true,
+                  title: const Text('Show smile & eye-open'),
+                  value: _showClassification,
+                  onChanged: (v) =>
+                      setBoth(() => _showClassification = v ?? true),
+                ),
+                CheckboxListTile(
+                  dense: true,
                   title: const Text('Show landmark labels'),
                   value: _showLandmarkLabels,
                   onChanged: (v) =>
@@ -465,6 +498,10 @@ class _StillImageScreenState extends State<StillImageScreen> {
                     (v) => setBoth(() => _meshSize = v)),
                 _slider('Eye mesh size', _eyeMeshSize, 0.1, 10.0,
                     (v) => setBoth(() => _eyeMeshSize = v)),
+                _slider('minScore (gate)', _minScore, 0.0, 1.0,
+                    (v) => setBoth(() => _minScore = v)),
+                _slider('minFaceSize (gate)', _minFaceSize, 0.0, 1.0,
+                    (v) => setBoth(() => _minFaceSize = v)),
                 const Divider(),
                 const Text(
                   'Colors',

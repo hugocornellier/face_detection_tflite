@@ -65,6 +65,32 @@ void main() {
       expect(text, isNot(contains('Y ')));
       expect(text, contains('R '));
     });
+
+    test('appends smile / eye-open only when showClassification is set', () {
+      final scores = List<double>.filled(52, 0.0);
+      scores[44] = 0.9; // mouthSmileLeft
+      scores[45] = 0.8; // mouthSmileRight -> smile 0.85
+      scores[9] = 0.05; // eyeBlinkLeft   -> eyeL open 0.95
+      scores[10] = 0.7; // eyeBlinkRight  -> eyeR open 0.30
+      final face = Face(
+        detection: Detection(
+          boundingBox: const RectF(0.2, 0.2, 0.8, 0.8),
+          score: 0.9,
+          keypointsXY: TestUtils.generateValidKeypoints(),
+          imageSize: TestConstants.mediumImage,
+        ),
+        mesh: null,
+        irises: const [],
+        blendshapeScores: scores,
+        originalSize: TestConstants.mediumImage,
+      );
+      final on = faceInfoLabelText(face, showClassification: true);
+      expect(on, contains('smile 0.85'));
+      expect(on, contains('eyeL 0.95'));
+      expect(on, contains('eyeR 0.30'));
+      // Off by default.
+      expect(faceInfoLabelText(face), isNot(contains('smile')));
+    });
   });
 
   group('painters with showPoseAndScores', () {

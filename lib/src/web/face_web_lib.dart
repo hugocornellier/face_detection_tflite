@@ -6,6 +6,8 @@ library;
 
 export '../dart_registration.dart';
 export 'types.dart';
+export '../shared/blendshape_input.dart'
+    show Blendshape, kBlendshapeNames, kBlendshapeCount;
 export 'face_detector_web.dart' show FaceDetector, WebDetectTimings;
 
 // Subset of flutter_litert helpers that user code may rely on.
