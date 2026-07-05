@@ -33,7 +33,8 @@ void main() {
     final clipsDir = Platform.environment['FACE_CLIPS_DIR'] ?? 'assets/samples';
     final step = int.parse(Platform.environment['FACE_STEP'] ?? '4');
 
-    final detector = await FaceDetector.create(model: FaceDetectionModel.backCamera);
+    final detector =
+        await FaceDetector.create(model: FaceDetectionModel.backCamera);
 
     final clips = Directory(clipsDir)
         .listSync()
@@ -59,8 +60,8 @@ void main() {
         frame = res.$2;
         if (frame.isEmpty) break;
         if (idx % step == 0) {
-          final faces =
-              await detector.detectFacesFromMat(frame, mode: FaceDetectionMode.fast);
+          final faces = await detector.detectFacesFromMat(frame,
+              mode: FaceDetectionMode.fast);
           sampled++;
           if (faces.length == 1) single++;
           if (faces.isNotEmpty) {
@@ -70,8 +71,8 @@ void main() {
               return bw.compareTo(aw);
             });
             final f = faces.first;
-            widths.add(
-                (f.boundingBox.right - f.boundingBox.left) / frame.cols.toDouble());
+            widths.add((f.boundingBox.right - f.boundingBox.left) /
+                frame.cols.toDouble());
             scores.add(f.score);
           }
         }

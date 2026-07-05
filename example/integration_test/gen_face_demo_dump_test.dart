@@ -49,8 +49,7 @@ void main() {
     // Match the live-camera example: the back-camera model plus the One-Euro
     // FaceSmoother (both on by default there). Override via FACE_MODEL (one of
     // frontCamera/backCamera/shortRange/full/fullSparse) and FACE_SMOOTH=0.
-    final String modelName =
-        Platform.environment['FACE_MODEL'] ?? 'backCamera';
+    final String modelName = Platform.environment['FACE_MODEL'] ?? 'backCamera';
     final FaceDetectionModel model = FaceDetectionModel.values
         .firstWhere((m) => m.name == modelName, orElse: () {
       throw StateError('unknown FACE_MODEL "$modelName"');

@@ -545,38 +545,18 @@ class CameraDetectionPainter extends CustomPainter {
     final double displayWidth = size.width;
     final double displayHeight = size.height;
 
-    final double sourceWidth = imageSize.width;
-    final double sourceHeight = imageSize.height;
-
-    final double sourceAspectRatio = sourceWidth / sourceHeight;
-    final double viewportAspectRatio = displayWidth / displayHeight;
-
-    final double scale;
-    double offsetX = 0;
-    double offsetY = 0;
-
-    if (sourceAspectRatio > viewportAspectRatio) {
-      scale = displayHeight / sourceHeight;
-      offsetX = (displayWidth - sourceWidth * scale) / 2;
-    } else {
-      scale = displayWidth / sourceWidth;
-      offsetY = (displayHeight - sourceHeight * scale) / 2;
-    }
-
-    Offset transformPoint(double x, double y) {
-      if (mirrorHorizontally) {
-        x = sourceWidth - x;
-      }
-      return Offset(x * scale + offsetX, y * scale + offsetY);
-    }
+    final t = CoverFitTransform.cover(
+      sourceWidth: imageSize.width,
+      sourceHeight: imageSize.height,
+      viewWidth: displayWidth,
+      viewHeight: displayHeight,
+      mirror: mirrorHorizontally,
+    );
 
     for (final face in faces) {
       final boundingBox = face.boundingBox;
-      final p1 = transformPoint(boundingBox.topLeft.x, boundingBox.topLeft.y);
-      final p2 = transformPoint(
-        boundingBox.bottomRight.x,
-        boundingBox.bottomRight.y,
-      );
+      final p1 = t.map(boundingBox.topLeft.x, boundingBox.topLeft.y);
+      final p2 = t.map(boundingBox.bottomRight.x, boundingBox.bottomRight.y);
 
       final rect = Rect.fromLTRB(
         math.min(p1.dx, p2.dx),
@@ -597,7 +577,7 @@ class CameraDetectionPainter extends CustomPainter {
       }
 
       for (final landmark in face.landmarks.values) {
-        final transformed = transformPoint(landmark.x, landmark.y);
+        final transformed = t.map(landmark.x, landmark.y);
         canvas.drawCircle(transformed, 4.0, landmarkPaint);
       }
 
@@ -610,7 +590,7 @@ class CameraDetectionPainter extends CustomPainter {
           final double radius = 1.25 + math.sqrt(imgArea) / 1000.0;
 
           for (final p in mesh) {
-            final transformed = transformPoint(p.x, p.y);
+            final transformed = t.map(p.x, p.y);
             canvas.drawCircle(transformed, radius, meshPaint);
           }
         }
@@ -626,7 +606,7 @@ class CameraDetectionPainter extends CustomPainter {
               [
                 iris.irisCenter,
                 ...iris.irisContour,
-              ].map((p) => transformPoint(p.x, p.y)),
+              ].map((p) => t.map(p.x, p.y)),
             );
             canvas.drawOval(oval, irisFill);
             canvas.drawOval(oval, irisStroke);
@@ -643,8 +623,8 @@ class CameraDetectionPainter extends CustomPainter {
                     connection[1] < eyelidContour.length) {
                   final p1 = eyelidContour[connection[0]];
                   final p2 = eyelidContour[connection[1]];
-                  final t1 = transformPoint(p1.x, p1.y);
-                  final t2 = transformPoint(p2.x, p2.y);
+                  final t1 = t.map(p1.x, p1.y);
+                  final t2 = t.map(p2.x, p2.y);
                   canvas.drawLine(t1, t2, eyeOutlinePaint);
                 }
               }
@@ -654,7 +634,7 @@ class CameraDetectionPainter extends CustomPainter {
                 ..style = PaintingStyle.fill;
 
               for (final p in iris.mesh) {
-                final transformed = transformPoint(p.x, p.y);
+                final transformed = t.map(p.x, p.y);
                 canvas.drawCircle(transformed, 0.8, eyeMeshPointPaint);
               }
             }
