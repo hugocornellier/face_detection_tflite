@@ -1,12 +1,22 @@
 // ignore_for_file: public_member_api_docs
 
 import 'package:flutter/material.dart';
+import 'package:flutter_litert/flutter_litert.dart'
+    show configureLiteRtWebLoader;
 
 import 'live_camera_screen.dart';
 import 'still_image_screen.dart';
 import 'video_file_screen.dart';
 
 void main() {
+  // Pass the LiteRT.js wasm location as a DIRECTORY (trailing slash) so its
+  // runtime feature probe picks the right build per engine: the fast
+  // relaxed-SIMD build on Chrome/Firefox, the compat build on Safari (which
+  // ships relaxed SIMD behind a default-off flag and rejects the fast build
+  // at parse time). A full .js file path would bypass that selection.
+  configureLiteRtWebLoader(
+    wasmUrl: 'https://cdn.jsdelivr.net/npm/@litertjs/core@2.4.0/wasm/',
+  );
   runApp(const MyApp());
 }
 
@@ -22,8 +32,36 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Deep-link hook (also used by automated validation):
+    // /?screen=camera|video|still opens a demo screen directly.
+    final String? screen = Uri.base.queryParameters['screen'];
+    if (screen == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final Widget? target = switch (screen) {
+        'camera' => const LiveCameraScreen(),
+        'video' => const VideoFileScreen(),
+        'still' => const StillImageScreen(),
+        _ => null,
+      };
+      if (target != null) {
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => target),
+        );
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -41,23 +79,22 @@ class HomeScreen extends StatelessWidget {
               crossAxisSpacing: 16,
               children: [
                 _DemoCard(
+                  icon: Icons.videocam,
+                  title: 'Live Camera',
+                  subtitle: 'Real-time webcam detection via getUserMedia.',
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const LiveCameraScreen(),
+                    ),
+                  ),
+                ),
+                _DemoCard(
                   icon: Icons.image,
                   title: 'Still Image',
                   subtitle: 'Upload an image and detect faces, mesh, irises.',
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
                       builder: (_) => const StillImageScreen(),
-                    ),
-                  ),
-                ),
-                _DemoCard(
-                  icon: Icons.videocam,
-                  title: 'Live Camera',
-                  subtitle: 'Real-time webcam detection via getUserMedia. '
-                      '30fps with WebGPU.',
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const LiveCameraScreen(),
                     ),
                   ),
                 ),

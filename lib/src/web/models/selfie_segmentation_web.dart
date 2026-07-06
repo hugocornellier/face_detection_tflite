@@ -12,6 +12,7 @@ import 'package:web/web.dart' as web;
 
 import '../../shared/face_model_config.dart' show segmentationModelFile;
 import '../../shared/face_types.dart';
+import '../accelerator_resolver.dart';
 import '../../util/web_image_utils.dart';
 
 /// Selfie segmentation runner for web. Loads `selfie_segmenter.tflite`,
@@ -58,14 +59,17 @@ class SelfieSegmentationWeb {
     final ByteData raw = await rootBundle.load(assetPath);
     final bytes = raw.buffer.asUint8List();
 
-    final String resolved = liteRtAccelerator == 'auto'
-        ? 'webgpu'
-        : liteRtAccelerator;
+    final String resolved = await resolveWebAccelerator(liteRtAccelerator);
     _liteRtItp = await LiteRtInterpreter.fromBytes(
       bytes,
       accelerator: resolved,
     );
-    _activeAccelerator = resolved;
+    _activeAccelerator = _liteRtItp!.activeAccelerator;
+    logCompileFallback(
+      model: 'SelfieSegmentation',
+      requested: resolved,
+      actual: _activeAccelerator!,
+    );
 
     final inT = _liteRtItp!.getInputTensor(0);
     _inH = inT.shape[1];

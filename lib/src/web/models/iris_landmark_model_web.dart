@@ -9,6 +9,7 @@ import 'package:flutter_litert/src/web/litertjs_interpreter.dart'
 import 'package:web/web.dart' as web;
 
 import '../../util/web_image_utils.dart';
+import '../accelerator_resolver.dart';
 
 /// Iris landmark runner for web. The model emits 76 points per eye (71 eye
 /// mesh + 5 iris keypoints). Right-eye crops are mirrored before inference;
@@ -43,14 +44,17 @@ class IrisLandmarkModelWeb {
         'packages/face_detection_tflite/assets/models/iris_landmark.tflite';
     final ByteData raw = await rootBundle.load(assetPath);
     final bytes = raw.buffer.asUint8List();
-    final String resolved = liteRtAccelerator == 'auto'
-        ? 'webgpu'
-        : liteRtAccelerator;
+    final String resolved = await resolveWebAccelerator(liteRtAccelerator);
     _liteRtItp = await LiteRtInterpreter.fromBytes(
       bytes,
       accelerator: resolved,
     );
-    _activeAccelerator = resolved;
+    _activeAccelerator = _liteRtItp!.activeAccelerator;
+    logCompileFallback(
+      model: 'IrisLandmark',
+      requested: resolved,
+      actual: _activeAccelerator!,
+    );
 
     final inT = _liteRtItp!.getInputTensor(0);
     _inH = inT.shape[1];

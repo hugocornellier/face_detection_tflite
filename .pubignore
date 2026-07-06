@@ -67,3 +67,21 @@ example/tool/
 # Example Podfiles: CocoaPods is only needed locally for the optional MLKit benchmark.
 example/**/Podfile
 example/**/Podfile.lock
+
+# Package tests: not needed by consumers of the published archive
+test/
+android/src/test/
+windows/test/
+linux/test/
+
+# Example app: keep example/lib and example/pubspec.yaml (pub.dev Example tab and pana);
+# exclude runner scaffolding and tests, which only matter when cloning from GitHub
+example/android/
+example/ios/
+example/macos/
+example/windows/
+example/linux/
+example/web/
+example/integration_test/
+example/test_driver/
+example/test/

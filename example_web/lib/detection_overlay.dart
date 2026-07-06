@@ -39,7 +39,7 @@ mixin DetectionOverlayMixin<T extends StatefulWidget> on State<T> {
 
   // ---- Detection settings ---------------------------------------------
   FaceDetectionMode mode = FaceDetectionMode.full;
-  FaceDetectionModel model = FaceDetectionModel.frontCamera;
+  FaceDetectionModel model = FaceDetectionModel.backCamera;
 
   // ---- Display toggles -------------------------------------------------
   bool showBoundingBoxes = true;
@@ -154,6 +154,21 @@ mixin DetectionOverlayMixin<T extends StatefulWidget> on State<T> {
   String get activeAccelerator =>
       (detector as dynamic)?.activeAccelerator as String? ?? '?';
 
+  int _lastTitleUpdateMs = 0;
+
+  /// Mirrors backend + FPS into the page title so automated runs (and
+  /// curious users) can read the pipeline state without a DOM inspector.
+  void updateStatusTitle({double? fps}) {
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    if (fps != null && now - _lastTitleUpdateMs < 1000) return;
+    _lastTitleUpdateMs = now;
+    final String backend =
+        activeAccelerator == '?' ? 'tflite-js' : activeAccelerator;
+    web.document.title = fps == null
+        ? 'fdt demo · $backend'
+        : 'fdt demo · $backend · ${fps.toStringAsFixed(0)} fps';
+  }
+
   // ---- Detector lifecycle ---------------------------------------------
 
   Future<void> initializeDetector() async {
@@ -171,6 +186,7 @@ mixin DetectionOverlayMixin<T extends StatefulWidget> on State<T> {
         return;
       }
       isModelReady = true;
+      updateStatusTitle();
       onDetectorReady(
           activeAccelerator == '?' ? 'tflite-js' : activeAccelerator);
     } catch (e) {
@@ -235,6 +251,7 @@ mixin DetectionOverlayMixin<T extends StatefulWidget> on State<T> {
           lastDetectionMs = sw.elapsedMilliseconds;
           detectedFaces = faces.length;
         });
+        updateStatusTitle(fps: fpsCounter.fps.toDouble());
       }
     } catch (_) {
       // Swallow per-frame errors (e.g. video not ready) to avoid stopping the

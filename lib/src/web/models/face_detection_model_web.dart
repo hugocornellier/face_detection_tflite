@@ -10,6 +10,7 @@ import 'package:web/web.dart' as web;
 import '../../shared/face_geometry.dart' show computeFaceAlignment;
 import '../../shared/face_model_config.dart';
 import '../../shared/face_types.dart';
+import '../accelerator_resolver.dart';
 
 /// Web BlazeFace runner. Auto-prefers WebGPU on the LiteRT.js path and
 /// otherwise falls back to WASM SIMD.
@@ -61,14 +62,17 @@ class FaceDetectionModelWeb {
     final ByteData raw = await rootBundle.load(assetPath);
     final bytes = raw.buffer.asUint8List();
 
-    final String resolved = liteRtAccelerator == 'auto'
-        ? 'webgpu'
-        : liteRtAccelerator;
+    final String resolved = await resolveWebAccelerator(liteRtAccelerator);
     _liteRtItp = await LiteRtInterpreter.fromBytes(
       bytes,
       accelerator: resolved,
     );
-    _activeAccelerator = resolved;
+    _activeAccelerator = _liteRtItp!.activeAccelerator;
+    logCompileFallback(
+      model: 'BlazeFace',
+      requested: resolved,
+      actual: _activeAccelerator!,
+    );
 
     final outs = _liteRtItp!.getOutputTensors();
     int boxesIdx = -1;

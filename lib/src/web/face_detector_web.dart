@@ -6,6 +6,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' show Size;
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_litert/flutter_litert.dart'
     show Point, PerformanceConfig;
 import 'package:flutter_litert/src/web/web_detector_utils.dart'
@@ -169,6 +170,59 @@ class FaceDetector with WebGpuFallback {
     }
   }
 
+  // Median per-inference budget for the BlazeFace stage on WebGPU before
+  // 'auto' abandons it. Chrome's Dawn lands at 2-5ms on typical hardware
+  // while WASM SIMD is ~8-10ms, so a WebGPU path past this budget loses to
+  // WASM by a wide margin (Firefox 152 measures ~200ms here).
+  static const double _kAutoWebGpuBudgetMs = 50.0;
+  static const int _kAutoWarmupRuns = 2;
+  static const int _kAutoTimedRuns = 3;
+
+  /// Catches the slow-but-functional WebGPU case (e.g. Firefox) that the
+  /// error-driven fallback can never see: times a few detector inferences on
+  /// a synthetic frame and swaps every runner to WASM when the median
+  /// exceeds [_kAutoWebGpuBudgetMs]. Runs only when the caller asked for
+  /// `'auto'` and the resolver landed on WebGPU.
+  Future<void> _swapToWasmIfWebGpuSlow() async {
+    final web.HTMLCanvasElement probe = web.HTMLCanvasElement()
+      ..width = 64
+      ..height = 64;
+    final ctx = probe.getContext('2d') as web.CanvasRenderingContext2D;
+    ctx.fillStyle = 'rgb(127,127,127)'.toJS;
+    ctx.fillRect(0, 0, 64, 64);
+    try {
+      for (int i = 0; i < _kAutoWarmupRuns; i++) {
+        await _detector.detect(probe, imageWidth: 64, imageHeight: 64);
+      }
+      final List<double> timesMs = <double>[];
+      for (int i = 0; i < _kAutoTimedRuns; i++) {
+        final Stopwatch sw = Stopwatch()..start();
+        await _detector.detect(probe, imageWidth: 64, imageHeight: 64);
+        sw.stop();
+        timesMs.add(sw.elapsedMicroseconds / 1000.0);
+      }
+      timesMs.sort();
+      final double medianMs = timesMs[timesMs.length ~/ 2];
+      if (medianMs > _kAutoWebGpuBudgetMs) {
+        debugPrint(
+          'face_detection_tflite: WebGPU warmup median '
+          '${medianMs.toStringAsFixed(1)}ms exceeds the '
+          '${_kAutoWebGpuBudgetMs.toStringAsFixed(0)}ms auto budget; '
+          'switching to WASM.',
+        );
+        await swapToWasm();
+      } else {
+        debugPrint(
+          'face_detection_tflite: WebGPU warmup median '
+          '${medianMs.toStringAsFixed(1)}ms; keeping WebGPU.',
+        );
+      }
+    } catch (_) {
+      // A GPU failure this early is the same signal, just louder.
+      await swapToWasm();
+    }
+  }
+
   Future<void> initialize({
     FaceDetectionModel model = FaceDetectionModel.backCamera,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
@@ -208,6 +262,10 @@ class FaceDetector with WebGpuFallback {
         liteRtAccelerator: liteRtAccelerator,
       );
       _segmentationReady = true;
+    }
+
+    if (liteRtAccelerator == 'auto' && activeAccelerator == 'webgpu') {
+      await _swapToWasmIfWebGpuSlow();
     }
   }
 
