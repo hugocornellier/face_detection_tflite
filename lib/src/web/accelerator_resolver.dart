@@ -66,10 +66,10 @@ Future<String> _probeAutoInner() async {
     final JSAny? info = (adapter as JSObject)['info'];
     if (info != null && info.isA<JSObject>()) {
       final JSObject i = info as JSObject;
-      final String vendor =
-          ((i['vendor'] as JSString?)?.toDart ?? '').toLowerCase();
-      final String arch =
-          ((i['architecture'] as JSString?)?.toDart ?? '').toLowerCase();
+      final String vendor = ((i['vendor'] as JSString?)?.toDart ?? '')
+          .toLowerCase();
+      final String arch = ((i['architecture'] as JSString?)?.toDart ?? '')
+          .toLowerCase();
       if (vendor.contains('swiftshader') ||
           arch.contains('swiftshader') ||
           arch.contains('llvmpipe')) {

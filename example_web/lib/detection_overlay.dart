@@ -330,7 +330,20 @@ mixin DetectionOverlayMixin<T extends StatefulWidget> on State<T> {
       ctx.fillStyle = 'rgba(0,0,0,0.55)'.toJS;
       ctx.fillRect(tl.x - 2, ty - 13, tw + 6, 17);
       ctx.fillStyle = '#ffffff'.toJS;
-      ctx.fillText(text, tl.x + 1, ty);
+      final bool mirroredCanvas =
+          displayCanvas?.style.transform.contains('scaleX(-1)') ?? false;
+      if (mirroredCanvas) {
+        // The display canvas is CSS-flipped (front camera preview). Pre-flip
+        // the text around the label chip's center so the double flip leaves
+        // it readable, on the same chip, without touching feed or overlays.
+        ctx.save();
+        ctx.translate(2 * (tl.x - 2) + tw + 6, 0);
+        ctx.scale(-1, 1);
+        ctx.fillText(text, tl.x + 1, ty);
+        ctx.restore();
+      } else {
+        ctx.fillText(text, tl.x + 1, ty);
+      }
     }
     if (showMesh && face.mesh != null) {
       ctx.fillStyle = cssColor(meshColor).toJS;

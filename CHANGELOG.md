@@ -1,3 +1,7 @@
+## 6.6.1
+
+* Update flutter_litert -> 3.4.1 (web `CompiledModel` WebGPU compile watchdog: a compile attempt that never settles now falls back to WASM instead of hanging). No API change.
+
 ## 6.6.0
 
 * Update flutter_litert -> 3.3.1 (Android Gradle Plugin 9.x build fix; faster `Interpreter.run`/`CompiledModel.run` and fewer per-frame allocations in the camera YUV path). No API change.

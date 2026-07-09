@@ -36,10 +36,7 @@ class FaceBlendshapesModelWeb {
     final ByteData raw = await rootBundle.load(assetPath);
     final bytes = raw.buffer.asUint8List();
     // Always WASM (see class doc); the requested accelerator is ignored.
-    _liteRtItp = await LiteRtInterpreter.fromBytes(
-      bytes,
-      accelerator: 'wasm',
-    );
+    _liteRtItp = await LiteRtInterpreter.fromBytes(bytes, accelerator: 'wasm');
     _activeAccelerator = _liteRtItp!.activeAccelerator;
 
     final int inCount = _elementCount(_liteRtItp!.getInputTensor(0).shape);
