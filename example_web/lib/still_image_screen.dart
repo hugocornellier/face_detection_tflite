@@ -10,6 +10,7 @@ import 'package:face_detection_tflite/face_detection_tflite.dart';
 import 'package:flutter/material.dart';
 import 'package:web/web.dart' as web;
 
+import 'engine_settings.dart';
 import 'segmentation_rendering.dart';
 
 class StillImageScreen extends StatefulWidget {
@@ -77,9 +78,8 @@ class _StillImageScreenState extends State<StillImageScreen> {
   int? _multiclassClassIndex;
   final web.HTMLCanvasElement _maskScratch = web.HTMLCanvasElement();
 
-  // ---- LiteRT settings -------------------------------------------------
-  bool _useLiteRt = true;
-  String _liteRtAccelerator = 'auto';
+  // ---- Inference-engine settings ---------------------------------------
+  EngineSettings _engine = const EngineSettings();
 
   static bool _viewFactoryRegistered = false;
   Timer? _rerunDebounce;
@@ -106,15 +106,19 @@ class _StillImageScreenState extends State<StillImageScreen> {
       setState(() => _status = 'Loading face detection models...');
       _detector = await FaceDetector.create(
         model: _model,
-        useLiteRt: _useLiteRt,
-        liteRtAccelerator: _liteRtAccelerator,
+        useCompiledModel: _engine.useCompiledModel,
+        liteRtAccelerator: _engine.accelerator,
+        strictWebGpu: _engine.strictWebGpu,
+        precision: _engine.precision,
         withSegmentation: _showSegmentation,
         segmentationConfig: SegmentationConfig(model: _segmentationModel),
       );
       setState(() {
         final backend =
-            (_detector as dynamic).activeAccelerator as String? ?? 'tflite-js';
-        _status = 'Ready (LiteRT.js, $backend). Pick an image.';
+            (_detector as dynamic).activeAccelerator as String? ?? 'wasm';
+        final engineName =
+            _engine.useCompiledModel ? 'CompiledModel' : 'Interpreter';
+        _status = 'Ready ($engineName · $backend). Pick an image.';
         _isModelReady = true;
       });
     } catch (e) {
@@ -748,41 +752,12 @@ class _StillImageScreenState extends State<StillImageScreen> {
   }
 
   Widget _liteRtSection(void Function(VoidCallback) setBoth) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'LiteRT (web runtime)',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        SwitchListTile(
-          dense: true,
-          title: const Text('Use LiteRT.js'),
-          subtitle: const Text(
-            'Auto WebGPU / WASM. Disable to use the legacy tflite-js path.',
-          ),
-          value: _useLiteRt,
-          onChanged: (v) async {
-            setBoth(() => _useLiteRt = v);
-            await _reinitialize();
-          },
-        ),
-        Wrap(
-          spacing: 6,
-          children: [
-            const Text('Accelerator:'),
-            for (final a in const <String>['auto', 'webgpu', 'wasm'])
-              ChoiceChip(
-                label: Text(a),
-                selected: _liteRtAccelerator == a,
-                onSelected: (_) async {
-                  setBoth(() => _liteRtAccelerator = a);
-                  await _reinitialize();
-                },
-              ),
-          ],
-        ),
-      ],
+    return EngineSettingsControls(
+      settings: _engine,
+      onChanged: (s) async {
+        setBoth(() => _engine = s);
+        await _reinitialize();
+      },
     );
   }
 

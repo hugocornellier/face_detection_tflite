@@ -4,25 +4,27 @@ import 'dart:js_interop';
 import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
-import 'package:flutter_litert/src/web/litertjs_interpreter.dart'
-    show LiteRtInterpreter;
 import 'package:web/web.dart' as web;
 
 import '../../util/web_image_utils.dart';
-import '../accelerator_resolver.dart';
+import 'web_model_runner.dart';
 
 /// Iris landmark runner for web. The model emits 76 points per eye (71 eye
 /// mesh + 5 iris keypoints). Right-eye crops are mirrored before inference;
-/// the detector flips the results back.
+/// the detector flips the results back. Runs on the LiteRT.js interpreter or a
+/// LiteRT Next `CompiledModel`.
 class IrisLandmarkModelWeb {
-  LiteRtInterpreter? _liteRtItp;
+  // iris_landmark.tflite input edge; used when the engine does not expose an
+  // input shape (CompiledModel reports byte sizes only).
+  static const int _kInputSize = 64;
+
+  WebModelRunner? _runner;
 
   String? _activeAccelerator;
 
   /// The accelerator that compiled this model (`'webgpu'` / `'wasm'`),
   /// or null pre-init.
-  String? get activeAccelerator =>
-      _liteRtItp != null ? _activeAccelerator : null;
+  String? get activeAccelerator => _runner != null ? _activeAccelerator : null;
 
   late int _inW;
   late int _inH;
@@ -38,38 +40,32 @@ class IrisLandmarkModelWeb {
   int get inputWidth => _inW;
   int get inputHeight => _inH;
 
-  Future<void> initialize({String liteRtAccelerator = 'auto'}) async {
+  Future<void> initialize({
+    WebRunnerConfig config = const WebRunnerConfig(),
+  }) async {
     if (_initialized) await dispose();
     const String assetPath =
         'packages/face_detection_tflite/assets/models/iris_landmark.tflite';
     final ByteData raw = await rootBundle.load(assetPath);
     final bytes = raw.buffer.asUint8List();
-    final String resolved = await resolveWebAccelerator(liteRtAccelerator);
-    _liteRtItp = await LiteRtInterpreter.fromBytes(
+    final runner = await WebModelRunner.create(
       bytes,
-      accelerator: resolved,
+      config: config,
+      modelLabel: 'IrisLandmark',
     );
-    _activeAccelerator = _liteRtItp!.activeAccelerator;
-    logCompileFallback(
-      model: 'IrisLandmark',
-      requested: resolved,
-      actual: _activeAccelerator!,
-    );
+    _runner = runner;
+    _activeAccelerator = runner.activeAccelerator;
 
-    final inT = _liteRtItp!.getInputTensor(0);
-    _inH = inT.shape[1];
-    _inW = inT.shape[2];
+    final List<int>? inShape = runner.inputShape0;
+    _inH = inShape != null ? inShape[1] : _kInputSize;
+    _inW = inShape != null ? inShape[2] : _kInputSize;
 
     _outIndices.clear();
     _outBuffers.clear();
-    final outs = _liteRtItp!.getOutputTensors();
-    for (int i = 0; i < outs.length; i++) {
-      int n = 1;
-      for (final d in outs[i].shape) {
-        n *= d;
-      }
+    final List<int> counts = runner.outputElementCounts;
+    for (int i = 0; i < counts.length; i++) {
       _outIndices.add(i);
-      _outBuffers.add(Float32List(n));
+      _outBuffers.add(Float32List(counts[i]));
     }
 
     _inputBuffer = Float32List(_inH * _inW * 3);
@@ -82,8 +78,8 @@ class IrisLandmarkModelWeb {
   }
 
   Future<void> dispose() async {
-    _liteRtItp?.close();
-    _liteRtItp = null;
+    _runner?.close();
+    _runner = null;
     _activeAccelerator = null;
     _inputBuffer = null;
     _canvas = null;
@@ -127,11 +123,11 @@ class IrisLandmarkModelWeb {
     final input = _inputBuffer!;
     rgbaToSignedRgbFloat32(Uint8List.view(rgba.buffer), input);
 
-    final Map<int, Object> outputs = <int, Object>{
+    final Map<int, Float32List> outputs = <int, Float32List>{
       for (int i = 0; i < _outIndices.length; i++)
         _outIndices[i]: _outBuffers[i],
     };
-    await _liteRtItp!.runForMultipleInputs(<Object>[input], outputs);
+    await _runner!.run(<Float32List>[input], outputs);
 
     // Concatenate all output tensors into a single flat buffer (mirrors the
     // native code that calls `_unpackLandmarks` on each output).

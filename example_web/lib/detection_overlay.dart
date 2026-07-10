@@ -10,6 +10,7 @@ import 'package:face_detection_tflite/face_detection_tflite.dart';
 import 'package:flutter/material.dart';
 import 'package:web/web.dart' as web;
 
+import 'engine_settings.dart';
 import 'segmentation_rendering.dart';
 
 /// View types registered once per platform-view, mapped to the canvas that
@@ -71,9 +72,8 @@ mixin DetectionOverlayMixin<T extends StatefulWidget> on State<T> {
   final web.HTMLCanvasElement maskScratch = web.HTMLCanvasElement();
   final web.HTMLCanvasElement personScratch = web.HTMLCanvasElement();
 
-  // ---- LiteRT ----------------------------------------------------------
-  bool useLiteRt = true;
-  String liteRtAccelerator = 'auto';
+  // ---- Inference engine ------------------------------------------------
+  EngineSettings engine = const EngineSettings();
 
   // ---- Loop / FPS ------------------------------------------------------
   bool busy = false;
@@ -175,8 +175,10 @@ mixin DetectionOverlayMixin<T extends StatefulWidget> on State<T> {
     try {
       detector = await FaceDetector.create(
         model: model,
-        useLiteRt: useLiteRt,
-        liteRtAccelerator: liteRtAccelerator,
+        useCompiledModel: engine.useCompiledModel,
+        liteRtAccelerator: engine.accelerator,
+        strictWebGpu: engine.strictWebGpu,
+        precision: engine.precision,
         withSegmentation: showSegmentation,
         segmentationConfig: SegmentationConfig(model: segmentationModel),
       );
@@ -599,34 +601,12 @@ mixin DetectionOverlayMixin<T extends StatefulWidget> on State<T> {
                 ),
               ],
               const Divider(),
-              const Text(
-                'LiteRT.js',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              SwitchListTile(
-                dense: true,
-                title: const Text('Use LiteRT.js'),
-                subtitle: const Text('Auto WebGPU / WASM fallback'),
-                value: useLiteRt,
-                onChanged: (v) async {
-                  both(() => useLiteRt = v);
+              EngineSettingsControls(
+                settings: engine,
+                onChanged: (s) async {
+                  both(() => engine = s);
                   await restartDetector();
                 },
-              ),
-              Wrap(
-                spacing: 6,
-                children: [
-                  const Text('Accelerator:'),
-                  for (final a in const <String>['auto', 'webgpu', 'wasm'])
-                    ChoiceChip(
-                      label: Text(a),
-                      selected: liteRtAccelerator == a,
-                      onSelected: (_) async {
-                        both(() => liteRtAccelerator = a);
-                        await restartDetector();
-                      },
-                    ),
-                ],
               ),
               const SizedBox(height: 24),
             ],

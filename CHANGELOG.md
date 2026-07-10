@@ -1,3 +1,7 @@
+## 6.6.2
+
+* Update flutter_litert -> 3.5.0
+
 ## 6.6.1
 
 * Update flutter_litert -> 3.4.1 (web `CompiledModel` WebGPU compile watchdog: a compile attempt that never settles now falls back to WASM instead of hanging). No API change.

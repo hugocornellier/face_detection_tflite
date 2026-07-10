@@ -6,28 +6,26 @@ import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_litert/flutter_litert.dart' show computeLetterboxParams;
-import 'package:flutter_litert/src/web/litertjs_interpreter.dart'
-    show LiteRtInterpreter;
 import 'package:web/web.dart' as web;
 
 import '../../shared/face_model_config.dart' show segmentationModelFile;
 import '../../shared/face_types.dart';
-import '../accelerator_resolver.dart';
+import 'web_model_runner.dart';
 import '../../util/web_image_utils.dart';
 
 /// Selfie segmentation runner for web. Loads `selfie_segmenter.tflite`,
-/// `selfie_segmenter_landscape.tflite`, or `selfie_multiclass.tflite` via
-/// LiteRT.js. Output is a per-pixel float mask, or per-class probabilities
-/// for the multiclass model (post-softmax).
+/// `selfie_segmenter_landscape.tflite`, or `selfie_multiclass.tflite` via the
+/// LiteRT.js interpreter or a LiteRT Next `CompiledModel`. Output is a
+/// per-pixel float mask, or per-class probabilities for the multiclass model
+/// (post-softmax).
 class SelfieSegmentationWeb {
-  LiteRtInterpreter? _liteRtItp;
+  WebModelRunner? _runner;
 
   String? _activeAccelerator;
 
   /// The accelerator that compiled this model (`'webgpu'` / `'wasm'`),
   /// or null pre-init.
-  String? get activeAccelerator =>
-      _liteRtItp != null ? _activeAccelerator : null;
+  String? get activeAccelerator => _runner != null ? _activeAccelerator : null;
 
   late int _inW;
   late int _inH;
@@ -46,7 +44,7 @@ class SelfieSegmentationWeb {
 
   Future<void> initialize({
     SegmentationModel model = SegmentationModel.general,
-    String liteRtAccelerator = 'auto',
+    WebRunnerConfig config = const WebRunnerConfig(),
   }) async {
     if (_initialized) await dispose();
 
@@ -59,31 +57,27 @@ class SelfieSegmentationWeb {
     final ByteData raw = await rootBundle.load(assetPath);
     final bytes = raw.buffer.asUint8List();
 
-    final String resolved = await resolveWebAccelerator(liteRtAccelerator);
-    _liteRtItp = await LiteRtInterpreter.fromBytes(
+    final runner = await WebModelRunner.create(
       bytes,
-      accelerator: resolved,
+      config: config,
+      modelLabel: 'SelfieSegmentation',
     );
-    _activeAccelerator = _liteRtItp!.activeAccelerator;
-    logCompileFallback(
-      model: 'SelfieSegmentation',
-      requested: resolved,
-      actual: _activeAccelerator!,
-    );
+    _runner = runner;
+    _activeAccelerator = runner.activeAccelerator;
 
-    final inT = _liteRtItp!.getInputTensor(0);
-    _inH = inT.shape[1];
-    _inW = inT.shape[2];
+    // selfie_segmenter/multiclass are 256x256; landscape is 144x256. Fall back
+    // to the known dimensions when the engine does not expose an input shape.
+    final List<int>? inShape = runner.inputShape0;
+    _inH = inShape != null
+        ? inShape[1]
+        : (model == SegmentationModel.landscape ? 144 : 256);
+    _inW = inShape != null ? inShape[2] : 256;
 
-    final outs = _liteRtItp!.getOutputTensors();
-    if (outs.isEmpty) {
+    final List<int> counts = runner.outputElementCounts;
+    if (counts.isEmpty) {
       throw StateError('Segmentation model has no outputs.');
     }
-    int n = 1;
-    for (final d in outs[0].shape) {
-      n *= d;
-    }
-    _outputBuffer = Float32List(n);
+    _outputBuffer = Float32List(counts[0]);
     _inputBuffer = Float32List(_inH * _inW * 3);
 
     _canvas = web.HTMLCanvasElement()
@@ -95,8 +89,8 @@ class SelfieSegmentationWeb {
   }
 
   Future<void> dispose() async {
-    _liteRtItp?.close();
-    _liteRtItp = null;
+    _runner?.close();
+    _runner = null;
     _activeAccelerator = null;
     _inputBuffer = null;
     _outputBuffer = null;
@@ -147,9 +141,9 @@ class SelfieSegmentationWeb {
     final input = _inputBuffer!;
     rgbaToSignedRgbFloat32(Uint8List.view(rgba.buffer), input);
 
-    await _liteRtItp!.runForMultipleInputs(
-      <Object>[input],
-      <int, Object>{0: _outputBuffer!},
+    await _runner!.run(
+      <Float32List>[input],
+      <int, Float32List>{0: _outputBuffer!},
     );
 
     final padding = <double>[

@@ -5,23 +5,25 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
-import 'package:flutter_litert/src/web/litertjs_interpreter.dart'
-    show LiteRtInterpreter;
 import 'package:web/web.dart' as web;
 
 import '../../util/web_image_utils.dart';
-import '../accelerator_resolver.dart';
+import 'web_model_runner.dart';
 
-/// 468-point face mesh runner for web. Uses LiteRT.js with auto WebGPU/WASM.
+/// 468-point face mesh runner for web. Runs on the LiteRT.js interpreter or a
+/// LiteRT Next `CompiledModel`, with auto WebGPU/WASM.
 class FaceLandmarkModelWeb {
-  LiteRtInterpreter? _liteRtItp;
+  // face_landmark.tflite input edge; used when the engine does not expose an
+  // input shape (CompiledModel reports byte sizes only).
+  static const int _kInputSize = 192;
+
+  WebModelRunner? _runner;
 
   String? _activeAccelerator;
 
   /// The accelerator that compiled this model (`'webgpu'` / `'wasm'`),
   /// or null pre-init.
-  String? get activeAccelerator =>
-      _liteRtItp != null ? _activeAccelerator : null;
+  String? get activeAccelerator => _runner != null ? _activeAccelerator : null;
 
   Float32List? _landmarksOut;
   Float32List? _scoreOut;
@@ -39,40 +41,35 @@ class FaceLandmarkModelWeb {
   int get inputWidth => _inW;
   int get inputHeight => _inH;
 
-  Future<void> initialize({String liteRtAccelerator = 'auto'}) async {
+  Future<void> initialize({
+    WebRunnerConfig config = const WebRunnerConfig(),
+  }) async {
     if (_initialized) await dispose();
     const String assetPath =
         'packages/face_detection_tflite/assets/models/face_landmark.tflite';
     final ByteData raw = await rootBundle.load(assetPath);
     final bytes = raw.buffer.asUint8List();
 
-    final String resolved = await resolveWebAccelerator(liteRtAccelerator);
-    _liteRtItp = await LiteRtInterpreter.fromBytes(
+    final runner = await WebModelRunner.create(
       bytes,
-      accelerator: resolved,
+      config: config,
+      modelLabel: 'FaceMesh',
     );
-    _activeAccelerator = _liteRtItp!.activeAccelerator;
-    logCompileFallback(
-      model: 'FaceMesh',
-      requested: resolved,
-      actual: _activeAccelerator!,
-    );
+    _runner = runner;
+    _activeAccelerator = runner.activeAccelerator;
 
-    final inT = _liteRtItp!.getInputTensor(0);
-    _inH = inT.shape[1];
-    _inW = inT.shape[2];
+    final List<int>? inShape = runner.inputShape0;
+    _inH = inShape != null ? inShape[1] : _kInputSize;
+    _inW = inShape != null ? inShape[2] : _kInputSize;
 
     // FaceMesh has multiple outputs: 468*3 mesh, 1 score, plus auxiliary
     // tensors. Locate by element count: mesh is the largest, score is 1.
-    final outs = _liteRtItp!.getOutputTensors();
+    final List<int> counts = runner.outputElementCounts;
     int landmarksIdx = -1;
     int scoreIdx = -1;
     int landmarksLen = 0;
-    for (int i = 0; i < outs.length; i++) {
-      int n = 1;
-      for (final d in outs[i].shape) {
-        n *= d;
-      }
+    for (int i = 0; i < counts.length; i++) {
+      final int n = counts[i];
       if (n == 1 && scoreIdx < 0) scoreIdx = i;
       if (n >= 468 * 3 && n > landmarksLen) {
         landmarksIdx = i;
@@ -84,8 +81,8 @@ class FaceLandmarkModelWeb {
     // so a mesh-only model still works instead of failing to initialize.
     if (landmarksIdx < 0) {
       throw StateError(
-        'Face landmark model outputs do not match expected shapes. Got '
-        '${[for (final t in outs) t.shape]}',
+        'Face landmark model outputs do not match expected shapes. '
+        'Output element counts: $counts',
       );
     }
     _landmarksIdx = landmarksIdx;
@@ -104,8 +101,8 @@ class FaceLandmarkModelWeb {
   }
 
   Future<void> dispose() async {
-    _liteRtItp?.close();
-    _liteRtItp = null;
+    _runner?.close();
+    _runner = null;
     _activeAccelerator = null;
     _landmarksOut = null;
     _scoreOut = null;
@@ -151,9 +148,9 @@ class FaceLandmarkModelWeb {
     rgbaToSignedRgbFloat32(Uint8List.view(rgba.buffer), input);
 
     final scoreOut = _scoreOut;
-    await _liteRtItp!.runForMultipleInputs(
-      <Object>[input],
-      <int, Object>{_landmarksIdx: _landmarksOut!, _scoreIdx: ?scoreOut},
+    await _runner!.run(
+      <Float32List>[input],
+      <int, Float32List>{_landmarksIdx: _landmarksOut!, _scoreIdx: ?scoreOut},
     );
 
     return (

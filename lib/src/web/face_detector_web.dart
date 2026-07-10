@@ -8,7 +8,7 @@ import 'dart:ui' show Size;
 
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_litert/flutter_litert.dart'
-    show Point, PerformanceConfig;
+    show Point, PerformanceConfig, Precision;
 import 'package:flutter_litert/src/web/web_detector_utils.dart'
     show decodeBitmap, WebGpuFallback;
 import 'package:web/web.dart' as web;
@@ -21,6 +21,7 @@ import 'models/face_detection_model_web.dart';
 import 'models/face_landmark_model_web.dart';
 import 'models/iris_landmark_model_web.dart';
 import 'models/selfie_segmentation_web.dart';
+import 'models/web_model_runner.dart' show WebEngine, WebRunnerConfig;
 import 'types.dart';
 
 /// Per-stage timing accumulator for the web pipeline (microseconds). Populated
@@ -70,6 +71,8 @@ class FaceDetector with WebGpuFallback {
     bool useCompiledModel = false,
     bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
+    bool strictWebGpu = false,
+    Precision precision = Precision.fp16,
     double minScore = 0.0,
     double minFaceSize = 0.0,
   }) async {
@@ -83,6 +86,8 @@ class FaceDetector with WebGpuFallback {
       useCompiledModel: useCompiledModel,
       useLiteRt: useLiteRt,
       liteRtAccelerator: liteRtAccelerator,
+      strictWebGpu: strictWebGpu,
+      precision: precision,
       minScore: minScore,
       minFaceSize: minFaceSize,
     );
@@ -102,8 +107,22 @@ class FaceDetector with WebGpuFallback {
   bool _segmentationReady = false;
 
   String _liteRtAccelerator = 'auto';
+  bool _useCompiledModel = false;
+  bool _strictWebGpu = false;
+  Precision _precision = Precision.fp16;
   double _minScore = 0.0;
   double _minFaceSize = 0.0;
+
+  /// Builds the runner config for the current engine selection at the given
+  /// [accelerator] (`'auto'` / `'webgpu'` / `'wasm'`). Every per-model
+  /// `initialize` goes through this so the LiteRT.js-interpreter and
+  /// CompiledModel paths stay in lockstep.
+  WebRunnerConfig _runnerConfig(String accelerator) => WebRunnerConfig(
+    engine: _useCompiledModel ? WebEngine.compiledModel : WebEngine.liteRt,
+    accelerator: accelerator,
+    strictWebGpu: _strictWebGpu,
+    precision: _precision,
+  );
 
   /// Minimum detection confidence (0.0 to 1.0) a face must have to be returned.
   /// Defaults to 0.0 (no additional filtering above the internal 0.5 floor).
@@ -157,15 +176,16 @@ class FaceDetector with WebGpuFallback {
       // Best-effort: an interpreter that already errored may not dispose
       // cleanly. Continue to re-init regardless.
     }
-    await _detector.initialize(_model, liteRtAccelerator: 'wasm');
-    await _mesh.initialize(liteRtAccelerator: 'wasm');
-    await _iris.initialize(liteRtAccelerator: 'wasm');
-    await _blendshapes.initialize(liteRtAccelerator: 'wasm');
+    final WebRunnerConfig config = _runnerConfig('wasm');
+    await _detector.initialize(_model, config: config);
+    await _mesh.initialize(config: config);
+    await _iris.initialize(config: config);
+    await _blendshapes.initialize(config: config);
     if (_withSegmentation) {
       _segmenter = SelfieSegmentationWeb();
       await _segmenter!.initialize(
         model: (_segmentationConfig ?? SegmentationConfig.safe).model,
-        liteRtAccelerator: 'wasm',
+        config: config,
       );
     }
   }
@@ -232,6 +252,8 @@ class FaceDetector with WebGpuFallback {
     bool useCompiledModel = false,
     bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
+    bool strictWebGpu = false,
+    Precision precision = Precision.fp16,
     double minScore = 0.0,
     double minFaceSize = 0.0,
   }) async {
@@ -242,25 +264,26 @@ class FaceDetector with WebGpuFallback {
     _minScore = minScore;
     _minFaceSize = minFaceSize;
     _liteRtAccelerator = liteRtAccelerator;
+    _useCompiledModel = useCompiledModel;
+    _strictWebGpu = strictWebGpu;
+    _precision = precision;
     _model = model;
     _withSegmentation = withSegmentation;
     _segmentationConfig = segmentationConfig;
-    await _detector.initialize(model, liteRtAccelerator: liteRtAccelerator);
+    final WebRunnerConfig config = _runnerConfig(liteRtAccelerator);
+    await _detector.initialize(model, config: config);
     _detectorReady = true;
-    await _mesh.initialize(liteRtAccelerator: liteRtAccelerator);
+    await _mesh.initialize(config: config);
     _meshReady = true;
-    await _iris.initialize(liteRtAccelerator: liteRtAccelerator);
+    await _iris.initialize(config: config);
     _irisReady = true;
-    await _blendshapes.initialize(liteRtAccelerator: liteRtAccelerator);
+    await _blendshapes.initialize(config: config);
     _blendshapesReady = true;
 
     if (withSegmentation) {
       final cfg = segmentationConfig ?? SegmentationConfig.safe;
       _segmenter = SelfieSegmentationWeb();
-      await _segmenter!.initialize(
-        model: cfg.model,
-        liteRtAccelerator: liteRtAccelerator,
-      );
+      await _segmenter!.initialize(model: cfg.model, config: config);
       _segmentationReady = true;
     }
 
@@ -278,7 +301,7 @@ class FaceDetector with WebGpuFallback {
     _segmenter = SelfieSegmentationWeb();
     await _segmenter!.initialize(
       model: cfg.model,
-      liteRtAccelerator: _liteRtAccelerator,
+      config: _runnerConfig(_liteRtAccelerator),
     );
     _segmentationReady = true;
   }

@@ -11,27 +11,28 @@ import 'package:web/web.dart' as web;
 import '../../shared/face_geometry.dart' show computeFaceAlignment;
 import '../../shared/face_model_config.dart';
 import '../../shared/face_types.dart';
-import '../accelerator_resolver.dart';
+import 'web_model_runner.dart';
 
-/// Web BlazeFace runner. Auto-prefers WebGPU on the LiteRT.js path and
-/// otherwise falls back to WASM SIMD.
+/// Web BlazeFace runner. Runs on the LiteRT.js interpreter or a LiteRT Next
+/// `CompiledModel`; auto-prefers WebGPU and otherwise falls back to WASM SIMD.
 class FaceDetectionModelWeb {
-  LiteRtInterpreter? _liteRtItp;
+  WebModelRunner? _runner;
 
   String? _activeAccelerator;
 
   /// The accelerator that compiled this model (`'webgpu'` / `'wasm'`),
   /// or null before [initialize] completes.
-  String? get activeAccelerator =>
-      _liteRtItp != null ? _activeAccelerator : null;
+  String? get activeAccelerator => _runner != null ? _activeAccelerator : null;
 
   Float32List? _boxesOut;
   Float32List? _scoresOut;
   late int _inW;
   late int _inH;
   late List<List<double>> _anchors;
-  late List<int> _boxesShape;
-  late List<int> _scoresShape;
+  // BlazeFace output geometry, derived from output element counts at init:
+  // boxes tensor is [1, _n, _k], scores is [1, _n, 1].
+  int _n = 0;
+  int _k = 0;
   int _boxesIdx = 0;
   int _scoresIdx = 1;
 
@@ -48,7 +49,7 @@ class FaceDetectionModelWeb {
 
   Future<void> initialize(
     FaceDetectionModel model, {
-    String liteRtAccelerator = 'auto',
+    WebRunnerConfig config = const WebRunnerConfig(),
   }) async {
     if (_initialized) await dispose();
 
@@ -63,57 +64,44 @@ class FaceDetectionModelWeb {
     final ByteData raw = await rootBundle.load(assetPath);
     final bytes = raw.buffer.asUint8List();
 
-    final String resolved = await resolveWebAccelerator(liteRtAccelerator);
-    _liteRtItp = await LiteRtInterpreter.fromBytes(
+    final runner = await WebModelRunner.create(
       bytes,
-      accelerator: resolved,
+      config: config,
+      modelLabel: 'BlazeFace',
     );
-    _activeAccelerator = _liteRtItp!.activeAccelerator;
-    logCompileFallback(
-      model: 'BlazeFace',
-      requested: resolved,
-      actual: _activeAccelerator!,
-    );
+    _runner = runner;
+    _activeAccelerator = runner.activeAccelerator;
 
-    final outs = _liteRtItp!.getOutputTensors();
-    int boxesIdx = -1;
-    int scoresIdx = -1;
-    int boxesElems = 0;
-    int scoresElems = 0;
-    List<int>? boxesShape;
-    List<int>? scoresShape;
-    for (int i = 0; i < outs.length; i++) {
-      final shape = List<int>.from(outs[i].shape);
-      int n = 1;
-      for (final d in shape) {
-        n *= d;
-      }
-      // BlazeFace: boxes tensor has shape [1, N, K] where K >= 16
-      // (xc,yc,w,h + 6 keypoints * 2). Scores shape is [1, N] or [1, N, 1].
-      final last = shape.last;
-      if (last >= 16 && last % 2 == 0) {
-        boxesIdx = i;
-        boxesElems = n;
-        boxesShape = shape;
-      } else if (last == 1 || shape.length == 2) {
-        scoresIdx = i;
-        scoresElems = n;
-        scoresShape = shape;
-      }
-    }
-    if (boxesIdx < 0 ||
-        scoresIdx < 0 ||
-        boxesShape == null ||
-        scoresShape == null) {
+    // BlazeFace has two outputs: boxes [1, N, K>=16] and scores [1, N, 1].
+    // CompiledModel exposes byte sizes only, so identify them by element
+    // count: boxes has the larger count (N*K), scores the smaller (N).
+    final List<int> counts = runner.outputElementCounts;
+    if (counts.length < 2) {
       throw StateError(
-        'BlazeFace outputs do not match expected shapes. Got '
-        '${[for (final t in outs) t.shape]}',
+        'BlazeFace must have at least 2 outputs; got ${counts.length}.',
+      );
+    }
+    int boxesIdx = 0;
+    for (int i = 1; i < counts.length; i++) {
+      if (counts[i] > counts[boxesIdx]) boxesIdx = i;
+    }
+    int scoresIdx = boxesIdx == 0 ? 1 : 0;
+    for (int i = 0; i < counts.length; i++) {
+      if (i != boxesIdx && counts[i] < counts[scoresIdx]) scoresIdx = i;
+    }
+    final int boxesElems = counts[boxesIdx];
+    final int scoresElems = counts[scoresIdx];
+    if (scoresElems <= 0 ||
+        boxesElems % scoresElems != 0 ||
+        boxesElems ~/ scoresElems < 16) {
+      throw StateError(
+        'BlazeFace outputs do not match expected geometry. Counts: $counts',
       );
     }
     _boxesIdx = boxesIdx;
     _scoresIdx = scoresIdx;
-    _boxesShape = boxesShape;
-    _scoresShape = scoresShape;
+    _n = scoresElems;
+    _k = boxesElems ~/ scoresElems;
     _boxesOut = Float32List(boxesElems);
     _scoresOut = Float32List(scoresElems);
 
@@ -127,8 +115,8 @@ class FaceDetectionModelWeb {
   }
 
   Future<void> dispose() async {
-    _liteRtItp?.close();
-    _liteRtItp = null;
+    _runner?.close();
+    _runner = null;
     _activeAccelerator = null;
     _boxesOut = null;
     _scoresOut = null;
@@ -182,14 +170,14 @@ class FaceDetectionModelWeb {
     final Float32List input = _inputBuffer!;
     rgbaToSignedRgbFloat32(Uint8List.view(rgba.buffer), input);
 
-    await _liteRtItp!.runForMultipleInputs(
-      <Object>[input],
-      <int, Object>{_boxesIdx: _boxesOut!, _scoresIdx: _scoresOut!},
+    await _runner!.run(
+      <Float32List>[input],
+      <int, Float32List>{_boxesIdx: _boxesOut!, _scoresIdx: _scoresOut!},
     );
 
     // Decode candidate scores.
     final raw = _scoresOut!;
-    final int n = _scoresShape[1];
+    final int n = _n;
     final List<int> candIndices = <int>[];
     final List<double> candScores = <double>[];
     for (int i = 0; i < n; i++) {
@@ -203,7 +191,7 @@ class FaceDetectionModelWeb {
 
     // Decode bounding boxes for those indices.
     final Float32List boxesRaw = _boxesOut!;
-    final int k = _boxesShape[2];
+    final int k = _k;
     final double scale = _inH.toDouble();
     final List<({RectF box, List<double> kp})> decoded =
         <({RectF box, List<double> kp})>[];

@@ -3,11 +3,10 @@
 import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
-import 'package:flutter_litert/src/web/litertjs_interpreter.dart'
-    show LiteRtInterpreter;
 
 import '../../shared/blendshape_input.dart'
     show kBlendshapeInputFloats, kBlendshapeCount;
+import 'web_model_runner.dart';
 
 /// Face blendshapes runner for web. Consumes a packed `[1, 146, 2]` landmark
 /// tensor (292 floats) and returns 52 expression coefficients in `[0, 1]`.
@@ -15,9 +14,10 @@ import '../../shared/blendshape_input.dart'
 /// Pinned to the WASM backend regardless of the requested accelerator: a
 /// 292-in / 52-out MLP is far below the WebGPU compile/dispatch payoff, and
 /// WASM sidesteps GPU tensor-format questions for a non-image input (CPU-pinning
-/// parity with the native path).
+/// parity with the native path). It still follows the selected engine
+/// (LiteRT.js interpreter or `CompiledModel`), just always on WASM.
 class FaceBlendshapesModelWeb {
-  LiteRtInterpreter? _liteRtItp;
+  WebModelRunner? _runner;
   String? _activeAccelerator;
   Float32List? _outBuffer;
   bool _initialized = false;
@@ -26,22 +26,28 @@ class FaceBlendshapesModelWeb {
 
   /// The accelerator that compiled this model (always `'wasm'`), or null
   /// pre-init.
-  String? get activeAccelerator =>
-      _liteRtItp != null ? _activeAccelerator : null;
+  String? get activeAccelerator => _runner != null ? _activeAccelerator : null;
 
-  Future<void> initialize({String liteRtAccelerator = 'auto'}) async {
+  Future<void> initialize({
+    WebRunnerConfig config = const WebRunnerConfig(),
+  }) async {
     if (_initialized) await dispose();
     const String assetPath =
         'packages/face_detection_tflite/assets/models/face_blendshapes.tflite';
     final ByteData raw = await rootBundle.load(assetPath);
     final bytes = raw.buffer.asUint8List();
-    // Always WASM (see class doc); the requested accelerator is ignored.
-    _liteRtItp = await LiteRtInterpreter.fromBytes(bytes, accelerator: 'wasm');
-    _activeAccelerator = _liteRtItp!.activeAccelerator;
+    // Always WASM (see class doc): pin the backend but keep the chosen engine.
+    final runner = await WebModelRunner.create(
+      bytes,
+      config: config.copyWith(accelerator: 'wasm', strictWebGpu: false),
+      modelLabel: 'FaceBlendshapes',
+    );
+    _runner = runner;
+    _activeAccelerator = runner.activeAccelerator;
 
-    final int inCount = _elementCount(_liteRtItp!.getInputTensor(0).shape);
-    final outs = _liteRtItp!.getOutputTensors();
-    final int outCount = outs.isEmpty ? 0 : _elementCount(outs[0].shape);
+    final int inCount = runner.inputElementCount0;
+    final List<int> outCounts = runner.outputElementCounts;
+    final int outCount = outCounts.isEmpty ? 0 : outCounts[0];
     if (inCount != kBlendshapeInputFloats || outCount != kBlendshapeCount) {
       await dispose();
       throw UnsupportedError(
@@ -54,17 +60,9 @@ class FaceBlendshapesModelWeb {
     _initialized = true;
   }
 
-  static int _elementCount(List<int> shape) {
-    int n = 1;
-    for (final int d in shape) {
-      n *= d;
-    }
-    return n;
-  }
-
   Future<void> dispose() async {
-    _liteRtItp?.close();
-    _liteRtItp = null;
+    _runner?.close();
+    _runner = null;
     _activeAccelerator = null;
     _outBuffer = null;
     _initialized = false;
@@ -80,10 +78,7 @@ class FaceBlendshapesModelWeb {
     if (packed.length != kBlendshapeInputFloats) return null;
 
     final Float32List out = _outBuffer!;
-    await _liteRtItp!.runForMultipleInputs(
-      <Object>[packed],
-      <int, Object>{0: out},
-    );
+    await _runner!.run(<Float32List>[packed], <int, Float32List>{0: out});
 
     final Float32List result = Float32List(kBlendshapeCount);
     for (int i = 0; i < kBlendshapeCount; i++) {
