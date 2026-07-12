@@ -207,4 +207,148 @@ void main() {
       expect(applyFaceGates([f], minScore: 0.5, minFaceSize: 0), hasLength(1));
     });
   });
+
+  group('boxVisibleWidthFraction', () {
+    // The early (detector-stage) gate and the late (Face) gate must agree to
+    // the last bit, so the helper must return exactly Face.widthFraction for
+    // every box shape, including awkward widths where a normalized-space
+    // reformulation could differ by one ULP.
+    test('bit-identical to Face.widthFraction across edge boxes', () {
+      final cases = <(double xmin, double xmax, double imgW)>[
+        (0.1, 0.6, 100.0),
+        (0.8, 1.4, 100.0), // past right edge
+        (-0.2, 0.3, 100.0), // past left edge
+        (-0.5, 1.5, 100.0), // oversized both sides
+        (1.2, 1.5, 100.0), // entirely outside
+        (0.1, 0.6, 0.0), // degenerate image width
+        (0.0, 1.0, 640.0), // exact full width
+        (1.0 / 3.0, 2.0 / 3.0, 1279.0), // non-terminating fractions
+        (0.07717565415691328, 0.9, 1279.0), // threshold-like values
+      ];
+      for (final (xmin, xmax, imgW) in cases) {
+        final f = makeFace(score: 0.9, xmin: xmin, xmax: xmax, imgW: imgW);
+        final helper = boxVisibleWidthFraction(
+          f.detectionData.boundingBox,
+          imgW,
+        );
+        // Strict equality on purpose: closeTo() would hide ULP drift.
+        expect(
+          helper,
+          f.widthFraction,
+          reason: 'mismatch for box [$xmin, $xmax] over width $imgW',
+        );
+      }
+    });
+  });
+
+  group('applyDetectionGates', () {
+    Detection makeDetection({
+      required double score,
+      required double xmin,
+      required double xmax,
+    }) => Detection(
+      boundingBox: RectF(xmin, 0.2, xmax, 0.8),
+      score: score,
+      keypointsXY: TestUtils.generateValidKeypoints(),
+    );
+
+    test('keeps exactly the detections whose Faces pass applyFaceGates', () {
+      const imgW = 100.0;
+      final specs = <(double score, double xmin, double xmax)>[
+        (0.99, 0.1, 0.2), // small
+        (0.55, 0.1, 0.9), // low score
+        (0.90, 0.1, 0.9), // good
+        (0.60, 0.8, 1.4), // clipped at right edge
+        (0.70, -0.2, 0.3), // clipped at left edge
+      ];
+      final dets = [
+        for (final (s, x0, x1) in specs)
+          makeDetection(score: s, xmin: x0, xmax: x1),
+      ];
+      final faces = [
+        for (final (s, x0, x1) in specs)
+          makeFace(score: s, xmin: x0, xmax: x1, imgW: imgW),
+      ];
+      for (final (minScore, minFaceSize) in <(double, double)>[
+        (0.0, 0.0),
+        (0.7, 0.3),
+        (0.6, 0.25),
+        (0.9, 0.0),
+        (0.0, 0.5),
+        (1.0, 1.0),
+      ]) {
+        final keptDets = applyDetectionGates(
+          dets,
+          minScore: minScore,
+          minFaceSize: minFaceSize,
+          imageWidth: imgW,
+        );
+        final keptFaces = applyFaceGates(
+          faces,
+          minScore: minScore,
+          minFaceSize: minFaceSize,
+        );
+        expect(
+          keptDets.map((d) => d.score).toList(),
+          keptFaces.map((f) => f.score).toList(),
+          reason: 'gate ($minScore, $minFaceSize) diverged',
+        );
+      }
+    });
+
+    test('no-op defaults return the exact same list instance', () {
+      final dets = [makeDetection(score: 0.9, xmin: 0.1, xmax: 0.6)];
+      expect(
+        identical(
+          applyDetectionGates(
+            dets,
+            minScore: 0,
+            minFaceSize: 0,
+            imageWidth: 100.0,
+          ),
+          dets,
+        ),
+        isTrue,
+      );
+    });
+
+    test('thresholds are inclusive, matching the late gate', () {
+      final d = makeDetection(score: 0.6, xmin: 0.1, xmax: 0.6);
+      final f = makeFace(score: 0.6, xmin: 0.1, xmax: 0.6);
+      final frac = f.widthFraction;
+      expect(
+        applyDetectionGates(
+          [d],
+          minScore: 0.6,
+          minFaceSize: frac,
+          imageWidth: 100.0,
+        ),
+        hasLength(1),
+      );
+      expect(
+        applyDetectionGates(
+          [d],
+          minScore: 0.6000000000000001,
+          minFaceSize: 0,
+          imageWidth: 100.0,
+        ),
+        isEmpty,
+      );
+    });
+
+    test('preserves input order', () {
+      final a = makeDetection(score: 0.90, xmin: 0.0, xmax: 0.9);
+      final b = makeDetection(score: 0.80, xmin: 0.0, xmax: 0.8);
+      final c = makeDetection(score: 0.95, xmin: 0.0, xmax: 0.7);
+      final out = applyDetectionGates(
+        [a, b, c],
+        minScore: 0.5,
+        minFaceSize: 0,
+        imageWidth: 100.0,
+      );
+      expect(identical(out[0], a), isTrue);
+      expect(identical(out[1], b), isTrue);
+      expect(identical(out[2], c), isTrue);
+    });
+  });
 }

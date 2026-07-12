@@ -61,7 +61,7 @@ class FaceDetector {
   ///
   /// Downstream caches should include this value in their lookup key so
   /// stored results are ignored after an upgrade that changes behavior.
-  static const String modelVersion = '1.1.0';
+  static const String modelVersion = '1.1.1';
 
   /// Creates a new face detector instance.
   ///
@@ -189,6 +189,9 @@ class FaceDetector {
   /// fraction of the image width, is below the threshold (matching Google ML
   /// Kit's `minFaceSize`). Both default to 0.0 (no filtering) and must be in
   /// the inclusive range `[0.0, 1.0]`, or [ArgumentError] is thrown.
+  /// Detections that fail a gate are dropped right after the detector stage,
+  /// before the per-face mesh, iris and blendshape stages run, so in
+  /// `standard`/`full` modes the gates also skip that per-face landmark cost.
   ///
   /// Example:
   /// ```dart
@@ -284,6 +287,8 @@ class FaceDetector {
         useCompiledModel: useCompiledModel,
         accelerators: accelerators,
         precision: precision,
+        minScore: minScore,
+        minFaceSize: minFaceSize,
       );
 
       if (withSegmentation && results.length > 5) {
@@ -564,14 +569,30 @@ class FaceDetector {
   /// ```
   Future<Float32List> getFaceEmbedding(Face face, Uint8List imageBytes) async {
     _requireReady();
-    final List<double> result = await _sendDetectionRequest<List<double>>(
-      'embedding',
-      {
-        'bytes': TransferableTypedData.fromList([imageBytes]),
-        'face': face.toMap(),
-      },
-    );
-    return Float32List.fromList(result);
+    final Object? result = await _sendDetectionRequest<Object?>('embedding', {
+      'bytes': TransferableTypedData.fromList([imageBytes]),
+      'eyes': _embeddingEyesPayload(face),
+    });
+    return result as Float32List;
+  }
+
+  /// Packs the two eye landmark points of [face] for the embedding RPC.
+  ///
+  /// The embedding alignment consumes only these two points (iris-refined
+  /// when the face has iris data, exactly what `face.landmarks` reports), so
+  /// sending four doubles avoids serializing the full face, mesh and iris
+  /// included, across the isolate boundary.
+  ///
+  /// Throws [StateError] when the face has no eye landmarks, matching the
+  /// error previously raised inside the isolate.
+  static Float64List _embeddingEyesPayload(Face face) {
+    final landmarks = face.landmarks;
+    final leftEye = landmarks.leftEye;
+    final rightEye = landmarks.rightEye;
+    if (leftEye == null || rightEye == null) {
+      throw StateError('Face must have left and right eye landmarks');
+    }
+    return Float64List.fromList([leftEye.x, leftEye.y, rightEye.x, rightEye.y]);
   }
 
   /// Generates a face embedding from an image file at [path].
@@ -604,17 +625,17 @@ class FaceDetector {
     int matType = 16,
   }) async {
     _requireReady();
-    final List<double> result = await _sendDetectionRequest<List<double>>(
+    final Object? result = await _sendDetectionRequest<Object?>(
       'embeddingMat',
       {
         'bytes': TransferableTypedData.fromList([bytes]),
         'width': width,
         'height': height,
         'matType': matType,
-        'face': face.toMap(),
+        'eyes': _embeddingEyesPayload(face),
       },
     );
-    return Float32List.fromList(result);
+    return result as Float32List;
   }
 
   /// Generates a face embedding from a pre-decoded [cv.Mat] image.
@@ -652,17 +673,30 @@ class FaceDetector {
     Uint8List imageBytes,
   ) async {
     _requireReady();
+    // Four doubles per face. A face whose eye landmarks are unavailable is
+    // marked with a NaN quad and comes back as a null entry, matching the
+    // previous behavior where the per-face failure happened in the isolate.
+    final Float64List eyes = Float64List(faces.length * 4);
+    for (int i = 0; i < faces.length; i++) {
+      try {
+        eyes.setRange(i * 4, i * 4 + 4, _embeddingEyesPayload(faces[i]));
+      } catch (_) {
+        // Preserve the old per-face failure contract: one malformed face must
+        // not abort embeddings for every other face in the batch.
+        eyes[i * 4] = double.nan;
+        eyes[i * 4 + 1] = double.nan;
+        eyes[i * 4 + 2] = double.nan;
+        eyes[i * 4 + 3] = double.nan;
+      }
+    }
     final List<dynamic> result = await _sendDetectionRequest<List<dynamic>>(
       'embeddings',
       {
         'bytes': TransferableTypedData.fromList([imageBytes]),
-        'faces': faces.map((f) => f.toMap()).toList(),
+        'eyes': eyes,
       },
     );
-    return result.map((dynamic item) {
-      if (item == null) return null;
-      return Float32List.fromList((item as List).cast<double>());
-    }).toList();
+    return result.map((dynamic item) => item as Float32List?).toList();
   }
 
   /// Compares two face embeddings and returns a cosine similarity score.
@@ -993,10 +1027,6 @@ class FaceDetector {
     Map<String, dynamic> params,
   ) => _segmentationRpc!.sendRequest<T>(operation, params);
 
-  static List<Face> _deserializeFaces(List<dynamic> result) => result
-      .map((map) => Face.fromMap(Map<String, dynamic>.from(map as Map)))
-      .toList();
-
   static Float32List _packPoints(List<Point> points) {
     final buf = Float32List(points.length * 3);
     for (int i = 0; i < points.length; i++) {
@@ -1058,8 +1088,10 @@ class FaceDetector {
       FaceMesh? mesh;
       final meshTd = map['mesh'] as TransferableTypedData?;
       if (meshTd != null) {
-        mesh = FaceMesh(
-          _unpackPoints(meshTd.materialize().asFloat32List()),
+        // Zero-copy: hand the transferred packed buffer straight to the mesh;
+        // Point objects are only built if the caller actually reads them.
+        mesh = FaceMesh.packed(
+          meshTd.materialize().asFloat32List(),
           score: (map['meshScore'] as num?)?.toDouble(),
         );
       }
@@ -1230,6 +1262,8 @@ class FaceDetector {
         useCompiledModel: data.useCompiledModel,
         accelerators: accelerators,
         precision: precision,
+        minScore: data.minScore,
+        minFaceSize: data.minFaceSize,
       );
 
       mainSendPort.send(workerReceivePort.sendPort);
@@ -1302,12 +1336,16 @@ class FaceDetector {
     Future<Object?> runEmbed(
       _FaceDetectorCore c,
       cv.Mat mat,
-      Face face, {
+      Float64List eyes, {
       bool disposeMat = true,
     }) async {
       try {
-        final embedding = await c.getFaceEmbeddingDirect(face, mat);
-        return embedding.toList();
+        // Float32List crosses the SendPort as typed data (no boxing).
+        return await c.getFaceEmbeddingFromEyesDirect(
+          Point(eyes[0], eyes[1]),
+          Point(eyes[2], eyes[3]),
+          mat,
+        );
       } finally {
         if (disposeMat) mat.dispose();
       }
@@ -1363,26 +1401,25 @@ class FaceDetector {
           if (c == null || !c.isEmbeddingReady) {
             throw IsolateRpcExactError('Embedding not initialized in isolate');
           }
-          final face = Face.fromMap(
-            Map<String, dynamic>.from(message['face'] as Map),
-          );
           // Reuse the source Mat decoded by the preceding 'detect' on the same
           // bytes; falls back to a fresh decode (and caches it) on a miss.
           final mat = decodeSourceCached(_extractBytes(message));
-          return runEmbed(c, mat, face, disposeMat: false);
+          return runEmbed(
+            c,
+            mat,
+            message['eyes'] as Float64List,
+            disposeMat: false,
+          );
         },
         'embeddingMat': (message) {
           final c = core;
           if (c == null || !c.isEmbeddingReady) {
             throw IsolateRpcExactError('Embedding not initialized in isolate');
           }
-          final face = Face.fromMap(
-            Map<String, dynamic>.from(message['face'] as Map),
-          );
           return runEmbed(
             c,
             _matFromMessage(message, _extractBytes(message)),
-            face,
+            message['eyes'] as Float64List,
           );
         },
         'embeddings': (message) async {
@@ -1390,21 +1427,34 @@ class FaceDetector {
           if (c == null || !c.isEmbeddingReady) {
             throw IsolateRpcExactError('Embedding not initialized in isolate');
           }
-          final List<Face> faces = _deserializeFaces(message['faces'] as List);
+          // Four doubles per face; a NaN-marked quad is a face whose eye
+          // landmarks were unavailable on the main isolate and maps to a
+          // null entry, matching the previous per-face failure behavior.
+          final Float64List eyes = message['eyes'] as Float64List;
           final cv.Mat image = cv.imdecode(
             _extractBytes(message),
             cv.IMREAD_COLOR,
           );
           try {
             final embeddings = <Float32List?>[];
-            for (final face in faces) {
+            for (int i = 0; i + 3 < eyes.length; i += 4) {
+              if (eyes[i].isNaN) {
+                embeddings.add(null);
+                continue;
+              }
               try {
-                embeddings.add(await c.getFaceEmbeddingDirect(face, image));
+                embeddings.add(
+                  await c.getFaceEmbeddingFromEyesDirect(
+                    Point(eyes[i], eyes[i + 1]),
+                    Point(eyes[i + 2], eyes[i + 3]),
+                    image,
+                  ),
+                );
               } catch (_) {
                 embeddings.add(null);
               }
             }
-            return embeddings.map((e) => e?.toList()).toList();
+            return embeddings;
           } finally {
             image.dispose();
           }
@@ -1680,6 +1730,8 @@ class _FaceDetectorWorker extends IsolateWorkerBase {
     required bool useCompiledModel,
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
     Precision precision = Precision.fp16,
+    double minScore = 0.0,
+    double minFaceSize = 0.0,
   }) async {
     await initWorker(
       (sendPort) => Isolate.spawn(
@@ -1706,6 +1758,8 @@ class _FaceDetectorWorker extends IsolateWorkerBase {
           useCompiledModel: useCompiledModel,
           acceleratorIndices: accelerators.map((a) => a.index).toList(),
           precisionIndex: precision.index,
+          minScore: minScore,
+          minFaceSize: minFaceSize,
         ),
         debugName: 'FaceDetector.detection',
       ),

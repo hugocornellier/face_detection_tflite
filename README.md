@@ -226,19 +226,23 @@ image-width ratio) with two deliberate differences:
   adding the option never silently changes existing results.
 - **It is a strict post-detection filter, not a detection-time hint.** ML Kit
   documents `minFaceSize` as the "smallest desired face size" that trades speed
-  for small-face recall. Here the full detection runs and small faces are then
-  removed, so `minFaceSize` changes what you get back, not how fast detection
-  runs. `widthFraction` is measured on the detector's bounding box (clipped to
-  the image), which approximates but is not identical to ML Kit's head
-  measurement.
+  for small-face recall. Here the detector always runs on the full frame and
+  small faces are then removed, so `minFaceSize` never changes which faces the
+  detector can find. Faces that fail a gate are dropped right after the
+  detector stage and skip the per-face mesh, iris and blendshape work (see
+  the Notes below). `widthFraction` is measured on the
+  detector's bounding box (clipped to the image), which approximates but is
+  not identical to ML Kit's head measurement.
 
 ### Notes
 
 - Invalid values (NaN, or outside `[0.0, 1.0]`) throw `ArgumentError` from
   `create()` / `initialize()`.
-- These are filters, not a performance optimization: in `standard` and `full`
-  modes the mesh and iris models still run on every detected face before gating,
-  so the landmark cost is not saved.
+- The gates are also a performance optimization on every platform: in
+  `standard` and `full` modes, detections that fail `minScore` or
+  `minFaceSize` are dropped before the per-face mesh, iris and blendshape
+  stages, so their landmark cost is skipped. The detector itself still runs on
+  the full frame.
 - Native and web filter identically, including for faces near the image border
   (`widthFraction` uses the visible, image-clipped width on both).
 - For ad-hoc or per-call filtering you can also use `face.score` /

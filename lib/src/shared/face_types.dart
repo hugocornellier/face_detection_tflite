@@ -11,6 +11,7 @@ import 'dart:ui' show Size;
 import 'package:flutter_litert/flutter_litert.dart'
     show BoundingBox, PerformanceConfig, Point;
 
+import 'face_gates.dart' show boxVisibleWidthFraction;
 import 'face_geometry.dart' show headEulerAnglesFromMesh, rollFromEyes;
 import 'blendshape_input.dart' show Blendshape, kBlendshapeCount;
 
@@ -746,30 +747,79 @@ List<Point> _clampedContour(List<Point> mesh) =>
 
 /// 468-point face mesh with optional depth information.
 class FaceMesh {
-  final List<Point> _points;
+  /// Materialized points, or null while still in packed form.
+  List<Point>? _points;
+
+  /// Packed `x,y,z` triples awaiting materialization. Dropped (nulled) as
+  /// soon as [points] is first read, so a mesh never holds both forms.
+  Float32List? _packed;
 
   /// Face-presence confidence from the mesh model, 0.0 to 1.0 (higher is more
   /// confident the crop is a face). Null when the model does not report it.
   final double? score;
 
   /// Creates a face mesh from 468 points.
-  FaceMesh(this._points, {this.score}) : assert(_points.length == kMeshPoints);
+  ///
+  /// Throws [ArgumentError] when [points] does not contain exactly 468 items.
+  FaceMesh(List<Point> points, {this.score})
+    : _points = _validatePoints(points);
+
+  /// Creates a face mesh from packed `x,y,z` float triples without building
+  /// [Point] objects. They are materialized lazily on first access to
+  /// [points] (or [] / [toMap]), so callers that never read the mesh, or
+  /// that only read other face fields, skip 468 allocations entirely.
+  ///
+  /// Throws [ArgumentError] when [xyz] does not contain exactly 468 triples.
+  FaceMesh.packed(Float32List xyz, {this.score})
+    : _packed = _validatePacked(xyz);
+
+  static List<Point> _validatePoints(List<Point> points) {
+    if (points.length != kMeshPoints) {
+      throw ArgumentError.value(
+        points.length,
+        'points.length',
+        'must be exactly $kMeshPoints',
+      );
+    }
+    return points;
+  }
+
+  static Float32List _validatePacked(Float32List xyz) {
+    const int expected = kMeshPoints * 3;
+    if (xyz.length != expected) {
+      throw ArgumentError.value(
+        xyz.length,
+        'xyz.length',
+        'must be exactly $expected',
+      );
+    }
+    return xyz;
+  }
 
   /// The 468 mesh points with depth.
-  List<Point> get points => _points;
+  List<Point> get points => _points ??= _materialize();
+
+  List<Point> _materialize() {
+    final Float32List p = _packed!;
+    _packed = null;
+    return List<Point>.generate(
+      kMeshPoints,
+      (i) => Point(p[i * 3], p[i * 3 + 1], p[i * 3 + 2]),
+    );
+  }
 
   /// Returns the point at the given index.
-  Point operator [](int index) => _points[index];
+  Point operator [](int index) => points[index];
 
   /// Number of points in the mesh (always 468).
-  int get length => _points.length;
+  int get length => kMeshPoints;
 
   @override
-  String toString() => 'FaceMesh(${_points.length} points)';
+  String toString() => 'FaceMesh($kMeshPoints points)';
 
   /// Converts this mesh to a map for isolate serialization.
   Map<String, dynamic> toMap() => {
-    'points': _points.map((p) => p.toMap()).toList(),
+    'points': points.map((p) => p.toMap()).toList(),
     if (score != null) 'score': score,
   };
 
@@ -1119,14 +1169,8 @@ class Face {
   /// clamps boxes) still yields a fraction in `[0, 1]` and, importantly, the
   /// same value on every platform. Returns 0.0 when the source image width is
   /// unknown or the face lies entirely outside the image.
-  double get widthFraction {
-    final double w = originalSize.width;
-    if (w <= 0) return 0.0;
-    final double left = boundingBox.topLeft.x;
-    final double right = boundingBox.topRight.x;
-    final double visible = math.min(right, w) - math.max(left, 0.0);
-    return visible > 0 ? visible / w : 0.0;
-  }
+  double get widthFraction =>
+      boxVisibleWidthFraction(detectionData.boundingBox, originalSize.width);
 
   /// Comprehensive eye tracking data for both eyes (null when no iris data).
   EyePair? get eyes => _cachedEyes;

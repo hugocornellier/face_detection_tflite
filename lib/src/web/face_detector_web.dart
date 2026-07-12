@@ -14,7 +14,8 @@ import 'package:flutter_litert/src/web/web_detector_utils.dart'
 import 'package:web/web.dart' as web;
 
 import '../shared/blendshape_input.dart' show packBlendshapeInput;
-import '../shared/face_gates.dart' show applyFaceGates, validateFaceGates;
+import '../shared/face_gates.dart'
+    show applyDetectionGates, applyFaceGates, validateFaceGates;
 import '../shared/face_geometry.dart' show transformMeshFlatToAbsolute;
 import 'models/face_blendshapes_model_web.dart';
 import 'models/face_detection_model_web.dart';
@@ -58,7 +59,7 @@ class WebDetectTimings {
 /// detect-from-bytes use case. Native-only methods (filepath, mat, camera
 /// frames) throw [UnsupportedError] on web.
 class FaceDetector with WebGpuFallback {
-  static const String modelVersion = '1.1.0';
+  static const String modelVersion = '1.1.1';
 
   FaceDetector();
 
@@ -450,7 +451,7 @@ class FaceDetector with WebGpuFallback {
   }) async {
     final sw = Stopwatch();
     if (timings != null) sw.start();
-    final List<Detection> dets = await _detector.detect(
+    List<Detection> dets = await _detector.detect(
       source,
       imageWidth: imageWidth,
       imageHeight: imageHeight,
@@ -461,6 +462,17 @@ class FaceDetector with WebGpuFallback {
       timings.detections = dets.length;
       sw.reset();
     }
+
+    // Early gate: same arithmetic as the late _applyGates pass (shared
+    // helpers), applied before the per-face mesh/iris/blendshape stages so
+    // gated-out detections skip that work entirely. detections above stays
+    // the raw post-NMS count for diagnostics.
+    dets = applyDetectionGates(
+      dets,
+      minScore: _minScore,
+      minFaceSize: _minFaceSize,
+      imageWidth: imageWidth.toDouble(),
+    );
 
     final imgSize = Size(imageWidth.toDouble(), imageHeight.toDouble());
     if (mode == FaceDetectionMode.fast || dets.isEmpty) {
@@ -632,18 +644,45 @@ class FaceDetector with WebGpuFallback {
         'initialize(withSegmentation: true).',
       );
     }
-    final detSw = Stopwatch()..start();
-    final faces = await detectFacesFromBytes(imageBytes, mode: mode);
-    detSw.stop();
-    final segSw = Stopwatch()..start();
-    final mask = await getSegmentationMask(imageBytes);
-    segSw.stop();
-    return DetectionWithSegmentationResult(
-      faces: faces,
-      segmentationMask: mask,
-      detectionTimeMs: detSw.elapsedMilliseconds,
-      segmentationTimeMs: segSw.elapsedMilliseconds,
-    );
+    // Decode the image once and feed the same bitmap to both stages; the
+    // previous implementation decoded the identical bytes twice (once per
+    // stage), adding a full createImageBitmap to every combined call.
+    return withFallback(() async {
+      final detSw = Stopwatch()..start();
+      final web.ImageBitmap? bitmap = await decodeBitmap(imageBytes);
+      if (bitmap == null) {
+        // Match the previous behavior: detection yields no faces on decode
+        // failure and the segmentation stage throws.
+        throw const SegmentationException(
+          SegmentationError.imageDecodeFailed,
+          'Failed to decode image bytes via createImageBitmap.',
+        );
+      }
+      try {
+        final faces = await _runPipelineOnSource(
+          bitmap,
+          imageWidth: bitmap.width,
+          imageHeight: bitmap.height,
+          mode: mode,
+        );
+        detSw.stop();
+        final segSw = Stopwatch()..start();
+        final mask = await _segmenter!.segment(
+          bitmap,
+          imageWidth: bitmap.width,
+          imageHeight: bitmap.height,
+        );
+        segSw.stop();
+        return DetectionWithSegmentationResult(
+          faces: faces,
+          segmentationMask: mask,
+          detectionTimeMs: detSw.elapsedMilliseconds,
+          segmentationTimeMs: segSw.elapsedMilliseconds,
+        );
+      } finally {
+        bitmap.close();
+      }
+    });
   }
 
   Future<SegmentationMask> getSegmentationMask(

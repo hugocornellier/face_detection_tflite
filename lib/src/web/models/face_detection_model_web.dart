@@ -11,6 +11,7 @@ import 'package:web/web.dart' as web;
 import '../../shared/face_geometry.dart' show computeFaceAlignment;
 import '../../shared/face_model_config.dart';
 import '../../shared/face_types.dart';
+import '../detection_decode.dart';
 import 'web_model_runner.dart';
 
 /// Web BlazeFace runner. Runs on the LiteRT.js interpreter or a LiteRT Next
@@ -175,58 +176,21 @@ class FaceDetectionModelWeb {
       <int, Float32List>{_boxesIdx: _boxesOut!, _scoresIdx: _scoresOut!},
     );
 
-    // Decode candidate scores.
-    final raw = _scoresOut!;
-    final int n = _n;
-    final List<int> candIndices = <int>[];
-    final List<double> candScores = <double>[];
-    for (int i = 0; i < n; i++) {
-      final double s = sigmoidClipped(raw[i], limit: kRawScoreLimit);
-      if (s >= kMinScore) {
-        candIndices.add(i);
-        candScores.add(s);
-      }
-    }
-    if (candIndices.isEmpty) return const <Detection>[];
-
-    // Decode bounding boxes for those indices.
-    final Float32List boxesRaw = _boxesOut!;
-    final int k = _k;
-    final double scale = _inH.toDouble();
-    final List<({RectF box, List<double> kp})> decoded =
-        <({RectF box, List<double> kp})>[];
-    final Float32List tmp = Float32List(k);
-    for (final int i in candIndices) {
-      final int base = i * k;
-      for (int j = 0; j < k; j++) {
-        tmp[j] = boxesRaw[base + j] / scale;
-      }
-      final double ax = _anchors[i][0];
-      final double ay = _anchors[i][1];
-      tmp[0] += ax;
-      tmp[1] += ay;
-      for (int j = 4; j < k; j += 2) {
-        tmp[j] += ax;
-        tmp[j + 1] += ay;
-      }
-      final double xc = tmp[0], yc = tmp[1], w = tmp[2], h = tmp[3];
-      if (w <= 0 || h <= 0) continue;
-      final double xmin = xc - w * 0.5;
-      final double ymin = yc - h * 0.5;
-      final double xmax = xc + w * 0.5;
-      final double ymax = yc + h * 0.5;
-      final List<double> kp = <double>[];
-      for (int j = 4; j < k; j += 2) {
-        kp.add(tmp[j]);
-        kp.add(tmp[j + 1]);
-      }
-      decoded.add((box: RectF(xmin, ymin, xmax, ymax), kp: kp));
-    }
+    // Decode candidates (scores paired with their boxes; degenerate boxes
+    // skipped safely). Pure Dart, unit-tested on the host VM.
+    final List<DecodedCandidate> decoded = decodeBlazeFaceCandidates(
+      scoresRaw: _scoresOut!,
+      boxesRaw: _boxesOut!,
+      anchors: _anchors,
+      anchorCount: _n,
+      valuesPerBox: _k,
+      scale: _inH.toDouble(),
+    );
     if (decoded.isEmpty) return const <Detection>[];
 
     // Sort by score and run weighted NMS in flutter_litert.
     final List<int> order = List<int>.generate(decoded.length, (i) => i)
-      ..sort((a, b) => candScores[b].compareTo(candScores[a]));
+      ..sort((a, b) => decoded[b].score.compareTo(decoded[a].score));
 
     final List<List<double>> sortedBoxes = <List<double>>[
       for (final i in order)
@@ -238,10 +202,10 @@ class FaceDetectionModelWeb {
         ],
     ];
     final List<double> sortedScores = <double>[
-      for (final i in order) candScores[i],
+      for (final i in order) decoded[i].score,
     ];
     final List<List<double>> sortedKps = <List<double>>[
-      for (final i in order) decoded[i].kp,
+      for (final i in order) decoded[i].keypointsXY,
     ];
 
     final results = weightedNms(

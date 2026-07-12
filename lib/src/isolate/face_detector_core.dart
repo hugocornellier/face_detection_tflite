@@ -15,6 +15,8 @@ class _DetectionIsolateStartupData {
   final bool useCompiledModel;
   final List<int> acceleratorIndices;
   final int precisionIndex;
+  final double minScore;
+  final double minFaceSize;
 
   _DetectionIsolateStartupData({
     required this.sendPort,
@@ -30,6 +32,8 @@ class _DetectionIsolateStartupData {
     required this.useCompiledModel,
     required this.acceleratorIndices,
     required this.precisionIndex,
+    required this.minScore,
+    required this.minFaceSize,
   });
 }
 
@@ -76,6 +80,12 @@ class _FaceDetectorCore {
   FaceBlendshapesModel? _blendshapes;
   FaceEmbedding? _embedding;
 
+  /// Detection gates, applied right after the detector stage so gated-out
+  /// detections skip the per-face mesh/iris/blendshape stages. Configured
+  /// once at initialization; 0.0 means no filtering.
+  double _minScore = 0.0;
+  double _minFaceSize = 0.0;
+
   final _detectorLock = AsyncLock();
   final _irisLeftLock = AsyncLock();
   final _irisRightLock = AsyncLock();
@@ -101,7 +111,11 @@ class _FaceDetectorCore {
     bool useCompiledModel = false,
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
     Precision precision = Precision.fp16,
+    double minScore = 0.0,
+    double minFaceSize = 0.0,
   }) async {
+    _minScore = minScore;
+    _minFaceSize = minFaceSize;
     try {
       _detector = useCompiledModel
           ? await FaceDetection.createCompiledFromBuffer(
@@ -198,7 +212,19 @@ class _FaceDetectorCore {
     final bool computeMesh =
         mode == FaceDetectionMode.standard || mode == FaceDetectionMode.full;
 
-    final List<Detection> dets = await _detectDetections(image);
+    List<Detection> dets = await _detectDetections(image);
+    if (dets.isEmpty) return <Face>[];
+
+    // Early gate: drop detections failing minScore/minFaceSize before any
+    // per-face work (alignment warp, mesh, iris, blendshapes). Runs after
+    // NMS and letterbox removal, so results are identical to the late gate
+    // on the main isolate; only the wasted per-face stages are skipped.
+    dets = applyDetectionGates(
+      dets,
+      minScore: _minScore,
+      minFaceSize: _minFaceSize,
+      imageWidth: width.toDouble(),
+    );
     if (dets.isEmpty) return <Face>[];
 
     final List<(Detection, AlignedFace?)?> alignedFaces =
@@ -352,6 +378,24 @@ class _FaceDetectorCore {
 
     if (leftEye == null || rightEye == null) {
       throw StateError('Face must have left and right eye landmarks');
+    }
+
+    return getFaceEmbeddingFromEyesDirect(leftEye, rightEye, image);
+  }
+
+  /// Generates a face embedding from just the two eye landmark points (in
+  /// absolute pixels, iris-refined when the source face had iris data).
+  ///
+  /// The embedding alignment consumes nothing else from a [Face], so the RPC
+  /// protocol ships these four doubles instead of serializing the whole face
+  /// (mesh and iris included) across the isolate boundary.
+  Future<Float32List> getFaceEmbeddingFromEyesDirect(
+    Point leftEye,
+    Point rightEye,
+    cv.Mat image,
+  ) async {
+    if (_embedding == null) {
+      throw StateError('Embedding model not initialized.');
     }
 
     final alignment = computeEmbeddingAlignment(

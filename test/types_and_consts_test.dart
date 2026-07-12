@@ -203,6 +203,41 @@ void main() {
       expect(mesh.points.length, 468);
     });
 
+    test('packed constructor materializes exact float32 values once', () {
+      final packed = Float32List(kMeshPoints * 3);
+      for (int i = 0; i < kMeshPoints; i++) {
+        packed[i * 3] = i + 0.25;
+        packed[i * 3 + 1] = i + 0.5;
+        packed[i * 3 + 2] = i + 0.75;
+      }
+
+      final mesh = FaceMesh.packed(packed, score: 0.9);
+      expect(mesh.length, kMeshPoints);
+      expect(mesh.score, 0.9);
+      final points = mesh.points;
+      expect(points[123].x, packed[123 * 3]);
+      expect(points[123].y, packed[123 * 3 + 1]);
+      expect(points[123].z, packed[123 * 3 + 2]);
+      expect(identical(points, mesh.points), isTrue);
+
+      // Materialization drops the packed representation: later mutations to
+      // the caller's source buffer cannot change already-created Points.
+      final firstX = points.first.x;
+      packed[0] = 999;
+      expect(mesh.points.first.x, firstX);
+    });
+
+    test('constructors reject malformed lengths in release mode too', () {
+      expect(
+        () => FaceMesh(List<Point>.filled(kMeshPoints - 1, const Point(0, 0))),
+        throwsArgumentError,
+      );
+      expect(
+        () => FaceMesh.packed(Float32List(kMeshPoints * 3 - 1)),
+        throwsArgumentError,
+      );
+    });
+
     test('operator [] accesses correct point', () {
       final points = List.generate(468, (i) => Point(i.toDouble(), i * 2.0));
       final mesh = FaceMesh(points);

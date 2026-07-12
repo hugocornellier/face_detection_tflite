@@ -1117,6 +1117,38 @@ void main() {
       expect(validCount, greaterThan(0));
     });
 
+    test('batch embeddings preserve null for a malformed face', () async {
+      final ByteData data =
+          await rootBundle.load('assets/samples/landmark-ex1.jpg');
+      final Uint8List bytes = data.buffer.asUint8List();
+      final validFaces = await detector.detectFacesFromBytes(
+        bytes,
+        mode: FaceDetectionMode.fast,
+      );
+      expect(validFaces, isNotEmpty);
+
+      final valid = validFaces.first;
+      final malformed = Face(
+        detection: Detection(
+          boundingBox: valid.detectionData.boundingBox,
+          score: valid.score,
+          keypointsXY: const <double>[0.1],
+          imageSize: valid.originalSize,
+        ),
+        mesh: null,
+        irises: const <Point>[],
+        originalSize: valid.originalSize,
+      );
+
+      final embeddings = await detector.getFaceEmbeddings(
+        <Face>[valid, malformed],
+        bytes,
+      );
+      expect(embeddings, hasLength(2));
+      expect(embeddings.first, isNotNull);
+      expect(embeddings.last, isNull);
+    });
+
     test('same face should have high similarity across images', () async {
       final ByteData data1 =
           await rootBundle.load('assets/samples/iris-detection-ex1.jpg');
