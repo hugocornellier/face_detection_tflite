@@ -11,14 +11,14 @@ dependencies:
     sdk: flutter
   face_detection_tflite:
     path: ../
-  flutter_litert: ^3.5.0
+  flutter_litert: ^3.5.1
   web: ^1.1.1
 
 dev_dependencies:
   flutter_lints: ^6.0.0
 
 dependency_overrides:
-  flutter_litert: ^3.5.0
+  flutter_litert: ^3.5.1
 
 flutter:
   uses-material-design: true
