@@ -1,3 +1,8 @@
+## 6.7.0
+
+* Face-presence gate (MediaPipe `min_face_presence_confidence`): `FaceDetector.create()` / `initialize()` now accept `minFacePresenceConfidence`, which drops detections the face-landmark model does not confirm as a face by gating the mesh "face flag" (`face.meshScore`). This is MediaPipe's standard second-stage check and suppresses common first-stage false positives such as a hand or palm, which clear the BlazeFace detector but score near zero on the mesh model. **It defaults to `0.5`, matching MediaPipe** (unlike `minScore`/`minFaceSize`, which default to `0.0`), so upgrading turns the check on: in `standard`/`full` modes, detections whose `meshScore` is below `0.5` are no longer returned. Pass `minFacePresenceConfidence: 0.0` to restore the previous "return every detected box" behavior. The gate has no effect in `fast` mode (no mesh is computed), and a `null` `meshScore` always passes. On both native and web it runs right after the mesh stage, before iris and blendshape, so rejected faces skip that per-face landmark cost. Validated to `[0.0, 1.0]` (out-of-range or NaN throws `ArgumentError`). See the README "Detection Gates" section.
+* Match MediaPipe's `score_clipping_thresh` exactly: the BlazeFace raw-logit clip limit (`kRawScoreLimit`) is now `100.0` (was `80.0`), matching the upstream `TensorsToDetectionsCalculator`. This is numerically inert (`sigmoid(80)` and `sigmoid(100)` are both `1.0` in float32), so detector scores and which faces are returned are unchanged; the constant is aligned purely for exactness.
+
 ## 6.6.3
 
 * Update flutter_litert -> 3.5.1.

@@ -31,6 +31,7 @@ import 'face_types.dart' show Detection, Face, RectF;
 void validateFaceGates({
   required double minScore,
   required double minFaceSize,
+  double minFacePresenceConfidence = 0.0,
 }) {
   if (minScore.isNaN || minScore < 0.0 || minScore > 1.0) {
     throw ArgumentError.value(
@@ -46,32 +47,59 @@ void validateFaceGates({
       'must be in the inclusive range [0.0, 1.0]',
     );
   }
+  if (minFacePresenceConfidence.isNaN ||
+      minFacePresenceConfidence < 0.0 ||
+      minFacePresenceConfidence > 1.0) {
+    throw ArgumentError.value(
+      minFacePresenceConfidence,
+      'minFacePresenceConfidence',
+      'must be in the inclusive range [0.0, 1.0]',
+    );
+  }
 }
 
-/// Returns the subset of [faces] that pass both gates, preserving input order.
+/// Returns the subset of [faces] that pass all gates, preserving input order.
 ///
-/// A face passes when both of the following hold (both comparisons inclusive,
-/// so a face exactly at a threshold is kept):
+/// A face passes when all of the following hold (comparisons inclusive, so a
+/// face exactly at a threshold is kept):
 ///
 /// - [Face.score] is greater than or equal to [minScore].
 /// - [Face.widthFraction] is greater than or equal to [minFaceSize].
+/// - [Face.meshScore] is greater than or equal to [minFacePresenceConfidence].
+///   A face whose [Face.meshScore] is null (fast mode, or a mesh model with no
+///   presence output) is always kept: absence of a presence score is treated
+///   as "cannot evaluate", never as a rejection.
 ///
-/// When both gates are at their no-op defaults (`<= 0.0`) the original list is
+/// When all gates are at their no-op defaults (`<= 0.0`) the original list is
 /// returned unchanged with no allocation or iteration, so the common
 /// "no filtering" path stays free.
 ///
 /// Note: the detector already discards candidates below its internal
 /// confidence floor before faces reach this function, so a [minScore] at or
 /// below that floor cannot surface additional faces; it can only tighten the
-/// result set further.
+/// result set further. [minFacePresenceConfidence] is the MediaPipe
+/// `min_face_presence_confidence` gate, applied to the mesh model's face-flag
+/// output; it is the second-stage check that rejects first-stage detections
+/// (e.g. a palm) the landmark model does not confirm as a face.
 List<Face> applyFaceGates(
   List<Face> faces, {
   required double minScore,
   required double minFaceSize,
+  double minFacePresenceConfidence = 0.0,
 }) {
-  if (minScore <= 0.0 && minFaceSize <= 0.0) return faces;
+  if (minScore <= 0.0 &&
+      minFaceSize <= 0.0 &&
+      minFacePresenceConfidence <= 0.0) {
+    return faces;
+  }
   return faces
-      .where((f) => f.score >= minScore && f.widthFraction >= minFaceSize)
+      .where(
+        (f) =>
+            f.score >= minScore &&
+            f.widthFraction >= minFaceSize &&
+            (minFacePresenceConfidence <= 0.0 ||
+                (f.meshScore ?? double.infinity) >= minFacePresenceConfidence),
+      )
       .toList(growable: false);
 }
 

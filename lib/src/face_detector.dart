@@ -92,6 +92,7 @@ class FaceDetector {
     Precision precision = Precision.fp16,
     double minScore = 0.0,
     double minFaceSize = 0.0,
+    double minFacePresenceConfidence = kDefaultMinFacePresenceConfidence,
     // Web-only knobs; accepted here for API parity but ignored on native.
     bool useLiteRt = false,
     String liteRtAccelerator = 'auto',
@@ -108,6 +109,7 @@ class FaceDetector {
       precision: precision,
       minScore: minScore,
       minFaceSize: minFaceSize,
+      minFacePresenceConfidence: minFacePresenceConfidence,
     );
     return detector;
   }
@@ -120,6 +122,7 @@ class FaceDetector {
   Precision _precision = Precision.fp16;
   double _minScore = 0.0;
   double _minFaceSize = 0.0;
+  double _minFacePresenceConfidence = kDefaultMinFacePresenceConfidence;
 
   /// Minimum detection confidence (0.0 to 1.0) a face must have to be returned.
   ///
@@ -136,9 +139,27 @@ class FaceDetector {
   /// Configured via [create]/[initialize]. Defaults to 0.0 (no filtering).
   double get minFaceSize => _minFaceSize;
 
-  /// Applies the configured [minScore]/[minFaceSize] gates to [faces].
-  List<Face> _applyGates(List<Face> faces) =>
-      applyFaceGates(faces, minScore: _minScore, minFaceSize: _minFaceSize);
+  /// Minimum face-presence confidence (0.0 to 1.0) a face must have to be
+  /// returned, gating the mesh model's "face flag" output ([Face.meshScore]).
+  ///
+  /// This is MediaPipe's `min_face_presence_confidence`, the second-stage check
+  /// that rejects first-stage detections the landmark model does not confirm as
+  /// a face (a common source of false positives such as a hand or palm).
+  /// Configured via [create]/[initialize]. Defaults to
+  /// [kDefaultMinFacePresenceConfidence] (0.5), matching MediaPipe. Only
+  /// applies in `standard`/`full` modes, where a mesh (and thus a presence
+  /// score) is computed; in `fast` mode there is no mesh, so it has no effect.
+  /// Pass 0.0 to disable.
+  double get minFacePresenceConfidence => _minFacePresenceConfidence;
+
+  /// Applies the configured [minScore]/[minFaceSize]/[minFacePresenceConfidence]
+  /// gates to [faces].
+  List<Face> _applyGates(List<Face> faces) => applyFaceGates(
+    faces,
+    minScore: _minScore,
+    minFaceSize: _minFaceSize,
+    minFacePresenceConfidence: _minFacePresenceConfidence,
+  );
 
   /// Returns true if all models are loaded and ready for inference.
   ///
@@ -182,16 +203,23 @@ class FaceDetector {
   /// current platform's LiteRT runtime, the segmentation isolate falls back to
   /// the Interpreter and prints a debug message.
   ///
-  /// The [minScore] and [minFaceSize] parameters gate which detections are
-  /// returned. [minScore] drops faces below a confidence threshold; note the
-  /// detector already applies an internal floor of 0.5, so only values above
-  /// 0.5 tighten results further. [minFaceSize] drops faces whose width, as a
-  /// fraction of the image width, is below the threshold (matching Google ML
-  /// Kit's `minFaceSize`). Both default to 0.0 (no filtering) and must be in
-  /// the inclusive range `[0.0, 1.0]`, or [ArgumentError] is thrown.
-  /// Detections that fail a gate are dropped right after the detector stage,
-  /// before the per-face mesh, iris and blendshape stages run, so in
-  /// `standard`/`full` modes the gates also skip that per-face landmark cost.
+  /// The [minScore], [minFaceSize] and [minFacePresenceConfidence] parameters
+  /// gate which detections are returned. [minScore] drops faces below a
+  /// confidence threshold; note the detector already applies an internal floor
+  /// of 0.5, so only values above 0.5 tighten results further. [minFaceSize]
+  /// drops faces whose width, as a fraction of the image width, is below the
+  /// threshold (matching Google ML Kit's `minFaceSize`); both default to 0.0
+  /// (no filtering). [minFacePresenceConfidence] drops faces whose mesh
+  /// "face flag" ([Face.meshScore]) is below the threshold, matching MediaPipe's
+  /// `min_face_presence_confidence`; it defaults to
+  /// [kDefaultMinFacePresenceConfidence] (0.5) and only applies in
+  /// `standard`/`full` modes (there is no mesh in `fast` mode). All three must
+  /// be in the inclusive range `[0.0, 1.0]`, or [ArgumentError] is thrown.
+  /// [minScore]/[minFaceSize] failures are dropped right after the detector
+  /// stage, before the per-face mesh, iris and blendshape stages run;
+  /// [minFacePresenceConfidence] failures are dropped right after the mesh
+  /// stage, before iris and blendshape run, so in every case the gates also
+  /// skip the corresponding per-face landmark cost.
   ///
   /// Example:
   /// ```dart
@@ -222,6 +250,7 @@ class FaceDetector {
     Precision precision = Precision.fp16,
     double minScore = 0.0,
     double minFaceSize = 0.0,
+    double minFacePresenceConfidence = kDefaultMinFacePresenceConfidence,
     // Web-only knobs; accepted here for API parity but ignored on native.
     bool useLiteRt = false,
     String liteRtAccelerator = 'auto',
@@ -232,12 +261,17 @@ class FaceDetector {
     // Validate gates before loading any model so bad configuration fails fast.
     // Ordered after the isReady check so a double-initialize still throws the
     // documented StateError regardless of the argument values.
-    validateFaceGates(minScore: minScore, minFaceSize: minFaceSize);
+    validateFaceGates(
+      minScore: minScore,
+      minFaceSize: minFaceSize,
+      minFacePresenceConfidence: minFacePresenceConfidence,
+    );
     _useCompiledModel = useCompiledModel;
     _accelerators = accelerators;
     _precision = precision;
     _minScore = minScore;
     _minFaceSize = minFaceSize;
+    _minFacePresenceConfidence = minFacePresenceConfidence;
 
     final worker = _FaceDetectorWorker();
     IsolateRpcClient? segmentationRpc;
@@ -289,6 +323,7 @@ class FaceDetector {
         precision: precision,
         minScore: minScore,
         minFaceSize: minFaceSize,
+        minFacePresenceConfidence: minFacePresenceConfidence,
       );
 
       if (withSegmentation && results.length > 5) {
@@ -1264,6 +1299,7 @@ class FaceDetector {
         precision: precision,
         minScore: data.minScore,
         minFaceSize: data.minFaceSize,
+        minFacePresenceConfidence: data.minFacePresenceConfidence,
       );
 
       mainSendPort.send(workerReceivePort.sendPort);
@@ -1732,6 +1768,7 @@ class _FaceDetectorWorker extends IsolateWorkerBase {
     Precision precision = Precision.fp16,
     double minScore = 0.0,
     double minFaceSize = 0.0,
+    double minFacePresenceConfidence = kDefaultMinFacePresenceConfidence,
   }) async {
     await initWorker(
       (sendPort) => Isolate.spawn(
@@ -1760,6 +1797,7 @@ class _FaceDetectorWorker extends IsolateWorkerBase {
           precisionIndex: precision.index,
           minScore: minScore,
           minFaceSize: minFaceSize,
+          minFacePresenceConfidence: minFacePresenceConfidence,
         ),
         debugName: 'FaceDetector.detection',
       ),

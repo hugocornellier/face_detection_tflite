@@ -14,6 +14,8 @@ import 'package:flutter_litert/src/web/web_detector_utils.dart'
 import 'package:web/web.dart' as web;
 
 import '../shared/blendshape_input.dart' show packBlendshapeInput;
+import '../shared/face_model_config.dart'
+    show kDefaultMinFacePresenceConfidence;
 import '../shared/face_gates.dart'
     show applyDetectionGates, applyFaceGates, validateFaceGates;
 import '../shared/face_geometry.dart' show transformMeshFlatToAbsolute;
@@ -76,6 +78,7 @@ class FaceDetector with WebGpuFallback {
     Precision precision = Precision.fp16,
     double minScore = 0.0,
     double minFaceSize = 0.0,
+    double minFacePresenceConfidence = kDefaultMinFacePresenceConfidence,
   }) async {
     final detector = FaceDetector();
     await detector.initialize(
@@ -91,6 +94,7 @@ class FaceDetector with WebGpuFallback {
       precision: precision,
       minScore: minScore,
       minFaceSize: minFaceSize,
+      minFacePresenceConfidence: minFacePresenceConfidence,
     );
     return detector;
   }
@@ -113,6 +117,7 @@ class FaceDetector with WebGpuFallback {
   Precision _precision = Precision.fp16;
   double _minScore = 0.0;
   double _minFaceSize = 0.0;
+  double _minFacePresenceConfidence = kDefaultMinFacePresenceConfidence;
 
   /// Builds the runner config for the current engine selection at the given
   /// [accelerator] (`'auto'` / `'webgpu'` / `'wasm'`). Every per-model
@@ -133,8 +138,19 @@ class FaceDetector with WebGpuFallback {
   /// have to be returned. Defaults to 0.0 (no filtering).
   double get minFaceSize => _minFaceSize;
 
-  List<Face> _applyGates(List<Face> faces) =>
-      applyFaceGates(faces, minScore: _minScore, minFaceSize: _minFaceSize);
+  /// Minimum face-presence confidence (0.0 to 1.0), gating the mesh model's
+  /// "face flag" output ([Face.meshScore]). This is MediaPipe's
+  /// `min_face_presence_confidence`; defaults to
+  /// [kDefaultMinFacePresenceConfidence] (0.5). Only applies in
+  /// `standard`/`full` modes (no mesh in `fast` mode). Pass 0.0 to disable.
+  double get minFacePresenceConfidence => _minFacePresenceConfidence;
+
+  List<Face> _applyGates(List<Face> faces) => applyFaceGates(
+    faces,
+    minScore: _minScore,
+    minFaceSize: _minFaceSize,
+    minFacePresenceConfidence: _minFacePresenceConfidence,
+  );
 
   /// Last-call per-stage timings (set when [debugTimings] is true).
   WebDetectTimings? lastTimings;
@@ -257,13 +273,19 @@ class FaceDetector with WebGpuFallback {
     Precision precision = Precision.fp16,
     double minScore = 0.0,
     double minFaceSize = 0.0,
+    double minFacePresenceConfidence = kDefaultMinFacePresenceConfidence,
   }) async {
     if (isReady) {
       throw StateError('FaceDetector already initialized');
     }
-    validateFaceGates(minScore: minScore, minFaceSize: minFaceSize);
+    validateFaceGates(
+      minScore: minScore,
+      minFaceSize: minFaceSize,
+      minFacePresenceConfidence: minFacePresenceConfidence,
+    );
     _minScore = minScore;
     _minFaceSize = minFaceSize;
+    _minFacePresenceConfidence = minFacePresenceConfidence;
     _liteRtAccelerator = liteRtAccelerator;
     _useCompiledModel = useCompiledModel;
     _strictWebGpu = strictWebGpu;
@@ -532,6 +554,19 @@ class FaceDetector with WebGpuFallback {
       );
       if (meshPoints.length > kMeshPoints) {
         meshPoints.removeRange(kMeshPoints, meshPoints.length);
+      }
+
+      // Face-presence gate (MediaPipe min_face_presence_confidence): drop crops
+      // the mesh model does not confirm as a face here, before the iris and
+      // blendshape stages, so rejected detections cost nothing further. The
+      // score is read the same way Face.meshScore exposes it (null when no
+      // full mesh, which always passes); the final _applyGates pass re-checks.
+      final double? presenceScore = meshPoints.length == kMeshPoints
+          ? mesh.score
+          : null;
+      if (_minFacePresenceConfidence > 0.0 &&
+          (presenceScore ?? double.infinity) < _minFacePresenceConfidence) {
+        continue;
       }
 
       List<Point> irisPoints = const <Point>[];

@@ -17,6 +17,7 @@ class _DetectionIsolateStartupData {
   final int precisionIndex;
   final double minScore;
   final double minFaceSize;
+  final double minFacePresenceConfidence;
 
   _DetectionIsolateStartupData({
     required this.sendPort,
@@ -34,6 +35,7 @@ class _DetectionIsolateStartupData {
     required this.precisionIndex,
     required this.minScore,
     required this.minFaceSize,
+    required this.minFacePresenceConfidence,
   });
 }
 
@@ -86,6 +88,20 @@ class _FaceDetectorCore {
   double _minScore = 0.0;
   double _minFaceSize = 0.0;
 
+  /// Face-presence gate (MediaPipe `min_face_presence_confidence`), applied
+  /// right after the mesh stage so faces the landmark model does not confirm
+  /// skip the iris/blendshape stages and are not emitted. Configured once at
+  /// initialization; 0.0 means no filtering.
+  double _minFacePresenceConfidence = 0.0;
+
+  /// Whether [meshScore] clears the configured [_minFacePresenceConfidence]
+  /// gate. A null score (fast mode, or a mesh model with no presence output)
+  /// always passes: absence of a presence score is "cannot evaluate", never a
+  /// rejection.
+  bool _passesPresence(double? meshScore) =>
+      _minFacePresenceConfidence <= 0.0 ||
+      (meshScore ?? double.infinity) >= _minFacePresenceConfidence;
+
   final _detectorLock = AsyncLock();
   final _irisLeftLock = AsyncLock();
   final _irisRightLock = AsyncLock();
@@ -113,9 +129,11 @@ class _FaceDetectorCore {
     Precision precision = Precision.fp16,
     double minScore = 0.0,
     double minFaceSize = 0.0,
+    double minFacePresenceConfidence = 0.0,
   }) async {
     _minScore = minScore;
     _minFaceSize = minFaceSize;
+    _minFacePresenceConfidence = minFacePresenceConfidence;
     try {
       _detector = useCompiledModel
           ? await FaceDetection.createCompiledFromBuffer(
@@ -288,6 +306,10 @@ class _FaceDetectorCore {
       for (int i = 0; i < meshResults.length; i++) {
         final meshPx = meshResults[i]?.points;
         if (meshPx == null || meshPx.isEmpty) continue;
+        // Face-presence gate: a crop the mesh model does not confirm as a face
+        // is dropped here, before the iris (and blendshape) stages, so rejected
+        // detections cost nothing beyond the mesh they were rejected by.
+        if (!_passesPresence(meshResults[i]?.score)) continue;
         try {
           irisResults[i] = await _irisFromMesh(image, meshPx);
         } catch (_) {}
@@ -306,6 +328,7 @@ class _FaceDetectorCore {
         final meshPx = meshResults[i]?.points;
         final irisPx = irisResults[i];
         if (meshPx == null || irisPx == null) continue;
+        if (!_passesPresence(meshResults[i]?.score)) continue;
         final Float32List? packed = packBlendshapeInput(meshPx, irisPx);
         if (packed == null) continue;
         try {
@@ -324,6 +347,10 @@ class _FaceDetectorCore {
       final Detection det = aligned.$1;
       final List<Point> meshPx = meshResults[i]?.points ?? <Point>[];
       final double? meshScore = meshResults[i]?.score;
+      // Face-presence gate: drop faces the mesh model did not confirm so they
+      // are never emitted (mirrors the iris/blendshape skips above). Fast mode
+      // and presence-less mesh models report a null score and always pass.
+      if (!_passesPresence(meshScore)) continue;
       final List<Point> irisPx = irisResults[i] ?? <Point>[];
 
       List<double> kp = det.keypointsXY;

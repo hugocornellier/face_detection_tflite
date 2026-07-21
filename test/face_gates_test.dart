@@ -23,6 +23,7 @@ void main() {
     required double xmax,
     double imgW = 100,
     double imgH = 100,
+    double? meshScore,
   }) {
     final size = Size(imgW, imgH);
     return Face(
@@ -32,7 +33,12 @@ void main() {
         keypointsXY: TestUtils.generateValidKeypoints(),
         imageSize: size,
       ),
-      mesh: null,
+      mesh: meshScore == null
+          ? null
+          : FaceMesh(
+              List<Point>.generate(kMeshPoints, (_) => const Point(0, 0, 0)),
+              score: meshScore,
+            ),
       irises: const [],
       originalSize: size,
     );
@@ -205,6 +211,119 @@ void main() {
       final f = makeFace(score: 0.5, xmin: 0.1, xmax: 0.6);
       expect(applyFaceGates([f], minScore: 0.3, minFaceSize: 0), hasLength(1));
       expect(applyFaceGates([f], minScore: 0.5, minFaceSize: 0), hasLength(1));
+    });
+  });
+
+  group('applyFaceGates minFacePresenceConfidence', () {
+    test('defaults to a no-op when left unspecified', () {
+      // A face with a low mesh score is kept when the presence gate is not set,
+      // preserving the pre-existing two-gate behavior for callers of the helper.
+      final f = makeFace(score: 0.9, xmin: 0.1, xmax: 0.9, meshScore: 0.01);
+      expect(applyFaceGates([f], minScore: 0, minFaceSize: 0), hasLength(1));
+    });
+
+    test('drops faces whose meshScore is below the threshold', () {
+      final palm = makeFace(score: 0.9, xmin: 0.1, xmax: 0.9, meshScore: 0.05);
+      expect(
+        applyFaceGates(
+          [palm],
+          minScore: 0,
+          minFaceSize: 0,
+          minFacePresenceConfidence: 0.5,
+        ),
+        isEmpty,
+      );
+    });
+
+    test('keeps faces whose meshScore meets the threshold (inclusive)', () {
+      final real = makeFace(score: 0.9, xmin: 0.1, xmax: 0.9, meshScore: 0.5);
+      expect(
+        applyFaceGates(
+          [real],
+          minScore: 0,
+          minFaceSize: 0,
+          minFacePresenceConfidence: 0.5,
+        ),
+        hasLength(1),
+      );
+    });
+
+    test('a null meshScore (fast mode / no presence output) always passes', () {
+      final noMesh = makeFace(score: 0.9, xmin: 0.1, xmax: 0.9);
+      expect(noMesh.meshScore, isNull);
+      expect(
+        applyFaceGates(
+          [noMesh],
+          minScore: 0,
+          minFaceSize: 0,
+          minFacePresenceConfidence: 0.9,
+        ),
+        hasLength(1),
+      );
+    });
+
+    test('combines with the score and size gates', () {
+      final faces = [
+        makeFace(score: 0.9, xmin: 0.1, xmax: 0.9, meshScore: 1.0), // keep
+        makeFace(score: 0.9, xmin: 0.1, xmax: 0.9, meshScore: 0.2), // low mesh
+        makeFace(score: 0.9, xmin: 0.1, xmax: 0.2, meshScore: 1.0), // too small
+      ];
+      final kept = applyFaceGates(
+        faces,
+        minScore: 0.6,
+        minFaceSize: 0.5,
+        minFacePresenceConfidence: 0.5,
+      );
+      expect(kept, hasLength(1));
+      expect(kept.single.meshScore, 1.0);
+    });
+  });
+
+  group('validateFaceGates minFacePresenceConfidence', () {
+    test('accepts boundary values', () {
+      expect(
+        () => validateFaceGates(
+          minScore: 0,
+          minFaceSize: 0,
+          minFacePresenceConfidence: 0.0,
+        ),
+        returnsNormally,
+      );
+      expect(
+        () => validateFaceGates(
+          minScore: 0,
+          minFaceSize: 0,
+          minFacePresenceConfidence: 1.0,
+        ),
+        returnsNormally,
+      );
+    });
+
+    test('rejects out-of-range and NaN', () {
+      expect(
+        () => validateFaceGates(
+          minScore: 0,
+          minFaceSize: 0,
+          minFacePresenceConfidence: 1.5,
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => validateFaceGates(
+          minScore: 0,
+          minFaceSize: 0,
+          minFacePresenceConfidence: -0.1,
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => validateFaceGates(
+          minScore: 0,
+          minFaceSize: 0,
+          minFacePresenceConfidence: double.nan,
+        ),
+        throwsArgumentError,
+      );
     });
   });
 

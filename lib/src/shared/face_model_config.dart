@@ -42,13 +42,27 @@ const String kSegmentationLandscapeModel = 'selfie_segmenter_landscape.tflite';
 /// Asset filename for the multiclass selfie segmentation model.
 const String kSegmentationMulticlassModel = 'selfie_multiclass.tflite';
 
-/// Raw score limit applied to BlazeFace logits before sigmoid.
-const double kRawScoreLimit = 80.0;
+/// Raw score limit applied to BlazeFace logits before sigmoid, matching
+/// MediaPipe's `TensorsToDetectionsCalculatorOptions.score_clipping_thresh`
+/// (100.0). Numerically inert at this magnitude (`sigmoid(100)` is already 1.0
+/// in float32), but kept equal to the upstream graph value for exactness.
+const double kRawScoreLimit = 100.0;
 
-/// Minimum sigmoid score for a candidate detection.
+/// Minimum sigmoid score for a candidate detection. Matches MediaPipe's
+/// `min_detection_confidence` (0.5).
 const double kMinScore = 0.5;
 
-/// IoU threshold used during weighted NMS.
+/// Default minimum face-presence confidence: the mesh model's "face flag"
+/// output (see the MediaPipe Face Mesh model card) a detected face must report
+/// to be kept. Matches MediaPipe's `min_face_presence_confidence` (0.5), which
+/// is the standard second-stage gate that rejects first-stage detections (e.g.
+/// a palm) that the landmark model does not confirm as a face. Gates
+/// `Face.meshScore`; only meaningful in `standard`/`full` modes where a mesh
+/// (and thus a presence score) is computed. Pass 0.0 to disable the gate.
+const double kDefaultMinFacePresenceConfidence = 0.5;
+
+/// IoU threshold used during weighted NMS. Matches MediaPipe's
+/// `min_suppression_threshold` (0.3).
 const double kMinSuppressionThreshold = 0.3;
 
 /// SSD anchor options for the BlazeFace front-camera model.

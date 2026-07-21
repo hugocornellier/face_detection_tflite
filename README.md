@@ -184,19 +184,26 @@ if (meshScore != null) {
   can flag a crop the mesh model was unsure about (for example a bad alignment).
 - Like `face.score`, it reflects "is this a face", not lighting, blur, or pose,
   so it is not a face-quality metric.
+- This is the signal behind the
+  [`minFacePresenceConfidence`](#minfacepresenceconfidence) gate, which drops
+  faces the mesh model does not confirm (MediaPipe's `min_face_presence_confidence`).
 
-## Detection Gates (minScore & minFaceSize)
+## Detection Gates (minScore, minFaceSize & minFacePresenceConfidence)
 
-`FaceDetector.create()` accepts two optional gates that filter which faces come
-back. Both default to `0.0` (no filtering, so existing behavior is unchanged),
-and they apply on every platform and through every detection entry point.
+`FaceDetector.create()` accepts three optional gates that filter which faces
+come back. They apply on every platform and through every detection entry point.
 
 ```dart
 final detector = await FaceDetector.create(
-  minScore: 0.9,      // keep only faces with confidence >= 0.9
-  minFaceSize: 0.15,  // keep only faces at least 15% of the image width
+  minScore: 0.9,                   // keep only faces with confidence >= 0.9
+  minFaceSize: 0.15,               // keep only faces at least 15% of image width
+  minFacePresenceConfidence: 0.5,  // keep only faces the mesh model confirms
 );
 ```
+
+`minScore` and `minFaceSize` default to `0.0` (no filtering).
+`minFacePresenceConfidence` defaults to `0.5`, matching MediaPipe, so the
+second-stage mesh check is on out of the box (see below).
 
 ### `minScore`
 
@@ -234,6 +241,42 @@ image-width ratio) with two deliberate differences:
   detector's bounding box (clipped to the image), which approximates but is
   not identical to ML Kit's head measurement.
 
+### `minFacePresenceConfidence`
+
+Drops faces whose mesh "face flag" (`face.meshScore`, see [Mesh Score](#mesh-score))
+is below the threshold, in the range `0.0` to `1.0` (inclusive). This is
+MediaPipe's `min_face_presence_confidence`, the standard **second-stage** check:
+the BlazeFace detector proposes a box, then the face-landmark model runs on the
+aligned crop and reports how confident it is that the crop is really a face.
+Detections the landmark model does not confirm are rejected here. This is the
+gate that suppresses common false positives such as a hand or palm, which can
+clear the first-stage detector but score near zero on the mesh model.
+
+```dart
+// Default 0.5 (MediaPipe's value) is applied automatically. To tune it:
+final detector = await FaceDetector.create(minFacePresenceConfidence: 0.7);
+
+// To opt out entirely and keep every detected box:
+final detector = await FaceDetector.create(minFacePresenceConfidence: 0.0);
+```
+
+Notes specific to this gate:
+
+- **Default is `0.5`**, matching MediaPipe. Unlike the other two gates it is not
+  `0.0`, so upgrading to a version that includes it can drop faces the mesh
+  model does not confirm. Set it to `0.0` to restore the older "return every
+  detected box" behavior.
+- **Only applies in `standard` and `full` modes**, where a mesh (and therefore a
+  presence score) is computed. In `fast` mode there is no mesh, so the gate has
+  no effect and every detected box is returned.
+- A face whose `meshScore` is `null` (fast mode, or a mesh model that omits the
+  presence output) always passes: a missing score is treated as "cannot
+  evaluate", never as a rejection.
+- Recommended values from field testing: `0.5` is safe (no observed effect on
+  real, well-lit, roughly frontal faces) and removes most hand/palm false
+  positives; `0.7` is tighter still. Very steep head angles or poor lighting can
+  legitimately lower a real face's `meshScore`, so raise the threshold with care.
+
 ### Notes
 
 - Invalid values (NaN, or outside `[0.0, 1.0]`) throw `ArgumentError` from
@@ -241,8 +284,9 @@ image-width ratio) with two deliberate differences:
 - The gates are also a performance optimization on every platform: in
   `standard` and `full` modes, detections that fail `minScore` or
   `minFaceSize` are dropped before the per-face mesh, iris and blendshape
-  stages, so their landmark cost is skipped. The detector itself still runs on
-  the full frame.
+  stages, and faces that fail `minFacePresenceConfidence` are dropped right
+  after the mesh stage, before iris and blendshape run, so their landmark cost
+  is skipped. The detector itself still runs on the full frame.
 - Native and web filter identically, including for faces near the image border
   (`widthFraction` uses the visible, image-clipped width on both).
 - For ad-hoc or per-call filtering you can also use `face.score` /
