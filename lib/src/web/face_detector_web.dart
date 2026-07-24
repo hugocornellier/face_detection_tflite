@@ -8,7 +8,7 @@ import 'dart:ui' show Size;
 
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_litert/flutter_litert.dart'
-    show Point, PerformanceConfig, Precision;
+    show aggregateActiveAccelerator, Point, PerformanceConfig, Precision;
 import 'package:flutter_litert/src/web/web_detector_utils.dart'
     show decodeBitmap, WebGpuFallback;
 import 'package:web/web.dart' as web;
@@ -166,13 +166,33 @@ class FaceDetector with WebGpuFallback {
   /// The accelerator currently in use across all model runners (`'webgpu'`
   /// / `'wasm'`), or null pre-init. May change at runtime if a GPU error
   /// fires on WebGPU and the detector swaps to WASM.
+  ///
+  /// Reports `'webgpu'` when any runner is still on WebGPU so runtime fallback
+  /// and the slow-WebGPU warmup stay enabled under mixed compile outcomes; see
+  /// [aggregateActiveAccelerator].
   @override
-  String? get activeAccelerator =>
-      _detector.activeAccelerator ??
-      _mesh.activeAccelerator ??
-      _iris.activeAccelerator ??
-      _blendshapes.activeAccelerator ??
-      _segmenter?.activeAccelerator;
+  String? get activeAccelerator => aggregateActiveAccelerator(<String?>[
+    _detector.activeAccelerator,
+    _mesh.activeAccelerator,
+    _iris.activeAccelerator,
+    _blendshapes.activeAccelerator,
+    _segmenter?.activeAccelerator,
+  ]);
+
+  /// Per-runner backend after initialization (`'webgpu'` / `'wasm'`, or null
+  /// for a runner that is absent or not yet initialized).
+  ///
+  /// Each model compiles independently and can fall back from WebGPU to WASM on
+  /// its own, so these are not guaranteed to agree. Exposed for diagnostics and
+  /// tests that need to observe the real per-model backend rather than the
+  /// aggregate reported by [activeAccelerator].
+  Map<String, String?> get acceleratorReport => <String, String?>{
+    'detector': _detector.activeAccelerator,
+    'mesh': _mesh.activeAccelerator,
+    'iris': _iris.activeAccelerator,
+    'blendshapes': _blendshapes.activeAccelerator,
+    'segmenter': _segmenter?.activeAccelerator,
+  };
 
   // Cached init args so [swapToWasm] can re-init the runners with the same
   // model selection but a forced 'wasm' accelerator.
