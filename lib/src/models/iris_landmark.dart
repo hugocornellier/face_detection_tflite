@@ -124,10 +124,7 @@ class IrisLandmark with _TfliteModelDisposable {
     _views = TensorFloat32Views.capture(itp);
     _scratchBuf = Float32List(_inH * _inW * 3);
 
-    final Map<int, OutputTensorInfo> outputInfo = collectOutputTensorInfo(itp);
-    _outShapes = outputInfo.map(
-      (int k, OutputTensorInfo v) => MapEntry(k, v.shape),
-    );
+    _outShapes = collectOutputShapes(itp);
     _input4dCache = createNHWCTensor4D(_inH, _inW);
 
     _outputsCache = <int, Object>{};
@@ -147,9 +144,9 @@ class IrisLandmark with _TfliteModelDisposable {
       throw UnsupportedError('Compiled iris landmark has no outputs.');
     }
     for (int i = 0; i < compiledModel.outputCount; i++) {
-      final int len = _compiledFloatCount(
+      final int len = compiledFloatCount(
         compiledModel.outputByteSizes[i],
-        'Compiled iris landmark output[$i]',
+        label: 'Compiled iris landmark output[$i]',
       );
       if (len % 3 != 0) {
         throw UnsupportedError(
@@ -173,7 +170,10 @@ class IrisLandmark with _TfliteModelDisposable {
     );
     final int side;
     try {
-      side = _compiledSquareInputSide(compiledModel, 'Compiled iris landmark');
+      side = compiledSquareInputSide(
+        compiledModel,
+        label: 'Compiled iris landmark',
+      );
     } catch (_) {
       compiledModel.close();
       rethrow;

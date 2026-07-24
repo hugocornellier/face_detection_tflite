@@ -123,20 +123,18 @@ class FaceEmbedding with _TfliteModelDisposable {
     // MobileFaceNet fails strict-GPU compilation (unsupported ops) but runs
     // ~3.7x faster than CPU with GPU|CPU partitioning, so use the fallback
     // helper rather than pinning to either accelerator.
-    final CompiledModel compiledModel = _isDefaultAccelerators(accelerators)
-        ? CompiledModel.fromBufferWithGpuFallback(
-            modelBytes,
-            precision: precision,
-            onFallback: _onGpuFallback,
-          )
-        : CompiledModel.fromBuffer(
-            modelBytes,
-            accelerators: accelerators,
-            precision: precision,
-          );
+    final CompiledModel compiledModel = compiledModelFromBufferAuto(
+      modelBytes,
+      accelerators: accelerators,
+      precision: precision,
+      onGpuFallback: _onGpuFallback,
+    );
     final int side;
     try {
-      side = _compiledSquareInputSide(compiledModel, 'Compiled face embedding');
+      side = compiledSquareInputSide(
+        compiledModel,
+        label: 'Compiled face embedding',
+      );
     } catch (_) {
       compiledModel.close();
       rethrow;
@@ -159,9 +157,9 @@ class FaceEmbedding with _TfliteModelDisposable {
         '${compiledModel.outputCount}.',
       );
     }
-    _embeddingDim = _compiledFloatCount(
+    _embeddingDim = compiledFloatCount(
       compiledModel.outputByteSizes.single,
-      'Compiled face embedding output[0]',
+      label: 'Compiled face embedding output[0]',
     );
   }
 

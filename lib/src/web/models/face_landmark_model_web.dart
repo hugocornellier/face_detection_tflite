@@ -7,7 +7,7 @@ import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:web/web.dart' as web;
 
-import '../../util/web_image_utils.dart';
+import 'package:flutter_litert/flutter_litert.dart' show rgbaToSignedRgbFloat32;
 import 'web_model_runner.dart';
 
 /// 468-point face mesh runner for web. Runs on the LiteRT.js interpreter or a

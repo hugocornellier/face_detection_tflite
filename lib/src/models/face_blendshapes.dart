@@ -127,15 +127,15 @@ class FaceBlendshapesModel with _TfliteModelDisposable {
     final CompiledModel cm = _compiledModel!;
     _validateShapes(
       inputFloats: cm.inputCount == 1
-          ? _compiledFloatCount(
+          ? compiledFloatCount(
               cm.inputByteSizes.single,
-              'Compiled face blendshapes input[0]',
+              label: 'Compiled face blendshapes input[0]',
             )
           : -1,
       outputFloats: cm.outputCount >= 1
-          ? _compiledFloatCount(
+          ? compiledFloatCount(
               cm.outputByteSizes.first,
-              'Compiled face blendshapes output[0]',
+              label: 'Compiled face blendshapes output[0]',
             )
           : -1,
       inputCount: cm.inputCount,

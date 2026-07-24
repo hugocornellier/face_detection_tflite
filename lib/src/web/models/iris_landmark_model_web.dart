@@ -6,7 +6,7 @@ import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:web/web.dart' as web;
 
-import '../../util/web_image_utils.dart';
+import 'package:flutter_litert/flutter_litert.dart' show rgbaToSignedRgbFloat32;
 import 'web_model_runner.dart';
 
 /// Iris landmark runner for web. The model emits 76 points per eye (71 eye

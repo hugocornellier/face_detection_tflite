@@ -99,20 +99,18 @@ class FaceLandmark with _TfliteModelDisposable {
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
     Precision precision = Precision.fp16,
   }) async {
-    final CompiledModel compiledModel = _isDefaultAccelerators(accelerators)
-        ? CompiledModel.fromBufferWithGpuFallback(
-            modelBytes,
-            precision: precision,
-            onFallback: _onGpuFallback,
-          )
-        : CompiledModel.fromBuffer(
-            modelBytes,
-            accelerators: accelerators,
-            precision: precision,
-          );
+    final CompiledModel compiledModel = compiledModelFromBufferAuto(
+      modelBytes,
+      accelerators: accelerators,
+      precision: precision,
+      onGpuFallback: _onGpuFallback,
+    );
     final int side;
     try {
-      side = _compiledSquareInputSide(compiledModel, 'Compiled face landmark');
+      side = compiledSquareInputSide(
+        compiledModel,
+        label: 'Compiled face landmark',
+      );
     } catch (_) {
       compiledModel.close();
       rethrow;
@@ -151,10 +149,7 @@ class FaceLandmark with _TfliteModelDisposable {
     final Interpreter itp = _itp!;
     int numElements(List<int> s) => s.fold(1, (a, b) => a * b);
 
-    final Map<int, OutputTensorInfo> outputInfo = collectOutputTensorInfo(itp);
-    final Map<int, List<int>> shapes = outputInfo.map(
-      (int k, OutputTensorInfo v) => MapEntry(k, v.shape),
-    );
+    final Map<int, List<int>> shapes = collectOutputShapes(itp);
 
     int bestIdx = -1;
     int bestLen = -1;
@@ -203,9 +198,9 @@ class FaceLandmark with _TfliteModelDisposable {
     int bestLen = -1;
     int scoreIdx = -1;
     for (int i = 0; i < compiledModel.outputCount; i++) {
-      final int len = _compiledFloatCount(
+      final int len = compiledFloatCount(
         compiledModel.outputByteSizes[i],
-        'Compiled face landmark output[$i]',
+        label: 'Compiled face landmark output[$i]',
       );
       if (len > bestLen && len % 3 == 0) {
         bestLen = len;

@@ -1,6 +1,11 @@
 part of '../native/face_native_lib.dart';
 
 /// Holds metadata for an output tensor (shape plus its writable buffer).
+@Deprecated(
+  'No longer used internally; only the shapes were ever read. Use '
+  'collectOutputShapes from flutter_litert, which returns shapes without '
+  'materializing tensor buffers. Will be removed in 7.0.0.',
+)
 class OutputTensorInfo {
   /// Creates an [OutputTensorInfo] with the given [shape] and [buffer].
   ///
@@ -21,6 +26,11 @@ class OutputTensorInfo {
 ///
 /// Iterates output indices until `getOutputTensor` throws, mirroring existing
 /// try/break loops in model constructors.
+@Deprecated(
+  'Use collectOutputShapes from flutter_litert. Every call site here only read '
+  'the shapes, and collectOutputShapes avoids touching Tensor.data. Will be '
+  'removed in 7.0.0.',
+)
 Map<int, OutputTensorInfo> collectOutputTensorInfo(Interpreter itp) {
   final Map<int, OutputTensorInfo> outputs = <int, OutputTensorInfo>{};
   for (int i = 0; ; i++) {
@@ -39,7 +49,9 @@ Map<int, OutputTensorInfo> collectOutputTensorInfo(Interpreter itp) {
 /// This function exposes the private [collectOutputTensorInfo] for unit testing.
 /// It collects all output tensor metadata from the given [itp] interpreter.
 @visibleForTesting
+@Deprecated('Accompanies collectOutputTensorInfo. Will be removed in 7.0.0.')
 Map<int, OutputTensorInfo> testCollectOutputTensorInfo(Interpreter itp) =>
+    // ignore: deprecated_member_use_from_same_package
     collectOutputTensorInfo(itp);
 
 /// Shared dispose logic for TFLite model classes.
@@ -75,54 +87,15 @@ mixin _TfliteModelDisposable {
   }
 }
 
-/// Logs the GPU->CPU CompiledModel fallback. Passed as the `onFallback`
-/// callback to [CompiledModel.fromBufferWithGpuFallback] so the shared litert
-/// helper handles the {gpu,cpu} fp32 attempt + CPU retry while preserving this
-/// package's diagnostic message.
+/// Logs the GPU->CPU CompiledModel fallback. Passed as the `onGpuFallback`
+/// callback to [compiledModelFromBufferAuto] so the shared litert helper
+/// handles the {gpu,cpu} attempt + CPU retry while preserving this package's
+/// diagnostic message.
 void _onGpuFallback(Object e) {
   debugPrint(
     'face_detection_tflite: GPU CompiledModel compilation failed, '
     'falling back to CPU only: $e',
   );
-}
-
-/// Returns true when [accelerators] matches the default {gpu, cpu} set,
-/// which selects [CompiledModel.fromBufferWithGpuFallback]. Any other set
-/// uses [CompiledModel.fromBuffer] directly.
-bool _isDefaultAccelerators(Set<Accelerator> accelerators) {
-  return accelerators.length == 2 &&
-      accelerators.contains(Accelerator.gpu) &&
-      accelerators.contains(Accelerator.cpu);
-}
-
-/// Returns the float32 element count for a CompiledModel tensor of
-/// [byteSize] bytes, throwing if the size is not float32-aligned.
-int _compiledFloatCount(int byteSize, String label) {
-  if (byteSize % Float32List.bytesPerElement != 0) {
-    throw StateError('$label byte size $byteSize is not float32-aligned.');
-  }
-  return byteSize ~/ Float32List.bytesPerElement;
-}
-
-/// Derives the square input side for a CompiledModel whose single input is
-/// `[1, side, side, 3]` float32 (the shape of all landmark-style models).
-int _compiledSquareInputSide(CompiledModel compiledModel, String label) {
-  if (compiledModel.inputCount != 1) {
-    throw UnsupportedError(
-      '$label expects one input tensor; got ${compiledModel.inputCount}.',
-    );
-  }
-  final int floats = _compiledFloatCount(
-    compiledModel.inputByteSizes.single,
-    '$label input[0]',
-  );
-  final int side = math.sqrt(floats / 3).round();
-  if (side * side * 3 != floats) {
-    throw UnsupportedError(
-      '$label input has $floats floats; expected [1, side, side, 3].',
-    );
-  }
-  return side;
 }
 
 List<Detection> _detectionLetterboxRemoval(

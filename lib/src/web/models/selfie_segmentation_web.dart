@@ -5,13 +5,13 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
-import 'package:flutter_litert/flutter_litert.dart' show computeLetterboxParams;
+import 'package:flutter_litert/flutter_litert.dart'
+    show computeLetterboxParams, rgbaToSignedRgbFloat32;
 import 'package:web/web.dart' as web;
 
 import '../../shared/face_model_config.dart' show segmentationModelFile;
 import '../../shared/face_types.dart';
 import 'web_model_runner.dart';
-import '../../util/web_image_utils.dart';
 
 /// Selfie segmentation runner for web. Loads `selfie_segmenter.tflite`,
 /// `selfie_segmenter_landscape.tflite`, or `selfie_multiclass.tflite` via the

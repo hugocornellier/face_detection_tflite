@@ -137,17 +137,12 @@ class FaceDetection {
     final int inH = opts.inputSizeHeight;
     final List<List<double>> anchors = generateAnchors(opts);
 
-    final CompiledModel compiledModel = _isDefaultAccelerators(accelerators)
-        ? CompiledModel.fromBufferWithGpuFallback(
-            modelBytes,
-            precision: precision,
-            onFallback: _onGpuFallback,
-          )
-        : CompiledModel.fromBuffer(
-            modelBytes,
-            accelerators: accelerators,
-            precision: precision,
-          );
+    final CompiledModel compiledModel = compiledModelFromBufferAuto(
+      modelBytes,
+      accelerators: accelerators,
+      precision: precision,
+      onGpuFallback: _onGpuFallback,
+    );
     final obj = FaceDetection._compiled(compiledModel, inW, inH, anchors);
     try {
       obj._initializeCompiledModel();
@@ -286,9 +281,9 @@ class FaceDetection {
       );
     }
 
-    final int inputFloats = _compiledFloatCount(
+    final int inputFloats = compiledFloatCount(
       compiledModel.inputByteSizes.single,
-      'input[0]',
+      label: 'input[0]',
     );
     final int expectedInputFloats = _inH * _inW * 3;
     if (inputFloats != expectedInputFloats) {
@@ -299,13 +294,13 @@ class FaceDetection {
     }
 
     final int anchorCount = _anchors.length;
-    final int boxFloats = _compiledFloatCount(
+    final int boxFloats = compiledFloatCount(
       compiledModel.outputByteSizes[_boundingBoxIndex],
-      'output[$_boundingBoxIndex]',
+      label: 'output[$_boundingBoxIndex]',
     );
-    final int scoreFloats = _compiledFloatCount(
+    final int scoreFloats = compiledFloatCount(
       compiledModel.outputByteSizes[_scoreIndex],
-      'output[$_scoreIndex]',
+      label: 'output[$_scoreIndex]',
     );
 
     if (boxFloats % anchorCount != 0) {

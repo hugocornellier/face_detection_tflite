@@ -2,6 +2,34 @@
 
 * Face-presence gate (MediaPipe `min_face_presence_confidence`): `FaceDetector.create()` / `initialize()` now accept `minFacePresenceConfidence`, which drops detections the face-landmark model does not confirm as a face by gating the mesh "face flag" (`face.meshScore`). This is MediaPipe's standard second-stage check and suppresses common first-stage false positives such as a hand or palm, which clear the BlazeFace detector but score near zero on the mesh model. **It defaults to `0.5`, matching MediaPipe** (unlike `minScore`/`minFaceSize`, which default to `0.0`), so upgrading turns the check on: in `standard`/`full` modes, detections whose `meshScore` is below `0.5` are no longer returned. Pass `minFacePresenceConfidence: 0.0` to restore the previous "return every detected box" behavior. The gate has no effect in `fast` mode (no mesh is computed), and a `null` `meshScore` always passes. On both native and web it runs right after the mesh stage, before iris and blendshape, so rejected faces skip that per-face landmark cost. Validated to `[0.0, 1.0]` (out-of-range or NaN throws `ArgumentError`). See the README "Detection Gates" section.
 * Match MediaPipe's `score_clipping_thresh` exactly: the BlazeFace raw-logit clip limit (`kRawScoreLimit`) is now `100.0` (was `80.0`), matching the upstream `TensorsToDetectionsCalculator`. This is numerically inert (`sigmoid(80)` and `sigmoid(100)` are both `1.0` in float32), so detector scores and which faces are returned are unchanged; the constant is aligned purely for exactness.
+* Fix (web): `activeAccelerator` chained the model runners with `??`, but every
+  runner reports a non-null backend once initialized, so the chain always
+  short-circuited on the detector model and ignored the other four. Runners
+  compile independently and can fall back from WebGPU to WASM on their own, so
+  when the detector is the one that falls back the aggregate reported `wasm`
+  while other runners were still on the GPU. Both the runtime GPU-error
+  fallback and the slow-WebGPU warmup are gated on that value, so neither would
+  fire for the runners still on WebGPU. Now uses `aggregateActiveAccelerator`
+  from `flutter_litert`, which reports `webgpu` if any runner is on it. A mixed
+  state was observed live on Chrome (blendshapes on WASM, the rest on WebGPU).
+* Add `FaceDetector.acceleratorReport`, a per-runner map of which backend each
+  model actually compiled to, for diagnosing mixed WebGPU/WASM outcomes.
+* Adopt the shared `flutter_litert` 3.6.0 helpers in place of local copies:
+  `compiledModelFromBufferAuto` for the `{gpu, cpu}` accelerator branch,
+  `compiledFloatCount` / `compiledSquareInputSide` for compiled tensor IO at 13
+  call sites, and `collectOutputShapes` for output shape collection. The local
+  compiled-IO helpers returned a zero or negative element count for a
+  degenerate tensor where the shared ones throw; a test asserts every bundled
+  model reports positive float32-aligned tensor sizes, the domain where the two
+  agree, so no model shipped here changes behaviour.
+* Deprecate `OutputTensorInfo`, `collectOutputTensorInfo` and
+  `testCollectOutputTensorInfo`. Both call sites only ever read the shapes and
+  discarded the buffers; use `collectOutputShapes` from `flutter_litert`.
+* Remove the `web_image_utils` re-export shim and import from `flutter_litert`
+  directly.
+* Update flutter_litert -> 3.6.0.
+* Expand the README live camera section with the full production pipeline
+  (frame throttling, orientation handling, cover-fit overlay mapping).
 
 ## 6.6.3
 

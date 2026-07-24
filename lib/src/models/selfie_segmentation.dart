@@ -240,17 +240,12 @@ class SelfieSegmentation with _TfliteModelDisposable {
 
     final CompiledModel compiledModel;
     try {
-      compiledModel = _isDefaultAccelerators(accelerators)
-          ? CompiledModel.fromBufferWithGpuFallback(
-              modelBytes,
-              precision: precision,
-              onFallback: _onGpuFallback,
-            )
-          : CompiledModel.fromBuffer(
-              modelBytes,
-              accelerators: accelerators,
-              precision: precision,
-            );
+      compiledModel = compiledModelFromBufferAuto(
+        modelBytes,
+        accelerators: accelerators,
+        precision: precision,
+        onGpuFallback: _onGpuFallback,
+      );
     } catch (e) {
       throw SegmentationException(
         SegmentationError.interpreterCreationFailed,
@@ -284,9 +279,9 @@ class SelfieSegmentation with _TfliteModelDisposable {
         '${compiledModel.inputCount}.',
       );
     }
-    final int inFloats = _compiledFloatCount(
+    final int inFloats = compiledFloatCount(
       compiledModel.inputByteSizes.single,
-      'Compiled ${_model.name} segmentation input[0]',
+      label: 'Compiled ${_model.name} segmentation input[0]',
     );
     if (inFloats != _inH * _inW * 3) {
       throw SegmentationException(
@@ -301,9 +296,9 @@ class SelfieSegmentation with _TfliteModelDisposable {
         'Compiled ${_model.name} segmentation has no outputs.',
       );
     }
-    final int outFloats = _compiledFloatCount(
+    final int outFloats = compiledFloatCount(
       compiledModel.outputByteSizes[0],
-      'Compiled ${_model.name} segmentation output[0]',
+      label: 'Compiled ${_model.name} segmentation output[0]',
     );
     if (outFloats != _inH * _inW * _outChannels) {
       throw SegmentationException(

@@ -717,7 +717,82 @@ Tips:
 - Mirror the overlay on the front camera to match `CameraPreview`'s auto-mirrored texture.
 - For segmentation or advanced use, the two-step API is `prepareCameraFrame(...)` + `detectFacesFromCameraFrame(...)` (or the `...WithSegmentationFromCameraFrame` variant).
 
-See the full [example app](https://pub.dev/packages/face_detection_tflite/example) for a complete implementation.
+### Production pipeline
+
+The snippet above is the minimum. A real live-camera screen also needs to drop
+frames it cannot keep up with, track orientation as the device rotates, and map
+results onto a preview that is cropped and possibly mirrored. `flutter_litert`
+ships all of that, and this package's example app wires it together:
+
+```dart
+import 'package:flutter_litert/flutter_litert.dart';
+
+final _throttle = FrameThrottle();   // drop frames while one is in flight
+final _fps = FpsCounter();
+
+void _onFrame(CameraImage image) {
+  _throttle.run(() async {
+    final rotation = rotationForFrame(
+      width: image.width,
+      height: image.height,
+      sensorOrientation: camera.sensorOrientation,
+      isFrontCamera: camera.lensDirection == CameraLensDirection.front,
+      deviceOrientation: controller.value.deviceOrientation,
+    );
+
+    // The coordinate space results come back in. Map the overlay against
+    // THIS, not the raw CameraImage size.
+    final size = detectionSize(
+      width: image.width, height: image.height,
+      rotation: rotation, maxDim: 640,
+    );
+
+    final faces = await detector.detectFacesFromCameraImage(
+      image,
+      rotation: rotation,
+    mode: FaceDetectionMode.fast,
+      maxDim: 640,
+    );
+
+    if (_fps.tick() && mounted) setState(() => fps = _fps.fps);
+    if (mounted) setState(() { this.faces = faces; imageSize = size; });
+  });
+}
+```
+
+And in the overlay painter, one transform handles cover-fit cropping and
+front-camera mirroring:
+
+```dart
+final t = CoverFitTransform.cover(
+  sourceWidth: imageSize.width,
+  sourceHeight: imageSize.height,
+  viewWidth: size.width,
+  viewHeight: size.height,
+  mirror: isFrontCamera,
+);
+canvas.drawCircle(t.map(p.x, p.y), t.scaleLength(3), paint);
+```
+
+Without `FrameThrottle`, inference queues behind the stream and the overlay
+drifts steadily further behind reality while the frame rate still looks healthy.
+
+### The example app is the reference implementation
+
+The [example app](https://pub.dev/packages/face_detection_tflite/example) ships a complete, working live-camera screen
+and is the best place to see these pieces used together in real code:
+
+- frame throttling and FPS reporting
+- orientation handling across all four device orientations
+- front/back camera switching with correct mirroring
+- cover-fit overlay mapping via `CoverFitTransform`
+- running inference off the UI thread in a detection isolate
+
+`face_detection_tflite`, `pose_detection`, `hand_detection`, and
+`object_detection` all follow the same structure, so the pattern transfers
+directly between them. See the
+[Live camera](https://pub.dev/packages/flutter_litert#live-camera) section of
+`flutter_litert` for the underlying helpers.
 
 ## Background Processing
 
