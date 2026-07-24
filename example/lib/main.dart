@@ -11,8 +11,9 @@ import 'package:image_picker/image_picker.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:camera/camera.dart';
 import 'package:face_detection_tflite/face_detection_tflite_native.dart';
+import 'lipstick_painter.dart';
 import 'package:flutter_litert/flutter_litert.dart'
-    show FrameThrottle, OneEuroFilter;
+    show FrameThrottle, iouLTRB, OneEuroFilter;
 import 'package:opencv_dart/opencv.dart' as cv;
 import 'package:path_provider/path_provider.dart';
 import 'package:sensors_plus/sensors_plus.dart';
@@ -349,6 +350,12 @@ class _ExampleState extends State<Example> {
   bool _showIrises = true;
   bool _showEyeContours = true;
   bool _showEyeMesh = true;
+
+  // Demo-only lipstick overlay (see lipstick_painter.dart). Mesh-dependent, so
+  // it is gated with fcb() alongside the other full-mode toggles.
+  bool _showLipstick = false;
+  Color _lipstickColor = kDefaultLipstickColor;
+
   bool _showLandmarkLabels = false;
   bool _showPoseAndScores = true;
   bool _showClassification = true;
@@ -376,13 +383,21 @@ class _ExampleState extends State<Example> {
 
   // Demo-only detection gates, applied as a live post-filter so the sliders
   // update instantly without re-creating the detector. The same values can be
-  // passed to FaceDetector.create(minScore:, minFaceSize:) to have the detector
-  // enforce them directly.
+  // passed to FaceDetector.create(minScore:, minFaceSize:,
+  // minFacePresenceConfidence:) to have the detector enforce them directly.
+  // This detector is initialized with minFacePresenceConfidence: 0.0 so the
+  // slider can sweep the full 0..1 range here, instead of the library's default
+  // 0.5 already removing low-presence faces before they reach the UI.
   double _minScore = 0.0;
   double _minFaceSize = 0.0;
+  double _minFacePresenceConfidence = 0.5;
 
   List<Face> _gatedFaces(List<Face> faces) => faces
-      .where((f) => f.score >= _minScore && f.widthFraction >= _minFaceSize)
+      .where((f) =>
+          f.score >= _minScore &&
+          f.widthFraction >= _minFaceSize &&
+          (_minFacePresenceConfidence <= 0.0 ||
+              (f.meshScore ?? double.infinity) >= _minFacePresenceConfidence))
       .toList();
 
   @override
@@ -398,6 +413,9 @@ class _ExampleState extends State<Example> {
       await _faceDetector!.initialize(
         model: _detectionModel,
         useCompiledModel: true,
+        // Gate off in the detector so the "Detection gates" sliders can filter
+        // the full 0..1 range client-side (see _gatedFaces / _minFace*).
+        minFacePresenceConfidence: 0.0,
       );
     } catch (_) {}
     setState(() {});
@@ -599,6 +617,8 @@ class _ExampleState extends State<Example> {
                                     (v) => _showEyeContours = v),
                                 fcb('Eye Mesh', _showEyeMesh,
                                     (v) => _showEyeMesh = v),
+                                fcb('Lipstick', _showLipstick,
+                                    (v) => _showLipstick = v),
                                 cb('Landmark Labels', _showLandmarkLabels,
                                     (v) => _showLandmarkLabels = v),
                                 cb('Scores & Pose', _showPoseAndScores,
@@ -629,6 +649,8 @@ class _ExampleState extends State<Example> {
                                     (c) => _eyeContourColor = c),
                                 col('Eye Mesh', _eyeMeshColor,
                                     (c) => _eyeMeshColor = c),
+                                col('Lipstick', _lipstickColor,
+                                    (c) => _lipstickColor = c),
                               ],
                             ),
                             const SizedBox(height: 8),
@@ -657,6 +679,8 @@ class _ExampleState extends State<Example> {
                                 (v) => _minScore = v),
                             sl('minFaceSize', _minFaceSize, 0.0, 1.0,
                                 (v) => _minFaceSize = v),
+                            sl('minPresence', _minFacePresenceConfidence, 0.0,
+                                1.0, (v) => _minFacePresenceConfidence = v),
                             const SizedBox(height: 8),
                           ],
                         ),
@@ -764,9 +788,22 @@ class _ExampleState extends State<Example> {
                             rect: imageRect,
                             child: SizedBox.fromSize(
                               size: renderSize,
-                              child: Image.memory(
-                                _imageBytes!,
-                                fit: BoxFit.fill,
+                              // The lipstick fill uses BlendMode.color, which
+                              // needs the photo already painted into the same
+                              // layer. A foregroundPainter on the image gives
+                              // exactly that; a sibling Stack layer would not.
+                              child: CustomPaint(
+                                foregroundPainter: _showLipstick
+                                    ? LipstickPainter(
+                                        faces: _gatedFaces(_faces),
+                                        originalImageSize: _originalSize!,
+                                        color: _lipstickColor,
+                                      )
+                                    : null,
+                                child: Image.memory(
+                                  _imageBytes!,
+                                  fit: BoxFit.fill,
+                                ),
                               ),
                             ),
                           ),
@@ -901,6 +938,29 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   bool _showPoseAndScores = true;
   bool _showClassification = true;
 
+  // Demo-only lipstick overlay (see lipstick_painter.dart). Needs a mesh, so it
+  // only renders in standard/full mode. Unlike the still-image path this uses a
+  // BackdropFilter, because the preview is a platform texture.
+  bool _showLipstick = false;
+  Color _lipstickColor = kDefaultLipstickColor;
+
+  // Demo-only detection gates, applied as a live post-filter (see _gatedFaces)
+  // so the sliders update instantly without re-creating the detector. The
+  // detector is initialized with minFacePresenceConfidence: 0.0 so the slider
+  // can sweep the full 0..1 range instead of the library's default 0.5 already
+  // removing low-presence faces (such as a hand/palm) before they reach the UI.
+  double _minScore = 0.0;
+  double _minFaceSize = 0.0;
+  double _minFacePresenceConfidence = 0.5;
+
+  List<Face> _gatedFaces(List<Face> faces) => faces
+      .where((f) =>
+          f.score >= _minScore &&
+          f.widthFraction >= _minFaceSize &&
+          (_minFacePresenceConfidence <= 0.0 ||
+              (f.meshScore ?? double.infinity) >= _minFacePresenceConfidence))
+      .toList();
+
   bool _showSegmentation = false;
   SegmentationMask? _segmentationMask;
   final Color _segmentationColor = const Color(0x8800FF00);
@@ -957,6 +1017,9 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         model: _detectionModel,
         performanceConfig: _perfConfig,
         useCompiledModel: _useCompiledModel,
+        // Gate off in the detector so the "Detection gates" sliders filter the
+        // full 0..1 range client-side (see _gatedFaces / _minFace*).
+        minFacePresenceConfidence: 0.0,
       );
     } catch (e) {
       if (!_useCompiledModel) rethrow;
@@ -974,6 +1037,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         model: _detectionModel,
         performanceConfig: _perfConfig,
         useCompiledModel: false,
+        minFacePresenceConfidence: 0.0,
       );
     }
     await _faceDetector!.initializeSegmentation(
@@ -1183,6 +1247,39 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       );
     }
 
+    Widget gateSlider(
+      String label,
+      double value,
+      ValueChanged<double> onChanged,
+    ) {
+      return Row(
+        children: [
+          SizedBox(
+            width: 84,
+            child: Text(
+              label,
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+          ),
+          Expanded(
+            child: Slider(
+              value: value,
+              activeColor: Colors.blue,
+              onChanged: (v) => update(() => onChanged(v)),
+            ),
+          ),
+          SizedBox(
+            width: 30,
+            child: Text(
+              value.toStringAsFixed(2),
+              textAlign: TextAlign.right,
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+          ),
+        ],
+      );
+    }
+
     const sectionLabelStyle = TextStyle(
       color: Colors.white60,
       fontSize: 10,
@@ -1245,6 +1342,16 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
               ],
             ),
             const Divider(color: Colors.white24, height: 24),
+            const Text('DETECTION GATES', style: sectionLabelStyle),
+            const SizedBox(height: 4),
+            gateSlider('minScore', _minScore, (v) => _minScore = v),
+            gateSlider('minFaceSize', _minFaceSize, (v) => _minFaceSize = v),
+            gateSlider(
+              'minPresence',
+              _minFacePresenceConfidence,
+              (v) => _minFacePresenceConfidence = v,
+            ),
+            const Divider(color: Colors.white24, height: 24),
             const Text('OVERLAY', style: sectionLabelStyle),
             const SizedBox(height: 4),
             Row(
@@ -1281,6 +1388,39 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                 ),
               ],
             ),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Lipstick',
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
+                ),
+                Switch(
+                  value: _showLipstick,
+                  activeTrackColor: Colors.blue,
+                  onChanged: (value) {
+                    update(() => _showLipstick = value);
+                  },
+                ),
+              ],
+            ),
+            if (_showLipstick)
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Lipstick colour',
+                      style: TextStyle(color: Colors.white70, fontSize: 14),
+                    ),
+                  ),
+                  _ColorPickerButton(
+                    label: '',
+                    color: _lipstickColor,
+                    onColorChanged: (c) => update(() => _lipstickColor = c),
+                  ),
+                ],
+              ),
             const Divider(color: Colors.white24, height: 24),
             const Text('SEGMENTATION', style: sectionLabelStyle),
             const SizedBox(height: 4),
@@ -1366,6 +1506,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
           model: _detectionModel,
           performanceConfig: _perfConfig,
           useCompiledModel: false,
+          minFacePresenceConfidence: 0.0,
         );
       }
 
@@ -1614,7 +1755,23 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         fit: StackFit.expand,
         children: [
           FaceDetectionCameraOverlay(
-            cameraPreview: CameraPreview(_cameraController!),
+            // The lipstick layer is composed INTO cameraPreview rather than
+            // stacked over the whole overlay, so it sits directly above the
+            // preview texture (which BackdropFilter needs) and below the
+            // detection painters, and inherits the same layout box.
+            cameraPreview: Stack(
+              fit: StackFit.expand,
+              children: [
+                CameraPreview(_cameraController!),
+                if (_showLipstick && _imageSize != null)
+                  LiveLipstickOverlay(
+                    faces: _faces,
+                    imageSize: _imageSize!,
+                    mirror: mirrorOverlayHorizontally,
+                    color: _lipstickColor,
+                  ),
+              ],
+            ),
             cameraAspectRatio: cameraAspectRatio,
             displayAspectRatio: displayAspectRatio,
             mirrorHorizontally: mirrorOverlayHorizontally,
@@ -1622,7 +1779,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
             deviceOrientation: deviceOrientation,
             isFrontCamera: _isFrontCamera,
             detectionMode: _detectionMode,
-            faces: _faces,
+            faces: _gatedFaces(_faces),
             imageSize: _imageSize,
             segmentationMask: _segmentationMask,
             virtualBackground: _beachBackground,
@@ -2256,13 +2413,21 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
 
   // Demo-only detection gates, applied as a live post-filter so the sliders
   // update instantly without re-creating the detector. The same values can be
-  // passed to FaceDetector.create(minScore:, minFaceSize:) to have the detector
-  // enforce them directly.
+  // passed to FaceDetector.create(minScore:, minFaceSize:,
+  // minFacePresenceConfidence:) to have the detector enforce them directly.
+  // This detector is initialized with minFacePresenceConfidence: 0.0 so the
+  // slider can sweep the full 0..1 range here, instead of the library's default
+  // 0.5 already removing low-presence faces before they reach the UI.
   double _minScore = 0.0;
   double _minFaceSize = 0.0;
+  double _minFacePresenceConfidence = 0.5;
 
   List<Face> _gatedFaces(List<Face> faces) => faces
-      .where((f) => f.score >= _minScore && f.widthFraction >= _minFaceSize)
+      .where((f) =>
+          f.score >= _minScore &&
+          f.widthFraction >= _minFaceSize &&
+          (_minFacePresenceConfidence <= 0.0 ||
+              (f.meshScore ?? double.infinity) >= _minFacePresenceConfidence))
       .toList();
   bool _isInitialized = false;
   bool _isProcessing = false;
@@ -2343,6 +2508,9 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
       await old?.dispose();
       _detector = await FaceDetector.create(
         performanceConfig: const PerformanceConfig.xnnpack(),
+        // Gate off in the detector so the "Detection gates" sliders filter the
+        // full 0..1 range client-side (see _gatedFaces / _minFace*).
+        minFacePresenceConfidence: 0.0,
       );
     }
     await _detector!.initializeSegmentation(
@@ -2366,6 +2534,9 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
     try {
       final detector = await FaceDetector.create(
         performanceConfig: const PerformanceConfig.xnnpack(),
+        // Gate off in the detector so the "Detection gates" sliders filter the
+        // full 0..1 range client-side (see _gatedFaces / _minFace*).
+        minFacePresenceConfidence: 0.0,
       );
       if (!mounted) {
         await detector.dispose();
@@ -3120,6 +3291,8 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
                                 (v) => _minScore = v),
                             sl('minFaceSize', _minFaceSize, 0.0, 1.0,
                                 (v) => _minFaceSize = v),
+                            sl('minPresence', _minFacePresenceConfidence, 0.0,
+                                1.0, (v) => _minFacePresenceConfidence = v),
                             const SizedBox(height: 8),
                           ],
                         ),
@@ -3691,20 +3864,16 @@ class FaceSmoother {
 
   double _iou(Face a, _FaceTrack b) {
     final box = a.boundingBox;
-    final l = math.max(box.left, b.lastLeft);
-    final t = math.max(box.top, b.lastTop);
-    final r = math.min(box.right, b.lastRight);
-    final bo = math.min(box.bottom, b.lastBottom);
-    final iw = math.max(0.0, r - l);
-    final ih = math.max(0.0, bo - t);
-    final inter = iw * ih;
-    final aa = math.max(0.0, box.right - box.left) *
-        math.max(0.0, box.bottom - box.top);
-    final bb = math.max(0.0, b.lastRight - b.lastLeft) *
-        math.max(0.0, b.lastBottom - b.lastTop);
-    final union = aa + bb - inter;
-    if (union <= 0) return 0;
-    return inter / union;
+    return iouLTRB(
+      box.left,
+      box.top,
+      box.right,
+      box.bottom,
+      b.lastLeft,
+      b.lastTop,
+      b.lastRight,
+      b.lastBottom,
+    );
   }
 }
 

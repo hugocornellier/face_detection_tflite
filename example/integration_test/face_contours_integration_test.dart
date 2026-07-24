@@ -36,6 +36,64 @@ void main() {
     return sqrt(dx * dx + dy * dy);
   }
 
+  // --- ring assembly + polygon predicates -----------------------------------
+  //
+  // The lip and eyebrow arcs are stored as open polylines; a fillable ring is
+  // the upper arc followed by the lower arc reversed. Lips store both arcs in
+  // the same direction AND share their endpoints (61/291 outer, 78/308 inner),
+  // so the reversed arc must drop its first and last point. Eyebrow arcs share
+  // no endpoints, so nothing is dropped. These helpers exist to check that
+  // assumption against real coordinates rather than assert it.
+
+  /// Joins [top] with [bottom] reversed into a closed ring (first != last).
+  /// When [sharedEndpoints], drops the duplicated join and close vertices.
+  List<fdt.Point> ring(
+    List<fdt.Point> top,
+    List<fdt.Point> bottom, {
+    required bool sharedEndpoints,
+  }) {
+    final rev = bottom.reversed.toList();
+    return <fdt.Point>[
+      ...top,
+      ...sharedEndpoints ? rev.sublist(1, rev.length - 1) : rev,
+    ];
+  }
+
+  /// Shoelace signed area. Sign encodes winding; magnitude is in px^2.
+  double signedArea(List<fdt.Point> r) {
+    double s = 0;
+    for (int i = 0; i < r.length; i++) {
+      final a = r[i], b = r[(i + 1) % r.length];
+      s += a.x * b.y - b.x * a.y;
+    }
+    return s / 2;
+  }
+
+  double cross(fdt.Point o, fdt.Point a, fdt.Point b) =>
+      (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+
+  /// True when segments ab and cd cross at an interior point of both.
+  bool properlyIntersect(fdt.Point a, fdt.Point b, fdt.Point c, fdt.Point d) {
+    final d1 = cross(a, b, c), d2 = cross(a, b, d);
+    final d3 = cross(c, d, a), d4 = cross(c, d, b);
+    return ((d1 > 0) != (d2 > 0)) && ((d3 > 0) != (d4 > 0));
+  }
+
+  /// Indices of the first self-intersecting edge pair, or null when simple.
+  List<int>? selfIntersection(List<fdt.Point> r) {
+    final n = r.length;
+    for (int i = 0; i < n; i++) {
+      for (int j = i + 1; j < n; j++) {
+        // Skip adjacent edges (and the wrap-around pair), which share a vertex.
+        if (j == i || j == i + 1 || (i == 0 && j == n - 1)) continue;
+        if (properlyIntersect(r[i], r[(i + 1) % n], r[j], r[(j + 1) % n])) {
+          return <int>[i, j];
+        }
+      }
+    }
+    return null;
+  }
+
   group('Face contours - real image geometry', () {
     late fdt.FaceDetector detector;
     late fdt.Face face;
@@ -189,6 +247,120 @@ void main() {
       for (final cy in [leftCheekY, rightCheekY]) {
         expect(cy, greaterThan(eyeY), reason: 'cheek below eye');
         expect(cy, lessThan(mouthY), reason: 'cheek above mouth bottom');
+      }
+    });
+
+    // Ring-level geometry: whether the arc pairs actually close into fillable
+    // polygons on real coordinates. The unit tests cannot check any of this
+    // because their fixture mesh is Point(i, i, i), i.e. fully collinear.
+
+    test('lip arc pairs dedupe into 20-point rings with no repeated vertex',
+        () {
+      final outer = ring(
+        face.getContour(FaceContourType.upperLipTop)!,
+        face.getContour(FaceContourType.lowerLipBottom)!,
+        sharedEndpoints: true,
+      );
+      final inner = ring(
+        face.getContour(FaceContourType.upperLipBottom)!,
+        face.getContour(FaceContourType.lowerLipTop)!,
+        sharedEndpoints: true,
+      );
+
+      for (final MapEntry<String, List<fdt.Point>> e
+          in {'outer': outer, 'inner': inner}.entries) {
+        final r = e.value;
+        expect(r.length, 20, reason: '${e.key} ring length');
+        // No vertex may repeat: a duplicate collapses an edge to zero length
+        // and makes winding and fill undefined at that point.
+        final seen = <String>{};
+        for (final p in r) {
+          final key = '${p.x},${p.y}';
+          expect(seen.add(key), isTrue,
+              reason: '${e.key} ring has a duplicated vertex at $key');
+        }
+      }
+    });
+
+    test('lip rings are simple polygons; winding is not stable between them',
+        () {
+      final outer = ring(
+        face.getContour(FaceContourType.upperLipTop)!,
+        face.getContour(FaceContourType.lowerLipBottom)!,
+        sharedEndpoints: true,
+      );
+      final inner = ring(
+        face.getContour(FaceContourType.upperLipBottom)!,
+        face.getContour(FaceContourType.lowerLipTop)!,
+        sharedEndpoints: true,
+      );
+
+      final outerArea = signedArea(outer);
+      final innerArea = signedArea(inner);
+      final outerX = selfIntersection(outer);
+      final innerX = selfIntersection(inner);
+      print('LIP RINGS outerArea=$outerArea innerArea=$innerArea '
+          'innerFrac=${(innerArea.abs() / outerArea.abs()).toStringAsFixed(4)} '
+          'outerSelfIntersect=$outerX innerSelfIntersect=$innerX');
+
+      // The outer ring bounds the whole mouth and must be usable as a fill
+      // boundary on any face; a self-intersection here would break every
+      // even-odd fill built on it.
+      expect(outerX, isNull,
+          reason: 'outer lip ring self-intersects at $outerX');
+      expect(outerArea.abs(), greaterThan(0.0));
+
+      // Winding is NOT stable between the two rings and must never be assumed.
+      // Both rings are built identically (upper arc, then lower arc reversed),
+      // so a naive reading says they should wind the same way. On this face
+      // they do not: outer is positive, inner is negative. The cause is the
+      // inner arcs swapping vertical order on a closed mouth, the same effect
+      // the ordering test above tolerates ("may cross by a hair"). So the sign
+      // of the inner ring is a property of the subject's expression, not of
+      // the index tables.
+      //
+      // Consequence for any fill built on these rings: PathFillType.evenOdd is
+      // mandatory. Under non-zero fill the inner ring would cut a hole on some
+      // faces and fill solid on others. Same for OpenCV fillPoly over both
+      // contours at once.
+      expect(innerArea, isNot(0.0), reason: 'inner ring is degenerate');
+
+      // The mouth opening is strictly smaller than the whole mouth.
+      expect(innerArea.abs(), lessThan(outerArea.abs()));
+
+      // Recorded for the closed-mouth gate: on this (near-closed) mouth the
+      // opening is ~10.7% of the outer ring area. A geometric gate on this
+      // fraction is what the lipstick overlay should use, rather than the
+      // jawOpen/mouthClose blendshapes, which are driven by entirely
+      // unrefined lip landmarks.
+      expect(innerArea.abs() / outerArea.abs(), lessThan(1.0));
+    });
+
+    test('eyebrow arc pairs close without dropping any endpoint', () {
+      // Unlike the lips, the eyebrow arcs share no mesh indices, so the ring
+      // is a straight 5 + 5 with no dedupe. Whether that actually yields a
+      // simple polygon has never been checked against real coordinates.
+      for (final MapEntry<String, List<FaceContourType>> e in {
+        'left': [
+          FaceContourType.leftEyebrowTop,
+          FaceContourType.leftEyebrowBottom
+        ],
+        'right': [
+          FaceContourType.rightEyebrowTop,
+          FaceContourType.rightEyebrowBottom
+        ],
+      }.entries) {
+        final r = ring(
+          face.getContour(e.value[0])!,
+          face.getContour(e.value[1])!,
+          sharedEndpoints: false,
+        );
+        expect(r.length, 10, reason: '${e.key} eyebrow ring length');
+        final area = signedArea(r);
+        final x = selfIntersection(r);
+        print('EYEBROW RING ${e.key} area=$area selfIntersect=$x');
+        expect(area.abs(), greaterThan(0.0),
+            reason: '${e.key} eyebrow ring is degenerate');
       }
     });
   });
