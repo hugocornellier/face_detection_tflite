@@ -93,6 +93,8 @@ class FaceDetector {
     double minScore = 0.0,
     double minFaceSize = 0.0,
     double minFacePresenceConfidence = kDefaultMinFacePresenceConfidence,
+    bool enableTracking = false,
+    int maxMissedFrames = kDefaultMaxMissedFrames,
     // Web-only knobs; accepted here for API parity but ignored on native.
     bool useLiteRt = false,
     String liteRtAccelerator = 'auto',
@@ -110,6 +112,8 @@ class FaceDetector {
       minScore: minScore,
       minFaceSize: minFaceSize,
       minFacePresenceConfidence: minFacePresenceConfidence,
+      enableTracking: enableTracking,
+      maxMissedFrames: maxMissedFrames,
     );
     return detector;
   }
@@ -123,6 +127,7 @@ class FaceDetector {
   double _minScore = 0.0;
   double _minFaceSize = 0.0;
   double _minFacePresenceConfidence = kDefaultMinFacePresenceConfidence;
+  final TemporalTrackingController _tracking = TemporalTrackingController();
 
   /// Minimum detection confidence (0.0 to 1.0) a face must have to be returned.
   ///
@@ -159,6 +164,44 @@ class FaceDetector {
     minScore: _minScore,
     minFaceSize: _minFaceSize,
     minFacePresenceConfidence: _minFacePresenceConfidence,
+  );
+
+  /// Whether temporal IDs are assigned to faces across sequential calls.
+  bool get isTrackingEnabled => _tracking.isEnabled;
+
+  /// Processed frames a tracked face may go undetected before its
+  /// `Face.trackingId` is retired.
+  ///
+  /// Configured via [create]/[initialize]. Defaults to
+  /// [kDefaultMaxMissedFrames] (3). Only meaningful while tracking is enabled.
+  int get maxMissedFrames => _tracking.maxMissedFrames;
+
+  /// Clears all temporal face associations and restarts ID allocation.
+  ///
+  /// Call this when switching cameras, video files, or otherwise changing to
+  /// an unrelated image sequence. Tracking is geometric and short-lived; it
+  /// is not face recognition.
+  void resetTracking() => _tracking.reset();
+
+  Future<T> _runTrackingSequenced<T>(
+    Future<T> Function() operation,
+    T Function(T value) attachTracking,
+  ) => _tracking.run(operation, attachTracking);
+
+  Future<List<Face>> _runTrackedDetection(
+    Future<List<Face>> Function() operation,
+  ) => _runTrackingSequenced<List<Face>>(operation, _tracking.attachFaces);
+
+  Future<DetectionWithSegmentationResult> _runTrackedCombinedDetection(
+    Future<DetectionWithSegmentationResult> Function() operation,
+  ) => _runTrackingSequenced<DetectionWithSegmentationResult>(
+    operation,
+    (DetectionWithSegmentationResult result) => DetectionWithSegmentationResult(
+      faces: _tracking.attachFaces(result.faces),
+      segmentationMask: result.segmentationMask,
+      detectionTimeMs: result.detectionTimeMs,
+      segmentationTimeMs: result.segmentationTimeMs,
+    ),
   );
 
   /// Returns true if all models are loaded and ready for inference.
@@ -221,6 +264,11 @@ class FaceDetector {
   /// stage, before iris and blendshape run, so in every case the gates also
   /// skip the corresponding per-face landmark cost.
   ///
+  /// Set [enableTracking] to true to assign a stable `Face.trackingId` across
+  /// sequential frames. Tracking-enabled detection calls are processed in
+  /// invocation order. IDs survive brief detector dropouts and can be cleared
+  /// with [resetTracking]. Tracking uses box motion, not face recognition.
+  ///
   /// Example:
   /// ```dart
   /// // Default: classic Interpreter.
@@ -251,6 +299,8 @@ class FaceDetector {
     double minScore = 0.0,
     double minFaceSize = 0.0,
     double minFacePresenceConfidence = kDefaultMinFacePresenceConfidence,
+    bool enableTracking = false,
+    int maxMissedFrames = kDefaultMaxMissedFrames,
     // Web-only knobs; accepted here for API parity but ignored on native.
     bool useLiteRt = false,
     String liteRtAccelerator = 'auto',
@@ -266,12 +316,17 @@ class FaceDetector {
       minFaceSize: minFaceSize,
       minFacePresenceConfidence: minFacePresenceConfidence,
     );
+    validateTrackingConfig(maxMissedFrames: maxMissedFrames);
     _useCompiledModel = useCompiledModel;
     _accelerators = accelerators;
     _precision = precision;
     _minScore = minScore;
     _minFaceSize = minFaceSize;
     _minFacePresenceConfidence = minFacePresenceConfidence;
+    _tracking.configure(
+      enabled: enableTracking,
+      maxMissedFrames: maxMissedFrames,
+    );
 
     final worker = _FaceDetectorWorker();
     IsolateRpcClient? segmentationRpc;
@@ -417,6 +472,15 @@ class FaceDetector {
     FaceDetectionMode mode = FaceDetectionMode.full,
   }) async {
     _requireReady();
+    return _runTrackedDetection(
+      () => _detectFacesFromBytesUntracked(imageBytes, mode),
+    );
+  }
+
+  Future<List<Face>> _detectFacesFromBytesUntracked(
+    Uint8List imageBytes,
+    FaceDetectionMode mode,
+  ) async {
     final List<dynamic> result;
     try {
       result = await _sendDetectionRequest<List<dynamic>>('detect', {
@@ -471,8 +535,13 @@ class FaceDetector {
     String path, {
     FaceDetectionMode mode = FaceDetectionMode.full,
   }) async {
-    final bytes = await File(path).readAsBytes();
-    return detectFacesFromBytes(bytes, mode: mode);
+    return _runTrackedDetection(() async {
+      final bytes = await File(path).readAsBytes();
+      // Preserve the previous error ordering: filepath I/O happens before the
+      // detector readiness check performed by detectFacesFromBytes.
+      _requireReady();
+      return _detectFacesFromBytesUntracked(bytes, mode);
+    });
   }
 
   /// Detects faces in a pre-decoded [cv.Mat] image.
@@ -517,17 +586,19 @@ class FaceDetector {
     FaceDetectionMode mode = FaceDetectionMode.full,
   }) async {
     _requireReady();
-    final List<dynamic> result = await _sendDetectionRequest<List<dynamic>>(
-      'detectMat',
-      {
-        'bytes': TransferableTypedData.fromList([bytes]),
-        'width': width,
-        'height': height,
-        'matType': matType,
-        'mode': mode.name,
-      },
-    );
-    return _applyGates(_deserializeFacesFast(result));
+    return _runTrackedDetection(() async {
+      final List<dynamic> result = await _sendDetectionRequest<List<dynamic>>(
+        'detectMat',
+        {
+          'bytes': TransferableTypedData.fromList([bytes]),
+          'width': width,
+          'height': height,
+          'matType': matType,
+          'mode': mode.name,
+        },
+      );
+      return _applyGates(_deserializeFacesFast(result));
+    });
   }
 
   /// Detects faces directly from a [CameraFrame] produced by
@@ -545,11 +616,13 @@ class FaceDetector {
     int? maxDim,
   }) async {
     _requireReady();
-    final List<dynamic> result = await _sendDetectionRequest<List<dynamic>>(
-      'detectCameraFrame',
-      _cameraFrameFields(frame, {'mode': mode.name, 'maxDim': maxDim}),
-    );
-    return _applyGates(_deserializeFacesFast(result));
+    return _runTrackedDetection(() async {
+      final List<dynamic> result = await _sendDetectionRequest<List<dynamic>>(
+        'detectCameraFrame',
+        _cameraFrameFields(frame, {'mode': mode.name, 'maxDim': maxDim}),
+      );
+      return _applyGates(_deserializeFacesFast(result));
+    });
   }
 
   /// One-call wrapper for live camera streams: takes a `CameraImage`-shaped
@@ -716,8 +789,10 @@ class FaceDetector {
       try {
         eyes.setRange(i * 4, i * 4 + 4, _embeddingEyesPayload(faces[i]));
       } catch (_) {
-        // Preserve the old per-face failure contract: one malformed face must
-        // not abort embeddings for every other face in the batch.
+        // Preserve the batch API's per-face failure contract for malformed
+        // caller-constructed Face objects as well as missing image metadata.
+        // The previous isolate-side implementation caught every per-face
+        // extraction failure and returned null for that entry.
         eyes[i * 4] = double.nan;
         eyes[i * 4 + 1] = double.nan;
         eyes[i * 4 + 2] = double.nan;
@@ -827,18 +902,20 @@ class FaceDetector {
   }) {
     _requireReady();
     _requireSegmentationReady();
-    return _detectAndSegmentImpl(
-      detectOp: 'detect',
-      detectFields: {
-        'bytes': TransferableTypedData.fromList([imageBytes]),
-        'mode': mode.name,
-      },
-      segmentOp: 'segment',
-      segmentFields: {
-        'bytes': TransferableTypedData.fromList([imageBytes]),
-        'outputFormat': outputFormat.index,
-        'binaryThreshold': binaryThreshold,
-      },
+    return _runTrackedCombinedDetection(
+      () => _detectAndSegmentImpl(
+        detectOp: 'detect',
+        detectFields: {
+          'bytes': TransferableTypedData.fromList([imageBytes]),
+          'mode': mode.name,
+        },
+        segmentOp: 'segment',
+        segmentFields: {
+          'bytes': TransferableTypedData.fromList([imageBytes]),
+          'outputFormat': outputFormat.index,
+          'binaryThreshold': binaryThreshold,
+        },
+      ),
     );
   }
 
@@ -854,24 +931,26 @@ class FaceDetector {
     _requireReady();
     _requireSegmentationReady();
     final f = _extractMatFields(image);
-    return _detectAndSegmentImpl(
-      detectOp: 'detectMat',
-      detectFields: {
-        'bytes': TransferableTypedData.fromList([f.data]),
-        'width': f.width,
-        'height': f.height,
-        'matType': f.matType,
-        'mode': mode.name,
-      },
-      segmentOp: 'segmentMat',
-      segmentFields: {
-        'bytes': TransferableTypedData.fromList([f.data]),
-        'width': f.width,
-        'height': f.height,
-        'matType': f.matType,
-        'outputFormat': outputFormat.index,
-        'binaryThreshold': binaryThreshold,
-      },
+    return _runTrackedCombinedDetection(
+      () => _detectAndSegmentImpl(
+        detectOp: 'detectMat',
+        detectFields: {
+          'bytes': TransferableTypedData.fromList([f.data]),
+          'width': f.width,
+          'height': f.height,
+          'matType': f.matType,
+          'mode': mode.name,
+        },
+        segmentOp: 'segmentMat',
+        segmentFields: {
+          'bytes': TransferableTypedData.fromList([f.data]),
+          'width': f.width,
+          'height': f.height,
+          'matType': f.matType,
+          'outputFormat': outputFormat.index,
+          'binaryThreshold': binaryThreshold,
+        },
+      ),
     );
   }
 
@@ -918,18 +997,20 @@ class FaceDetector {
   }) {
     _requireReady();
     _requireSegmentationReady();
-    return _detectAndSegmentImpl(
-      detectOp: 'detectCameraFrame',
-      detectFields: _cameraFrameFields(frame, {
-        'mode': mode.name,
-        'maxDim': maxDim,
-      }),
-      segmentOp: 'segmentCameraFrame',
-      segmentFields: _cameraFrameFields(frame, {
-        'outputFormat': outputFormat.index,
-        'binaryThreshold': binaryThreshold,
-        'maxDim': maxDim,
-      }),
+    return _runTrackedCombinedDetection(
+      () => _detectAndSegmentImpl(
+        detectOp: 'detectCameraFrame',
+        detectFields: _cameraFrameFields(frame, {
+          'mode': mode.name,
+          'maxDim': maxDim,
+        }),
+        segmentOp: 'segmentCameraFrame',
+        segmentFields: _cameraFrameFields(frame, {
+          'outputFormat': outputFormat.index,
+          'binaryThreshold': binaryThreshold,
+          'maxDim': maxDim,
+        }),
+      ),
     );
   }
 
@@ -993,6 +1074,7 @@ class FaceDetector {
     _segmentationRpc = null;
     _segmentationInitialized = false;
     _worker = null;
+    _tracking.configure(enabled: false);
 
     await segmentationRpc?.disposeGracefully(disposeOp: 'dispose');
     if (worker != null && worker.isReady) {

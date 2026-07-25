@@ -15,10 +15,11 @@ import 'package:web/web.dart' as web;
 
 import '../shared/blendshape_input.dart' show packBlendshapeInput;
 import '../shared/face_model_config.dart'
-    show kDefaultMinFacePresenceConfidence;
+    show kDefaultMinFacePresenceConfidence, kDefaultMaxMissedFrames;
 import '../shared/face_gates.dart'
     show applyDetectionGates, applyFaceGates, validateFaceGates;
 import '../shared/face_geometry.dart' show transformMeshFlatToAbsolute;
+import '../shared/face_tracker.dart';
 import 'models/face_blendshapes_model_web.dart';
 import 'models/face_detection_model_web.dart';
 import 'models/face_landmark_model_web.dart';
@@ -79,6 +80,8 @@ class FaceDetector with WebGpuFallback {
     double minScore = 0.0,
     double minFaceSize = 0.0,
     double minFacePresenceConfidence = kDefaultMinFacePresenceConfidence,
+    bool enableTracking = false,
+    int maxMissedFrames = kDefaultMaxMissedFrames,
   }) async {
     final detector = FaceDetector();
     await detector.initialize(
@@ -95,6 +98,8 @@ class FaceDetector with WebGpuFallback {
       minScore: minScore,
       minFaceSize: minFaceSize,
       minFacePresenceConfidence: minFacePresenceConfidence,
+      enableTracking: enableTracking,
+      maxMissedFrames: maxMissedFrames,
     );
     return detector;
   }
@@ -118,6 +123,7 @@ class FaceDetector with WebGpuFallback {
   double _minScore = 0.0;
   double _minFaceSize = 0.0;
   double _minFacePresenceConfidence = kDefaultMinFacePresenceConfidence;
+  final TemporalTrackingController _tracking = TemporalTrackingController();
 
   /// Builds the runner config for the current engine selection at the given
   /// [accelerator] (`'auto'` / `'webgpu'` / `'wasm'`). Every per-model
@@ -150,6 +156,40 @@ class FaceDetector with WebGpuFallback {
     minScore: _minScore,
     minFaceSize: _minFaceSize,
     minFacePresenceConfidence: _minFacePresenceConfidence,
+  );
+
+  /// Whether temporal IDs are assigned to faces across sequential calls.
+  bool get isTrackingEnabled => _tracking.isEnabled;
+
+  /// Clears all temporal associations and restarts ID allocation.
+  ///
+  /// Use this when changing cameras, videos, or unrelated image sequences.
+  /// Tracking is geometric and short-lived; it is not face recognition.
+  /// Processed frames a tracked face may go undetected before its
+  /// `Face.trackingId` is retired. Defaults to [kDefaultMaxMissedFrames] (3).
+  int get maxMissedFrames => _tracking.maxMissedFrames;
+
+  void resetTracking() => _tracking.reset();
+
+  Future<T> _runTrackingSequenced<T>(
+    Future<T> Function() operation,
+    T Function(T value) attachTracking,
+  ) => _tracking.run(operation, attachTracking);
+
+  Future<List<Face>> _runTrackedDetection(
+    Future<List<Face>> Function() operation,
+  ) => _runTrackingSequenced<List<Face>>(operation, _tracking.attachFaces);
+
+  Future<DetectionWithSegmentationResult> _runTrackedCombinedDetection(
+    Future<DetectionWithSegmentationResult> Function() operation,
+  ) => _runTrackingSequenced<DetectionWithSegmentationResult>(
+    operation,
+    (DetectionWithSegmentationResult result) => DetectionWithSegmentationResult(
+      faces: _tracking.attachFaces(result.faces),
+      segmentationMask: result.segmentationMask,
+      detectionTimeMs: result.detectionTimeMs,
+      segmentationTimeMs: result.segmentationTimeMs,
+    ),
   );
 
   /// Last-call per-stage timings (set when [debugTimings] is true).
@@ -294,6 +334,8 @@ class FaceDetector with WebGpuFallback {
     double minScore = 0.0,
     double minFaceSize = 0.0,
     double minFacePresenceConfidence = kDefaultMinFacePresenceConfidence,
+    bool enableTracking = false,
+    int maxMissedFrames = kDefaultMaxMissedFrames,
   }) async {
     if (isReady) {
       throw StateError('FaceDetector already initialized');
@@ -303,9 +345,14 @@ class FaceDetector with WebGpuFallback {
       minFaceSize: minFaceSize,
       minFacePresenceConfidence: minFacePresenceConfidence,
     );
+    validateTrackingConfig(maxMissedFrames: maxMissedFrames);
     _minScore = minScore;
     _minFaceSize = minFaceSize;
     _minFacePresenceConfidence = minFacePresenceConfidence;
+    _tracking.configure(
+      enabled: enableTracking,
+      maxMissedFrames: maxMissedFrames,
+    );
     _liteRtAccelerator = liteRtAccelerator;
     _useCompiledModel = useCompiledModel;
     _strictWebGpu = strictWebGpu;
@@ -350,6 +397,7 @@ class FaceDetector with WebGpuFallback {
   }
 
   Future<void> dispose() async {
+    _tracking.configure(enabled: false);
     await _detector.dispose();
     await _mesh.dispose();
     await _iris.dispose();
@@ -376,7 +424,9 @@ class FaceDetector with WebGpuFallback {
         'FaceDetector not initialized. Call initialize() before using.',
       );
     }
-    return withFallback(() => _detectFacesInner(imageBytes, mode: mode));
+    return _runTrackedDetection(
+      () => withFallback(() => _detectFacesInner(imageBytes, mode: mode)),
+    );
   }
 
   /// Deprecated alias for [detectFacesFromBytes].
@@ -449,12 +499,14 @@ class FaceDetector with WebGpuFallback {
     final int height = video.videoHeight;
     if (width == 0 || height == 0) return const <Face>[];
 
-    return withFallback(
-      () => _detectFacesFromVideoInner(
-        video,
-        width: width,
-        height: height,
-        mode: mode,
+    return _runTrackedDetection(
+      () => withFallback(
+        () => _detectFacesFromVideoInner(
+          video,
+          width: width,
+          height: height,
+          mode: mode,
+        ),
       ),
     );
   }
@@ -702,42 +754,44 @@ class FaceDetector with WebGpuFallback {
     // Decode the image once and feed the same bitmap to both stages; the
     // previous implementation decoded the identical bytes twice (once per
     // stage), adding a full createImageBitmap to every combined call.
-    return withFallback(() async {
-      final detSw = Stopwatch()..start();
-      final web.ImageBitmap? bitmap = await decodeBitmap(imageBytes);
-      if (bitmap == null) {
-        // Match the previous behavior: detection yields no faces on decode
-        // failure and the segmentation stage throws.
-        throw const SegmentationException(
-          SegmentationError.imageDecodeFailed,
-          'Failed to decode image bytes via createImageBitmap.',
-        );
-      }
-      try {
-        final faces = await _runPipelineOnSource(
-          bitmap,
-          imageWidth: bitmap.width,
-          imageHeight: bitmap.height,
-          mode: mode,
-        );
-        detSw.stop();
-        final segSw = Stopwatch()..start();
-        final mask = await _segmenter!.segment(
-          bitmap,
-          imageWidth: bitmap.width,
-          imageHeight: bitmap.height,
-        );
-        segSw.stop();
-        return DetectionWithSegmentationResult(
-          faces: faces,
-          segmentationMask: mask,
-          detectionTimeMs: detSw.elapsedMilliseconds,
-          segmentationTimeMs: segSw.elapsedMilliseconds,
-        );
-      } finally {
-        bitmap.close();
-      }
-    });
+    return _runTrackedCombinedDetection(
+      () => withFallback(() async {
+        final detSw = Stopwatch()..start();
+        final web.ImageBitmap? bitmap = await decodeBitmap(imageBytes);
+        if (bitmap == null) {
+          // Match the previous behavior: detection yields no faces on decode
+          // failure and the segmentation stage throws.
+          throw const SegmentationException(
+            SegmentationError.imageDecodeFailed,
+            'Failed to decode image bytes via createImageBitmap.',
+          );
+        }
+        try {
+          final faces = await _runPipelineOnSource(
+            bitmap,
+            imageWidth: bitmap.width,
+            imageHeight: bitmap.height,
+            mode: mode,
+          );
+          detSw.stop();
+          final segSw = Stopwatch()..start();
+          final mask = await _segmenter!.segment(
+            bitmap,
+            imageWidth: bitmap.width,
+            imageHeight: bitmap.height,
+          );
+          segSw.stop();
+          return DetectionWithSegmentationResult(
+            faces: faces,
+            segmentationMask: mask,
+            detectionTimeMs: detSw.elapsedMilliseconds,
+            segmentationTimeMs: segSw.elapsedMilliseconds,
+          );
+        } finally {
+          bitmap.close();
+        }
+      }),
+    );
   }
 
   Future<SegmentationMask> getSegmentationMask(

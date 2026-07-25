@@ -1071,6 +1071,17 @@ class Face {
   /// Underlying detection (bbox + 6 keypoints).
   final Detection detectionData;
 
+  /// Stable ID assigned across sequential frames when temporal tracking is
+  /// enabled on the creating `FaceDetector`.
+  ///
+  /// Null when tracking is disabled, and also null on a result that was
+  /// already in flight when `FaceDetector.resetTracking()` was called, since
+  /// such a result belongs to the stream that was just discarded.
+  ///
+  /// This is geometric, short-lived tracking, not face recognition: an ID can
+  /// change after a long disappearance or after `resetTracking()` is called.
+  final int? trackingId;
+
   /// 468-point face mesh (null in fast mode).
   final FaceMesh? mesh;
 
@@ -1103,10 +1114,23 @@ class Face {
     required List<Point> irises,
     required this.originalSize,
     List<double>? blendshapeScores,
+    this.trackingId,
   }) : detectionData = detection,
        irisPoints = irises,
        _blendshapeScores = blendshapeScores,
        boundingBox = _computeBoundingBox(detection.boundingBox, originalSize);
+
+  /// Returns this result with [trackingId] attached.
+  ///
+  /// All detector, mesh, iris, and blendshape data is retained unchanged.
+  Face withTrackingId(int trackingId) => Face(
+    detection: detectionData,
+    mesh: mesh,
+    irises: irisPoints,
+    originalSize: originalSize,
+    blendshapeScores: _blendshapeScores,
+    trackingId: trackingId,
+  );
 
   static BoundingBox _computeBoundingBox(RectF r, Size originalSize) {
     final double w = originalSize.width.toDouble();
@@ -1325,6 +1349,7 @@ class Face {
   /// Serializes this face to a map for isolate transfer.
   Map<String, dynamic> toMap() => {
     'detection': detectionData.toMap(),
+    if (trackingId != null) 'trackingId': trackingId,
     if (mesh != null) 'mesh': mesh!.toMap(),
     'irisPoints': irisPoints.map((p) => p.toMap()).toList(),
     if (_blendshapeScores != null) 'blendshapeScores': _blendshapeScores,
@@ -1337,6 +1362,7 @@ class Face {
   /// Creates a face from a map.
   factory Face.fromMap(Map<String, dynamic> map) => Face(
     detection: Detection.fromMap(map['detection']),
+    trackingId: map['trackingId'] as int?,
     mesh: map['mesh'] != null ? FaceMesh.fromMap(map['mesh']) : null,
     irises: (map['irisPoints'] as List).map((p) => Point.fromMap(p)).toList(),
     blendshapeScores: map['blendshapeScores'] != null

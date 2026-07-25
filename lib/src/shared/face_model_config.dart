@@ -61,6 +61,17 @@ const double kMinScore = 0.5;
 /// (and thus a presence score) is computed. Pass 0.0 to disable the gate.
 const double kDefaultMinFacePresenceConfidence = 0.5;
 
+/// Default number of processed frames a tracked face may go undetected before
+/// its `Face.trackingId` is retired.
+///
+/// Counted in frames the detector actually processed, not wall-clock time or
+/// camera frames the caller skipped: a frame dropped before it reaches the
+/// detector never ages a track. Raise this when frames are processed far
+/// apart (heavy modes, or a busy-frame-dropping camera loop), so a face is not
+/// given a new ID after a brief occlusion. Only applies when tracking is
+/// enabled.
+const int kDefaultMaxMissedFrames = 3;
+
 /// IoU threshold used during weighted NMS. Matches MediaPipe's
 /// `min_suppression_threshold` (0.3).
 const double kMinSuppressionThreshold = 0.3;

@@ -19,6 +19,7 @@ import 'package:flutter_litert/native.dart' hide Detection;
 
 import '../shared/face_types.dart';
 import '../shared/face_gates.dart';
+import '../shared/face_tracker.dart';
 import '../shared/face_model_config.dart';
 import '../shared/blendshape_input.dart';
 
@@ -40,7 +41,8 @@ export '../shared/face_model_config.dart'
         kSegmentationGeneralModel,
         kSegmentationLandscapeModel,
         kSegmentationMulticlassModel,
-        kDefaultMinFacePresenceConfidence;
+        kDefaultMinFacePresenceConfidence,
+        kDefaultMaxMissedFrames;
 export '../shared/face_geometry.dart' show eyeRoisFromMesh, faceDetectionToRoi;
 export '../shared/blendshape_input.dart'
     show Blendshape, kBlendshapeNames, kBlendshapeCount;

@@ -76,6 +76,7 @@ jobs:
             opencv_helpers_test.dart
             performance_config_test.dart
             face_detection_integration_test.dart
+            face_tracking_integration_test.dart
             blendshapes_integration_test.dart
             face_contours_integration_test.dart
             gates_integration_test.dart

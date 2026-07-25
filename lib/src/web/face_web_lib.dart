@@ -11,7 +11,7 @@ export '../shared/blendshape_input.dart'
 // Kept in sync with the native entry point so the documented default is
 // reachable on every platform, not just native.
 export '../shared/face_model_config.dart'
-    show kDefaultMinFacePresenceConfidence;
+    show kDefaultMinFacePresenceConfidence, kDefaultMaxMissedFrames;
 export 'face_detector_web.dart' show FaceDetector, WebDetectTimings;
 
 // Subset of flutter_litert helpers that user code may rely on.

@@ -11,4 +11,8 @@ void main() {
       'default', () {
     expect(kDefaultMinFacePresenceConfidence, 0.5);
   });
+
+  test('kDefaultMaxMissedFrames is exported with its documented default', () {
+    expect(kDefaultMaxMissedFrames, 3);
+  });
 }

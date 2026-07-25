@@ -32,6 +32,7 @@ Runs 100% offline/on-device. Highly performant: full detection runs in ~8ms per 
 - 468 point mesh with 3D depth information (x, y, z coordinates)
 - Head pose: pitch, yaw & roll Euler angles (ML Kit compatible conventions)
 - Face classification: smile probability + per-eye open probability (ML Kit compatible), plus all 52 MediaPipe blendshape coefficients
+- Optional temporal tracking: stable `trackingId` values across sequential video frames
 - Named face contours (ML Kit `FaceContourType` compatible): face oval, eyebrows, eyes, lips, nose and cheeks, derived from the mesh
 - Selfie segmentation: separate person from background, or use multiclass model for 6-class body part segmentation (hair, face, body, clothes, etc.)
 - Face recognition (embeddings): identify/compare faces across images
@@ -797,6 +798,69 @@ directly between them. See the
 ## Background Processing
 
 All inference runs automatically in a background isolate: the UI thread is never blocked during detection, mesh computation, iris tracking, or embedding generation. No special configuration is needed; `FaceDetector` handles isolate management internally.
+
+## Temporal Face Tracking
+
+Enable geometric tracking to keep the same ID attached to a moving face across
+sequential camera or video frames:
+
+```dart
+final detector = await FaceDetector.create(enableTracking: true);
+var processingFrame = false;
+
+camera.startImageStream((image) async {
+  // Drop frames while inference is busy so a real-time stream cannot build
+  // an ever-growing queue of stale frames.
+  if (processingFrame) return;
+  processingFrame = true;
+  try {
+    final faces = await detector.detectFacesFromCameraImage(
+      image,
+      mode: FaceDetectionMode.fast,
+      maxDim: 640,
+    );
+
+    for (final face in faces) {
+      print('face ${face.trackingId} at ${face.boundingBox.center}');
+    }
+  } finally {
+    processingFrame = false;
+  }
+});
+```
+
+`Face.trackingId` is non-null only when tracking is enabled. IDs remain stable
+when detector output order changes and survive brief detector dropouts. All
+tracking-enabled detection calls on one detector are sequenced in invocation
+order, including the combined detection + segmentation APIs.
+
+Call `detector.resetTracking()` before switching cameras, videos, or unrelated
+image sequences. Tracking uses bounding-box position, size, and motion; it is
+not face recognition and cannot identify someone who leaves and later returns.
+
+### Tuning dropout tolerance
+
+`maxMissedFrames` controls how many **processed** frames a face may go
+undetected before its ID is retired. It defaults to `kDefaultMaxMissedFrames`
+(3).
+
+```dart
+final detector = await FaceDetector.create(
+  enableTracking: true,
+  maxMissedFrames: 8,
+);
+```
+
+The count is in frames the detector actually ran, not wall-clock time and not
+camera frames your app skipped: a frame dropped before it reaches the detector
+never ages a track. That distinction matters for the pattern above, which skips
+frames while inference is busy. If each processed frame costs 70ms, the default
+of 3 retires an ID after roughly a fifth of a second of non-detection, which a
+face turning away or briefly occluded can easily exceed. Raise it when frames
+are processed far apart; lower it (`0` retires on the first miss) when you would
+rather see a new ID than risk an ID surviving onto a different person.
+
+Passing a negative value throws `ArgumentError` before any model loads.
 
 ## Face Recognition (Embeddings) 
 
