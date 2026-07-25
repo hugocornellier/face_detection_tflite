@@ -8,6 +8,10 @@ export '../dart_registration.dart';
 export 'types.dart';
 export '../shared/blendshape_input.dart'
     show Blendshape, kBlendshapeNames, kBlendshapeCount;
+// Kept in sync with the native entry point so the documented default is
+// reachable on every platform, not just native.
+export '../shared/face_model_config.dart'
+    show kDefaultMinFacePresenceConfidence;
 export 'face_detector_web.dart' show FaceDetector, WebDetectTimings;
 
 // Subset of flutter_litert helpers that user code may rely on.

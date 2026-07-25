@@ -39,7 +39,8 @@ export '../shared/face_model_config.dart'
         kEmbeddingModel,
         kSegmentationGeneralModel,
         kSegmentationLandscapeModel,
-        kSegmentationMulticlassModel;
+        kSegmentationMulticlassModel,
+        kDefaultMinFacePresenceConfidence;
 export '../shared/face_geometry.dart' show eyeRoisFromMesh, faceDetectionToRoi;
 export '../shared/blendshape_input.dart'
     show Blendshape, kBlendshapeNames, kBlendshapeCount;
