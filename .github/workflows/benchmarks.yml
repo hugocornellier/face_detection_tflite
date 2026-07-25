@@ -1,0 +1,68 @@
+name: Benchmarks
+
+# Measurement and diagnostic integration tests. These files carry no
+# assertions (or wrap their assertions around an A/B measurement), so they
+# cannot fail on a regression and do not belong in per-commit CI. They run
+# here nightly so the numbers keep getting produced.
+#
+# Kept deliberately separate from integration.yml: adding a `schedule`
+# trigger there would run the whole four-platform matrix every night.
+
+on:
+  schedule:
+    # 07:00 UTC daily.
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: benchmarks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  benchmarks-macos:
+    name: Benchmarks macOS
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install example dependencies
+        run: flutter pub get
+        working-directory: example
+
+      # Same constraint as integration.yml: the macOS test runner needs one
+      # file per invocation with the app process killed in between.
+      - name: Run benchmark and diagnostic tests
+        working-directory: example
+        run: |
+          set -e
+          TEST_FILES=(
+            benchmark_test.dart
+            isolate_mat_debug_test.dart
+            compiledmodel_ab_test.dart
+          )
+          FAILED=()
+          for f in "${TEST_FILES[@]}"; do
+            echo "========================================="
+            echo "Running: $f"
+            echo "========================================="
+            pkill -9 -f "face_detection_tflite_example" 2>/dev/null || true
+            sleep 2
+            if ! flutter test "integration_test/$f" -d macos --timeout 900s; then
+              FAILED+=("$f")
+              echo "::error::FAILED: $f"
+            fi
+          done
+          if [ ${#FAILED[@]} -gt 0 ]; then
+            echo ""
+            echo "========================================="
+            echo "FAILED TESTS:"
+            printf '  - %s\n' "${FAILED[@]}"
+            echo "========================================="
+            exit 1
+          fi

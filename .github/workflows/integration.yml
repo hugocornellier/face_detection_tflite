@@ -81,7 +81,6 @@ jobs:
             gates_integration_test.dart
             embedding_match_test.dart
             gpu_delegate_test.dart
-            benchmark_test.dart
             error_recovery_test.dart
             edge_cases_test.dart
             all_model_variants_test.dart
@@ -90,8 +89,16 @@ jobs:
             helpers_unit_test.dart
             assertion_gaps_test.dart
             selfie_segmentation_test.dart
-            isolate_mat_debug_test.dart
             coverage_gaps_test.dart
+            lipstick_overlay_test.dart
+            preprocessing_equivalence_test.dart
+            glue_micro_bench_test.dart
+            cm_embedding_segmentation_test.dart
+            # macOS-only by @TestOn('mac-os'); on other platforms these
+            # register zero tests, which is a failure, not a skip.
+            accelerator_control_test.dart
+            cm_all_models_test.dart
+            cm_stress_test.dart
           )
           FAILED=()
           for f in "${TEST_FILES[@]}"; do
@@ -307,7 +314,6 @@ jobs:
             gates_integration_test.dart
             embedding_match_test.dart
             gpu_delegate_test.dart
-            benchmark_test.dart
             error_recovery_test.dart
             edge_cases_test.dart
             all_model_variants_test.dart
@@ -316,8 +322,11 @@ jobs:
             helpers_unit_test.dart
             assertion_gaps_test.dart
             selfie_segmentation_test.dart
-            isolate_mat_debug_test.dart
             coverage_gaps_test.dart
+            lipstick_overlay_test.dart
+            preprocessing_equivalence_test.dart
+            glue_micro_bench_test.dart
+            cm_embedding_segmentation_test.dart
           )
           FAILED=()
           ADB=/usr/local/lib/android/sdk/platform-tools/adb
@@ -330,7 +339,7 @@ jobs:
             LOG="$RUNNER_TEMP/$f.log"
             flutter test "integration_test/$f" -d emulator-5554 2>&1 | tee "$LOG" || true
             if grep -q "Some tests failed" "$LOG" || \
-               ! grep -qE "(All tests passed|[0-9]+ tests? passed)" "$LOG"; then
+               ! grep -qE "(All tests passed|[1-9][0-9]* tests? passed)" "$LOG"; then
               FAILED+=("$f")
               echo "::error::FAILED: $f"
             fi
@@ -450,7 +459,6 @@ jobs:
             gates_integration_test.dart
             embedding_match_test.dart
             gpu_delegate_test.dart
-            benchmark_test.dart
             error_recovery_test.dart
             edge_cases_test.dart
             all_model_variants_test.dart
@@ -459,8 +467,11 @@ jobs:
             helpers_unit_test.dart
             assertion_gaps_test.dart
             selfie_segmentation_test.dart
-            isolate_mat_debug_test.dart
             coverage_gaps_test.dart
+            lipstick_overlay_test.dart
+            preprocessing_equivalence_test.dart
+            glue_micro_bench_test.dart
+            cm_embedding_segmentation_test.dart
           )
           FAILED=()
           for f in "${TEST_FILES[@]}"; do
@@ -471,7 +482,7 @@ jobs:
             sleep 2
             flutter test "integration_test/$f" -d linux 2>&1 | tee "$RUNNER_TEMP/$f.log" || true
             if grep -q "Some tests failed" "$RUNNER_TEMP/$f.log" || \
-               ! grep -qE "(All tests passed|[0-9]+ tests? passed)" "$RUNNER_TEMP/$f.log"; then
+               ! grep -qE "(All tests passed|[1-9][0-9]* tests? passed)" "$RUNNER_TEMP/$f.log"; then
               FAILED+=("$f")
               echo "::error::FAILED: $f"
             fi
@@ -535,7 +546,6 @@ jobs:
             gates_integration_test.dart
             embedding_match_test.dart
             gpu_delegate_test.dart
-            benchmark_test.dart
             error_recovery_test.dart
             edge_cases_test.dart
             all_model_variants_test.dart
@@ -544,8 +554,11 @@ jobs:
             helpers_unit_test.dart
             assertion_gaps_test.dart
             selfie_segmentation_test.dart
-            isolate_mat_debug_test.dart
             coverage_gaps_test.dart
+            lipstick_overlay_test.dart
+            preprocessing_equivalence_test.dart
+            glue_micro_bench_test.dart
+            cm_embedding_segmentation_test.dart
           )
           FAILED=()
           for f in "${TEST_FILES[@]}"; do
@@ -554,7 +567,9 @@ jobs:
             echo "========================================="
             taskkill //F //IM "face_detection_tflite_example.exe" 2>/dev/null || true
             sleep 2
-            if ! flutter test "integration_test/$f" -d windows; then
+            # Windows runners are slow enough that the 30s default per-test
+            # timeout trips on the heavier CompiledModel comparisons.
+            if ! flutter test "integration_test/$f" -d windows --timeout 600s; then
               FAILED+=("$f")
               echo "::error::FAILED: $f"
             fi
