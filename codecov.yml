@@ -1,0 +1,115 @@
+# Codecov configuration for face_detection_tflite.
+#
+# WHY THIS FILE EXISTS
+#
+# Only the host unit-test suite (`flutter test --coverage`, the `unit-tests`
+# job in .github/workflows/integration.yml) reports coverage. Nothing else in
+# CI can, and this has been verified rather than assumed:
+#
+#   * `flutter test <file> -d macos --coverage` runs the integration suite
+#     fine but writes a 0-byte lcov.info. Flutter has no coverage collection
+#     for device integration tests.
+#   * `flutter test --platform chrome --coverage` runs browser tests but adds
+#     no web files to the report.
+#
+# Two consequences, and they pull in opposite directions:
+#
+#   1. Files exercised only by the integration suite report 0%, even though 49
+#      integration tests drive them across five platforms. face_detector_core,
+#      face_detection_model, and face_landmark are the clearest cases: they are
+#      genuinely tested and permanently unmeasurable.
+#   2. Files no host test imports are absent from the report entirely, so they
+#      never enter the denominator. That is all of lib/src/web/** except
+#      detection_decode.dart (dart:js_interop cannot compile for the VM), plus
+#      lib/src/native/face_native_lib.dart and the entry-point barrels. Roughly
+#      780 executable lines sit outside the total.
+#
+# So the repository-wide percentage understates the native pipeline and
+# overstates the package. It is not a number worth defending or chasing, which
+# is why every repo-level status below is informational.
+#
+# What IS worth gating is the pure-Dart logic layer: it has no platform
+# dependencies, it is shared by the native and web pipelines, and it is fully
+# reachable from host tests. That is the `logic` component, and it is the only
+# blocking status here.
+
+codecov:
+  require_ci_to_pass: false
+
+coverage:
+  precision: 2
+  round: down
+  range: "20...100"
+  status:
+    # The repo-wide number averages three populations with entirely different
+    # testability (see above). Reported, never enforced.
+    project:
+      default:
+        informational: true
+    # Patch coverage would misfire on any change to the web or model layers,
+    # where new lines cannot be measured no matter how well they are tested.
+    patch:
+      default:
+        informational: true
+
+flags:
+  unit-tests:
+    paths:
+      - lib/
+    carryforward: false
+
+component_management:
+  # Anything not matched by a component below, and any component that does not
+  # set its own statuses, reports without gating.
+  default_rules:
+    statuses:
+      - type: project
+        informational: true
+
+  individual_components:
+    # Pure Dart, no platform imports, shared by both pipelines. Fully
+    # host-testable, so this number means what it appears to mean and is the
+    # real regression signal for this package. Measured at 99.40% (822/827)
+    # when this file was written; the threshold allows a few lines of drift
+    # without turning the gate into noise.
+    - component_id: logic
+      name: "logic (pure Dart, host-tested)"
+      paths:
+        - lib/src/shared/**
+        - lib/src/web/detection_decode.dart
+      statuses:
+        - type: project
+          target: 99%
+          threshold: 1%
+          informational: false
+
+    # The model, isolate, and detector-facade layers. Driven by the integration
+    # suite on macOS, iOS, Android, Linux, and Windows, none of which can emit
+    # coverage. A low number here is expected and means nothing on its own.
+    - component_id: orchestration
+      name: "orchestration (integration-tested, unmeasurable)"
+      paths:
+        - lib/src/models/**
+        - lib/src/isolate/**
+        - lib/src/face_detector.dart
+
+    # Native-only helpers (part of face_native_lib). The pure-Dart half is
+    # unit-tested; the image-op half needs a real native pipeline.
+    - component_id: native-util
+      name: "native utils (partly host-tested)"
+      paths:
+        - lib/src/util/**
+
+    # Overlay painters, timing widgets, and demo controls. Public API, but
+    # presentation scaffolding rather than detection logic. Golden tests would
+    # move this if it ever becomes worth doing.
+    - component_id: ui
+      name: "demo UI"
+      paths:
+        - lib/src/ui/**
+
+# Deliberately no `web` component. lib/src/web/** contributes exactly one file
+# to the report (detection_decode.dart, counted under `logic`), so a web
+# component would read ~100% while the 1,059-line face_detector_web.dart and
+# the five web model wrappers are absent. Web correctness is covered by the
+# chromedriver integration drive, not by anything visible here.
