@@ -22,6 +22,9 @@ import '../shared/face_gates.dart';
 import '../shared/face_tracker.dart';
 import '../shared/face_model_config.dart';
 import '../shared/blendshape_input.dart';
+// Prefixed: `FaceDetector.eyeRoisFromMesh` is a method with the same name as
+// the shared top-level function it delegates to.
+import '../shared/face_geometry.dart' as geom;
 
 export '../dart_registration.dart';
 

@@ -1024,20 +1024,8 @@ class FaceDetector {
   /// - Right eye: points 362 (inner corner) and 263 (outer corner)
   ///
   /// Returns a list of two [AlignedRoi] objects: `[left eye, right eye]`.
-  List<AlignedRoi> eyeRoisFromMesh(List<Point> meshAbs) {
-    AlignedRoi fromCorners(int a, int b) {
-      final Point p0 = meshAbs[a];
-      final Point p1 = meshAbs[b];
-      final double cx = (p0.x + p1.x) * 0.5;
-      final double cy = (p0.y + p1.y) * 0.5;
-      final double dx = p1.x - p0.x;
-      final double dy = p1.y - p0.y;
-      final double eyeDist = math.sqrt(dx * dx + dy * dy);
-      return AlignedRoi(cx, cy, eyeDist * 2.3, math.atan2(dy, dx));
-    }
-
-    return [fromCorners(33, 133), fromCorners(362, 263)];
-  }
+  List<AlignedRoi> eyeRoisFromMesh(List<Point> meshAbs) =>
+      geom.eyeRoisFromMesh(meshAbs);
 
   /// Splits a concatenated list of mesh points into individual face meshes.
   ///
@@ -1897,76 +1885,15 @@ const int _kLeftIrisEnd = 76;
 const int _kRightIrisStart = 147;
 const int _kRightIrisEnd = 152;
 
-/// Computes face alignment geometry from detection keypoints.
-({double theta, double cx, double cy, double size}) _computeFaceAlignment(
-  Detection det,
-  double imgW,
-  double imgH,
-) {
-  final lx = det.keypointsXY[FaceLandmarkType.leftEye.index * 2] * imgW;
-  final ly = det.keypointsXY[FaceLandmarkType.leftEye.index * 2 + 1] * imgH;
-  final rx = det.keypointsXY[FaceLandmarkType.rightEye.index * 2] * imgW;
-  final ry = det.keypointsXY[FaceLandmarkType.rightEye.index * 2 + 1] * imgH;
-  final mx = det.keypointsXY[FaceLandmarkType.mouth.index * 2] * imgW;
-  final my = det.keypointsXY[FaceLandmarkType.mouth.index * 2 + 1] * imgH;
-
-  final eyeCx = (lx + rx) * 0.5;
-  final eyeCy = (ly + ry) * 0.5;
-  final vEx = rx - lx;
-  final vEy = ry - ly;
-  final vMx = mx - eyeCx;
-  final vMy = my - eyeCy;
-
-  final theta = math.atan2(vEy, vEx);
-  final eyeDist = math.sqrt(vEx * vEx + vEy * vEy);
-  final mouthDist = math.sqrt(vMx * vMx + vMy * vMy);
-  final size = math.max(mouthDist * 3.6, eyeDist * 4.0);
-
-  final cx = eyeCx + vMx * 0.1;
-  final cy = eyeCy + vMy * 0.1;
-
-  return (theta: theta, cx: cx, cy: cy, size: size);
-}
-
-/// Transforms normalized mesh landmarks to absolute image coordinates
-/// using an affine transformation defined by center, size, and rotation.
-List<Point> _transformMeshToAbsolute(
-  List<List<double>> lmNorm,
-  double cx,
-  double cy,
-  double size,
-  double theta,
-) {
-  final double ct = math.cos(theta);
-  final double st = math.sin(theta);
-  final double sct = size * ct;
-  final double sst = size * st;
-  final double tx = cx - 0.5 * sct + 0.5 * sst;
-  final double ty = cy - 0.5 * sst - 0.5 * sct;
-
-  final int n = lmNorm.length;
-  final List<Point> mesh = List<Point>.filled(n, const Point(0, 0, 0));
-
-  for (int i = 0; i < n; i++) {
-    final List<double> p = lmNorm[i];
-    mesh[i] = Point(
-      tx + sct * p[0] - sst * p[1],
-      ty + sst * p[0] + sct * p[1],
-      p[2] * size,
-    );
-  }
-  return mesh;
-}
-
-/// Test-only: exposes the internal face alignment computation for unit tests.
+/// Test-only: exposes the shared face alignment computation for unit tests.
 @visibleForTesting
 ({double theta, double cx, double cy, double size}) testComputeFaceAlignment(
   Detection det,
   double imgW,
   double imgH,
-) => _computeFaceAlignment(det, imgW, imgH);
+) => geom.computeFaceAlignment(det, imgW, imgH);
 
-/// Test-only: exposes the internal mesh-to-absolute transform for unit tests.
+/// Test-only: exposes the shared mesh-to-absolute transform for unit tests.
 @visibleForTesting
 List<Point> testTransformMeshToAbsolute(
   List<List<double>> lmNorm,
@@ -1974,7 +1901,7 @@ List<Point> testTransformMeshToAbsolute(
   double cy,
   double size,
   double theta,
-) => _transformMeshToAbsolute(lmNorm, cx, cy, size, theta);
+) => geom.transformMeshToAbsolute(lmNorm, cx, cy, size, theta);
 
 /// Test-only: returns a fresh inference-lock `run` function for unit tests.
 @visibleForTesting

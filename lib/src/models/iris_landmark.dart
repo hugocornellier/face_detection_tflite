@@ -1,28 +1,5 @@
 part of '../native/face_native_lib.dart';
 
-/// Transforms normalized iris landmarks to absolute pixel coordinates
-/// using the alignment parameters from an [AlignedRoi].
-///
-/// When [isRight] is true, the x-coordinate is flipped (mirrored) before
-/// transforming, which undoes the horizontal flip applied to right eye crops.
-List<List<double>> _transformIrisToAbsolute(
-  List<List<double>> lmNorm,
-  AlignedRoi roi,
-  bool isRight,
-) {
-  final double ct = math.cos(roi.theta);
-  final double st = math.sin(roi.theta);
-  final double s = roi.size;
-  final List<List<double>> out = <List<double>>[];
-  for (final List<double> p in lmNorm) {
-    final double px = isRight ? (1.0 - p[0]) : p[0];
-    final double lx2 = (px - 0.5) * s;
-    final double ly2 = (p[1] - 0.5) * s;
-    out.add([roi.cx + lx2 * ct - ly2 * st, roi.cy + lx2 * st + ly2 * ct, p[2]]);
-  }
-  return out;
-}
-
 /// Estimates dense iris keypoints within cropped eye regions and lets callers
 /// derive a robust iris center (with fallback if inference fails).
 ///
@@ -425,10 +402,10 @@ class IrisLandmark with _TfliteModelDisposable {
   }
 }
 
-/// Test-only: exposes the private iris-to-absolute transform for unit tests.
+/// Test-only: exposes the shared iris-to-absolute transform for unit tests.
 @visibleForTesting
 List<List<double>> testTransformIrisToAbsolute(
   List<List<double>> lmNorm,
   AlignedRoi roi,
   bool isRight,
-) => _transformIrisToAbsolute(lmNorm, roi, isRight);
+) => geom.transformIrisNormToAbsolute(lmNorm, roi, isRight);

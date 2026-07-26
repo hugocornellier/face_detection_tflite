@@ -256,7 +256,7 @@ class _FaceDetectorCore {
           // Fast mode never uses the crop: compute only the alignment
           // geometry, keeping the same degenerate-size drop condition as
           // _estimateAlignedFace without paying for the warp.
-          final (theta: _, cx: _, cy: _, :size) = _computeFaceAlignment(
+          final (theta: _, cx: _, cy: _, :size) = geom.computeFaceAlignment(
             det,
             width.toDouble(),
             height.toDouble(),
@@ -476,7 +476,7 @@ class _FaceDetectorCore {
   }
 
   Future<AlignedFace> _estimateAlignedFace(cv.Mat image, Detection det) async {
-    final (:theta, :cx, :cy, :size) = _computeFaceAlignment(
+    final (:theta, :cx, :cy, :size) = geom.computeFaceAlignment(
       det,
       image.cols.toDouble(),
       image.rows.toDouble(),
@@ -518,7 +518,7 @@ class _FaceDetectorCore {
     }
     final res = await _meshPool!.withItem((fl) => fl.callWithScore(faceCrop));
     return (
-      points: _transformMeshToAbsolute(res.landmarks, cx, cy, size, theta),
+      points: geom.transformMeshToAbsolute(res.landmarks, cx, cy, size, theta),
       score: res.score,
     );
   }
@@ -526,29 +526,14 @@ class _FaceDetectorCore {
   /// Eye crop extraction (warpAffine) is done serially to avoid opencv_dart
   /// freeze issues, but TFLite inference runs in parallel for performance.
   ///
-  /// Eye ROIs are computed using the same geometry as
-  /// [FaceDetector.eyeRoisFromMesh] to keep iris alignment consistent between
-  /// the public API and the isolate path.
+  /// Eye ROIs come from the shared [geom.eyeRoisFromMesh], the same function
+  /// backing [FaceDetector.eyeRoisFromMesh], so iris alignment cannot drift
+  /// between the public API and the isolate path.
   Future<List<Point>> _irisFromMesh(cv.Mat image, List<Point> meshAbs) async {
     if (_irisLeft == null || _irisRight == null) return <Point>[];
     if (meshAbs.length < 468) return <Point>[];
 
-    List<AlignedRoi> roisFromMesh(List<Point> mesh) {
-      AlignedRoi fromCorners(int a, int b) {
-        final p0 = mesh[a];
-        final p1 = mesh[b];
-        final cx = (p0.x + p1.x) * 0.5;
-        final cy = (p0.y + p1.y) * 0.5;
-        final dx = p1.x - p0.x;
-        final dy = p1.y - p0.y;
-        final eyeDist = math.sqrt(dx * dx + dy * dy);
-        return AlignedRoi(cx, cy, eyeDist * 2.3, math.atan2(dy, dx));
-      }
-
-      return [fromCorners(33, 133), fromCorners(362, 263)];
-    }
-
-    final List<AlignedRoi> rois = roisFromMesh(meshAbs);
+    final List<AlignedRoi> rois = geom.eyeRoisFromMesh(meshAbs);
     if (rois.length < 2) return <Point>[];
 
     // Eye crops are warped straight to the iris model's input resolution
@@ -593,8 +578,16 @@ class _FaceDetectorCore {
       rightCrop.dispose();
     }
 
-    final leftAbs = _transformIrisToAbsolute(results[0], rois[0], false);
-    final rightAbs = _transformIrisToAbsolute(results[1], rois[1], true);
+    final leftAbs = geom.transformIrisNormToAbsolute(
+      results[0],
+      rois[0],
+      false,
+    );
+    final rightAbs = geom.transformIrisNormToAbsolute(
+      results[1],
+      rois[1],
+      true,
+    );
 
     return <Point>[
       for (final p in leftAbs) Point(p[0], p[1], p[2]),
