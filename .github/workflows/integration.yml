@@ -43,6 +43,57 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
+  integration-web:
+    name: Integration Web (stable)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # Browser-side unit tests: the web-only pure-Dart logic compiled by
+      # dart2js instead of the VM, which is where JS number semantics (no
+      # separate int type) would diverge from the host run.
+      - name: Run web unit tests in headless Chrome
+        run: >-
+          flutter test --platform chrome
+          test/web_detection_decode_test.dart
+          test/face_tracking_test.dart
+
+      - name: Install web example dependencies
+        working-directory: example_web
+        run: flutter pub get
+
+      # Real end-to-end detection in a WebDriver-controlled Chrome, covering
+      # lib/src/web/face_detector_web.dart: model assets through rootBundle,
+      # createImageBitmap decode, BlazeFace decode and NMS, the gates, the
+      # mesh stage, tracking, and combined detection + segmentation.
+      # Drives run in profile mode: the integration binding force-enables
+      # semantics and debug builds trip a framework-only semantics assert.
+      # Runners are GPU-less, so the accelerator test keys off a WebGPU
+      # capability probe and asserts the WASM fallback here.
+      # ubuntu-latest preinstalls a version-matched chromedriver at
+      # $CHROMEWEBDRIVER.
+      # The response-data cat runs on failure too: web drives report failure
+      # details as an empty string, so the reportData the suite records is
+      # the only diagnostic a failed run leaves behind.
+      - name: Run web integration tests (chromedriver)
+        working-directory: example_web
+        run: |
+          "$CHROMEWEBDRIVER/chromedriver" --port=4444 &
+          flutter drive --profile \
+            --driver=test_driver/integration_test.dart \
+            --target=integration_test/web_face_detection_test.dart \
+            -d web-server --browser-name=chrome \
+            || { cat build/integration_response_data.json || true; exit 1; }
+          cat build/integration_response_data.json || true
+
   integration-macos:
     name: Integration macOS (${{ matrix.flutter-channel }})
     runs-on: macos-15
