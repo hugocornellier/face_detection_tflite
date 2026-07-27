@@ -1,3 +1,13 @@
+## 6.8.1
+
+* Rename the example app's engine badge from `CM` / `XNN` to
+  `CM` / `Interpreter`. `XNNPACK` is only the delegate the `Interpreter` path
+  uses on desktop and Android; on iOS that path runs the Metal delegate, so an
+  `XNN` label was wrong there. The badge switches between the two
+  `flutter_litert` engine classes, `CompiledModel` and `Interpreter`, so it now
+  names those. The button is fixed-width so swapping labels does not shift the
+  surrounding controls. Example-only change; no library code is affected.
+
 ## 6.8.0
 
 * Feature: opt-in temporal face tracking (`FaceDetector.create(enableTracking: true)`) assigns stable `Face.trackingId` values across sequential native and web detections. Motion-aware geometric association preserves IDs when detector ordering changes and across short detector dropouts; `resetTracking()` clears state when switching streams. `maxMissedFrames` (default `kDefaultMaxMissedFrames`, 3) sets how many processed frames a face may go undetected before its ID is retired, counted in frames the detector actually ran rather than wall-clock time, so a camera loop that drops frames while inference is busy can raise it; negative values throw `ArgumentError` before any model loads. Tracking-enabled calls are sequenced in invocation order, and combined detection + segmentation results are tracked too. Tracking is not face recognition; default behavior remains unchanged with null IDs.

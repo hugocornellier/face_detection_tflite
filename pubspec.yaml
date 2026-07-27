@@ -1,6 +1,6 @@
 name: face_detection_tflite
 description: "Advanced face & landmark detection, embedding and segmentation using on-device LiteRT (formerly TensorFlow Lite) models."
-version: 6.8.0
+version: 6.8.1
 
 repository: https://github.com/hugocornellier/face_detection_tflite
 homepage: https://github.com/hugocornellier/face_detection_tflite
