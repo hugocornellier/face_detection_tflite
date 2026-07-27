@@ -802,7 +802,8 @@ All inference runs automatically in a background isolate: the UI thread is never
 ## Temporal Face Tracking
 
 Enable geometric tracking to keep the same ID attached to a moving face across
-sequential camera or video frames:
+sequential camera or video frames. This example is for native platforms; see
+[On web](#on-web) below for the browser equivalent.
 
 ```dart
 final detector = await FaceDetector.create(enableTracking: true);
@@ -837,6 +838,40 @@ order, including the combined detection + segmentation APIs.
 Call `detector.resetTracking()` before switching cameras, videos, or unrelated
 image sequences. Tracking uses bounding-box position, size, and motion; it is
 not face recognition and cannot identify someone who leaves and later returns.
+
+### On web
+
+Tracking works identically on web, but the entry points differ:
+`detectFacesFromCameraImage` and `detectFacesFromCameraFrame` throw
+`UnsupportedError` in the browser. Feed frames from a `<video>` element with
+`detectFacesFromVideo`, or pass encoded bytes to `detectFacesFromBytes`:
+
+```dart
+final detector = await FaceDetector.create(enableTracking: true);
+var processingFrame = false;
+
+Future<void> onAnimationFrame(web.HTMLVideoElement video) async {
+  // Same frame-dropping rule as native: skip while inference is busy.
+  if (processingFrame) return;
+  processingFrame = true;
+  try {
+    final faces = await detector.detectFacesFromVideo(
+      video,
+      mode: FaceDetectionMode.fast,
+    );
+
+    for (final face in faces) {
+      print('face ${face.trackingId} at ${face.boundingBox.center}');
+    }
+  } finally {
+    processingFrame = false;
+  }
+}
+```
+
+`maxMissedFrames` matters more on web than on native, because a web frame
+typically costs several times what a native one does, so the same ID is
+retired after less wall-clock time. See below.
 
 ### Tuning dropout tolerance
 

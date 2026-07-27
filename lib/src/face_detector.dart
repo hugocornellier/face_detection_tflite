@@ -269,6 +269,13 @@ class FaceDetector {
   /// invocation order. IDs survive brief detector dropouts and can be cleared
   /// with [resetTracking]. Tracking uses box motion, not face recognition.
   ///
+  /// [maxMissedFrames] sets how many processed frames a face may go undetected
+  /// before its ID is retired, defaulting to [kDefaultMaxMissedFrames] (3).
+  /// It counts frames the detector actually ran, not wall-clock time and not
+  /// camera frames dropped before they reached the detector, so raise it when
+  /// frames are processed far apart. Negative values throw [ArgumentError].
+  /// Only meaningful when [enableTracking] is true.
+  ///
   /// Example:
   /// ```dart
   /// // Default: classic Interpreter.

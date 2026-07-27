@@ -66,6 +66,25 @@ class FaceDetector with WebGpuFallback {
 
   FaceDetector();
 
+  /// Creates and initializes a web detector.
+  ///
+  /// Gates behave as on native: [minScore] and [minFaceSize] drop faces right
+  /// after the detector stage, and [minFacePresenceConfidence] right after the
+  /// mesh stage, so rejected faces skip the remaining per-face landmark cost.
+  ///
+  /// Set [enableTracking] to true to assign a stable `Face.trackingId` across
+  /// sequential frames. Tracking-enabled calls are processed in invocation
+  /// order and IDs survive brief detector dropouts; clear them with
+  /// [resetTracking]. Tracking uses box motion, not face recognition. On web
+  /// the frame sources are [detectFacesFromVideo] and [detectFacesFromBytes];
+  /// the camera-frame entry points throw [UnsupportedError] here.
+  ///
+  /// [maxMissedFrames] sets how many processed frames a face may go undetected
+  /// before its ID is retired, defaulting to [kDefaultMaxMissedFrames] (3). It
+  /// counts frames the detector actually ran, not wall-clock time, so raise it
+  /// when frames are processed far apart. Because a web frame typically costs
+  /// several times a native one, the default retires an ID after less
+  /// wall-clock time here. Negative values throw [ArgumentError].
   static Future<FaceDetector> create({
     FaceDetectionModel model = FaceDetectionModel.backCamera,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
@@ -320,6 +339,13 @@ class FaceDetector with WebGpuFallback {
     }
   }
 
+  /// Loads the models into this detector.
+  ///
+  /// Prefer [create], which constructs and initializes in one call. The
+  /// parameters are the same, including [enableTracking] and
+  /// [maxMissedFrames]; see [create] for what they do. Throws [StateError] if
+  /// the detector is already initialized, and [ArgumentError] for out-of-range
+  /// gate values or a negative [maxMissedFrames], both before any model loads.
   Future<void> initialize({
     FaceDetectionModel model = FaceDetectionModel.backCamera,
     PerformanceConfig performanceConfig = const PerformanceConfig(),
