@@ -126,7 +126,7 @@ class _FaceDetectorCore {
     int meshPoolSize = 3,
     bool useCompiledModel = false,
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
-    Precision precision = Precision.fp16,
+    Precision precision = Precision.fp32,
     double minScore = 0.0,
     double minFaceSize = 0.0,
     double minFacePresenceConfidence = 0.0,

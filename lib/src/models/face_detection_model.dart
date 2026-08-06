@@ -121,7 +121,7 @@ class FaceDetection {
     Uint8List modelBytes,
     FaceDetectionModel model, {
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
-    Precision precision = Precision.fp16,
+    Precision precision = Precision.fp32,
   }) async {
     if (model == FaceDetectionModel.fullSparse) {
       // Upstream LiteRT bug (reproduced in Google's own Python API): GPU

@@ -89,7 +89,7 @@ class FaceDetector {
     SegmentationConfig? segmentationConfig,
     bool useCompiledModel = false,
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
-    Precision precision = Precision.fp16,
+    Precision precision = Precision.fp32,
     double minScore = 0.0,
     double minFaceSize = 0.0,
     double minFacePresenceConfidence = kDefaultMinFacePresenceConfidence,
@@ -123,7 +123,7 @@ class FaceDetector {
   bool _segmentationInitialized = false;
   bool _useCompiledModel = false;
   Set<Accelerator> _accelerators = const {Accelerator.gpu, Accelerator.cpu};
-  Precision _precision = Precision.fp16;
+  Precision _precision = Precision.fp32;
   double _minScore = 0.0;
   double _minFaceSize = 0.0;
   double _minFacePresenceConfidence = kDefaultMinFacePresenceConfidence;
@@ -302,7 +302,7 @@ class FaceDetector {
     SegmentationConfig? segmentationConfig,
     bool useCompiledModel = false,
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
-    Precision precision = Precision.fp16,
+    Precision precision = Precision.fp32,
     double minScore = 0.0,
     double minFaceSize = 0.0,
     double minFacePresenceConfidence = kDefaultMinFacePresenceConfidence,
@@ -1842,7 +1842,7 @@ class _FaceDetectorWorker extends IsolateWorkerBase {
     required int meshPoolSize,
     required bool useCompiledModel,
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
-    Precision precision = Precision.fp16,
+    Precision precision = Precision.fp32,
     double minScore = 0.0,
     double minFaceSize = 0.0,
     double minFacePresenceConfidence = kDefaultMinFacePresenceConfidence,

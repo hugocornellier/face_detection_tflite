@@ -97,7 +97,7 @@ class FaceLandmark with _TfliteModelDisposable {
   static Future<FaceLandmark> createCompiledFromBuffer(
     Uint8List modelBytes, {
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
-    Precision precision = Precision.fp16,
+    Precision precision = Precision.fp32,
   }) async {
     final CompiledModel compiledModel = compiledModelFromBufferAuto(
       modelBytes,
