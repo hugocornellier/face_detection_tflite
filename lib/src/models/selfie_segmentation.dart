@@ -231,7 +231,7 @@ class SelfieSegmentation with _TfliteModelDisposable {
     Uint8List modelBytes, {
     SegmentationConfig config = const SegmentationConfig(),
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
-    Precision precision = Precision.fp16,
+    Precision precision = Precision.fp32,
   }) async {
     final effectiveModel = config.model;
     final inW = _segmentationInputWidth;

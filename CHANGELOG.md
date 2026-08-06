@@ -1,5 +1,17 @@
-## 6.8.1
+## 6.8.0
 
+* **Default precision is now `Precision.fp32` instead of `fp16`.** This changes
+  numeric output. `flutter_litert` 3.8.0 changed its own default for the same
+  reason: across 29 published detection models measured on five GPUs, fp16
+  matched a plain-CPU reference for only about a fifth of them, while fp32
+  matched every model that compiled. These graphs emit pixel-space coordinates
+  and landmark positions, and fp16 carries about three decimal digits of
+  mantissa, so the error lands directly on output geometry. The cost is real and
+  worth stating plainly: fp32 is a median 29.9% slower on GPU across those five
+  GPUs, with Apple M4 the lone exception at 6.5% faster. Pass
+  `precision: Precision.fp16` explicitly to restore the previous behaviour,
+  ideally per model and validated on your target GPU.
+* Pin `flutter_litert` to `^3.8.0`.
 * Rename the example app's engine badge from `CM` / `XNN` to
   `CM` / `Interpreter`. `XNNPACK` is only the delegate the `Interpreter` path
   uses on desktop and Android; on iOS that path runs the Metal delegate, so an
@@ -7,9 +19,6 @@
   `flutter_litert` engine classes, `CompiledModel` and `Interpreter`, so it now
   names those. The button is fixed-width so swapping labels does not shift the
   surrounding controls. Example-only change; no library code is affected.
-
-## 6.8.0
-
 * Feature: opt-in temporal face tracking (`FaceDetector.create(enableTracking: true)`) assigns stable `Face.trackingId` values across sequential native and web detections. Motion-aware geometric association preserves IDs when detector ordering changes and across short detector dropouts; `resetTracking()` clears state when switching streams. `maxMissedFrames` (default `kDefaultMaxMissedFrames`, 3) sets how many processed frames a face may go undetected before its ID is retired, counted in frames the detector actually ran rather than wall-clock time, so a camera loop that drops frames while inference is busy can raise it; negative values throw `ArgumentError` before any model loads. Tracking-enabled calls are sequenced in invocation order, and combined detection + segmentation results are tracked too. Tracking is not face recognition; default behavior remains unchanged with null IDs.
 * Export `kDefaultMinFacePresenceConfidence` (0.5) from both entry points. It has been referenced from the public dartdoc on `FaceDetector.create()` and `initialize()` since 6.7.0, but was never exported: the native entry listed only the model-name constants from `face_model_config.dart`, and the web entry did not export that file at all. The doc links therefore dangled on pub.dev and callers could not name the default they were being documented about. Additive only; no behaviour change, and the value is unchanged at 0.5. A test now guards the export so it cannot be dropped again.
 

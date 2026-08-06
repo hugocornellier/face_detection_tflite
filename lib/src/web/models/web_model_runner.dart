@@ -26,7 +26,7 @@ class WebRunnerConfig {
     this.engine = WebEngine.compiledModel,
     this.accelerator = 'auto',
     this.strictWebGpu = false,
-    this.precision = Precision.fp16,
+    this.precision = Precision.fp32,
   });
 
   /// Which runtime compiles and runs the model.

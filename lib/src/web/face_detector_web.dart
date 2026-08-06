@@ -95,7 +95,7 @@ class FaceDetector with WebGpuFallback {
     bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
     bool strictWebGpu = false,
-    Precision precision = Precision.fp16,
+    Precision precision = Precision.fp32,
     double minScore = 0.0,
     double minFaceSize = 0.0,
     double minFacePresenceConfidence = kDefaultMinFacePresenceConfidence,
@@ -138,7 +138,7 @@ class FaceDetector with WebGpuFallback {
   String _liteRtAccelerator = 'auto';
   bool _useCompiledModel = false;
   bool _strictWebGpu = false;
-  Precision _precision = Precision.fp16;
+  Precision _precision = Precision.fp32;
   double _minScore = 0.0;
   double _minFaceSize = 0.0;
   double _minFacePresenceConfidence = kDefaultMinFacePresenceConfidence;
@@ -356,7 +356,7 @@ class FaceDetector with WebGpuFallback {
     bool useLiteRt = true,
     String liteRtAccelerator = 'auto',
     bool strictWebGpu = false,
-    Precision precision = Precision.fp16,
+    Precision precision = Precision.fp32,
     double minScore = 0.0,
     double minFaceSize = 0.0,
     double minFacePresenceConfidence = kDefaultMinFacePresenceConfidence,

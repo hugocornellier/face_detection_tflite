@@ -118,7 +118,7 @@ class FaceEmbedding with _TfliteModelDisposable {
   static Future<FaceEmbedding> createCompiledFromBuffer(
     Uint8List modelBytes, {
     Set<Accelerator> accelerators = const {Accelerator.gpu, Accelerator.cpu},
-    Precision precision = Precision.fp16,
+    Precision precision = Precision.fp32,
   }) async {
     // MobileFaceNet fails strict-GPU compilation (unsupported ops) but runs
     // ~3.7x faster than CPU with GPU|CPU partitioning, so use the fallback
