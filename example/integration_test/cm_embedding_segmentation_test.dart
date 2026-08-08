@@ -87,15 +87,18 @@ void main() {
         expect(maskA, isA<MulticlassSegmentationMask>());
         expect(maskB, isA<MulticlassSegmentationMask>());
 
+        final dataA = maskA.data;
+        final dataB = maskB.data;
+        expect(dataB.length, dataA.length);
         double sumDiff = 0;
         double maxDiff = 0;
-        for (int i = 0; i < maskA.data.length; i++) {
-          final d = (maskA.data[i] - maskB.data[i]).abs();
+        for (int i = 0; i < dataA.length; i++) {
+          final d = (dataA[i] - dataB[i]).abs();
           sumDiff += d;
           maxDiff = math.max(maxDiff, d);
         }
-        final meanDiff = sumDiff / maskA.data.length;
-        final fg = maskB.data.where((v) => v > 0.5).length / maskB.data.length;
+        final meanDiff = sumDiff / dataA.length;
+        final fg = dataB.where((v) => v > 0.5).length / dataB.length;
         print(
           'multiclass mask ${maskB.width}x${maskB.height}, '
           'foreground=${(fg * 100).toStringAsFixed(1)}%, '
