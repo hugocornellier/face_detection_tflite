@@ -895,6 +895,187 @@ class _ExampleState extends State<Example> {
   }
 }
 
+String formatInferenceMilliseconds(num microseconds) {
+  final milliseconds = microseconds / 1000;
+  if (milliseconds < 10) return milliseconds.toStringAsFixed(3);
+  if (milliseconds < 100) return milliseconds.toStringAsFixed(2);
+  if (milliseconds < 1000) return milliseconds.toStringAsFixed(1);
+  return milliseconds.toStringAsFixed(0);
+}
+
+class LiveInferenceStats {
+  int? _latestUs;
+  int _totalUs = 0;
+  int _sampleCount = 0;
+  int _generation = 0;
+
+  int? get latestUs => _latestUs;
+  int get sampleCount => _sampleCount;
+  double? get averageUs => _sampleCount == 0 ? null : _totalUs / _sampleCount;
+
+  int beginSample() => _generation;
+
+  bool record(int sampleGeneration, int elapsedUs) {
+    if (sampleGeneration != _generation) return false;
+    _latestUs = elapsedUs;
+    _totalUs += elapsedUs;
+    _sampleCount++;
+    return true;
+  }
+
+  void reset() {
+    _latestUs = null;
+    _totalUs = 0;
+    _sampleCount = 0;
+    _generation++;
+  }
+}
+
+class LiveCameraMetrics extends StatelessWidget {
+  final int fps;
+  final int? latestInferenceUs;
+  final double? averageInferenceUs;
+
+  const LiveCameraMetrics({
+    super.key,
+    required this.fps,
+    required this.latestInferenceUs,
+    required this.averageInferenceUs,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _FpsMetric(fps: fps),
+        const _MetricDivider(),
+        _InferenceMetric(label: 'LAST', microseconds: latestInferenceUs),
+        const _MetricDivider(),
+        _InferenceMetric(label: 'AVERAGE', microseconds: averageInferenceUs),
+      ],
+    );
+  }
+}
+
+class _FpsMetric extends StatelessWidget {
+  final int fps;
+
+  const _FpsMetric({required this.fps});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 44,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'FPS',
+            style: TextStyle(
+              color: Colors.white60,
+              fontSize: 9,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.7,
+            ),
+          ),
+          Text(
+            '$fps',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              fontFeatures: [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InferenceMetric extends StatelessWidget {
+  final String label;
+  final num? microseconds;
+
+  const _InferenceMetric({
+    required this.label,
+    required this.microseconds,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final value =
+        microseconds == null ? '—' : formatInferenceMilliseconds(microseconds!);
+    return Semantics(
+      label: microseconds == null
+          ? '$label inference time unavailable'
+          : '$label inference time $value milliseconds',
+      child: SizedBox(
+        width: 74,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white60,
+                fontSize: 9,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.7,
+              ),
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 46,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      value,
+                      maxLines: 1,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        fontFeatures: [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 3),
+                const SizedBox(
+                  width: 18,
+                  child: Text(
+                    'ms',
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MetricDivider extends StatelessWidget {
+  const _MetricDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 1,
+      height: 24,
+      margin: const EdgeInsets.symmetric(horizontal: 5),
+      color: Colors.white24,
+    );
+  }
+}
+
 class LiveCameraScreen extends StatefulWidget {
   const LiveCameraScreen({super.key});
 
@@ -903,6 +1084,8 @@ class LiveCameraScreen extends StatefulWidget {
 }
 
 class _LiveCameraScreenState extends State<LiveCameraScreen> {
+  static const double _mobileTopBarExtent = 84;
+
   CameraController? _cameraController;
   List<CameraDescription> _availableCameras = const [];
   FaceDetector? _faceDetector;
@@ -915,7 +1098,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   bool _isInitialized = false;
   DeviceOrientation _deviceOrientation = DeviceOrientation.portraitUp;
   StreamSubscription<AccelerometerEvent>? _accelerometerSub;
-  int _detectionTimeMs = 0;
+  final LiveInferenceStats _inferenceStats = LiveInferenceStats();
   final FpsCounter _fpsCounter = FpsCounter();
   int _fps = 0;
   bool _isImageStreamStarted = false;
@@ -927,8 +1110,14 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   // XNNPACK fallback for immediate A/B checks in the camera view.
   bool _useCompiledModel = true;
   PerformanceConfig get _perfConfig => const PerformanceConfig.xnnpack();
-  final List<int> _recentInferenceMs = [];
+  final List<int> _recentInferenceUs = [];
   int _detThisSec = 0;
+
+  void _resetInferenceStats() {
+    _inferenceStats.reset();
+    _recentInferenceUs.clear();
+    _detThisSec = 0;
+  }
 
   /// One-shot-per-orientation probe for iOS rotation debugging.
   /// See `_rotationFlagForFrame`. Used to settle whether iOS buffers are
@@ -1079,7 +1268,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   Future<void> _toggleAccelerator() async {
     setState(() {
       _useCompiledModel = !_useCompiledModel;
-      _recentInferenceMs.clear();
+      _resetInferenceStats();
     });
     // ignore: avoid_print
     print('[live-bench] switching backend -> '
@@ -1092,6 +1281,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     setState(() {
       _liveSegmentationModel = model;
       _segmentationMask = null;
+      _resetInferenceStats();
     });
     await _reinitDetectorIsolate();
   }
@@ -1104,117 +1294,121 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   Widget _buildCameraTopBar() {
     final canPop = Navigator.of(context).canPop();
     final isMobile = !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+    final metrics = LiveCameraMetrics(
+      fps: _fps,
+      latestInferenceUs: _inferenceStats.latestUs,
+      averageInferenceUs: _inferenceStats.averageUs,
+    );
 
-    final fpsText = SizedBox(
-      width: 70,
-      child: Text(
-        'FPS: $_fps',
-        style: const TextStyle(color: Colors.white, fontSize: 14),
-        textAlign: isMobile ? TextAlign.left : TextAlign.right,
+    final controls = <Widget>[
+      if (_canSwitchCamera)
+        IconButton(
+          tooltip: _isFrontCamera
+              ? 'Switch to back camera'
+              : 'Switch to front camera',
+          color: Colors.white,
+          icon: Icon(
+            Platform.isIOS ? Icons.flip_camera_ios : Icons.flip_camera_android,
+          ),
+          onPressed: _isSwitchingCamera ? null : _switchCamera,
+        ),
+      TextButton(
+        onPressed: _toggleAccelerator,
+        style: TextButton.styleFrom(
+          // Fixed width so swapping labels does not shift the row.
+          minimumSize: const Size(92, 36),
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+        ),
+        child: Text(
+          // Names the flutter_litert engine class, not a delegate:
+          // the interpreter path uses XNNPACK on desktop/Android but
+          // Metal on iOS, so an 'XNN' label is wrong there.
+          _useCompiledModel ? 'CM' : 'Interpreter',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: Colors.amberAccent,
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+          ),
+        ),
       ),
-    );
-    const separator = Text(
-      ' | ',
-      style: TextStyle(color: Colors.white, fontSize: 14),
-    );
-    final msText = SizedBox(
-      width: 70,
-      child: Text(
-        '${_detectionTimeMs}ms',
-        style: const TextStyle(color: Colors.white, fontSize: 14),
+      PopupMenuButton<void>(
+        tooltip: 'Settings',
+        icon: const Icon(Icons.settings, color: Colors.white),
+        color: Colors.blueGrey[900],
+        padding: EdgeInsets.zero,
+        itemBuilder: (context) => [
+          PopupMenuItem<void>(
+            enabled: false,
+            padding: EdgeInsets.zero,
+            child: StatefulBuilder(
+              builder: (context, setMenuState) {
+                return _buildSettingsMenuContent(setMenuState);
+              },
+            ),
+          ),
+        ],
       ),
-    );
+    ];
 
     return Material(
       color: Colors.black.withAlpha(179),
       elevation: 4,
       child: SizedBox(
-        height: kToolbarHeight,
+        height: isMobile ? _mobileTopBarExtent : kToolbarHeight,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Row(
-            children: [
-              if (canPop)
-                IconButton(
-                  tooltip: 'Back',
-                  color: Colors.white,
-                  icon: const Icon(Icons.arrow_back),
-                  onPressed: () => Navigator.of(context).maybePop(),
-                ),
-              if (isMobile) ...[
-                const SizedBox(width: 8),
-                fpsText,
-                separator,
-                msText,
-                const Spacer(),
-              ] else
-                const Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 8),
-                    child: Text(
-                      'Live Camera Detection',
-                      style: TextStyle(color: Colors.white, fontSize: 18),
-                      overflow: TextOverflow.ellipsis,
+          child: isMobile
+              ? Column(
+                  children: [
+                    SizedBox(
+                      height: 48,
+                      child: Row(
+                        children: [
+                          if (canPop)
+                            IconButton(
+                              tooltip: 'Back',
+                              color: Colors.white,
+                              icon: const Icon(Icons.arrow_back),
+                              onPressed: () => Navigator.of(context).maybePop(),
+                            ),
+                          const Spacer(),
+                          ...controls,
+                        ],
+                      ),
                     ),
-                  ),
-                ),
-              if (_canSwitchCamera)
-                IconButton(
-                  tooltip: _isFrontCamera
-                      ? 'Switch to back camera'
-                      : 'Switch to front camera',
-                  color: Colors.white,
-                  icon: Icon(Platform.isIOS
-                      ? Icons.flip_camera_ios
-                      : Icons.flip_camera_android),
-                  onPressed: _isSwitchingCamera ? null : _switchCamera,
-                ),
-              TextButton(
-                onPressed: _toggleAccelerator,
-                style: TextButton.styleFrom(
-                  // Fixed width so swapping labels does not shift the row.
-                  minimumSize: const Size(92, 36),
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                ),
-                child: Text(
-                  // Names the flutter_litert engine class, not a delegate:
-                  // the interpreter path uses XNNPACK on desktop/Android but
-                  // Metal on iOS, so an 'XNN' label is wrong there.
-                  _useCompiledModel ? 'CM' : 'Interpreter',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.amberAccent,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                  ),
-                ),
-              ),
-              PopupMenuButton<void>(
-                tooltip: 'Settings',
-                icon: const Icon(Icons.settings, color: Colors.white),
-                color: Colors.blueGrey[900],
-                padding: EdgeInsets.zero,
-                itemBuilder: (context) => [
-                  PopupMenuItem<void>(
-                    enabled: false,
-                    padding: EdgeInsets.zero,
-                    child: StatefulBuilder(
-                      builder: (context, setMenuState) {
-                        return _buildSettingsMenuContent(setMenuState);
-                      },
+                    const Divider(height: 1, color: Colors.white12),
+                    SizedBox(
+                      height: 35,
+                      child: Center(child: metrics),
                     ),
-                  ),
-                ],
-              ),
-              if (!isMobile) ...[
-                const SizedBox(width: 8),
-                fpsText,
-                separator,
-                msText,
-              ],
-            ],
-          ),
+                  ],
+                )
+              : Row(
+                  children: [
+                    if (canPop)
+                      IconButton(
+                        tooltip: 'Back',
+                        color: Colors.white,
+                        icon: const Icon(Icons.arrow_back),
+                        onPressed: () => Navigator.of(context).maybePop(),
+                      ),
+                    const Expanded(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 8),
+                        child: Text(
+                          'Live Camera Detection',
+                          style: TextStyle(color: Colors.white, fontSize: 18),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                    ...controls,
+                    const SizedBox(width: 8),
+                    metrics,
+                  ],
+                ),
         ),
       ),
     );
@@ -1222,7 +1416,10 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
 
   Widget _buildSettingsMenuContent(StateSetter setMenuState) {
     void update(VoidCallback fn) {
-      setState(fn);
+      setState(() {
+        fn();
+        _resetInferenceStats();
+      });
       setMenuState(() {});
     }
 
@@ -1603,6 +1800,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       _faces = [];
       _imageSize = null;
       _segmentationMask = null;
+      _resetInferenceStats();
     });
     try {
       if (prev != null) {
@@ -1643,16 +1841,20 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   Future<void> _processCameraImage(CameraImage image) async {
     if (_fpsCounter.tick() && mounted) {
       setState(() => _fps = _fpsCounter.fps);
-      final n = _recentInferenceMs.length;
-      final meanMs =
-          n == 0 ? 0 : (_recentInferenceMs.reduce((a, b) => a + b) / n).round();
+      final n = _recentInferenceUs.length;
+      final meanUs =
+          n == 0 ? 0.0 : _recentInferenceUs.reduce((a, b) => a + b) / n;
       final backend = _useCompiledModel ? 'compiledmodel' : 'xnnpack';
+      final lastMs = _inferenceStats.latestUs == null
+          ? '-'
+          : (_inferenceStats.latestUs! / 1000).toStringAsFixed(3);
       // ignore: avoid_print
       print('[live-bench] backend=$backend '
-          'cameraFps=$_fps detPerSec=$_detThisSec meanInferMs=$meanMs '
-          'lastMs=$_detectionTimeMs faces=${_faces.length} '
+          'cameraFps=$_fps detPerSec=$_detThisSec '
+          'meanInferMs=${(meanUs / 1000).toStringAsFixed(3)} '
+          'lastMs=$lastMs faces=${_faces.length} '
           'mode=${_detectionMode.name}');
-      _recentInferenceMs.clear();
+      _recentInferenceUs.clear();
       _detThisSec = 0;
     }
 
@@ -1669,7 +1871,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
 
     await _throttle.run(() async {
       try {
-        final startTime = DateTime.now();
+        final stopwatch = Stopwatch()..start();
+        final statsGeneration = _inferenceStats.beginSample();
 
         if (_faceDetector == null || !mounted) return;
         final sensor = _sensorOrientation;
@@ -1699,16 +1902,19 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
         final faces = result.faces;
         final segMask = result.segMask;
 
-        final endTime = DateTime.now();
-        final detectionTime = endTime.difference(startTime).inMilliseconds;
-        _recentInferenceMs.add(detectionTime);
-        _detThisSec++;
+        stopwatch.stop();
+        final detectionTimeUs = stopwatch.elapsedMicroseconds;
+        final shouldRecordTiming =
+            _inferenceStats.record(statsGeneration, detectionTimeUs);
+        if (shouldRecordTiming) {
+          _recentInferenceUs.add(detectionTimeUs);
+          _detThisSec++;
+        }
 
         if (mounted) {
           setState(() {
             _faces = faces;
             _imageSize = size;
-            _detectionTimeMs = detectionTime;
             _segmentationMask = segMask;
           });
         }
@@ -1806,6 +2012,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   Widget _positionedTopBar(int turns) {
     final bar = _buildCameraTopBar();
     final padding = MediaQuery.of(context).padding;
+    final isMobile = !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+    final barExtent = isMobile ? _mobileTopBarExtent : kToolbarHeight;
     if (turns == 0) {
       return Positioned(
         top: padding.top,
@@ -1819,7 +2027,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       bottom: padding.bottom,
       left: turns == 3 ? padding.left : null,
       right: turns == 1 ? padding.right : null,
-      width: kToolbarHeight,
+      width: barExtent,
       child: RotatedBox(quarterTurns: turns, child: bar),
     );
   }

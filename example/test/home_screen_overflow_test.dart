@@ -21,22 +21,25 @@ void main() {
   ]) {
     testWidgets('home screen does not overflow at $size', (tester) async {
       await pumpHomeAt(tester, size);
-      expect(find.text('Choose Detection Mode'), findsOneWidget);
+      expect(find.text('Choose a Demo'), findsOneWidget);
       // RenderFlex overflow reports through FlutterError and fails the test,
       // so reaching this point means no overflow occurred.
     });
   }
 
-  testWidgets('mode cards are laid out in a single row', (tester) async {
+  testWidgets('primary mode cards are laid out in a single row',
+      (tester) async {
     await pumpHomeAt(tester, const Size(1200, 800));
     final cards = find.byType(Card);
-    expect(cards, findsNWidgets(3));
+    expect(cards, findsNWidgets(4));
     final cardTops = <double>[
       for (final card in cards.evaluate())
         tester.getTopLeft(find.byWidget(card.widget)).dy,
     ];
-    expect(cardTops.toSet().length, 1,
-        reason: 'all three cards should share the same vertical offset');
+    expect(cardTops.take(3).toSet().length, 1,
+        reason: 'the three primary modes should share a vertical offset');
+    expect(cardTops.last, greaterThan(cardTops.first),
+        reason: 'face recognition belongs to its own section');
   });
 
   testWidgets('live camera is first and segmentation is gone', (tester) async {
