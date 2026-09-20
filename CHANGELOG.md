@@ -1,3 +1,29 @@
+## 6.9.0
+
+* Depend on `flutter_litert ^3.9.0`, `opencv_dart ^2.2.2`, and `dartcv4 ^2.3.1`.
+  The direct `dartcv4` constraint exists only so resolution can never keep a
+  `dartcv4` release whose iOS CMake hook hardcodes a 12.0 deployment target,
+  which Xcode 27 rejects; no Dart source imports it.
+* Raise the Flutter floor to 3.47.5. Earlier Flutter releases pin `meta 1.18.0`
+  through `flutter_test`, which cannot coexist with `dartcv4 2.3.1`.
+* Building for iOS with Xcode 27 needs an iOS 15 deployment target. Set the
+  Runner target (and `platform :ios` in the Podfile) to 15.0 or newer and add
+  this to the app's `pubspec.yaml`; hook user-defines are only honoured from
+  the root package, so a dependency cannot supply it for you:
+
+  ```yaml
+  hooks:
+    user_defines:
+      dartcv4:
+        ios:
+          deployment_target: '15.0'
+  ```
+
+  Run `flutter clean` afterwards so the cached OpenCV build is regenerated.
+* Remove the unused direct `meta` dependency.
+* No API changes. Verified with the hosted `flutter_litert 3.9.0` on macOS 27,
+  Xcode 27, and the iOS 27 simulator.
+
 ## 6.8.0
 
 * **Default precision is now `Precision.fp32` instead of `fp16`.** This changes

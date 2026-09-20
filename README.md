@@ -1125,6 +1125,25 @@ cd example_web
 flutter build web
 ```
 
+## Requirements
+
+- Dart 3.10+ and Flutter 3.47.5+ (`dartcv4 2.3.1` needs `meta 1.19.0`, which
+  older `flutter_test` pins rule out).
+- iOS builds on Xcode 27 need an iOS 15 deployment target. Set the Runner
+  target (and `platform :ios` in `ios/Podfile`) to 15.0 or newer, add the block
+  below to your app's `pubspec.yaml`, then run `flutter clean`:
+
+  ```yaml
+  hooks:
+    user_defines:
+      dartcv4:
+        ios:
+          deployment_target: '15.0'
+  ```
+
+  This has to live in the app: Dart only reads hook user-defines from the root
+  package, so `face_detection_tflite` cannot set it for you.
+
 ## Performance
 
 ### Hardware Acceleration
