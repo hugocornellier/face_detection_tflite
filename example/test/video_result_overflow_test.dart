@@ -21,7 +21,8 @@ Widget _harness(Widget child) {
 
 Widget _resultCard({required double aspectRatio}) {
   return VideoResultCard(
-    statusMessage: 'Done. Wrote 1234 frames to:\n'
+    statusMessage:
+        'Done. Wrote 1234 frames to:\n'
         '/some/very/long/application/documents/path/face_1749700000000.mp4',
     summary: 'Total time: 02:13 (9.3 fps avg)',
     preview: VideoPlayerChrome(
@@ -62,8 +63,9 @@ void main() {
       ('ultra-wide 21:9', 21 / 9),
       ('square 1:1', 1.0),
     ]) {
-      testWidgets('video result does not overflow at $size with $name video',
-          (tester) async {
+      testWidgets('video result does not overflow at $size with $name video', (
+        tester,
+      ) async {
         await pumpAt(tester, size, aspectRatio: ratio);
         // RenderFlex overflow reports through FlutterError and fails the
         // test, so reaching this point means no overflow occurred.
@@ -72,8 +74,9 @@ void main() {
     }
   }
 
-  testWidgets('portrait preview height is capped to 45% of the screen',
-      (tester) async {
+  testWidgets('portrait preview height is capped to 45% of the screen', (
+    tester,
+  ) async {
     await pumpAt(tester, const Size(1200, 800), aspectRatio: 9 / 16);
     final previewSize = tester.getSize(find.byType(AspectRatio));
     expect(previewSize.height, lessThanOrEqualTo(800 * 0.45 + 0.01));

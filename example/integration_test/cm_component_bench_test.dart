@@ -41,9 +41,7 @@ void main() {
   test('embedding + segmentation: CompiledModel vs Interpreter', () async {
     final imgBytes = (await rootBundle.load(
       'assets/samples/embedding_test/one_face.jpg',
-    ))
-        .buffer
-        .asUint8List();
+    )).buffer.asUint8List();
     final mat = cv.imdecode(imgBytes, cv.IMREAD_COLOR);
     final rows = <String>[];
 
@@ -51,9 +49,7 @@ void main() {
     {
       final detBytes = (await rootBundle.load(
         'packages/face_detection_tflite/assets/models/${testNameFor(FaceDetectionModel.backCamera)}',
-      ))
-          .buffer
-          .asUint8List();
+      )).buffer.asUint8List();
       final interp = await FaceDetection.createFromBuffer(
         detBytes,
         FaceDetectionModel.backCamera,
@@ -86,9 +82,7 @@ void main() {
     {
       final meshBytes = (await rootBundle.load(
         'packages/face_detection_tflite/assets/models/$kFaceLandmarkModel',
-      ))
-          .buffer
-          .asUint8List();
+      )).buffer.asUint8List();
       final interp = await FaceLandmark.createFromBuffer(meshBytes);
       final compiled = await FaceLandmark.createCompiledFromBuffer(meshBytes);
       final i = await _bench(() => interp.call(mat));
@@ -105,9 +99,7 @@ void main() {
     {
       final irisBytes = (await rootBundle.load(
         'packages/face_detection_tflite/assets/models/$kIrisLandmarkModel',
-      ))
-          .buffer
-          .asUint8List();
+      )).buffer.asUint8List();
       final interp = await IrisLandmark.createFromBuffer(irisBytes);
       final compiled = await IrisLandmark.createCompiledFromBuffer(irisBytes);
       final i = await _bench(() => interp.call(mat));
@@ -124,9 +116,7 @@ void main() {
     {
       final embBytes = (await rootBundle.load(
         'packages/face_detection_tflite/assets/models/mobilefacenet.tflite',
-      ))
-          .buffer
-          .asUint8List();
+      )).buffer.asUint8List();
       final interp = await FaceEmbedding.createFromBuffer(embBytes);
       final compiled = await FaceEmbedding.createCompiledFromBuffer(embBytes);
       final i = await _bench(() => interp.call(mat));
@@ -144,9 +134,7 @@ void main() {
       final config = SegmentationConfig(model: model);
       final segBytes = (await rootBundle.load(
         'packages/face_detection_tflite/assets/models/${testModelFileFor(model)}',
-      ))
-          .buffer
-          .asUint8List();
+      )).buffer.asUint8List();
       final interp = await SelfieSegmentation.createFromBuffer(
         segBytes,
         config: config,

@@ -118,154 +118,152 @@ void main() {
   final IntegrationTestWidgetsFlutterBinding binding =
       IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  test(
-    'web ab bench and parity',
-    () async {
-      final result = <String, dynamic>{
-        'timestamp': DateTime.now().toIso8601String(),
-        'warmup': kWarmup,
-        'iters': kIters,
-        'accelerator': 'wasm',
-      };
+  test('web ab bench and parity', () async {
+    final result = <String, dynamic>{
+      'timestamp': DateTime.now().toIso8601String(),
+      'warmup': kWarmup,
+      'iters': kIters,
+      'accelerator': 'wasm',
+    };
 
-      final groupBytes = await _load(kGroupShot);
+    final groupBytes = await _load(kGroupShot);
 
-      // Warm the detector before deriving the gate. LiteRT WASM's first two
-      // calls on this model have slightly different boxes from its steady
-      // state; a cold threshold can therefore keep one face initially but two
-      // throughout the measured loop.
-      final probe = await FaceDetector.create(liteRtAccelerator: 'wasm');
-      for (int i = 0; i < kWarmup; i++) {
-        await probe.detectFacesFromBytes(
-          groupBytes,
-          mode: FaceDetectionMode.fast,
-        );
-      }
-      final probeFaces = await probe.detectFacesFromBytes(
+    // Warm the detector before deriving the gate. LiteRT WASM's first two
+    // calls on this model have slightly different boxes from its steady
+    // state; a cold threshold can therefore keep one face initially but two
+    // throughout the measured loop.
+    final probe = await FaceDetector.create(liteRtAccelerator: 'wasm');
+    for (int i = 0; i < kWarmup; i++) {
+      await probe.detectFacesFromBytes(
         groupBytes,
         mode: FaceDetectionMode.fast,
       );
-      final widths = probeFaces.map((f) => f.widthFraction).toList()
-        ..sort((a, b) => b.compareTo(a));
-      expect(widths.length, greaterThan(1));
-      final double gateThreshold = (widths[0] + widths[1]) / 2.0;
-      result['probe'] = {
-        'group_faces': widths.length,
-        'warmup_runs': kWarmup,
-        'gate_threshold': gateThreshold,
-        'expected_kept_faces': 1,
+    }
+    final probeFaces = await probe.detectFacesFromBytes(
+      groupBytes,
+      mode: FaceDetectionMode.fast,
+    );
+    final widths = probeFaces.map((f) => f.widthFraction).toList()
+      ..sort((a, b) => b.compareTo(a));
+    expect(widths.length, greaterThan(1));
+    final double gateThreshold = (widths[0] + widths[1]) / 2.0;
+    result['probe'] = {
+      'group_faces': widths.length,
+      'warmup_runs': kWarmup,
+      'gate_threshold': gateThreshold,
+      'expected_kept_faces': 1,
+    };
+
+    // Parity: ungated across modes.
+    final parity = <String, dynamic>{};
+    for (final mode in FaceDetectionMode.values) {
+      final faces = await probe.detectFacesFromBytes(groupBytes, mode: mode);
+      parity['ungated_group_${mode.name}'] = {
+        'count': faces.length,
+        'hash': _fnv1a(
+          '${faces.map(_faceCanonical).join('#')}|count=${faces.length}',
+        ).toRadixString(16),
       };
+    }
+    await probe.dispose();
 
-      // Parity: ungated across modes.
-      final parity = <String, dynamic>{};
-      for (final mode in FaceDetectionMode.values) {
-        final faces = await probe.detectFacesFromBytes(groupBytes, mode: mode);
-        parity['ungated_group_${mode.name}'] = {
-          'count': faces.length,
-          'hash': _fnv1a(
-            '${faces.map(_faceCanonical).join('#')}|count=${faces.length}',
-          ).toRadixString(16),
-        };
-      }
-      await probe.dispose();
-
-      // Parity: gated across modes.
-      final gatedDet = await FaceDetector.create(
-        minFaceSize: gateThreshold,
-        liteRtAccelerator: 'wasm',
+    // Parity: gated across modes.
+    final gatedDet = await FaceDetector.create(
+      minFaceSize: gateThreshold,
+      liteRtAccelerator: 'wasm',
+    );
+    for (final mode in FaceDetectionMode.values) {
+      final faces = await gatedDet.detectFacesFromBytes(groupBytes, mode: mode);
+      expect(
+        faces,
+        hasLength(1),
+        reason: 'steady-state gate must keep one face in ${mode.name}',
       );
-      for (final mode in FaceDetectionMode.values) {
-        final faces = await gatedDet.detectFacesFromBytes(
-          groupBytes,
-          mode: mode,
-        );
-        expect(
-          faces,
-          hasLength(1),
-          reason: 'steady-state gate must keep one face in ${mode.name}',
-        );
-        parity['gated_group_${mode.name}'] = {
-          'count': faces.length,
-          'hash': _fnv1a(
-            '${faces.map(_faceCanonical).join('#')}|count=${faces.length}',
-          ).toRadixString(16),
-          'faces_raw': faces.map(_faceRaw).toList(),
-        };
-      }
+      parity['gated_group_${mode.name}'] = {
+        'count': faces.length,
+        'hash': _fnv1a(
+          '${faces.map(_faceCanonical).join('#')}|count=${faces.length}',
+        ).toRadixString(16),
+        'faces_raw': faces.map(_faceRaw).toList(),
+      };
+    }
 
-      // Parity: combined faces + segmentation mask.
-      final segDet = await FaceDetector.create(
-        withSegmentation: true,
-        liteRtAccelerator: 'wasm',
-      );
-      {
-        final res = await segDet.detectFacesWithSegmentation(groupBytes);
-        final mask = res.segmentationMask;
-        final maskSample = <String>[];
-        if (mask != null) {
-          for (int i = 0; i < mask.internalData.length; i += 997) {
-            maskSample.add(mask.internalData[i].toString());
-          }
+    // Parity: combined faces + segmentation mask.
+    final segDet = await FaceDetector.create(
+      withSegmentation: true,
+      liteRtAccelerator: 'wasm',
+    );
+    {
+      final res = await segDet.detectFacesWithSegmentation(groupBytes);
+      final mask = res.segmentationMask;
+      final maskSample = <String>[];
+      if (mask != null) {
+        for (int i = 0; i < mask.internalData.length; i += 997) {
+          maskSample.add(mask.internalData[i].toString());
         }
-        parity['seg_combo'] = {
-          'faces': res.faces.length,
-          'faces_hash':
-              _fnv1a(res.faces.map(_faceCanonical).join('#')).toRadixString(16),
-          'faces_raw': res.faces.map(_faceRaw).toList(),
-          'mask_w': mask?.width,
-          'mask_h': mask?.height,
-          'mask_hash': _fnv1a(maskSample.join(',')).toRadixString(16),
-          'mask_samples': [
-            if (mask != null)
-              for (int i = 0; i < mask.internalData.length; i += 9973)
-                mask.internalData[i],
-          ],
-        };
       }
-      result['parity'] = parity;
+      parity['seg_combo'] = {
+        'faces': res.faces.length,
+        'faces_hash': _fnv1a(
+          res.faces.map(_faceCanonical).join('#'),
+        ).toRadixString(16),
+        'faces_raw': res.faces.map(_faceRaw).toList(),
+        'mask_w': mask?.width,
+        'mask_h': mask?.height,
+        'mask_hash': _fnv1a(maskSample.join(',')).toRadixString(16),
+        'mask_samples': [
+          if (mask != null)
+            for (int i = 0; i < mask.internalData.length; i += 9973)
+              mask.internalData[i],
+        ],
+      };
+    }
+    result['parity'] = parity;
 
-      // Bench scenarios.
-      final bench = <String, dynamic>{};
-      bench['w1_gated_group_full'] = _stats(await _timeLoop(() async {
+    // Bench scenarios.
+    final bench = <String, dynamic>{};
+    bench['w1_gated_group_full'] = _stats(
+      await _timeLoop(() async {
         final faces = await gatedDet.detectFacesFromBytes(
           groupBytes,
           mode: FaceDetectionMode.full,
         );
         if (faces.length != 1) {
-          fail(
-            'w1_gated_group_full expected one face, got ${faces.length}',
-          );
+          fail('w1_gated_group_full expected one face, got ${faces.length}');
         }
-      }));
-      await gatedDet.dispose();
+      }),
+    );
+    await gatedDet.dispose();
 
-      {
-        final det = await FaceDetector.create(liteRtAccelerator: 'wasm');
-        bench['w5_group_full'] = _stats(await _timeLoop(() async {
+    {
+      final det = await FaceDetector.create(liteRtAccelerator: 'wasm');
+      bench['w5_group_full'] = _stats(
+        await _timeLoop(() async {
           await det.detectFacesFromBytes(
             groupBytes,
             mode: FaceDetectionMode.full,
           );
-        }));
-        await det.dispose();
-      }
+        }),
+      );
+      await det.dispose();
+    }
 
-      bench['w6_with_segmentation'] = _stats(await _timeLoop(() async {
+    bench['w6_with_segmentation'] = _stats(
+      await _timeLoop(() async {
         await segDet.detectFacesWithSegmentation(groupBytes);
-      }));
-      await segDet.dispose();
+      }),
+    );
+    await segDet.dispose();
 
-      result['bench'] = bench;
+    result['bench'] = bench;
 
-      // Browser prints don't reach the drive log in release mode; the
-      // integration driver's responseDataCallback writes this to
-      // benchmark_results/ab_web_latest.json on the host instead.
-      binding.reportData = <String, dynamic>{'ab_web_latest.json': result};
-      // Keep the JSON marker path as a fallback for local flutter run usage.
-      print('AB_WEB_JSON_START');
-      print(const JsonEncoder.withIndent(' ').convert(result));
-      print('AB_WEB_JSON_END');
-    },
-    timeout: const Timeout(Duration(minutes: 15)),
-  );
+    // Browser prints don't reach the drive log in release mode; the
+    // integration driver's responseDataCallback writes this to
+    // benchmark_results/ab_web_latest.json on the host instead.
+    binding.reportData = <String, dynamic>{'ab_web_latest.json': result};
+    // Keep the JSON marker path as a fallback for local flutter run usage.
+    print('AB_WEB_JSON_START');
+    print(const JsonEncoder.withIndent(' ').convert(result));
+    print('AB_WEB_JSON_END');
+  }, timeout: const Timeout(Duration(minutes: 15)));
 }

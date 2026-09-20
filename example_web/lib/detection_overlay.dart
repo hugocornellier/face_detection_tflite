@@ -162,8 +162,9 @@ mixin DetectionOverlayMixin<T extends StatefulWidget> on State<T> {
     final int now = DateTime.now().millisecondsSinceEpoch;
     if (fps != null && now - _lastTitleUpdateMs < 1000) return;
     _lastTitleUpdateMs = now;
-    final String backend =
-        activeAccelerator == '?' ? 'tflite-js' : activeAccelerator;
+    final String backend = activeAccelerator == '?'
+        ? 'tflite-js'
+        : activeAccelerator;
     web.document.title = fps == null
         ? 'fdt demo · $backend'
         : 'fdt demo · $backend · ${fps.toStringAsFixed(0)} fps';
@@ -190,7 +191,8 @@ mixin DetectionOverlayMixin<T extends StatefulWidget> on State<T> {
       isModelReady = true;
       updateStatusTitle();
       onDetectorReady(
-          activeAccelerator == '?' ? 'tflite-js' : activeAccelerator);
+        activeAccelerator == '?' ? 'tflite-js' : activeAccelerator,
+      );
     } catch (e) {
       if (!mounted) return;
       onDetectorError(e);
@@ -323,7 +325,8 @@ mixin DetectionOverlayMixin<T extends StatefulWidget> on State<T> {
     }
     if (showClassification && face.smilingProbability != null) {
       final tl = face.boundingBox.topLeft;
-      final text = 'smile ${face.smilingProbability!.toStringAsFixed(2)}  '
+      final text =
+          'smile ${face.smilingProbability!.toStringAsFixed(2)}  '
           'eyeL ${face.leftEyeOpenProbability!.toStringAsFixed(2)}  '
           'eyeR ${face.rightEyeOpenProbability!.toStringAsFixed(2)}';
       ctx.font = '13px sans-serif';

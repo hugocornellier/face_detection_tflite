@@ -34,13 +34,12 @@ class EngineSettings {
     String? accelerator,
     bool? strictWebGpu,
     Precision? precision,
-  }) =>
-      EngineSettings(
-        useCompiledModel: useCompiledModel ?? this.useCompiledModel,
-        accelerator: accelerator ?? this.accelerator,
-        strictWebGpu: strictWebGpu ?? this.strictWebGpu,
-        precision: precision ?? this.precision,
-      );
+  }) => EngineSettings(
+    useCompiledModel: useCompiledModel ?? this.useCompiledModel,
+    accelerator: accelerator ?? this.accelerator,
+    strictWebGpu: strictWebGpu ?? this.strictWebGpu,
+    precision: precision ?? this.precision,
+  );
 
   /// Short human-readable label, e.g. `CompiledModel · WebGPU+WASM · fp16`.
   String get label {
@@ -97,32 +96,32 @@ class EngineSettingsControls extends StatelessWidget {
   }
 
   List<Widget> _interpreter(EngineSettings s) => [
-        Wrap(
-          spacing: 6,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            const Text('Accelerator:'),
-            for (final (label, value) in const <(String, String)>[
-              ('Auto', 'auto'),
-              ('WebGPU', 'webgpu'),
-              ('WASM', 'wasm'),
-            ])
-              ChoiceChip(
-                label: Text(label),
-                selected: s.accelerator == value,
-                onSelected: (_) => onChanged(
-                    s.copyWith(accelerator: value, strictWebGpu: false)),
-              ),
-          ],
-        ),
-        const Padding(
-          padding: EdgeInsets.only(top: 4),
-          child: Text(
-            'LiteRT.js interpreter. WebGPU auto-falls back to WASM.',
-            style: TextStyle(fontSize: 11),
+    Wrap(
+      spacing: 6,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        const Text('Accelerator:'),
+        for (final (label, value) in const <(String, String)>[
+          ('Auto', 'auto'),
+          ('WebGPU', 'webgpu'),
+          ('WASM', 'wasm'),
+        ])
+          ChoiceChip(
+            label: Text(label),
+            selected: s.accelerator == value,
+            onSelected: (_) =>
+                onChanged(s.copyWith(accelerator: value, strictWebGpu: false)),
           ),
-        ),
-      ];
+      ],
+    ),
+    const Padding(
+      padding: EdgeInsets.only(top: 4),
+      child: Text(
+        'LiteRT.js interpreter. WebGPU auto-falls back to WASM.',
+        style: TextStyle(fontSize: 11),
+      ),
+    ),
+  ];
 
   List<Widget> _compiledModel(EngineSettings s) {
     final String mode = s.accelerator == 'wasm'
@@ -150,8 +149,9 @@ class EngineSettingsControls extends StatelessWidget {
             ChoiceChip(
               label: Text(p == Precision.fp16 ? 'fp16' : 'fp32'),
               selected: s.precision == p,
-              onSelected:
-                  gpuOn ? (_) => onChanged(s.copyWith(precision: p)) : null,
+              onSelected: gpuOn
+                  ? (_) => onChanged(s.copyWith(precision: p))
+                  : null,
             ),
         ],
       ),
@@ -171,19 +171,18 @@ class EngineSettingsControls extends StatelessWidget {
     String value,
     String current,
     EngineSettings s,
-  ) =>
-      ChoiceChip(
-        label: Text(label),
-        selected: current == value,
-        onSelected: (_) {
-          switch (value) {
-            case 'wasm':
-              onChanged(s.copyWith(accelerator: 'wasm', strictWebGpu: false));
-            case 'gpu-fallback':
-              onChanged(s.copyWith(accelerator: 'webgpu', strictWebGpu: false));
-            case 'gpu-strict':
-              onChanged(s.copyWith(accelerator: 'webgpu', strictWebGpu: true));
-          }
-        },
-      );
+  ) => ChoiceChip(
+    label: Text(label),
+    selected: current == value,
+    onSelected: (_) {
+      switch (value) {
+        case 'wasm':
+          onChanged(s.copyWith(accelerator: 'wasm', strictWebGpu: false));
+        case 'gpu-fallback':
+          onChanged(s.copyWith(accelerator: 'webgpu', strictWebGpu: false));
+        case 'gpu-strict':
+          onChanged(s.copyWith(accelerator: 'webgpu', strictWebGpu: true));
+      }
+    },
+  );
 }

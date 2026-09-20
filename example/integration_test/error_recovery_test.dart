@@ -34,11 +34,13 @@ void main() {
 
       expect(
         () => detector.detectFacesFromBytes(validImageBytes),
-        throwsA(isA<StateError>().having(
-          (e) => e.message,
-          'message',
-          contains('not initialized'),
-        )),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('not initialized'),
+          ),
+        ),
       );
     });
 
@@ -48,34 +50,40 @@ void main() {
 
       expect(
         () => detector.detectFacesFromMat(mat),
-        throwsA(isA<StateError>().having(
-          (e) => e.message,
-          'message',
-          contains('not initialized'),
-        )),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('not initialized'),
+          ),
+        ),
       );
 
       mat.dispose();
     });
 
-    test('getFaceEmbedding should throw StateError before initialize',
-        () async {
-      final initDetector = FaceDetector();
-      await initDetector.initialize();
-      final faces = await initDetector.detectFacesFromBytes(validImageBytes);
-      initDetector.dispose();
+    test(
+      'getFaceEmbedding should throw StateError before initialize',
+      () async {
+        final initDetector = FaceDetector();
+        await initDetector.initialize();
+        final faces = await initDetector.detectFacesFromBytes(validImageBytes);
+        initDetector.dispose();
 
-      final uninitDetector = FaceDetector();
+        final uninitDetector = FaceDetector();
 
-      expect(
-        () => uninitDetector.getFaceEmbedding(faces.first, validImageBytes),
-        throwsA(isA<StateError>().having(
-          (e) => e.message,
-          'message',
-          contains('not initialized'),
-        )),
-      );
-    });
+        expect(
+          () => uninitDetector.getFaceEmbedding(faces.first, validImageBytes),
+          throwsA(
+            isA<StateError>().having(
+              (e) => e.message,
+              'message',
+              contains('not initialized'),
+            ),
+          ),
+        );
+      },
+    );
 
     test('isReady should be false before initialize', () {
       final detector = FaceDetector();
@@ -237,10 +245,7 @@ void main() {
       final detector = FaceDetector();
       await detector.initialize();
 
-      final matTypes = [
-        cv.MatType.CV_8UC3,
-        cv.MatType.CV_8UC4,
-      ];
+      final matTypes = [cv.MatType.CV_8UC3, cv.MatType.CV_8UC4];
 
       for (final type in matTypes) {
         final mat = cv.Mat.zeros(256, 256, type);
@@ -260,35 +265,39 @@ void main() {
   });
 
   group('FaceDetector Error Handling (post-dispose)', () {
-    test('should throw StateError when detectFaces called after dispose',
-        () async {
-      final detector = FaceDetector();
-      await detector.initialize();
-      await detector.dispose();
+    test(
+      'should throw StateError when detectFaces called after dispose',
+      () async {
+        final detector = FaceDetector();
+        await detector.initialize();
+        await detector.dispose();
 
-      expect(detector.isReady, false);
+        expect(detector.isReady, false);
 
-      expect(
-        () => detector.detectFacesFromBytes(validImageBytes),
-        throwsA(isA<StateError>()),
-      );
-    });
+        expect(
+          () => detector.detectFacesFromBytes(validImageBytes),
+          throwsA(isA<StateError>()),
+        );
+      },
+    );
 
-    test('should throw StateError when getFaceEmbedding called after dispose',
-        () async {
-      final detector = FaceDetector();
-      await detector.initialize();
+    test(
+      'should throw StateError when getFaceEmbedding called after dispose',
+      () async {
+        final detector = FaceDetector();
+        await detector.initialize();
 
-      final faces = await detector.detectFacesFromBytes(validImageBytes);
-      expect(faces, isNotEmpty);
+        final faces = await detector.detectFacesFromBytes(validImageBytes);
+        expect(faces, isNotEmpty);
 
-      await detector.dispose();
+        await detector.dispose();
 
-      expect(
-        () => detector.getFaceEmbedding(faces.first, validImageBytes),
-        throwsA(isA<StateError>()),
-      );
-    });
+        expect(
+          () => detector.getFaceEmbedding(faces.first, validImageBytes),
+          throwsA(isA<StateError>()),
+        );
+      },
+    );
 
     test('should handle multiple dispose calls without crashing', () async {
       final detector = FaceDetector();
@@ -329,8 +338,10 @@ void main() {
       final faces = await detector.detectFacesFromBytes(validImageBytes);
       expect(faces, isNotEmpty);
 
-      final embedding =
-          await detector.getFaceEmbedding(faces.first, validImageBytes);
+      final embedding = await detector.getFaceEmbedding(
+        faces.first,
+        validImageBytes,
+      );
       expect(embedding.length, greaterThan(0));
 
       detector.dispose();
@@ -340,12 +351,15 @@ void main() {
       final detector = FaceDetector();
       await detector.initialize();
 
-      final data = await rootBundle
-          .load('assets/samples/group-shot-bounding-box-ex1.jpeg');
+      final data = await rootBundle.load(
+        'assets/samples/group-shot-bounding-box-ex1.jpeg',
+      );
       final groupImage = data.buffer.asUint8List();
 
-      final faces = await detector.detectFacesFromBytes(groupImage,
-          mode: FaceDetectionMode.fast);
+      final faces = await detector.detectFacesFromBytes(
+        groupImage,
+        mode: FaceDetectionMode.fast,
+      );
       expect(faces.length, greaterThan(1));
 
       final embeddings = await detector.getFaceEmbeddings(faces, groupImage);
@@ -390,8 +404,10 @@ void main() {
         await detector.detectFacesFromBytes(Uint8List.fromList([1, 2, 3]));
       } catch (_) {}
 
-      final embedding =
-          await detector.getFaceEmbedding(validFace, validImageBytes);
+      final embedding = await detector.getFaceEmbedding(
+        validFace,
+        validImageBytes,
+      );
       expect(embedding.length, greaterThan(0));
 
       detector.dispose();
@@ -436,17 +452,20 @@ void main() {
       detector.dispose();
     }, timeout: errorTimeout);
 
-    test('should handle create/initialize/use/dispose cycle repeatedly',
-        () async {
-      for (int i = 0; i < 3; i++) {
-        final detector = FaceDetector();
-        await detector.initialize();
+    test(
+      'should handle create/initialize/use/dispose cycle repeatedly',
+      () async {
+        for (int i = 0; i < 3; i++) {
+          final detector = FaceDetector();
+          await detector.initialize();
 
-        final faces = await detector.detectFacesFromBytes(validImageBytes);
-        expect(faces, isNotEmpty, reason: 'Cycle $i failed');
+          final faces = await detector.detectFacesFromBytes(validImageBytes);
+          expect(faces, isNotEmpty, reason: 'Cycle $i failed');
 
-        detector.dispose();
-      }
-    }, timeout: errorTimeout);
+          detector.dispose();
+        }
+      },
+      timeout: errorTimeout,
+    );
   });
 }

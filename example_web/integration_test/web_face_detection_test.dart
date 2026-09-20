@@ -90,8 +90,7 @@ void main() {
       baseline = (await ungated.detectFacesFromBytes(
         await load(groupShot),
         mode: FaceDetectionMode.fast,
-      ))
-          .length;
+      )).length;
     } finally {
       await ungated.dispose();
     }
@@ -150,11 +149,11 @@ void main() {
       enableTracking: true,
     );
     try {
-      final DetectionWithSegmentationResult result =
-          await detector.detectFacesWithSegmentation(
-        await load(singleFace),
-        mode: FaceDetectionMode.fast,
-      );
+      final DetectionWithSegmentationResult result = await detector
+          .detectFacesWithSegmentation(
+            await load(singleFace),
+            mode: FaceDetectionMode.fast,
+          );
 
       expect(result.faces, isNotEmpty);
       expect(result.faces.first.trackingId, isNotNull);

@@ -26,9 +26,7 @@ void main() {
   Future<cv.Mat> loadSample() async {
     final bytes = (await rootBundle.load(
       'assets/samples/landmark-ex1.jpg',
-    ))
-        .buffer
-        .asUint8List();
+    )).buffer.asUint8List();
     return cv.imdecode(bytes, cv.IMREAD_COLOR);
   }
 
@@ -66,7 +64,10 @@ void main() {
           y,
           x,
           cv.Vec3b(
-              (x * 255) ~/ side, (y * 255) ~/ side, ((x + y) * 127) ~/ side),
+            (x * 255) ~/ side,
+            (y * 255) ~/ side,
+            ((x + y) * 127) ~/ side,
+          ),
         );
       }
     }
@@ -86,13 +87,10 @@ void main() {
         outSize: outSize,
       )!;
       final fullCrop = extractAlignedSquare(grad, cx, cy, size, theta)!;
-      final resized = cv.resize(
-          fullCrop,
-          (
-            outSize,
-            outSize,
-          ),
-          interpolation: cv.INTER_LINEAR);
+      final resized = cv.resize(fullCrop, (
+        outSize,
+        outSize,
+      ), interpolation: cv.INTER_LINEAR);
 
       final Uint8List a = direct.data;
       final Uint8List b = resized.data;
@@ -154,13 +152,10 @@ void main() {
         targetWidth: outW,
         targetHeight: outH,
       );
-      final resized = cv.resize(
-          src,
-          (
-            lbp.newWidth,
-            lbp.newHeight,
-          ),
-          interpolation: cv.INTER_LINEAR);
+      final resized = cv.resize(src, (
+        lbp.newWidth,
+        lbp.newHeight,
+      ), interpolation: cv.INTER_LINEAR);
       final padded = cv.copyMakeBorder(
         resized,
         lbp.padTop,
@@ -177,15 +172,16 @@ void main() {
       );
       padded.dispose();
       return ImageTensor(
-          tensor,
-          [
-            lbp.padTop / outH,
-            lbp.padBottom / outH,
-            lbp.padLeft / outW,
-            lbp.padRight / outW,
-          ],
-          outW,
-          outH);
+        tensor,
+        [
+          lbp.padTop / outH,
+          lbp.padBottom / outH,
+          lbp.padLeft / outW,
+          lbp.padRight / outW,
+        ],
+        outW,
+        outH,
+      );
     }
 
     // Letterboxed case (non-square source) and same-size fast-path case.

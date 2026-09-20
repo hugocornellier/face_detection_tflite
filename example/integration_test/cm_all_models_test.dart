@@ -18,9 +18,7 @@ void main() {
   test('CompiledModel engine: every detection model variant', () async {
     final bytes = (await rootBundle.load(
       'assets/samples/landmark-ex1.jpg',
-    ))
-        .buffer
-        .asUint8List();
+    )).buffer.asUint8List();
 
     for (final model in FaceDetectionModel.values) {
       if (model == FaceDetectionModel.fullSparse) {

@@ -25,17 +25,16 @@ void main() {
   late Uint8List testImageBytes;
 
   setUpAll(() async {
-    final ByteData data =
-        await rootBundle.load('assets/samples/landmark-ex1.jpg');
+    final ByteData data = await rootBundle.load(
+      'assets/samples/landmark-ex1.jpg',
+    );
     testImageBytes = data.buffer.asUint8List();
   });
 
   group('PerformanceConfig.disabled', () {
     test('should work on all platforms', () async {
       final detector = FaceDetector();
-      await detector.initialize(
-        performanceConfig: PerformanceConfig.disabled,
-      );
+      await detector.initialize(performanceConfig: PerformanceConfig.disabled);
 
       expect(detector.isReady, true);
 
@@ -53,25 +52,28 @@ void main() {
 
     test('should provide baseline performance', () async {
       final detector = FaceDetector();
-      await detector.initialize(
-        performanceConfig: PerformanceConfig.disabled,
-      );
+      await detector.initialize(performanceConfig: PerformanceConfig.disabled);
 
-      await detector.detectFacesFromBytes(testImageBytes,
-          mode: FaceDetectionMode.fast);
+      await detector.detectFacesFromBytes(
+        testImageBytes,
+        mode: FaceDetectionMode.fast,
+      );
 
       final times = <int>[];
       for (int i = 0; i < 5; i++) {
         final sw = Stopwatch()..start();
-        await detector.detectFacesFromBytes(testImageBytes,
-            mode: FaceDetectionMode.fast);
+        await detector.detectFacesFromBytes(
+          testImageBytes,
+          mode: FaceDetectionMode.fast,
+        );
         sw.stop();
         times.add(sw.elapsedMilliseconds);
       }
 
       final avg = times.reduce((a, b) => a + b) / times.length;
       print(
-          'PerformanceConfig.disabled - fast mode avg: ${avg.toStringAsFixed(1)}ms');
+        'PerformanceConfig.disabled - fast mode avg: ${avg.toStringAsFixed(1)}ms',
+      );
 
       detector.dispose();
     }, timeout: configTimeout);
@@ -80,9 +82,7 @@ void main() {
   group('PerformanceConfig.auto', () {
     test('should automatically select best config for platform', () async {
       final detector = FaceDetector();
-      await detector.initialize(
-        performanceConfig: PerformanceConfig.auto(),
-      );
+      await detector.initialize(performanceConfig: PerformanceConfig.auto());
 
       expect(detector.isReady, true);
 
@@ -122,9 +122,7 @@ void main() {
   group('PerformanceConfig.xnnpack', () {
     test('should work on supported platforms (macOS/Linux/Windows)', () async {
       final detector = FaceDetector();
-      await detector.initialize(
-        performanceConfig: PerformanceConfig.xnnpack(),
-      );
+      await detector.initialize(performanceConfig: PerformanceConfig.xnnpack());
 
       expect(detector.isReady, true);
 
@@ -136,7 +134,8 @@ void main() {
       expect(faces, isNotEmpty);
 
       print(
-          'XNNPACK config on ${Platform.operatingSystem}: ${faces.length} faces');
+        'XNNPACK config on ${Platform.operatingSystem}: ${faces.length} faces',
+      );
 
       detector.dispose();
     }, timeout: configTimeout);
@@ -155,8 +154,11 @@ void main() {
           mode: FaceDetectionMode.fast,
         );
 
-        expect(faces, isNotEmpty,
-            reason: 'XNNPACK with $threads threads should work');
+        expect(
+          faces,
+          isNotEmpty,
+          reason: 'XNNPACK with $threads threads should work',
+        );
 
         detector.dispose();
       }
@@ -173,14 +175,18 @@ void main() {
         performanceConfig: PerformanceConfig.disabled,
       );
 
-      await cpuDetector.detectFacesFromBytes(testImageBytes,
-          mode: FaceDetectionMode.fast);
+      await cpuDetector.detectFacesFromBytes(
+        testImageBytes,
+        mode: FaceDetectionMode.fast,
+      );
 
       final cpuTimes = <int>[];
       for (int i = 0; i < 5; i++) {
         final sw = Stopwatch()..start();
-        await cpuDetector.detectFacesFromBytes(testImageBytes,
-            mode: FaceDetectionMode.fast);
+        await cpuDetector.detectFacesFromBytes(
+          testImageBytes,
+          mode: FaceDetectionMode.fast,
+        );
         sw.stop();
         cpuTimes.add(sw.elapsedMilliseconds);
       }
@@ -191,14 +197,18 @@ void main() {
         performanceConfig: PerformanceConfig.xnnpack(numThreads: 4),
       );
 
-      await xnnDetector.detectFacesFromBytes(testImageBytes,
-          mode: FaceDetectionMode.fast);
+      await xnnDetector.detectFacesFromBytes(
+        testImageBytes,
+        mode: FaceDetectionMode.fast,
+      );
 
       final xnnTimes = <int>[];
       for (int i = 0; i < 5; i++) {
         final sw = Stopwatch()..start();
-        await xnnDetector.detectFacesFromBytes(testImageBytes,
-            mode: FaceDetectionMode.fast);
+        await xnnDetector.detectFacesFromBytes(
+          testImageBytes,
+          mode: FaceDetectionMode.fast,
+        );
         sw.stop();
         xnnTimes.add(sw.elapsedMilliseconds);
       }
@@ -212,8 +222,11 @@ void main() {
       print('XNNPACK avg: ${xnnAvg.toStringAsFixed(1)}ms');
       print('Speedup: ${speedup.toStringAsFixed(2)}x');
 
-      expect(xnnAvg, lessThanOrEqualTo(cpuAvg * 1.2),
-          reason: 'XNNPACK should not be slower than CPU');
+      expect(
+        xnnAvg,
+        lessThanOrEqualTo(cpuAvg * 1.2),
+        reason: 'XNNPACK should not be slower than CPU',
+      );
     }, timeout: configTimeout);
   });
 
@@ -222,9 +235,7 @@ void main() {
       final detector = FaceDetector();
 
       try {
-        await detector.initialize(
-          performanceConfig: PerformanceConfig.gpu(),
-        );
+        await detector.initialize(performanceConfig: PerformanceConfig.gpu());
 
         if (detector.isReady) {
           final faces = await detector.detectFacesFromBytes(
@@ -233,7 +244,8 @@ void main() {
           );
 
           print(
-              'GPU config on ${Platform.operatingSystem}: ${faces.length} faces');
+            'GPU config on ${Platform.operatingSystem}: ${faces.length} faces',
+          );
           expect(faces, isNotEmpty);
         }
 
@@ -246,9 +258,7 @@ void main() {
     test('should fall back gracefully on unsupported platforms', () async {
       if (Platform.isMacOS || Platform.isLinux || Platform.isWindows) {
         final detector = FaceDetector();
-        await detector.initialize(
-          performanceConfig: PerformanceConfig.gpu(),
-        );
+        await detector.initialize(performanceConfig: PerformanceConfig.gpu());
 
         expect(detector.isReady, true);
 
@@ -279,14 +289,18 @@ void main() {
         final detector = FaceDetector();
         await detector.initialize(performanceConfig: config);
 
-        await detector.detectFacesFromBytes(testImageBytes,
-            mode: FaceDetectionMode.fast);
+        await detector.detectFacesFromBytes(
+          testImageBytes,
+          mode: FaceDetectionMode.fast,
+        );
 
         final times = <int>[];
         for (int i = 0; i < 5; i++) {
           final sw = Stopwatch()..start();
-          await detector.detectFacesFromBytes(testImageBytes,
-              mode: FaceDetectionMode.fast);
+          await detector.detectFacesFromBytes(
+            testImageBytes,
+            mode: FaceDetectionMode.fast,
+          );
           sw.stop();
           times.add(sw.elapsedMilliseconds);
         }
@@ -356,9 +370,7 @@ void main() {
 
     test('should work with disabled config', () async {
       final detector = FaceDetector();
-      await detector.initialize(
-        performanceConfig: PerformanceConfig.disabled,
-      );
+      await detector.initialize(performanceConfig: PerformanceConfig.disabled);
 
       final faces = await detector.detectFacesFromBytes(
         testImageBytes,
@@ -400,18 +412,27 @@ void main() {
       }
 
       final counts = faceCounts.values.toSet();
-      expect(counts.length, 1,
-          reason: 'All configs should detect same number of faces');
+      expect(
+        counts.length,
+        1,
+        reason: 'All configs should detect same number of faces',
+      );
 
       if (bboxes.length > 1) {
         final reference = bboxes.values.first;
         for (final bbox in bboxes.values.skip(1)) {
           final xDiff = (bbox.topLeft.x - reference.topLeft.x).abs();
           final yDiff = (bbox.topLeft.y - reference.topLeft.y).abs();
-          expect(xDiff, lessThan(2),
-              reason: 'Bounding box X should be consistent');
-          expect(yDiff, lessThan(2),
-              reason: 'Bounding box Y should be consistent');
+          expect(
+            xDiff,
+            lessThan(2),
+            reason: 'Bounding box X should be consistent',
+          );
+          expect(
+            yDiff,
+            lessThan(2),
+            reason: 'Bounding box Y should be consistent',
+          );
         }
       }
 
@@ -427,8 +448,9 @@ void main() {
         final detector = FaceDetector();
         await detector.initialize(meshPoolSize: poolSize);
 
-        final ByteData data = await rootBundle
-            .load('assets/samples/group-shot-bounding-box-ex1.jpeg');
+        final ByteData data = await rootBundle.load(
+          'assets/samples/group-shot-bounding-box-ex1.jpeg',
+        );
         final bytes = data.buffer.asUint8List();
 
         final faces = await detector.detectFacesFromBytes(
@@ -439,8 +461,11 @@ void main() {
         expect(faces, isNotEmpty, reason: 'meshPoolSize=$poolSize should work');
 
         for (final face in faces) {
-          expect(face.mesh, isNotNull,
-              reason: 'All faces should have mesh with poolSize=$poolSize');
+          expect(
+            face.mesh,
+            isNotNull,
+            reason: 'All faces should have mesh with poolSize=$poolSize',
+          );
         }
 
         print('meshPoolSize=$poolSize: Detected ${faces.length} faces');
@@ -453,8 +478,9 @@ void main() {
       final detector = FaceDetector();
       await detector.initialize(meshPoolSize: 1);
 
-      final ByteData data = await rootBundle
-          .load('assets/samples/group-shot-bounding-box-ex1.jpeg');
+      final ByteData data = await rootBundle.load(
+        'assets/samples/group-shot-bounding-box-ex1.jpeg',
+      );
       final bytes = data.buffer.asUint8List();
 
       final faces = await detector.detectFacesFromBytes(

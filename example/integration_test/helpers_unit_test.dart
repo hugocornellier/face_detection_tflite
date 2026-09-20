@@ -176,14 +176,7 @@ void main() {
 
     test('keypoints are also unpadded', () {
       final padding = [0.1, 0.1, 0.0, 0.0];
-      final det = makeDetection(
-        0.2,
-        0.3,
-        0.8,
-        0.7,
-        0.95,
-        [0.5, 0.5, 0.2, 0.3],
-      );
+      final det = makeDetection(0.2, 0.3, 0.8, 0.7, 0.95, [0.5, 0.5, 0.2, 0.3]);
       final result = testDetectionLetterboxRemoval([det], padding);
 
       // kp[1] = (0.5 - 0.1) / 0.8 = 0.5
@@ -257,13 +250,12 @@ void main() {
       // Landmark at pixel (-10, 110) in 100x100 model, no padding
       // normalized: x=-0.1, y=1.1 -> clamped to x=0.0, y=1.0
       final flat = Float32List.fromList([-10, 110, 0.0]);
-      final result = testUnpackLandmarks(
-        flat,
-        100,
-        100,
-        [0, 0, 0, 0],
-        clamp: true,
-      );
+      final result = testUnpackLandmarks(flat, 100, 100, [
+        0,
+        0,
+        0,
+        0,
+      ], clamp: true);
 
       expect(result[0][0], 0.0);
       expect(result[0][1], 1.0);
@@ -272,13 +264,12 @@ void main() {
 
     test('clamp=false preserves out-of-range values', () {
       final flat = Float32List.fromList([-10, 110, 0.0]);
-      final result = testUnpackLandmarks(
-        flat,
-        100,
-        100,
-        [0, 0, 0, 0],
-        clamp: false,
-      );
+      final result = testUnpackLandmarks(flat, 100, 100, [
+        0,
+        0,
+        0,
+        0,
+      ], clamp: false);
 
       expect(result[0][0], closeTo(-0.1, 0.001));
       expect(result[0][1], closeTo(1.1, 0.001));
@@ -347,7 +338,8 @@ void main() {
       // High overlap -> only highest-scoring kept (or weighted merge)
       expect(result.length, 1);
       print(
-          'nms: overlapping suppression passed, kept score=${result[0].score}');
+        'nms: overlapping suppression passed, kept score=${result[0].score}',
+      );
     }, timeout: testTimeout);
 
     test('non-overlapping detections: both kept', () {

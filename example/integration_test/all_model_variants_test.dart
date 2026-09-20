@@ -37,12 +37,15 @@ void main() {
       await detector.initialize(model: FaceDetectionModel.frontCamera);
       expect(detector.isReady, true);
 
-      final ByteData data =
-          await rootBundle.load('assets/samples/landmark-ex1.jpg');
+      final ByteData data = await rootBundle.load(
+        'assets/samples/landmark-ex1.jpg',
+      );
       final Uint8List bytes = data.buffer.asUint8List();
 
-      final faces = await detector.detectFacesFromBytes(bytes,
-          mode: FaceDetectionMode.full);
+      final faces = await detector.detectFacesFromBytes(
+        bytes,
+        mode: FaceDetectionMode.full,
+      );
 
       expect(faces, isNotEmpty, reason: 'frontCamera should detect faces');
       expect(faces.first.boundingBox.width, greaterThan(0));
@@ -50,7 +53,8 @@ void main() {
       expect(faces.first.mesh, isNotNull);
 
       print(
-          'frontCamera: Detected ${faces.length} face(s), bbox width: ${faces.first.boundingBox.width.toStringAsFixed(1)}');
+        'frontCamera: Detected ${faces.length} face(s), bbox width: ${faces.first.boundingBox.width.toStringAsFixed(1)}',
+      );
 
       detector.dispose();
     });
@@ -59,12 +63,15 @@ void main() {
       final detector = FaceDetector();
       await detector.initialize(model: FaceDetectionModel.frontCamera);
 
-      final ByteData data =
-          await rootBundle.load('assets/samples/landmark-ex1.jpg');
+      final ByteData data = await rootBundle.load(
+        'assets/samples/landmark-ex1.jpg',
+      );
       final Uint8List bytes = data.buffer.asUint8List();
 
-      final faces = await detector.detectFacesFromBytes(bytes,
-          mode: FaceDetectionMode.fast);
+      final faces = await detector.detectFacesFromBytes(
+        bytes,
+        mode: FaceDetectionMode.fast,
+      );
 
       expect(faces, isNotEmpty);
       expect(faces.first.mesh, isNull);
@@ -77,15 +84,21 @@ void main() {
       final detector = FaceDetector();
       await detector.initialize(model: FaceDetectionModel.frontCamera);
 
-      final ByteData data =
-          await rootBundle.load('assets/samples/iris-detection-ex1.jpg');
+      final ByteData data = await rootBundle.load(
+        'assets/samples/iris-detection-ex1.jpg',
+      );
       final Uint8List bytes = data.buffer.asUint8List();
 
-      final faces = await detector.detectFacesFromBytes(bytes,
-          mode: FaceDetectionMode.fast);
+      final faces = await detector.detectFacesFromBytes(
+        bytes,
+        mode: FaceDetectionMode.fast,
+      );
 
-      expect(faces, isNotEmpty,
-          reason: 'frontCamera should detect close-up faces');
+      expect(
+        faces,
+        isNotEmpty,
+        reason: 'frontCamera should detect close-up faces',
+      );
       print('frontCamera: Detected ${faces.length} face(s) in close-up image');
 
       detector.dispose();
@@ -98,12 +111,15 @@ void main() {
       await detector.initialize(model: FaceDetectionModel.backCamera);
       expect(detector.isReady, true);
 
-      final ByteData data =
-          await rootBundle.load('assets/samples/landmark-ex1.jpg');
+      final ByteData data = await rootBundle.load(
+        'assets/samples/landmark-ex1.jpg',
+      );
       final Uint8List bytes = data.buffer.asUint8List();
 
-      final faces = await detector.detectFacesFromBytes(bytes,
-          mode: FaceDetectionMode.full);
+      final faces = await detector.detectFacesFromBytes(
+        bytes,
+        mode: FaceDetectionMode.full,
+      );
 
       expect(faces, isNotEmpty, reason: 'backCamera should detect faces');
       expect(faces.first.boundingBox.width, greaterThan(0));
@@ -111,7 +127,8 @@ void main() {
       expect(faces.first.mesh!.points.length, 468);
 
       print(
-          'backCamera: Detected ${faces.length} face(s), bbox width: ${faces.first.boundingBox.width.toStringAsFixed(1)}');
+        'backCamera: Detected ${faces.length} face(s), bbox width: ${faces.first.boundingBox.width.toStringAsFixed(1)}',
+      );
 
       detector.dispose();
     });
@@ -120,8 +137,9 @@ void main() {
       final detector = FaceDetector();
       await detector.initialize(model: FaceDetectionModel.backCamera);
 
-      final ByteData data =
-          await rootBundle.load('assets/samples/landmark-ex1.jpg');
+      final ByteData data = await rootBundle.load(
+        'assets/samples/landmark-ex1.jpg',
+      );
       final Uint8List bytes = data.buffer.asUint8List();
 
       for (final mode in FaceDetectionMode.values) {
@@ -146,15 +164,21 @@ void main() {
       final detector = FaceDetector();
       await detector.initialize(model: FaceDetectionModel.backCamera);
 
-      final ByteData data = await rootBundle
-          .load('assets/samples/group-shot-bounding-box-ex1.jpeg');
+      final ByteData data = await rootBundle.load(
+        'assets/samples/group-shot-bounding-box-ex1.jpeg',
+      );
       final Uint8List bytes = data.buffer.asUint8List();
 
-      final faces = await detector.detectFacesFromBytes(bytes,
-          mode: FaceDetectionMode.fast);
+      final faces = await detector.detectFacesFromBytes(
+        bytes,
+        mode: FaceDetectionMode.fast,
+      );
 
-      expect(faces.length, greaterThanOrEqualTo(2),
-          reason: 'backCamera should detect multiple faces');
+      expect(
+        faces.length,
+        greaterThanOrEqualTo(2),
+        reason: 'backCamera should detect multiple faces',
+      );
       print('backCamera: Detected ${faces.length} faces in group photo');
 
       detector.dispose();
@@ -167,20 +191,27 @@ void main() {
       await detector.initialize(model: FaceDetectionModel.shortRange);
       expect(detector.isReady, true);
 
-      final ByteData data =
-          await rootBundle.load('assets/samples/iris-detection-ex1.jpg');
+      final ByteData data = await rootBundle.load(
+        'assets/samples/iris-detection-ex1.jpg',
+      );
       final Uint8List bytes = data.buffer.asUint8List();
 
-      final faces = await detector.detectFacesFromBytes(bytes,
-          mode: FaceDetectionMode.full);
+      final faces = await detector.detectFacesFromBytes(
+        bytes,
+        mode: FaceDetectionMode.full,
+      );
 
-      expect(faces, isNotEmpty,
-          reason: 'shortRange should detect close-up faces');
+      expect(
+        faces,
+        isNotEmpty,
+        reason: 'shortRange should detect close-up faces',
+      );
       expect(faces.first.boundingBox.width, greaterThan(0));
       expect(faces.first.mesh, isNotNull);
 
       print(
-          'shortRange: Detected ${faces.length} face(s), bbox width: ${faces.first.boundingBox.width.toStringAsFixed(1)}');
+        'shortRange: Detected ${faces.length} face(s), bbox width: ${faces.first.boundingBox.width.toStringAsFixed(1)}',
+      );
 
       detector.dispose();
     });
@@ -198,12 +229,17 @@ void main() {
         final ByteData data = await rootBundle.load(imagePath);
         final Uint8List bytes = data.buffer.asUint8List();
 
-        final faces = await detector.detectFacesFromBytes(bytes,
-            mode: FaceDetectionMode.full);
+        final faces = await detector.detectFacesFromBytes(
+          bytes,
+          mode: FaceDetectionMode.full,
+        );
 
         expect(faces, isNotEmpty, reason: 'shortRange failed on $imagePath');
-        expect(faces.first.irisPoints, isNotEmpty,
-            reason: 'shortRange should detect iris in close-up');
+        expect(
+          faces.first.irisPoints,
+          isNotEmpty,
+          reason: 'shortRange should detect iris in close-up',
+        );
       }
 
       detector.dispose();
@@ -216,12 +252,15 @@ void main() {
       await detector.initialize(model: FaceDetectionModel.full);
       expect(detector.isReady, true);
 
-      final ByteData data =
-          await rootBundle.load('assets/samples/landmark-ex1.jpg');
+      final ByteData data = await rootBundle.load(
+        'assets/samples/landmark-ex1.jpg',
+      );
       final Uint8List bytes = data.buffer.asUint8List();
 
-      final faces = await detector.detectFacesFromBytes(bytes,
-          mode: FaceDetectionMode.full);
+      final faces = await detector.detectFacesFromBytes(
+        bytes,
+        mode: FaceDetectionMode.full,
+      );
 
       expect(faces, isNotEmpty, reason: 'full model should detect faces');
       expect(faces.first.boundingBox.width, greaterThan(0));
@@ -229,7 +268,8 @@ void main() {
       expect(faces.first.mesh!.points.length, 468);
 
       print(
-          'full: Detected ${faces.length} face(s), bbox width: ${faces.first.boundingBox.width.toStringAsFixed(1)}');
+        'full: Detected ${faces.length} face(s), bbox width: ${faces.first.boundingBox.width.toStringAsFixed(1)}',
+      );
 
       detector.dispose();
     });
@@ -242,8 +282,10 @@ void main() {
         final ByteData data = await rootBundle.load(entry.key);
         final Uint8List bytes = data.buffer.asUint8List();
 
-        final faces = await detector.detectFacesFromBytes(bytes,
-            mode: FaceDetectionMode.fast);
+        final faces = await detector.detectFacesFromBytes(
+          bytes,
+          mode: FaceDetectionMode.fast,
+        );
 
         expect(faces, isNotEmpty, reason: 'full model failed on ${entry.key}');
         print('full: ${entry.key} -> ${faces.length} faces');
@@ -259,19 +301,23 @@ void main() {
       await detector.initialize(model: FaceDetectionModel.fullSparse);
       expect(detector.isReady, true);
 
-      final ByteData data =
-          await rootBundle.load('assets/samples/landmark-ex1.jpg');
+      final ByteData data = await rootBundle.load(
+        'assets/samples/landmark-ex1.jpg',
+      );
       final Uint8List bytes = data.buffer.asUint8List();
 
-      final faces = await detector.detectFacesFromBytes(bytes,
-          mode: FaceDetectionMode.full);
+      final faces = await detector.detectFacesFromBytes(
+        bytes,
+        mode: FaceDetectionMode.full,
+      );
 
       expect(faces, isNotEmpty, reason: 'fullSparse should detect faces');
       expect(faces.first.boundingBox.width, greaterThan(0));
       expect(faces.first.mesh, isNotNull);
 
       print(
-          'fullSparse: Detected ${faces.length} face(s), bbox width: ${faces.first.boundingBox.width.toStringAsFixed(1)}');
+        'fullSparse: Detected ${faces.length} face(s), bbox width: ${faces.first.boundingBox.width.toStringAsFixed(1)}',
+      );
 
       detector.dispose();
     });
@@ -280,8 +326,9 @@ void main() {
       final detector = FaceDetector();
       await detector.initialize(model: FaceDetectionModel.fullSparse);
 
-      final ByteData data =
-          await rootBundle.load('assets/samples/landmark-ex1.jpg');
+      final ByteData data = await rootBundle.load(
+        'assets/samples/landmark-ex1.jpg',
+      );
       final Uint8List bytes = data.buffer.asUint8List();
 
       for (final mode in FaceDetectionMode.values) {
@@ -297,16 +344,19 @@ void main() {
     test('all models should detect faces in standard test image', () async {
       final results = <String, int>{};
 
-      final ByteData data =
-          await rootBundle.load('assets/samples/landmark-ex1.jpg');
+      final ByteData data = await rootBundle.load(
+        'assets/samples/landmark-ex1.jpg',
+      );
       final Uint8List bytes = data.buffer.asUint8List();
 
       for (final model in FaceDetectionModel.values) {
         final detector = FaceDetector();
         await detector.initialize(model: model);
 
-        final faces = await detector.detectFacesFromBytes(bytes,
-            mode: FaceDetectionMode.fast);
+        final faces = await detector.detectFacesFromBytes(
+          bytes,
+          mode: FaceDetectionMode.fast,
+        );
         results[model.name] = faces.length;
 
         detector.dispose();
@@ -315,24 +365,30 @@ void main() {
       print('\nModel comparison on landmark-ex1.jpg:');
       for (final entry in results.entries) {
         print('  ${entry.key}: ${entry.value} face(s)');
-        expect(entry.value, greaterThan(0),
-            reason: '${entry.key} should detect at least one face');
+        expect(
+          entry.value,
+          greaterThan(0),
+          reason: '${entry.key} should detect at least one face',
+        );
       }
     });
 
     test('most models should detect multiple faces in group photo', () async {
       final results = <String, int>{};
 
-      final ByteData data = await rootBundle
-          .load('assets/samples/group-shot-bounding-box-ex1.jpeg');
+      final ByteData data = await rootBundle.load(
+        'assets/samples/group-shot-bounding-box-ex1.jpeg',
+      );
       final Uint8List bytes = data.buffer.asUint8List();
 
       for (final model in FaceDetectionModel.values) {
         final detector = FaceDetector();
         await detector.initialize(model: model);
 
-        final faces = await detector.detectFacesFromBytes(bytes,
-            mode: FaceDetectionMode.fast);
+        final faces = await detector.detectFacesFromBytes(
+          bytes,
+          mode: FaceDetectionMode.fast,
+        );
         results[model.name] = faces.length;
 
         detector.dispose();
@@ -347,36 +403,50 @@ void main() {
 
       for (final entry in results.entries) {
         if (closeUpModels.contains(entry.key)) {
-          expect(entry.value, greaterThanOrEqualTo(0),
-              reason: '${entry.key} should not crash on group photo');
+          expect(
+            entry.value,
+            greaterThanOrEqualTo(0),
+            reason: '${entry.key} should not crash on group photo',
+          );
         } else {
-          expect(entry.value, greaterThanOrEqualTo(2),
-              reason: '${entry.key} should detect at least 2 faces in group');
+          expect(
+            entry.value,
+            greaterThanOrEqualTo(2),
+            reason: '${entry.key} should detect at least 2 faces in group',
+          );
         }
       }
     });
 
-    test('detection results should be consistent across multiple runs',
-        () async {
-      final detector = FaceDetector();
-      await detector.initialize(model: FaceDetectionModel.backCamera);
+    test(
+      'detection results should be consistent across multiple runs',
+      () async {
+        final detector = FaceDetector();
+        await detector.initialize(model: FaceDetectionModel.backCamera);
 
-      final ByteData data =
-          await rootBundle.load('assets/samples/landmark-ex1.jpg');
-      final Uint8List bytes = data.buffer.asUint8List();
+        final ByteData data = await rootBundle.load(
+          'assets/samples/landmark-ex1.jpg',
+        );
+        final Uint8List bytes = data.buffer.asUint8List();
 
-      final counts = <int>[];
-      for (int i = 0; i < 5; i++) {
-        final faces = await detector.detectFacesFromBytes(bytes,
-            mode: FaceDetectionMode.fast);
-        counts.add(faces.length);
-      }
+        final counts = <int>[];
+        for (int i = 0; i < 5; i++) {
+          final faces = await detector.detectFacesFromBytes(
+            bytes,
+            mode: FaceDetectionMode.fast,
+          );
+          counts.add(faces.length);
+        }
 
-      expect(counts.toSet().length, 1,
-          reason: 'Detection count should be consistent');
+        expect(
+          counts.toSet().length,
+          1,
+          reason: 'Detection count should be consistent',
+        );
 
-      detector.dispose();
-    });
+        detector.dispose();
+      },
+    );
   });
 
   group('FaceDetector with different models', () {
@@ -384,12 +454,15 @@ void main() {
       final detector = FaceDetector();
       await detector.initialize(model: FaceDetectionModel.frontCamera);
 
-      final ByteData data =
-          await rootBundle.load('assets/samples/landmark-ex1.jpg');
+      final ByteData data = await rootBundle.load(
+        'assets/samples/landmark-ex1.jpg',
+      );
       final Uint8List bytes = data.buffer.asUint8List();
 
-      final faces = await detector.detectFacesFromBytes(bytes,
-          mode: FaceDetectionMode.full);
+      final faces = await detector.detectFacesFromBytes(
+        bytes,
+        mode: FaceDetectionMode.full,
+      );
 
       expect(faces, isNotEmpty);
       expect(faces.first.mesh, isNotNull);
@@ -401,12 +474,15 @@ void main() {
       final detector = FaceDetector();
       await detector.initialize(model: FaceDetectionModel.shortRange);
 
-      final ByteData data =
-          await rootBundle.load('assets/samples/iris-detection-ex1.jpg');
+      final ByteData data = await rootBundle.load(
+        'assets/samples/iris-detection-ex1.jpg',
+      );
       final Uint8List bytes = data.buffer.asUint8List();
 
-      final faces = await detector.detectFacesFromBytes(bytes,
-          mode: FaceDetectionMode.full);
+      final faces = await detector.detectFacesFromBytes(
+        bytes,
+        mode: FaceDetectionMode.full,
+      );
 
       expect(faces, isNotEmpty);
       expect(faces.first.irisPoints, isNotEmpty);
@@ -418,12 +494,15 @@ void main() {
       final detector = FaceDetector();
       await detector.initialize(model: FaceDetectionModel.fullSparse);
 
-      final ByteData data =
-          await rootBundle.load('assets/samples/landmark-ex1.jpg');
+      final ByteData data = await rootBundle.load(
+        'assets/samples/landmark-ex1.jpg',
+      );
       final Uint8List bytes = data.buffer.asUint8List();
 
-      final faces = await detector.detectFacesFromBytes(bytes,
-          mode: FaceDetectionMode.fast);
+      final faces = await detector.detectFacesFromBytes(
+        bytes,
+        mode: FaceDetectionMode.fast,
+      );
 
       expect(faces, isNotEmpty);
 

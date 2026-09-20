@@ -61,18 +61,21 @@ void main() {
       print('SINGLE-FACE FULL-MODE: GPU vs XNNPACK (p50±std ms)');
       print('=' * 78);
       print(
-          '${'image'.padRight(28)} faces ${'xnnpack'.padLeft(12)} ${'gpu'.padLeft(12)}   speedup');
+        '${'image'.padRight(28)} faces ${'xnnpack'.padLeft(12)} ${'gpu'.padLeft(12)}   speedup',
+      );
       print('-' * 78);
       for (final path in images) {
         final bytes = (await rootBundle.load(path)).buffer.asUint8List();
         final (xnn, xf) = await _run(const PerformanceConfig.xnnpack(), bytes);
         final (gpu, gf) = await _run(const PerformanceConfig.gpu(), bytes);
         final xp = _p50(xnn), gp = _p50(gpu);
-        print('${path.split('/').last.padRight(28)} '
-            '${xf.toString().padLeft(5)} '
-            '${('${xp.toStringAsFixed(1)}±${_std(xnn).toStringAsFixed(1)}').padLeft(12)} '
-            '${('${gp.toStringAsFixed(1)}±${_std(gpu).toStringAsFixed(1)}').padLeft(12)}   '
-            '${(xp / gp).toStringAsFixed(2)}x  (faces gpu=$gf)');
+        print(
+          '${path.split('/').last.padRight(28)} '
+          '${xf.toString().padLeft(5)} '
+          '${('${xp.toStringAsFixed(1)}±${_std(xnn).toStringAsFixed(1)}').padLeft(12)} '
+          '${('${gp.toStringAsFixed(1)}±${_std(gpu).toStringAsFixed(1)}').padLeft(12)}   '
+          '${(xp / gp).toStringAsFixed(2)}x  (faces gpu=$gf)',
+        );
       }
       print('=' * 78);
     });

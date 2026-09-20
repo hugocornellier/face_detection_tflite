@@ -292,9 +292,11 @@ void main() {
 
       expect(result.faces, isNotEmpty);
       expect(result.segmentationMask, isNotNull);
-      for (int i = 0;
-          i < 100 && i < result.segmentationMask!.data.length;
-          i++) {
+      for (
+        int i = 0;
+        i < 100 && i < result.segmentationMask!.data.length;
+        i++
+      ) {
         expect(result.segmentationMask!.data[i], inInclusiveRange(0.0, 1.0));
       }
 
@@ -437,9 +439,7 @@ void main() {
     }, timeout: testTimeout);
 
     test('throws StateError when spawned without segmentation', () async {
-      print(
-        '\n--- Testing detectFacesWithSegmentation StateError ---',
-      );
+      print('\n--- Testing detectFacesWithSegmentation StateError ---');
       final noSegDetector = FaceDetector();
       await noSegDetector.initialize(withSegmentation: false);
 

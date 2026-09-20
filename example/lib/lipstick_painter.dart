@@ -149,10 +149,12 @@ Path? buildLipPath(
   double minOpenFraction = 0.06,
 }) {
   final List<Point>? upperTop = face.getContour(FaceContourType.upperLipTop);
-  final List<Point>? lowerBottom =
-      face.getContour(FaceContourType.lowerLipBottom);
-  final List<Point>? upperBottom =
-      face.getContour(FaceContourType.upperLipBottom);
+  final List<Point>? lowerBottom = face.getContour(
+    FaceContourType.lowerLipBottom,
+  );
+  final List<Point>? upperBottom = face.getContour(
+    FaceContourType.upperLipBottom,
+  );
   final List<Point>? lowerTop = face.getContour(FaceContourType.lowerLipTop);
   if (upperTop == null ||
       lowerBottom == null ||
@@ -161,8 +163,10 @@ Path? buildLipPath(
     return null; // fast mode: no mesh, so no contours
   }
 
-  final List<Point> outer =
-      dilateRing(lipRing(upperTop, lowerBottom), dilatePixels);
+  final List<Point> outer = dilateRing(
+    lipRing(upperTop, lowerBottom),
+    dilatePixels,
+  );
   final List<Point> inner = lipRing(upperBottom, lowerTop);
 
   final double outerArea = signedArea(outer).abs();

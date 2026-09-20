@@ -27,11 +27,10 @@ void main() {
       );
       final FaceBlendshapesModel model =
           await FaceBlendshapesModel.createFromBuffer(
-              data.buffer.asUint8List());
+            data.buffer.asUint8List(),
+          );
       try {
-        final Float32List packed = Float32List.fromList(
-          kGoldenBlendshapeInput,
-        );
+        final Float32List packed = Float32List.fromList(kGoldenBlendshapeInput);
         final Float32List? out = await model.call(packed);
         expect(out, isNotNull);
         expect(out!.length, 52);
@@ -119,10 +118,14 @@ void main() {
         data.buffer.asUint8List(),
         mode: FaceDetectionMode.full,
       );
-      final List<Face> classified =
-          faces.where((Face f) => f.blendshapes != null).toList();
-      expect(classified, isNotEmpty,
-          reason: 'group shot should classify at least one face');
+      final List<Face> classified = faces
+          .where((Face f) => f.blendshapes != null)
+          .toList();
+      expect(
+        classified,
+        isNotEmpty,
+        reason: 'group shot should classify at least one face',
+      );
       // No cross-face buffer leakage: distinct list instances, and real
       // different faces should not produce byte-identical vectors. Only
       // meaningful when more than one face was classified.
@@ -154,7 +157,9 @@ void main() {
     // eyes-shut face; if the refinement is removed, packing falls back to the
     // open-looking coarse eyelids and these expectations fail.
     List<Point> pts(Float32List xy) => List<Point>.generate(
-        xy.length ~/ 2, (int i) => Point(xy[i * 2], xy[i * 2 + 1], 0));
+      xy.length ~/ 2,
+      (int i) => Point(xy[i * 2], xy[i * 2 + 1], 0),
+    );
 
     test('shut-eye landmarks yield high eyeBlink (low eye-open)', () async {
       final ByteData data = await rootBundle.load(
@@ -162,7 +167,8 @@ void main() {
       );
       final FaceBlendshapesModel model =
           await FaceBlendshapesModel.createFromBuffer(
-              data.buffer.asUint8List());
+            data.buffer.asUint8List(),
+          );
       try {
         final Float32List? packed = packBlendshapeInput(
           pts(kClosedEyeMeshXY),
@@ -174,18 +180,28 @@ void main() {
         expect(out!.length, 52);
         final double blinkL = out[Blendshape.eyeBlinkLeft.index];
         final double blinkR = out[Blendshape.eyeBlinkRight.index];
-        print('closed-eye blink L=$blinkL R=$blinkR '
-            '(eye-open ${1 - blinkL} / ${1 - blinkR})');
+        print(
+          'closed-eye blink L=$blinkL R=$blinkR '
+          '(eye-open ${1 - blinkL} / ${1 - blinkR})',
+        );
         // Eyes are shut -> blink high, eye-open low. The pre-fix coarse path
         // produced blink ~0.05; a generous 0.4 bound cleanly separates the two
         // while tolerating delegate/hardware variation.
-        expect(blinkL, greaterThan(0.4),
-            reason: 'left eye shut: eyeBlinkLeft should fire');
-        expect(blinkR, greaterThan(0.4),
-            reason: 'right eye shut: eyeBlinkRight should fire');
+        expect(
+          blinkL,
+          greaterThan(0.4),
+          reason: 'left eye shut: eyeBlinkLeft should fire',
+        );
+        expect(
+          blinkR,
+          greaterThan(0.4),
+          reason: 'right eye shut: eyeBlinkRight should fire',
+        );
         // Sanity: the mouth path is untouched by the eyelid refinement.
         expect(
-            out[Blendshape.mouthSmileLeft.index], inInclusiveRange(0.0, 1.0));
+          out[Blendshape.mouthSmileLeft.index],
+          inInclusiveRange(0.0, 1.0),
+        );
       } finally {
         model.dispose();
       }

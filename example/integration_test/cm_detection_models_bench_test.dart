@@ -43,9 +43,7 @@ void main() {
   test('all face detection models: Interpreter vs CompiledModel', () async {
     final imageBytes = (await rootBundle.load(
       'assets/samples/landmark-ex1.jpg',
-    ))
-        .buffer
-        .asUint8List();
+    )).buffer.asUint8List();
     final mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
 
     print('');
@@ -61,9 +59,7 @@ void main() {
 
         final modelBytes = (await rootBundle.load(
           'packages/face_detection_tflite/assets/models/${testNameFor(model)}',
-        ))
-            .buffer
-            .asUint8List();
+        )).buffer.asUint8List();
 
         final interpreter = await FaceDetection.createFromBuffer(
           modelBytes,

@@ -22,13 +22,18 @@ class ImageGenerator {
       0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
       0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, // IEND chunk
       0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
-      0x42, 0x60, 0x82
+      0x42, 0x60, 0x82,
     ]);
   }
 
   /// Creates a solid color cv.Mat of specified size.
-  static cv.Mat createSolidMat(int width, int height,
-      {int r = 128, int g = 128, int b = 128}) {
+  static cv.Mat createSolidMat(
+    int width,
+    int height, {
+    int r = 128,
+    int g = 128,
+    int b = 128,
+  }) {
     final mat = cv.Mat.zeros(height, width, cv.MatType.CV_8UC3);
     mat.setTo(cv.Scalar(b.toDouble(), g.toDouble(), r.toDouble(), 255));
     return mat;

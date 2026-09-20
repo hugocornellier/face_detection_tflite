@@ -29,15 +29,11 @@ void main() {
   test('fullSparse on Interpreter: XNNPACK vs GPU delegate', () async {
     final imageBytes = (await rootBundle.load(
       'assets/samples/landmark-ex1.jpg',
-    ))
-        .buffer
-        .asUint8List();
+    )).buffer.asUint8List();
     final mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
     final modelBytes = (await rootBundle.load(
       'packages/face_detection_tflite/assets/models/${testNameFor(FaceDetectionModel.fullSparse)}',
-    ))
-        .buffer
-        .asUint8List();
+    )).buffer.asUint8List();
 
     Future<void> bench(String label, PerformanceConfig config) async {
       final det = await FaceDetection.createFromBuffer(

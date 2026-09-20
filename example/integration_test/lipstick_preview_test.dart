@@ -34,8 +34,10 @@ void main() {
     await detector.initialize();
     addTearDown(detector.dispose);
 
-    const String sample = String.fromEnvironment('LIPSTICK_SAMPLE',
-        defaultValue: 'assets/samples/landmark-ex1.jpg');
+    const String sample = String.fromEnvironment(
+      'LIPSTICK_SAMPLE',
+      defaultValue: 'assets/samples/landmark-ex1.jpg',
+    );
     final ByteData data = await rootBundle.load(sample);
     final Uint8List bytes = data.buffer.asUint8List();
 
@@ -50,8 +52,10 @@ void main() {
     final ui.Size size = ui.Size(src.width.toDouble(), src.height.toDouble());
 
     // Crop to the mouth so the written PNG is worth looking at.
-    final Path? probe =
-        buildLipPath(faces.first, map: (double x, double y) => ui.Offset(x, y));
+    final Path? probe = buildLipPath(
+      faces.first,
+      map: (double x, double y) => ui.Offset(x, y),
+    );
     expect(probe, isNotNull);
     final ui.Rect lips = probe!.getBounds();
     final ui.Rect crop = ui.Rect.fromCenter(
@@ -65,8 +69,10 @@ void main() {
       final Canvas canvas = Canvas(rec);
       canvas.drawImage(src, ui.Offset.zero, Paint());
       painter?.paint(canvas, size);
-      final ui.Image out =
-          await rec.endRecording().toImage(src.width, src.height);
+      final ui.Image out = await rec.endRecording().toImage(
+        src.width,
+        src.height,
+      );
 
       // Second pass: crop.
       final ui.PictureRecorder rec2 = ui.PictureRecorder();
@@ -78,11 +84,12 @@ void main() {
         Paint(),
       );
       final ui.Image cropped = await rec2.endRecording().toImage(
-            crop.width.round(),
-            crop.height.round(),
-          );
-      final ByteData? png =
-          await cropped.toByteData(format: ui.ImageByteFormat.png);
+        crop.width.round(),
+        crop.height.round(),
+      );
+      final ByteData? png = await cropped.toByteData(
+        format: ui.ImageByteFormat.png,
+      );
       final String path = '$kOutDir/$name.png';
       await File(path).writeAsBytes(png!.buffer.asUint8List());
       print('WROTE $path');

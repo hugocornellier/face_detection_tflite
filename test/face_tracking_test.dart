@@ -292,11 +292,10 @@ void main() {
         rotatedDecoy,
       ]);
 
-      expect(
-        second.map((Face f) => f.trackingId),
-        <int?>[1, 2],
-        reason: 'overlap must outrank the better-centred decoy',
-      );
+      expect(second.map((Face f) => f.trackingId), <int?>[
+        1,
+        2,
+      ], reason: 'overlap must outrank the better-centred decoy');
     });
 
     test('overlap ranking is independent of detector output order', () {
@@ -309,11 +308,10 @@ void main() {
         wideFace(0.50),
       ]);
 
-      expect(
-        second.map((Face f) => f.trackingId),
-        <int?>[2, 1],
-        reason: 'the overlapping face keeps the ID regardless of position',
-      );
+      expect(second.map((Face f) => f.trackingId), <int?>[
+        2,
+        1,
+      ], reason: 'the overlapping face keeps the ID regardless of position');
     });
 
     test('breaks overlap-free ties by proximity, not input order', () {
@@ -335,11 +333,10 @@ void main() {
         _face(0.52, 0.45, 0.62, 0.55), // nearer:  0.85 diagonals away
       ]);
 
-      expect(
-        second.map((Face f) => f.trackingId),
-        <int?>[2, 1],
-        reason: 'the nearer face keeps the ID despite being listed second',
-      );
+      expect(second.map((Face f) => f.trackingId), <int?>[
+        2,
+        1,
+      ], reason: 'the nearer face keeps the ID despite being listed second');
     });
 
     test('honours a custom maxMissedFrames for track expiry', () {

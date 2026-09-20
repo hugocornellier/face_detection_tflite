@@ -19,8 +19,9 @@ void main() {
       print('Platform: ${Platform.operatingSystem}');
       print('=' * 60);
 
-      final ByteData data =
-          await rootBundle.load('assets/samples/landmark-ex1.jpg');
+      final ByteData data = await rootBundle.load(
+        'assets/samples/landmark-ex1.jpg',
+      );
       final Uint8List bytes = data.buffer.asUint8List();
 
       final configs = <String, PerformanceConfig>{
@@ -52,16 +53,20 @@ void main() {
             continue;
           }
 
-          await detector.detectFacesFromBytes(bytes,
-              mode: FaceDetectionMode.fast);
+          await detector.detectFacesFromBytes(
+            bytes,
+            mode: FaceDetectionMode.fast,
+          );
 
           const runs = 5;
           final detectionTimes = <int>[];
 
           for (int i = 0; i < runs; i++) {
             final sw = Stopwatch()..start();
-            final faces = await detector.detectFacesFromBytes(bytes,
-                mode: FaceDetectionMode.full);
+            final faces = await detector.detectFacesFromBytes(
+              bytes,
+              mode: FaceDetectionMode.full,
+            );
             sw.stop();
             detectionTimes.add(sw.elapsedMilliseconds);
 
@@ -105,9 +110,11 @@ void main() {
       print('SUMMARY');
       print('=' * 60);
       print('');
-      print('Config'.padRight(20) +
-          'Init (ms)'.padLeft(12) +
-          'Detect (ms)'.padLeft(14));
+      print(
+        'Config'.padRight(20) +
+            'Init (ms)'.padLeft(12) +
+            'Detect (ms)'.padLeft(14),
+      );
       print('-' * 46);
 
       for (final entry in results.entries) {
@@ -119,9 +126,11 @@ void main() {
         } else {
           final initMs = data['initMs'] as int;
           final avgMs = data['avgDetectionMs'] as double;
-          print(name.padRight(20) +
-              '$initMs'.padLeft(12) +
-              avgMs.toStringAsFixed(0).padLeft(14));
+          print(
+            name.padRight(20) +
+                '$initMs'.padLeft(12) +
+                avgMs.toStringAsFixed(0).padLeft(14),
+          );
         }
       }
       print('=' * 60);
@@ -148,10 +157,12 @@ void main() {
           final speedup = cpuDetect / gpuDetect;
           if (speedup > 1.2) {
             print(
-                '- GPU detection is ${speedup.toStringAsFixed(1)}x FASTER than CPU');
+              '- GPU detection is ${speedup.toStringAsFixed(1)}x FASTER than CPU',
+            );
           } else if (speedup < 0.8) {
             print(
-                '- GPU detection is ${(1 / speedup).toStringAsFixed(1)}x SLOWER than CPU');
+              '- GPU detection is ${(1 / speedup).toStringAsFixed(1)}x SLOWER than CPU',
+            );
           } else {
             print('- GPU and CPU detection are similar speed');
           }
@@ -161,7 +172,8 @@ void main() {
           final autoInit = results['Auto']!['initMs'] as int;
           final autoDetect = results['Auto']!['avgDetectionMs'] as double;
           print(
-              '- Auto mode: ${autoInit}ms init, ${autoDetect.toStringAsFixed(0)}ms detect');
+            '- Auto mode: ${autoInit}ms init, ${autoDetect.toStringAsFixed(0)}ms detect',
+          );
         }
       }
 
@@ -186,16 +198,19 @@ void main() {
       print('TEST: Result Quality Comparison');
       print('=' * 60);
 
-      final ByteData data =
-          await rootBundle.load('assets/samples/landmark-ex1.jpg');
+      final ByteData data = await rootBundle.load(
+        'assets/samples/landmark-ex1.jpg',
+      );
       final Uint8List bytes = data.buffer.asUint8List();
 
       final cpuDetector = FaceDetector();
       await cpuDetector.initialize(
         performanceConfig: PerformanceConfig.disabled,
       );
-      final cpuFaces = await cpuDetector.detectFacesFromBytes(bytes,
-          mode: FaceDetectionMode.full);
+      final cpuFaces = await cpuDetector.detectFacesFromBytes(
+        bytes,
+        mode: FaceDetectionMode.full,
+      );
 
       print('CPU detected ${cpuFaces.length} faces');
       expect(cpuFaces, isNotEmpty);
@@ -204,13 +219,18 @@ void main() {
       await autoDetector.initialize(
         performanceConfig: PerformanceConfig.auto(),
       );
-      final autoFaces = await autoDetector.detectFacesFromBytes(bytes,
-          mode: FaceDetectionMode.full);
+      final autoFaces = await autoDetector.detectFacesFromBytes(
+        bytes,
+        mode: FaceDetectionMode.full,
+      );
 
       print('Auto detected ${autoFaces.length} faces');
 
-      expect(autoFaces.length, cpuFaces.length,
-          reason: 'Auto and CPU should detect same number of faces');
+      expect(
+        autoFaces.length,
+        cpuFaces.length,
+        reason: 'Auto and CPU should detect same number of faces',
+      );
 
       for (int i = 0; i < cpuFaces.length; i++) {
         final cpuBbox = cpuFaces[i].boundingBox;

@@ -41,9 +41,7 @@ void main() {
   test('Mat reconstruction: fromList vs create+setAll', () async {
     final jpegBytes = (await rootBundle.load(
       'assets/samples/landmark-ex1.jpg',
-    ))
-        .buffer
-        .asUint8List();
+    )).buffer.asUint8List();
     final mat = cv.imdecode(jpegBytes, cv.IMREAD_COLOR);
     final bytes = Uint8List.fromList(mat.data);
     final w = mat.cols, h = mat.rows;
@@ -73,58 +71,59 @@ void main() {
     b.dispose();
   }, timeout: const Timeout(Duration(minutes: 5)));
 
-  test('non-continuous ROI Mat detects correctly (stride regression)',
-      () async {
-    final jpegBytes = (await rootBundle.load(
-      'assets/samples/landmark-ex1.jpg',
-    ))
-        .buffer
-        .asUint8List();
-    final full = cv.imdecode(jpegBytes, cv.IMREAD_COLOR);
-    // Pad by 40px on every side, then take an ROI view of the original area:
-    // the view shares the padded buffer, so its rows are not contiguous.
-    // Before the isContinuous guard in _extractMatFields this shipped
-    // scrambled pixels to the isolate.
-    final padded = cv.copyMakeBorder(
-      full,
-      40,
-      40,
-      40,
-      40,
-      cv.BORDER_CONSTANT,
-      value: cv.Scalar.black,
-    );
-    final roi = padded.region(cv.Rect(40, 40, full.cols, full.rows));
-    expect(roi.isContinuous, isFalse, reason: 'ROI must be non-continuous');
-
-    final detector = await FaceDetector.create(useCompiledModel: true);
-    try {
-      final direct = await detector.detectFacesFromMat(
+  test(
+    'non-continuous ROI Mat detects correctly (stride regression)',
+    () async {
+      final jpegBytes = (await rootBundle.load(
+        'assets/samples/landmark-ex1.jpg',
+      )).buffer.asUint8List();
+      final full = cv.imdecode(jpegBytes, cv.IMREAD_COLOR);
+      // Pad by 40px on every side, then take an ROI view of the original area:
+      // the view shares the padded buffer, so its rows are not contiguous.
+      // Before the isContinuous guard in _extractMatFields this shipped
+      // scrambled pixels to the isolate.
+      final padded = cv.copyMakeBorder(
         full,
-        mode: FaceDetectionMode.fast,
+        40,
+        40,
+        40,
+        40,
+        cv.BORDER_CONSTANT,
+        value: cv.Scalar.black,
       );
-      final viaRoi = await detector.detectFacesFromMat(
-        roi,
-        mode: FaceDetectionMode.fast,
-      );
-      expect(direct.length, 1);
-      expect(viaRoi.length, direct.length);
-      final a = direct.first.detectionData.boundingBox;
-      final b = viaRoi.first.detectionData.boundingBox;
-      expect((a.xmin - b.xmin).abs(), lessThan(0.01));
-      expect((a.ymin - b.ymin).abs(), lessThan(0.01));
-      print(
-        'ROI regression: direct=(${a.xmin.toStringAsFixed(3)},'
-        '${a.ymin.toStringAsFixed(3)}) roi=(${b.xmin.toStringAsFixed(3)},'
-        '${b.ymin.toStringAsFixed(3)})',
-      );
-    } finally {
-      await detector.dispose();
-      roi.dispose();
-      padded.dispose();
-      full.dispose();
-    }
-  }, timeout: const Timeout(Duration(minutes: 5)));
+      final roi = padded.region(cv.Rect(40, 40, full.cols, full.rows));
+      expect(roi.isContinuous, isFalse, reason: 'ROI must be non-continuous');
+
+      final detector = await FaceDetector.create(useCompiledModel: true);
+      try {
+        final direct = await detector.detectFacesFromMat(
+          full,
+          mode: FaceDetectionMode.fast,
+        );
+        final viaRoi = await detector.detectFacesFromMat(
+          roi,
+          mode: FaceDetectionMode.fast,
+        );
+        expect(direct.length, 1);
+        expect(viaRoi.length, direct.length);
+        final a = direct.first.detectionData.boundingBox;
+        final b = viaRoi.first.detectionData.boundingBox;
+        expect((a.xmin - b.xmin).abs(), lessThan(0.01));
+        expect((a.ymin - b.ymin).abs(), lessThan(0.01));
+        print(
+          'ROI regression: direct=(${a.xmin.toStringAsFixed(3)},'
+          '${a.ymin.toStringAsFixed(3)}) roi=(${b.xmin.toStringAsFixed(3)},'
+          '${b.ymin.toStringAsFixed(3)})',
+        );
+      } finally {
+        await detector.dispose();
+        roi.dispose();
+        padded.dispose();
+        full.dispose();
+      }
+    },
+    timeout: const Timeout(Duration(minutes: 5)),
+  );
 
   test('isolate RPC floor (tiny no-face image, FULL mode)', () async {
     final tiny = cv.Mat.zeros(64, 64, cv.MatType.CV_8UC3);

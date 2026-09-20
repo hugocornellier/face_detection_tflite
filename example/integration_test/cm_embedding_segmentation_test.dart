@@ -41,10 +41,7 @@ void main() {
       expect(compiledFaces.length, 1);
 
       final a = await interp.getFaceEmbedding(interpFaces.first, faceBytes);
-      final b = await compiled.getFaceEmbedding(
-        compiledFaces.first,
-        faceBytes,
-      );
+      final b = await compiled.getFaceEmbedding(compiledFaces.first, faceBytes);
 
       expect(b.length, a.length, reason: 'embedding dimensions must match');
       final similarity = FaceEmbedding.cosineSimilarity(a, b);
@@ -122,34 +119,31 @@ void main() {
         : null,
   );
 
-  test(
-    'binary segmentation pipeline works under useCompiledModel',
-    () async {
-      // general/landscape use the Convolution2DTransposeBias custom op; the
-      // segmentation isolate compiles it where the runtime supports it and
-      // falls back to the Interpreter otherwise; either way the pipeline
-      // must produce a usable mask.
-      final detector = await FaceDetector.create(
-        withSegmentation: true,
-        segmentationConfig: const SegmentationConfig(
-          model: SegmentationModel.general,
-        ),
-        useCompiledModel: true,
+  test('binary segmentation pipeline works under useCompiledModel', () async {
+    // general/landscape use the Convolution2DTransposeBias custom op; the
+    // segmentation isolate compiles it where the runtime supports it and
+    // falls back to the Interpreter otherwise; either way the pipeline
+    // must produce a usable mask.
+    final detector = await FaceDetector.create(
+      withSegmentation: true,
+      segmentationConfig: const SegmentationConfig(
+        model: SegmentationModel.general,
+      ),
+      useCompiledModel: true,
+    );
+    try {
+      final mask = await detector.getSegmentationMask(faceBytes);
+      final fg = mask.data.where((v) => v > 0.5).length / mask.data.length;
+      print(
+        'general (fallback) mask ${mask.width}x${mask.height}, '
+        'foreground=${(fg * 100).toStringAsFixed(1)}%',
       );
-      try {
-        final mask = await detector.getSegmentationMask(faceBytes);
-        final fg = mask.data.where((v) => v > 0.5).length / mask.data.length;
-        print(
-          'general (fallback) mask ${mask.width}x${mask.height}, '
-          'foreground=${(fg * 100).toStringAsFixed(1)}%',
-        );
-        expect(mask.data.length, mask.width * mask.height);
-        expect(fg, greaterThan(0.05), reason: 'person must be segmented');
-      } finally {
-        await detector.dispose();
-      }
-    },
-  );
+      expect(mask.data.length, mask.width * mask.height);
+      expect(fg, greaterThan(0.05), reason: 'person must be segmented');
+    } finally {
+      await detector.dispose();
+    }
+  });
 
   test('binary (custom-op) model compiles and matches Interpreter', () async {
     // The general model uses the Convolution2DTransposeBias custom op, yet
@@ -157,9 +151,7 @@ void main() {
     // the Interpreter rather than trusting compilation success.
     final segBytes = (await rootBundle.load(
       'packages/face_detection_tflite/assets/models/${testModelFileFor(SegmentationModel.general)}',
-    ))
-        .buffer
-        .asUint8List();
+    )).buffer.asUint8List();
 
     final interp = await SelfieSegmentation.createFromBuffer(segBytes);
     final compiled = await SelfieSegmentation.createCompiledFromBuffer(

@@ -39,8 +39,10 @@ Future<_BenchResult> _benchmarkTflite(
 
   for (int i = 0; i < _kIterations; i++) {
     final sw = Stopwatch()..start();
-    final results = await detector.detectFacesFromBytes(bytes,
-        mode: FaceDetectionMode.fast);
+    final results = await detector.detectFacesFromBytes(
+      bytes,
+      mode: FaceDetectionMode.fast,
+    );
     sw.stop();
     timings.add(sw.elapsedMicroseconds / 1000.0);
     if (i == 0) faceCount = results.length;
@@ -124,18 +126,26 @@ void main() {
 
         print('');
         print('=== Benchmark: $imageName ===');
-        print('  tflite (interpreter): ${interp.avg.toStringAsFixed(1)}ms '
-            '(min ${interp.min.toStringAsFixed(1)} / max ${interp.max.toStringAsFixed(1)}) '
-            'faces=${interp.faceCount}');
-        print('  tflite (compiled):    ${compiled.avg.toStringAsFixed(1)}ms '
-            '(min ${compiled.min.toStringAsFixed(1)} / max ${compiled.max.toStringAsFixed(1)}) '
-            'faces=${compiled.faceCount}');
-        print('  google_mlkit:         ${ml.avg.toStringAsFixed(1)}ms '
-            '(min ${ml.min.toStringAsFixed(1)} / max ${ml.max.toStringAsFixed(1)}) '
-            'faces=${ml.faceCount}');
-        print('  speedup vs mlkit -> interpreter: '
-            '${interpSpeedup.toStringAsFixed(2)}x | compiled: '
-            '${compiledSpeedup.toStringAsFixed(2)}x');
+        print(
+          '  tflite (interpreter): ${interp.avg.toStringAsFixed(1)}ms '
+          '(min ${interp.min.toStringAsFixed(1)} / max ${interp.max.toStringAsFixed(1)}) '
+          'faces=${interp.faceCount}',
+        );
+        print(
+          '  tflite (compiled):    ${compiled.avg.toStringAsFixed(1)}ms '
+          '(min ${compiled.min.toStringAsFixed(1)} / max ${compiled.max.toStringAsFixed(1)}) '
+          'faces=${compiled.faceCount}',
+        );
+        print(
+          '  google_mlkit:         ${ml.avg.toStringAsFixed(1)}ms '
+          '(min ${ml.min.toStringAsFixed(1)} / max ${ml.max.toStringAsFixed(1)}) '
+          'faces=${ml.faceCount}',
+        );
+        print(
+          '  speedup vs mlkit -> interpreter: '
+          '${interpSpeedup.toStringAsFixed(2)}x | compiled: '
+          '${compiledSpeedup.toStringAsFixed(2)}x',
+        );
         print('');
 
         expect(interp.faceCount, greaterThanOrEqualTo(1));
@@ -148,10 +158,14 @@ void main() {
       double mean(List<double> xs) => xs.reduce((a, b) => a + b) / xs.length;
       print('');
       print('=== OVERALL SUMMARY (Android) ===');
-      print('  Avg speedup vs mlkit, interpreter: '
-          '${mean(interpSpeedups).toStringAsFixed(2)}x');
-      print('  Avg speedup vs mlkit, compiled:    '
-          '${mean(compiledSpeedups).toStringAsFixed(2)}x');
+      print(
+        '  Avg speedup vs mlkit, interpreter: '
+        '${mean(interpSpeedups).toStringAsFixed(2)}x',
+      );
+      print(
+        '  Avg speedup vs mlkit, compiled:    '
+        '${mean(compiledSpeedups).toStringAsFixed(2)}x',
+      );
     });
   });
 }

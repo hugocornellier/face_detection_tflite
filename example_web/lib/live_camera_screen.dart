@@ -289,8 +289,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
       _CameraState.paused => Colors.amber.shade100,
       _CameraState.permissionDenied ||
       _CameraState.noDevice ||
-      _CameraState.error =>
-        Colors.red.shade100,
+      _CameraState.error => Colors.red.shade100,
       _ => Colors.blue.shade100,
     };
     final icon = switch (_state) {
@@ -324,7 +323,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen>
   }
 
   Widget _buildControls() {
-    final canStart = isModelReady &&
+    final canStart =
+        isModelReady &&
         (_state == _CameraState.idle ||
             _state == _CameraState.permissionDenied ||
             _state == _CameraState.noDevice ||

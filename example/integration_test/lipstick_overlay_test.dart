@@ -26,8 +26,9 @@ void main() {
     setUpAll(() async {
       detector = FaceDetector();
       await detector.initialize();
-      final ByteData data =
-          await rootBundle.load('assets/samples/landmark-ex1.jpg');
+      final ByteData data = await rootBundle.load(
+        'assets/samples/landmark-ex1.jpg',
+      );
       final faces = await detector.detectFacesFromBytes(
         data.buffer.asUint8List(),
         mode: FaceDetectionMode.full,
@@ -64,10 +65,16 @@ void main() {
         arcMid(FaceContourType.lowerLipTop),
         arcMid(FaceContourType.lowerLipBottom),
       );
-      expect(path.contains(upperFlesh), isTrue,
-          reason: 'upper lip flesh must be painted');
-      expect(path.contains(lowerFlesh), isTrue,
-          reason: 'lower lip flesh must be painted');
+      expect(
+        path.contains(upperFlesh),
+        isTrue,
+        reason: 'upper lip flesh must be painted',
+      );
+      expect(
+        path.contains(lowerFlesh),
+        isTrue,
+        reason: 'lower lip flesh must be painted',
+      );
     });
 
     test('excludes the surrounding skin', () {
@@ -94,14 +101,22 @@ void main() {
 
       final Path cut = build(minOpenFraction: 0.05)!;
       final Path filled = build(minOpenFraction: 0.5)!;
-      print('LIPSTICK opening=$opening '
-          'holeCut=${!cut.contains(opening)} '
-          'holeSuppressed=${filled.contains(opening)}');
+      print(
+        'LIPSTICK opening=$opening '
+        'holeCut=${!cut.contains(opening)} '
+        'holeSuppressed=${filled.contains(opening)}',
+      );
 
-      expect(cut.contains(opening), isFalse,
-          reason: 'below threshold the mouth opening must be cut out');
-      expect(filled.contains(opening), isTrue,
-          reason: 'above threshold the mouth fills solid (closed-mouth case)');
+      expect(
+        cut.contains(opening),
+        isFalse,
+        reason: 'below threshold the mouth opening must be cut out',
+      );
+      expect(
+        filled.contains(opening),
+        isTrue,
+        reason: 'above threshold the mouth fills solid (closed-mouth case)',
+      );
     });
 
     test('dilation grows the region without moving its centre', () {
@@ -110,44 +125,52 @@ void main() {
       print('LIPSTICK tight=$tight grown=$grown');
       expect(grown.width, greaterThan(tight.width));
       expect(grown.height, greaterThan(tight.height));
-      expect((grown.center - tight.center).distance,
-          lessThan(tight.shortestSide * 0.25),
-          reason: 'dilation must not translate the mask');
+      expect(
+        (grown.center - tight.center).distance,
+        lessThan(tight.shortestSide * 0.25),
+        reason: 'dilation must not translate the mask',
+      );
     });
 
-    test('live cover-fit mapping places the mask, and mirroring reflects it',
-        () {
-      // The live-camera clipper maps through CoverFitTransform rather than a
-      // plain scale, and gets it wrong invisibly if mirroring is mishandled.
-      const Size view = Size(800, 600);
-      final Size img = face.originalSize;
+    test(
+      'live cover-fit mapping places the mask, and mirroring reflects it',
+      () {
+        // The live-camera clipper maps through CoverFitTransform rather than a
+        // plain scale, and gets it wrong invisibly if mirroring is mishandled.
+        const Size view = Size(800, 600);
+        final Size img = face.originalSize;
 
-      Path build({required bool mirror}) {
-        final t = CoverFitTransform.cover(
-          sourceWidth: img.width,
-          sourceHeight: img.height,
-          viewWidth: view.width,
-          viewHeight: view.height,
-          mirror: mirror,
+        Path build({required bool mirror}) {
+          final t = CoverFitTransform.cover(
+            sourceWidth: img.width,
+            sourceHeight: img.height,
+            viewWidth: view.width,
+            viewHeight: view.height,
+            mirror: mirror,
+          );
+          return buildAllLipPaths(<Face>[face], map: t.map)!;
+        }
+
+        final Rect plain = build(mirror: false).getBounds();
+        final Rect mirrored = build(mirror: true).getBounds();
+        print('LIVE MAP plain=$plain mirrored=$mirrored view=$view');
+
+        // Same shape, reflected about the view's vertical centre line.
+        expect(mirrored.width, closeTo(plain.width, 0.5));
+        expect(mirrored.height, closeTo(plain.height, 0.5));
+        expect(mirrored.top, closeTo(plain.top, 0.5));
+        expect(
+          mirrored.center.dx + plain.center.dx,
+          closeTo(view.width, 1.0),
+          reason: 'mirrored mask must reflect about the view centre',
         );
-        return buildAllLipPaths(<Face>[face], map: t.map)!;
-      }
-
-      final Rect plain = build(mirror: false).getBounds();
-      final Rect mirrored = build(mirror: true).getBounds();
-      print('LIVE MAP plain=$plain mirrored=$mirrored view=$view');
-
-      // Same shape, reflected about the view's vertical centre line.
-      expect(mirrored.width, closeTo(plain.width, 0.5));
-      expect(mirrored.height, closeTo(plain.height, 0.5));
-      expect(mirrored.top, closeTo(plain.top, 0.5));
-      expect(mirrored.center.dx + plain.center.dx, closeTo(view.width, 1.0),
-          reason: 'mirrored mask must reflect about the view centre');
-    });
+      },
+    );
 
     test('returns null in fast mode (no mesh, so no contours)', () async {
-      final ByteData data =
-          await rootBundle.load('assets/samples/landmark-ex1.jpg');
+      final ByteData data = await rootBundle.load(
+        'assets/samples/landmark-ex1.jpg',
+      );
       final faces = await detector.detectFacesFromBytes(
         data.buffer.asUint8List(),
         mode: FaceDetectionMode.fast,

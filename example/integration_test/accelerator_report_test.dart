@@ -75,28 +75,36 @@ void main() {
         print('=' * 56);
 
         binding.reportData ??= <String, dynamic>{};
-        binding.reportData!['accelerator_report_$requested.json'] =
-            jsonDecode(jsonEncode(<String, dynamic>{
-          'requested': requested,
-          'perRunner': report,
-          'aggregate': aggregate,
-          'anyWebGpu': anyWebGpu,
-          'mixed': mixed,
-        }));
+        binding.reportData!['accelerator_report_$requested.json'] = jsonDecode(
+          jsonEncode(<String, dynamic>{
+            'requested': requested,
+            'perRunner': report,
+            'aggregate': aggregate,
+            'anyWebGpu': anyWebGpu,
+            'mixed': mixed,
+          }),
+        );
 
         // wasm control: nothing may report webgpu.
         if (requested == 'wasm') {
-          expect(anyWebGpu, isFalse,
-              reason: 'wasm request should never land any runner on webgpu');
+          expect(
+            anyWebGpu,
+            isFalse,
+            reason: 'wasm request should never land any runner on webgpu',
+          );
         }
 
         // The invariant under test: if any runner is on WebGPU, the aggregate
         // must say 'webgpu' so runtime fallback stays enabled.
         if (anyWebGpu) {
-          expect(aggregate, 'webgpu',
-              reason: 'aggregate activeAccelerator reported "$aggregate" while '
-                  'a runner is still on WebGPU: $report. Runtime GPU-error '
-                  'fallback is gated on this and would not fire.');
+          expect(
+            aggregate,
+            'webgpu',
+            reason:
+                'aggregate activeAccelerator reported "$aggregate" while '
+                'a runner is still on WebGPU: $report. Runtime GPU-error '
+                'fallback is gated on this and would not fire.',
+          );
         }
 
         await detector.dispose();

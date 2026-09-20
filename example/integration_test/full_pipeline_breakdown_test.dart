@@ -43,9 +43,7 @@ void main() {
   test('FULL-mode pipeline breakdown (single face)', () async {
     final jpegBytes = (await rootBundle.load(
       'assets/samples/landmark-ex1.jpg',
-    ))
-        .buffer
-        .asUint8List();
+    )).buffer.asUint8List();
     final mat = cv.imdecode(jpegBytes, cv.IMREAD_COLOR);
     final w = mat.cols, h = mat.rows;
     final minDim = w < h ? w : h;
@@ -99,9 +97,11 @@ void main() {
         final engine = compiled ? 'compiledmodel' : 'interpreter  ';
         print('--- end-to-end FULL, $engine ---');
         print(
-            'fromBytes (jpeg decode in worker) ${tBytes.toStringAsFixed(2)} ms');
+          'fromBytes (jpeg decode in worker) ${tBytes.toStringAsFixed(2)} ms',
+        );
         print(
-            'fromMatBytes (no jpeg decode)     ${tMat.toStringAsFixed(2)} ms');
+          'fromMatBytes (no jpeg decode)     ${tMat.toStringAsFixed(2)} ms',
+        );
       } finally {
         await detector.dispose();
       }

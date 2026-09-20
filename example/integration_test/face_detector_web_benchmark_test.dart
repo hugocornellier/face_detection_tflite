@@ -90,7 +90,7 @@ class BenchmarkStats {
     final mean = average;
     final variance =
         timings.map((t) => pow(t - mean, 2)).reduce((a, b) => a + b) /
-            timings.length;
+        timings.length;
     return sqrt(variance);
   }
 
@@ -120,20 +120,20 @@ class BenchmarkStats {
   }
 
   Map<String, dynamic> toJson() => {
-        'image_path': imagePath,
-        'iterations': timings.length,
-        'image_size_bytes': imageSize,
-        'detections_per_frame': detectionCount,
-        'average_ms': double.parse(average.toStringAsFixed(2)),
-        'min_ms': min,
-        'max_ms': max,
-        'p50_ms': double.parse(p50.toStringAsFixed(2)),
-        'p95_ms': double.parse(p95.toStringAsFixed(2)),
-        'p99_ms': double.parse(p99.toStringAsFixed(2)),
-        'std_dev_ms': double.parse(standardDeviation.toStringAsFixed(2)),
-        'all_timings_ms': timings,
-        'stage_avg': stages.toMs(),
-      };
+    'image_path': imagePath,
+    'iterations': timings.length,
+    'image_size_bytes': imageSize,
+    'detections_per_frame': detectionCount,
+    'average_ms': double.parse(average.toStringAsFixed(2)),
+    'min_ms': min,
+    'max_ms': max,
+    'p50_ms': double.parse(p50.toStringAsFixed(2)),
+    'p95_ms': double.parse(p95.toStringAsFixed(2)),
+    'p99_ms': double.parse(p99.toStringAsFixed(2)),
+    'std_dev_ms': double.parse(standardDeviation.toStringAsFixed(2)),
+    'all_timings_ms': timings,
+    'stage_avg': stages.toMs(),
+  };
 }
 
 class BenchmarkResults {
@@ -150,11 +150,11 @@ class BenchmarkResults {
   });
 
   Map<String, dynamic> toJson() => {
-        'timestamp': timestamp,
-        'test_name': testName,
-        'configuration': configuration,
-        'results': results.map((r) => r.toJson()).toList(),
-      };
+    'timestamp': timestamp,
+    'test_name': testName,
+    'configuration': configuration,
+    'results': results.map((r) => r.toJson()).toList(),
+  };
 
   void printJson(String filename) {
     print('\n BENCHMARK_JSON_START:$filename');
@@ -213,8 +213,10 @@ void main() {
 
           for (int i = 0; i < iterations; i++) {
             final stopwatch = Stopwatch()..start();
-            await detector.detectFacesFromBytes(bytes,
-                mode: FaceDetectionMode.full);
+            await detector.detectFacesFromBytes(
+              bytes,
+              mode: FaceDetectionMode.full,
+            );
             stopwatch.stop();
             timings.add(stopwatch.elapsedMilliseconds);
             try {

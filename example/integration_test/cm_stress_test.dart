@@ -19,14 +19,10 @@ void main() {
   test('CompiledModel full-mode stress (multi-face concurrency)', () async {
     final group = (await rootBundle.load(
       'assets/samples/group-shot-bounding-box-ex1.jpeg',
-    ))
-        .buffer
-        .asUint8List();
+    )).buffer.asUint8List();
     final single = (await rootBundle.load(
       'assets/samples/landmark-ex1.jpg',
-    ))
-        .buffer
-        .asUint8List();
+    )).buffer.asUint8List();
 
     final detector = FaceDetector();
     await detector.initialize(useCompiledModel: true);

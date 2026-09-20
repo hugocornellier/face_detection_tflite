@@ -18,29 +18,40 @@ void main() {
     await detector.initialize();
     print('Ready!\n');
 
-    final ByteData data1 =
-        await rootBundle.load('assets/samples/embedding_test/one_face.jpg');
-    final ByteData data2 =
-        await rootBundle.load('assets/samples/embedding_test/two_faces.jpg');
+    final ByteData data1 = await rootBundle.load(
+      'assets/samples/embedding_test/one_face.jpg',
+    );
+    final ByteData data2 = await rootBundle.load(
+      'assets/samples/embedding_test/two_faces.jpg',
+    );
     final image1Bytes = data1.buffer.asUint8List();
     final image2Bytes = data2.buffer.asUint8List();
 
     print('=== Reference Image (Day 13 - one_face.jpg) ===');
-    final refFaces = await detector.detectFacesFromBytes(image1Bytes,
-        mode: FaceDetectionMode.fast);
+    final refFaces = await detector.detectFacesFromBytes(
+      image1Bytes,
+      mode: FaceDetectionMode.fast,
+    );
     print('Detected ${refFaces.length} face(s)');
-    expect(refFaces.length, 1,
-        reason: 'Should detect exactly 1 face in Day 13');
+    expect(
+      refFaces.length,
+      1,
+      reason: 'Should detect exactly 1 face in Day 13',
+    );
 
-    final refEmbedding =
-        await detector.getFaceEmbedding(refFaces.first, image1Bytes);
+    final refEmbedding = await detector.getFaceEmbedding(
+      refFaces.first,
+      image1Bytes,
+    );
     print('Embedding generated: ${refEmbedding.length} dimensions');
     final refCenter = refFaces.first.boundingBox.center;
     print('Face location: (${refCenter.x.toInt()}, ${refCenter.y.toInt()})\n');
 
     print('=== Comparison Image (Day 14 - two_faces.jpg) ===');
-    final faces = await detector.detectFacesFromBytes(image2Bytes,
-        mode: FaceDetectionMode.fast);
+    final faces = await detector.detectFacesFromBytes(
+      image2Bytes,
+      mode: FaceDetectionMode.fast,
+    );
     print('Detected ${faces.length} face(s)');
     expect(faces.length, 2, reason: 'Should detect exactly 2 faces in Day 14');
 
@@ -85,21 +96,31 @@ void main() {
     print('=' * 60);
 
     final otherIndex = bestIndex == 0 ? 1 : 0;
-    final otherEmbedding =
-        await detector.getFaceEmbedding(faces[otherIndex], image2Bytes);
-    final otherSimilarity =
-        FaceDetector.compareFaces(refEmbedding, otherEmbedding);
+    final otherEmbedding = await detector.getFaceEmbedding(
+      faces[otherIndex],
+      image2Bytes,
+    );
+    final otherSimilarity = FaceDetector.compareFaces(
+      refEmbedding,
+      otherEmbedding,
+    );
 
     print('\nVerification:');
     print(
-        '  Best match (Face $bestIndex): ${bestSimilarity.toStringAsFixed(4)}');
+      '  Best match (Face $bestIndex): ${bestSimilarity.toStringAsFixed(4)}',
+    );
     print(
-        '  Other face (Face $otherIndex): ${otherSimilarity.toStringAsFixed(4)}');
+      '  Other face (Face $otherIndex): ${otherSimilarity.toStringAsFixed(4)}',
+    );
     print(
-        '  Difference: ${(bestSimilarity - otherSimilarity).toStringAsFixed(4)}');
+      '  Difference: ${(bestSimilarity - otherSimilarity).toStringAsFixed(4)}',
+    );
 
-    expect(bestSimilarity, greaterThan(otherSimilarity),
-        reason: 'The young person should match better than the older man');
+    expect(
+      bestSimilarity,
+      greaterThan(otherSimilarity),
+      reason: 'The young person should match better than the older man',
+    );
 
     detector.dispose();
     print('\nTest complete!');

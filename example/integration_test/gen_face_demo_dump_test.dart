@@ -39,42 +39,54 @@ import 'package:face_detection_tflite/face_detection_tflite_native.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('dump face detections + segmentation for demo generation',
-      (tester) async {
+  testWidgets('dump face detections + segmentation for demo generation', (
+    tester,
+  ) async {
     final String? only = Platform.environment['FACE_ONLY'];
     final String clipsDir =
         Platform.environment['FACE_CLIPS_DIR'] ?? 'assets/samples';
-    final String outRoot = Platform.environment['FACE_OUT_ROOT'] ??
+    final String outRoot =
+        Platform.environment['FACE_OUT_ROOT'] ??
         '${Directory.systemTemp.path}/face_dump';
     // Match the live-camera example: the back-camera model plus the One-Euro
     // FaceSmoother (both on by default there). Override via FACE_MODEL (one of
     // frontCamera/backCamera/shortRange/full/fullSparse) and FACE_SMOOTH=0.
     final String modelName = Platform.environment['FACE_MODEL'] ?? 'backCamera';
-    final FaceDetectionModel model = FaceDetectionModel.values
-        .firstWhere((m) => m.name == modelName, orElse: () {
-      throw StateError('unknown FACE_MODEL "$modelName"');
-    });
+    final FaceDetectionModel model = FaceDetectionModel.values.firstWhere(
+      (m) => m.name == modelName,
+      orElse: () {
+        throw StateError('unknown FACE_MODEL "$modelName"');
+      },
+    );
     final bool smooth = Platform.environment['FACE_SMOOTH'] != '0';
-    print('gen_face_demo_dump: reading clips from "$clipsDir", '
-        'writing dump to "$outRoot" (model=${model.name}, smooth=$smooth)');
+    print(
+      'gen_face_demo_dump: reading clips from "$clipsDir", '
+      'writing dump to "$outRoot" (model=${model.name}, smooth=$smooth)',
+    );
 
     final detector = await FaceDetector.create(
       model: model,
       withSegmentation: true,
-      segmentationConfig:
-          SegmentationConfig(model: SegmentationModel.multiclass),
+      segmentationConfig: SegmentationConfig(
+        model: SegmentationModel.multiclass,
+      ),
     );
 
-    final clips = Directory(clipsDir)
-        .listSync()
-        .whereType<File>()
-        .where((f) => f.path.endsWith('.mp4'))
-        .where((f) => only == null || f.path.contains(only))
-        .toList()
-      ..sort((a, b) => a.path.compareTo(b.path));
-    expect(clips.isNotEmpty, true,
-        reason: 'no .mp4 clips in "$clipsDir". Run from the example directory, '
-            'or set FACE_CLIPS_DIR to a folder containing .mp4 clips.');
+    final clips =
+        Directory(clipsDir)
+            .listSync()
+            .whereType<File>()
+            .where((f) => f.path.endsWith('.mp4'))
+            .where((f) => only == null || f.path.contains(only))
+            .toList()
+          ..sort((a, b) => a.path.compareTo(b.path));
+    expect(
+      clips.isNotEmpty,
+      true,
+      reason:
+          'no .mp4 clips in "$clipsDir". Run from the example directory, '
+          'or set FACE_CLIPS_DIR to a folder containing .mp4 clips.',
+    );
 
     for (final clip in clips) {
       final name = clip.uri.pathSegments.last.replaceAll('.mp4', '');
@@ -133,10 +145,10 @@ void main() {
               eyesJson![side] = {
                 'irisCenter': [e.irisCenter.x, e.irisCenter.y],
                 'irisContour': [
-                  for (final p in e.irisContour) [p.x, p.y]
+                  for (final p in e.irisContour) [p.x, p.y],
                 ],
                 'contour': [
-                  for (final p in e.contour) [p.x, p.y]
+                  for (final p in e.contour) [p.x, p.y],
                 ],
               };
             });
@@ -180,11 +192,7 @@ void main() {
           maskInfo = '${w}x$h pad=${mask.padding}';
         }
 
-        frames.add({
-          'i': idx,
-          'faces': facesJson,
-          'mask': ?maskMeta,
-        });
+        frames.add({'i': idx, 'faces': facesJson, 'mask': ?maskMeta});
         idx++;
       }
       frame?.dispose();
@@ -193,8 +201,10 @@ void main() {
       File('$outDir/data.json').writeAsStringSync(
         jsonEncode({'fps': fps, 'w': vw, 'h': vh, 'frames': frames}),
       );
-      print('FACE_DUMP $name frames=$idx faces_total=$totalFaces '
-          '${vw}x$vh fps=${fps.toStringAsFixed(2)} mask=$maskInfo -> $outDir');
+      print(
+        'FACE_DUMP $name frames=$idx faces_total=$totalFaces '
+        '${vw}x$vh fps=${fps.toStringAsFixed(2)} mask=$maskInfo -> $outDir',
+      );
     }
 
     await detector.dispose();
@@ -294,10 +304,9 @@ class FaceSmoother {
         ];
         track.filters[i] = fs;
       }
-      smoothedPoints.add(Point(
-        fs[0].filter(pt.x, tSec),
-        fs[1].filter(pt.y, tSec),
-      ));
+      smoothedPoints.add(
+        Point(fs[0].filter(pt.x, tSec), fs[1].filter(pt.y, tSec)),
+      );
     }
 
     final smoothedIrises = <Point>[];
@@ -312,10 +321,9 @@ class FaceSmoother {
         ];
         track.filters[key] = fs;
       }
-      smoothedIrises.add(Point(
-        fs[0].filter(pt.x, tSec),
-        fs[1].filter(pt.y, tSec),
-      ));
+      smoothedIrises.add(
+        Point(fs[0].filter(pt.x, tSec), fs[1].filter(pt.y, tSec)),
+      );
     }
 
     return Face(
@@ -336,9 +344,11 @@ class FaceSmoother {
     final iw = math.max(0.0, r - l);
     final ih = math.max(0.0, bo - t);
     final inter = iw * ih;
-    final aa = math.max(0.0, box.right - box.left) *
+    final aa =
+        math.max(0.0, box.right - box.left) *
         math.max(0.0, box.bottom - box.top);
-    final bb = math.max(0.0, b.lastRight - b.lastLeft) *
+    final bb =
+        math.max(0.0, b.lastRight - b.lastLeft) *
         math.max(0.0, b.lastBottom - b.lastTop);
     final union = aa + bb - inter;
     if (union <= 0) return 0;

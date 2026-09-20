@@ -10,8 +10,9 @@ void main() {
 
   // Test with disabled delegates (no XNNPACK, no GPU)
   test('Isolate cycles with disabled delegates', () async {
-    final ByteData data =
-        await rootBundle.load('assets/samples/landmark-ex1.jpg');
+    final ByteData data = await rootBundle.load(
+      'assets/samples/landmark-ex1.jpg',
+    );
     final Uint8List bytes = data.buffer.asUint8List();
 
     for (int i = 0; i < 15; i++) {
@@ -22,8 +23,10 @@ void main() {
           numThreads: 1,
         ),
       );
-      final faces =
-          await d.detectFacesFromBytes(bytes, mode: FaceDetectionMode.fast);
+      final faces = await d.detectFacesFromBytes(
+        bytes,
+        mode: FaceDetectionMode.fast,
+      );
       print('Disabled cycle $i: ${faces.length} faces');
       await d.dispose();
     }
@@ -31,15 +34,18 @@ void main() {
 
   // Test with auto mode (default - uses GPU on iOS)
   test('Isolate cycles with auto mode', () async {
-    final ByteData data =
-        await rootBundle.load('assets/samples/landmark-ex1.jpg');
+    final ByteData data = await rootBundle.load(
+      'assets/samples/landmark-ex1.jpg',
+    );
     final Uint8List bytes = data.buffer.asUint8List();
 
     for (int i = 0; i < 15; i++) {
       final d = FaceDetector();
       await d.initialize();
-      final faces =
-          await d.detectFacesFromBytes(bytes, mode: FaceDetectionMode.fast);
+      final faces = await d.detectFacesFromBytes(
+        bytes,
+        mode: FaceDetectionMode.fast,
+      );
       print('Auto cycle $i: ${faces.length} faces');
       await d.dispose();
     }

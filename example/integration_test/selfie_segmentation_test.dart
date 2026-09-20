@@ -34,10 +34,18 @@ Future<bool> _isMulticlassModelAvailable() async {
 }
 
 /// Helper to create a solid color test image
-Uint8List _createTestImage(int width, int height,
-    {int r = 128, int g = 128, int b = 128}) {
-  final mat =
-      cv.Mat.create(rows: height, cols: width, type: cv.MatType.CV_8UC3);
+Uint8List _createTestImage(
+  int width,
+  int height, {
+  int r = 128,
+  int g = 128,
+  int b = 128,
+}) {
+  final mat = cv.Mat.create(
+    rows: height,
+    cols: width,
+    type: cv.MatType.CV_8UC3,
+  );
   mat.setTo(cv.Scalar(b.toDouble(), g.toDouble(), r.toDouble(), 255));
   final (_, bytes) = cv.imencode('.png', mat);
   mat.dispose();
@@ -50,8 +58,11 @@ const _separator =
 
 /// Helper to create a grayscale test image
 Uint8List _createGrayscaleImage(int width, int height, {int gray = 128}) {
-  final mat =
-      cv.Mat.create(rows: height, cols: width, type: cv.MatType.CV_8UC1);
+  final mat = cv.Mat.create(
+    rows: height,
+    cols: width,
+    type: cv.MatType.CV_8UC1,
+  );
   mat.setTo(cv.Scalar(gray.toDouble(), 0, 0, 0));
   final (_, bytes) = cv.imencode('.png', mat);
   mat.dispose();
@@ -121,8 +132,10 @@ void main() {
 
       expect(segmenter.inputWidth, 256);
       expect(segmenter.inputHeight, 256);
-      expect(segmenter.outputChannels,
-          1); // Default general model has 1 output channel (binary sigmoid)
+      expect(
+        segmenter.outputChannels,
+        1,
+      ); // Default general model has 1 output channel (binary sigmoid)
       print('Input size: ${segmenter.inputWidth}x${segmenter.inputHeight}');
       print('Output channels: ${segmenter.outputChannels}');
 
@@ -142,7 +155,9 @@ void main() {
       );
 
       expect(
-          segmenter.hasGpuDelegateFailed, false); // Should not have failed yet
+        segmenter.hasGpuDelegateFailed,
+        false,
+      ); // Should not have failed yet
       segmenter.dispose();
       print('Test passed');
     });
@@ -154,7 +169,8 @@ void main() {
       }
 
       print(
-          '\n--- Testing SelfieSegmentation.create() with performance config ---');
+        '\n--- Testing SelfieSegmentation.create() with performance config ---',
+      );
       final segmenter = await SelfieSegmentation.create(
         config: SegmentationConfig.performance,
       );
@@ -276,8 +292,9 @@ void main() {
       final segmenter = await SelfieSegmentation.create();
 
       try {
-        final ByteData data =
-            await rootBundle.load('assets/samples/landmark-ex1.jpg');
+        final ByteData data = await rootBundle.load(
+          'assets/samples/landmark-ex1.jpg',
+        );
         final imageBytes = data.buffer.asUint8List();
 
         final sw = Stopwatch()..start();
@@ -323,7 +340,8 @@ void main() {
       expect(mask.originalWidth, 300);
       expect(mask.originalHeight, 200);
       print(
-          'Mask generated for ${mask.originalWidth}x${mask.originalHeight} image');
+        'Mask generated for ${mask.originalWidth}x${mask.originalHeight} image',
+      );
 
       mat.dispose();
       segmenter.dispose();
@@ -404,8 +422,11 @@ void main() {
           break;
         }
       }
-      expect(identical, true,
-          reason: 'Same image should produce identical masks');
+      expect(
+        identical,
+        true,
+        reason: 'Same image should produce identical masks',
+      );
 
       segmenter.dispose();
       print('Test passed');
@@ -571,8 +592,12 @@ void main() {
 
       print('\n--- Testing corrupted image rejection ---');
       final segmenter = await SelfieSegmentation.create();
-      final corrupted =
-          Uint8List.fromList([0xFF, 0xD8, 0x00, 0x00]); // Invalid JPEG
+      final corrupted = Uint8List.fromList([
+        0xFF,
+        0xD8,
+        0x00,
+        0x00,
+      ]); // Invalid JPEG
 
       try {
         await segmenter.callFromBytes(corrupted);
@@ -626,8 +651,11 @@ void main() {
       final binary = mask.toBinary(threshold: 0.5);
 
       for (int i = 0; i < binary.length; i++) {
-        expect(binary[i], anyOf(0, 255),
-            reason: 'Binary mask should only contain 0 or 255');
+        expect(
+          binary[i],
+          anyOf(0, 255),
+          reason: 'Binary mask should only contain 0 or 255',
+        );
       }
 
       print('Binary mask size: ${binary.length} bytes');
@@ -676,7 +704,8 @@ void main() {
 
       expect(rgba.length, mask.width * mask.height * 4);
       print(
-          'RGBA mask size: ${rgba.length} bytes (${mask.width * mask.height} pixels)');
+        'RGBA mask size: ${rgba.length} bytes (${mask.width * mask.height} pixels)',
+      );
 
       segmenter.dispose();
       print('Test passed');
@@ -1052,8 +1081,13 @@ void main() {
       final segmenter = await SelfieSegmentation.create();
 
       for (int i = 0; i < 50; i++) {
-        final imageBytes =
-            _createTestImage(128, 128, r: i * 5, g: i * 3, b: i * 2);
+        final imageBytes = _createTestImage(
+          128,
+          128,
+          r: i * 5,
+          g: i * 3,
+          b: i * 2,
+        );
         final mask = await segmenter.callFromBytes(imageBytes);
         expect(mask.data.length, greaterThan(0));
         if (i % 10 == 9) print('Completed ${i + 1} inferences');
@@ -1100,8 +1134,9 @@ void main() {
       final imageBytes = _createTestImage(256, 256);
 
       // Safe (CPU)
-      final safeSeg =
-          await SelfieSegmentation.create(config: SegmentationConfig.safe);
+      final safeSeg = await SelfieSegmentation.create(
+        config: SegmentationConfig.safe,
+      );
       await safeSeg.callFromBytes(imageBytes); // Warmup
       final safeSw = Stopwatch()..start();
       for (int i = 0; i < 5; i++) {
@@ -1113,7 +1148,8 @@ void main() {
 
       // Performance (auto delegate)
       final perfSeg = await SelfieSegmentation.create(
-          config: SegmentationConfig.performance);
+        config: SegmentationConfig.performance,
+      );
       await perfSeg.callFromBytes(imageBytes); // Warmup
       final perfSw = Stopwatch()..start();
       for (int i = 0; i < 5; i++) {
@@ -1127,7 +1163,8 @@ void main() {
       print('Performance (auto): ${perfAvg.toStringAsFixed(1)}ms avg');
       if (perfAvg < safeAvg) {
         print(
-            'Performance mode is ${(safeAvg / perfAvg).toStringAsFixed(1)}x faster');
+          'Performance mode is ${(safeAvg / perfAvg).toStringAsFixed(1)}x faster',
+        );
       }
 
       print('Test passed');
@@ -1383,8 +1420,11 @@ void main() {
       final mask = await segmenter.callFromBytes(wideImage);
 
       print('Original padding: ${mask.padding}');
-      expect(mask.padding.any((p) => p > 0), true,
-          reason: 'Wide image should have padding');
+      expect(
+        mask.padding.any((p) => p > 0),
+        true,
+        reason: 'Wide image should have padding',
+      );
 
       final upsampled = mask.upsample();
       // After upsample, padding should be removed
@@ -1539,8 +1579,11 @@ void main() {
           double minVal = double.infinity;
           double maxVal = double.negativeInfinity;
           for (final v in mask.data) {
-            expect(v, inInclusiveRange(0.0, 1.0),
-                reason: 'Mask value out of range for $path');
+            expect(
+              v,
+              inInclusiveRange(0.0, 1.0),
+              reason: 'Mask value out of range for $path',
+            );
             if (v < minVal) minVal = v;
             if (v > maxVal) maxVal = v;
           }
@@ -1550,17 +1593,24 @@ void main() {
           final pct = (foreground / mask.data.length * 100).toStringAsFixed(1);
 
           print(
-              '  $path: ${mask.width}x${mask.height}, ${sw.elapsedMilliseconds}ms, fg=$pct%');
+            '  $path: ${mask.width}x${mask.height}, ${sw.elapsedMilliseconds}ms, fg=$pct%',
+          );
 
           // All images contain people, so we should detect some foreground
-          expect(foreground, greaterThan(0),
-              reason: '$path should have some foreground detected');
+          expect(
+            foreground,
+            greaterThan(0),
+            reason: '$path should have some foreground detected',
+          );
 
           // Test binary mask for this image
           final binary = mask.toBinary(threshold: 0.5);
           for (final v in binary) {
-            expect(v, anyOf(0, 255),
-                reason: 'Binary mask should only contain 0 or 255');
+            expect(
+              v,
+              anyOf(0, 255),
+              reason: 'Binary mask should only contain 0 or 255',
+            );
           }
         }
       } finally {
@@ -1579,8 +1629,9 @@ void main() {
 
       print('\n--- Testing multiclass model inference ---');
 
-      final ByteData data =
-          await rootBundle.load('assets/samples/landmark-ex1.jpg');
+      final ByteData data = await rootBundle.load(
+        'assets/samples/landmark-ex1.jpg',
+      );
       final imageBytes = data.buffer.asUint8List();
 
       final segmenter = await SelfieSegmentation.create(
@@ -1604,7 +1655,8 @@ void main() {
         print('  Mask: ${mask.width}x${mask.height}');
         print('  Time: ${sw.elapsedMilliseconds}ms');
         print(
-            '  Foreground: ${(foreground / mask.data.length * 100).toStringAsFixed(1)}%');
+          '  Foreground: ${(foreground / mask.data.length * 100).toStringAsFixed(1)}%',
+        );
 
         // Verify per-class masks are available
         final hairMask = mcMask.hairMask;
@@ -1624,14 +1676,18 @@ void main() {
 
         // All class probabilities at each pixel should sum to ~1.0
         for (int i = 0; i < 100 && i < numPixels; i++) {
-          final sum = bgMask[i] +
+          final sum =
+              bgMask[i] +
               hairMask[i] +
               bodyMask[i] +
               faceMask[i] +
               clothesMask[i] +
               otherMask[i];
-          expect(sum, closeTo(1.0, 0.01),
-              reason: 'Class probabilities at pixel $i should sum to 1.0');
+          expect(
+            sum,
+            closeTo(1.0, 0.01),
+            reason: 'Class probabilities at pixel $i should sum to 1.0',
+          );
         }
 
         expect(foreground, greaterThan(0), reason: 'Multiclass model failed');
@@ -1652,8 +1708,9 @@ void main() {
       final segmenter = await SelfieSegmentation.create();
 
       try {
-        final ByteData data =
-            await rootBundle.load('assets/samples/landmark-ex1.jpg');
+        final ByteData data = await rootBundle.load(
+          'assets/samples/landmark-ex1.jpg',
+        );
         final imageBytes = data.buffer.asUint8List();
 
         final mask = await segmenter.callFromBytes(imageBytes);
@@ -1833,39 +1890,44 @@ void main() {
       print('Test passed');
     });
 
-    test('stress switch binary <-> multiclass with inference (30x)',
-        timeout: const Timeout(Duration(minutes: 2)), () async {
-      final multiclassAvailable = await _isMulticlassModelAvailable();
-      if (!modelsAvailable || !multiclassAvailable) {
-        print('Skipping: required models not available');
-        return;
-      }
-
-      print('\n--- Stress switching binary <-> multiclass (30x) ---');
-      final imageBytes = _createTestImage(256, 256, r: 180, g: 140, b: 100);
-
-      for (int i = 0; i < 30; i++) {
-        final binary = await SelfieSegmentation.create(
-          config: const SegmentationConfig(model: SegmentationModel.general),
-        );
-        final binaryMask = await binary.callFromBytes(imageBytes);
-        expect(binaryMask, isNot(isA<MulticlassSegmentationMask>()));
-        await binary.disposeAsync();
-
-        final multiclass = await SelfieSegmentation.create(
-          config: const SegmentationConfig(model: SegmentationModel.multiclass),
-        );
-        final multiMask = await multiclass.callFromBytes(imageBytes);
-        expect(multiMask, isA<MulticlassSegmentationMask>());
-        await multiclass.disposeAsync();
-
-        if ((i + 1) % 5 == 0) {
-          print('Completed ${i + 1}/30 cycles');
+    test(
+      'stress switch binary <-> multiclass with inference (30x)',
+      timeout: const Timeout(Duration(minutes: 2)),
+      () async {
+        final multiclassAvailable = await _isMulticlassModelAvailable();
+        if (!modelsAvailable || !multiclassAvailable) {
+          print('Skipping: required models not available');
+          return;
         }
-      }
 
-      print('Test passed');
-    });
+        print('\n--- Stress switching binary <-> multiclass (30x) ---');
+        final imageBytes = _createTestImage(256, 256, r: 180, g: 140, b: 100);
+
+        for (int i = 0; i < 30; i++) {
+          final binary = await SelfieSegmentation.create(
+            config: const SegmentationConfig(model: SegmentationModel.general),
+          );
+          final binaryMask = await binary.callFromBytes(imageBytes);
+          expect(binaryMask, isNot(isA<MulticlassSegmentationMask>()));
+          await binary.disposeAsync();
+
+          final multiclass = await SelfieSegmentation.create(
+            config: const SegmentationConfig(
+              model: SegmentationModel.multiclass,
+            ),
+          );
+          final multiMask = await multiclass.callFromBytes(imageBytes);
+          expect(multiMask, isA<MulticlassSegmentationMask>());
+          await multiclass.disposeAsync();
+
+          if ((i + 1) % 5 == 0) {
+            print('Completed ${i + 1}/30 cycles');
+          }
+        }
+
+        print('Test passed');
+      },
+    );
   });
 
   // ===========================================================================
@@ -1884,16 +1946,20 @@ void main() {
         config: SegmentationConfig(model: SegmentationModel.multiclass),
       );
       final imageBytes = _createTestImage(128, 128);
-      final mask = await segmenter.callFromBytes(imageBytes)
-          as MulticlassSegmentationMask;
+      final mask =
+          await segmenter.callFromBytes(imageBytes)
+              as MulticlassSegmentationMask;
 
       final numPixels = mask.width * mask.height;
       for (int c = 0; c < 6; c++) {
         final cm = mask.classMask(c);
         expect(cm.length, numPixels, reason: 'Class $c mask length mismatch');
         for (int i = 0; i < cm.length; i++) {
-          expect(cm[i], inInclusiveRange(0.0, 1.0),
-              reason: 'Class $c pixel $i out of range');
+          expect(
+            cm[i],
+            inInclusiveRange(0.0, 1.0),
+            reason: 'Class $c pixel $i out of range',
+          );
         }
       }
       print('All 6 class masks valid ($numPixels pixels each)');
@@ -1914,8 +1980,9 @@ void main() {
         config: SegmentationConfig(model: SegmentationModel.multiclass),
       );
       final imageBytes = _createTestImage(64, 64);
-      final mask = await segmenter.callFromBytes(imageBytes)
-          as MulticlassSegmentationMask;
+      final mask =
+          await segmenter.callFromBytes(imageBytes)
+              as MulticlassSegmentationMask;
 
       // Verify named accessors return the same data as classMask(index)
       expect(mask.backgroundMask, mask.classMask(0));
@@ -1942,8 +2009,9 @@ void main() {
         config: SegmentationConfig(model: SegmentationModel.multiclass),
       );
       final imageBytes = _createTestImage(64, 64);
-      final mask = await segmenter.callFromBytes(imageBytes)
-          as MulticlassSegmentationMask;
+      final mask =
+          await segmenter.callFromBytes(imageBytes)
+              as MulticlassSegmentationMask;
 
       expect(() => mask.classMask(-1), throwsRangeError);
       expect(() => mask.classMask(6), throwsRangeError);
@@ -1964,8 +2032,9 @@ void main() {
         config: SegmentationConfig(model: SegmentationModel.multiclass),
       );
       final imageBytes = _createTestImage(128, 128);
-      final mask = await segmenter.callFromBytes(imageBytes)
-          as MulticlassSegmentationMask;
+      final mask =
+          await segmenter.callFromBytes(imageBytes)
+              as MulticlassSegmentationMask;
 
       // toBinary
       final binary = mask.toBinary(threshold: 0.5);

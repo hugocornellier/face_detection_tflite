@@ -34,9 +34,7 @@ void main() {
 
       final imageBytes = (await rootBundle.load(
         'assets/samples/landmark-ex1.jpg',
-      ))
-          .buffer
-          .asUint8List();
+      )).buffer.asUint8List();
 
       final List<Face> faces = await detector.detectFacesFromBytes(
         imageBytes,

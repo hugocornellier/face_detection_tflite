@@ -69,10 +69,14 @@ void main() {
       print('\n${'=' * 64}');
       print('MULTICLASS SEGMENTATION: GPU vs XNNPACK (end-to-end call(Mat))');
       print('=' * 64);
-      print('XNNPACK  p50=${_p50(xnn).toStringAsFixed(1)}ms '
-          'mean=${_mean(xnn).toStringAsFixed(1)}ms std=${_std(xnn).toStringAsFixed(1)}ms');
-      print('GPU      p50=${_p50(gpu).toStringAsFixed(1)}ms '
-          'mean=${_mean(gpu).toStringAsFixed(1)}ms std=${_std(gpu).toStringAsFixed(1)}ms');
+      print(
+        'XNNPACK  p50=${_p50(xnn).toStringAsFixed(1)}ms '
+        'mean=${_mean(xnn).toStringAsFixed(1)}ms std=${_std(xnn).toStringAsFixed(1)}ms',
+      );
+      print(
+        'GPU      p50=${_p50(gpu).toStringAsFixed(1)}ms '
+        'mean=${_mean(gpu).toStringAsFixed(1)}ms std=${_std(gpu).toStringAsFixed(1)}ms',
+      );
       print('SPEEDUP: ${(_p50(xnn) / _p50(gpu)).toStringAsFixed(2)}x (p50)');
       print('=' * 64);
     });

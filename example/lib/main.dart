@@ -127,21 +127,20 @@ class _DropdownSelected extends StatelessWidget {
 }
 
 DropdownMenuItem<T> _whiteItem<T>(T value, String label) => DropdownMenuItem<T>(
-      value: value,
-      child: Text(label, style: const TextStyle(color: Colors.white)),
-    );
+  value: value,
+  child: Text(label, style: const TextStyle(color: Colors.white)),
+);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(MaterialApp(
-    debugShowCheckedModeBanner: false,
-    title: 'Face Detection Demo',
-    theme: ThemeData(
-      colorSchemeSeed: Colors.blue,
-      useMaterial3: true,
+  runApp(
+    MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'Face Detection Demo',
+      theme: ThemeData(colorSchemeSeed: Colors.blue, useMaterial3: true),
+      home: const HomeScreen(),
     ),
-    home: const HomeScreen(),
-  ));
+  );
 }
 
 class HomeScreen extends StatelessWidget {
@@ -150,9 +149,7 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Face Detection Demo'),
-      ),
+      appBar: AppBar(title: const Text('Face Detection Demo')),
       body: _ScrollableCentered(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 720),
@@ -170,75 +167,71 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 28),
-                _buildSection(
-                  context,
-                  'Face Detection / Segmentation',
-                  [
-                    _buildModeCard(
-                      context,
-                      icon: Icons.videocam,
-                      title: 'Live Camera',
-                      description: 'Real-time face detection from camera feed',
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) => const LiveCameraScreen()),
-                        );
-                      },
-                    ),
-                    _buildModeCard(
-                      context,
-                      icon: Icons.image,
-                      title: 'Still Image',
-                      description:
-                          'Detect faces in photos from gallery or camera',
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) => const Example()),
-                        );
-                      },
-                    ),
-                    _buildModeCard(
-                      context,
-                      icon: Icons.movie_creation_outlined,
-                      title: 'Video File',
-                      description:
-                          'Process an MP4 frame-by-frame with smoothed '
-                          'face detection',
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) => const VideoFileScreen()),
-                        );
-                      },
-                    ),
-                  ],
-                ),
+                _buildSection(context, 'Face Detection / Segmentation', [
+                  _buildModeCard(
+                    context,
+                    icon: Icons.videocam,
+                    title: 'Live Camera',
+                    description: 'Real-time face detection from camera feed',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const LiveCameraScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  _buildModeCard(
+                    context,
+                    icon: Icons.image,
+                    title: 'Still Image',
+                    description:
+                        'Detect faces in photos from gallery or camera',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const Example(),
+                        ),
+                      );
+                    },
+                  ),
+                  _buildModeCard(
+                    context,
+                    icon: Icons.movie_creation_outlined,
+                    title: 'Video File',
+                    description:
+                        'Process an MP4 frame-by-frame with smoothed '
+                        'face detection',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const VideoFileScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                ]),
                 const SizedBox(height: 28),
-                _buildSection(
-                  context,
-                  'Embeddings / Facial Recognition',
-                  [
-                    _buildModeCard(
-                      context,
-                      icon: Icons.face_retouching_natural,
-                      title: 'Face Recognition',
-                      description:
-                          'Compare two photos and measure face similarity',
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) => const EmbeddingsScreen()),
-                        );
-                      },
-                    ),
-                  ],
-                ),
+                _buildSection(context, 'Embeddings / Facial Recognition', [
+                  _buildModeCard(
+                    context,
+                    icon: Icons.face_retouching_natural,
+                    title: 'Face Recognition',
+                    description:
+                        'Compare two photos and measure face similarity',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const EmbeddingsScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                ]),
               ],
             ),
           ),
@@ -247,11 +240,7 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSection(
-    BuildContext context,
-    String title,
-    List<Widget> cards,
-  ) {
+  Widget _buildSection(BuildContext context, String title, List<Widget> cards) {
     final List<Widget> row = [];
     for (int i = 0; i < cards.length; i++) {
       if (i > 0) row.add(const SizedBox(width: 12));
@@ -266,9 +255,9 @@ class HomeScreen extends StatelessWidget {
           child: Text(
             title,
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey[700],
-                ),
+              fontWeight: FontWeight.w600,
+              color: Colors.grey[700],
+            ),
           ),
         ),
         const SizedBox(height: 12),
@@ -317,9 +306,9 @@ class HomeScreen extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(
                   description,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.grey[600],
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
                   textAlign: TextAlign.center,
                 ),
               ],
@@ -393,11 +382,13 @@ class _ExampleState extends State<Example> {
   double _minFacePresenceConfidence = 0.5;
 
   List<Face> _gatedFaces(List<Face> faces) => faces
-      .where((f) =>
-          f.score >= _minScore &&
-          f.widthFraction >= _minFaceSize &&
-          (_minFacePresenceConfidence <= 0.0 ||
-              (f.meshScore ?? double.infinity) >= _minFacePresenceConfidence))
+      .where(
+        (f) =>
+            f.score >= _minScore &&
+            f.widthFraction >= _minFaceSize &&
+            (_minFacePresenceConfidence <= 0.0 ||
+                (f.meshScore ?? double.infinity) >= _minFacePresenceConfidence),
+      )
       .toList();
 
   @override
@@ -429,8 +420,10 @@ class _ExampleState extends State<Example> {
 
   Future<void> _pickAndRun() async {
     final ImagePicker picker = ImagePicker();
-    final XFile? picked =
-        await picker.pickImage(source: ImageSource.gallery, imageQuality: 100);
+    final XFile? picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 100,
+    );
     if (picked == null) return;
 
     setState(() {
@@ -461,8 +454,10 @@ class _ExampleState extends State<Example> {
     final FaceDetectionMode mode = _determineMode();
 
     final DateTime detectionStart = DateTime.now();
-    final List<Face> faces =
-        await _faceDetector!.detectFacesFromBytes(bytes, mode: mode);
+    final List<Face> faces = await _faceDetector!.detectFacesFromBytes(
+      bytes,
+      mode: mode,
+    );
     final DateTime detectionEnd = DateTime.now();
 
     Size decodedSize;
@@ -471,8 +466,10 @@ class _ExampleState extends State<Example> {
     } else {
       final codec = await ui.instantiateImageCodec(bytes);
       final frame = await codec.getNextFrame();
-      decodedSize =
-          Size(frame.image.width.toDouble(), frame.image.height.toDouble());
+      decodedSize = Size(
+        frame.image.width.toDouble(),
+        frame.image.height.toDouble(),
+      );
       frame.image.dispose();
     }
 
@@ -480,8 +477,9 @@ class _ExampleState extends State<Example> {
 
     final DateTime totalEnd = DateTime.now();
     final int totalTime = totalEnd.difference(totalStart).inMilliseconds;
-    final int detectionTime =
-        detectionEnd.difference(detectionStart).inMilliseconds;
+    final int detectionTime = detectionEnd
+        .difference(detectionStart)
+        .inMilliseconds;
 
     int? meshTime;
     int? irisTime;
@@ -540,7 +538,9 @@ class _ExampleState extends State<Example> {
             }
 
             Future<void> onSheetFeatureToggle(
-                void Function(bool) assign, bool newValue) async {
+              void Function(bool) assign,
+              bool newValue,
+            ) async {
               final FaceDetectionMode oldMode = _determineMode();
               assign(newValue);
               setSheetState(() {});
@@ -554,27 +554,35 @@ class _ExampleState extends State<Example> {
 
             Widget cb(String label, bool v, void Function(bool) set) =>
                 CompactCheckbox(
-                    label: label,
-                    value: v,
-                    onChanged: (x) => updateState(() => set(x ?? false)));
+                  label: label,
+                  value: v,
+                  onChanged: (x) => updateState(() => set(x ?? false)),
+                );
             Widget fcb(String label, bool v, void Function(bool) set) =>
                 CompactCheckbox(
-                    label: label,
-                    value: v,
-                    onChanged: (x) => onSheetFeatureToggle(set, x ?? false));
+                  label: label,
+                  value: v,
+                  onChanged: (x) => onSheetFeatureToggle(set, x ?? false),
+                );
             Widget col(String label, Color c, void Function(Color) set) =>
                 _ColorPickerButton(
-                    label: label,
-                    color: c,
-                    onColorChanged: (x) => updateState(() => set(x)));
-            Widget sl(String label, double v, double mn, double mx,
-                    void Function(double) set) =>
-                CompactSlider(
-                    label: label,
-                    value: v,
-                    min: mn,
-                    max: mx,
-                    onChanged: (x) => updateState(() => set(x)));
+                  label: label,
+                  color: c,
+                  onColorChanged: (x) => updateState(() => set(x)),
+                );
+            Widget sl(
+              String label,
+              double v,
+              double mn,
+              double mx,
+              void Function(double) set,
+            ) => CompactSlider(
+              label: label,
+              value: v,
+              min: mn,
+              max: mx,
+              onChanged: (x) => updateState(() => set(x)),
+            );
 
             return Container(
               decoration: const BoxDecoration(
@@ -598,89 +606,177 @@ class _ExampleState extends State<Example> {
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       children: [
                         ExpansionTile(
-                          title: const Text('Display Options',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          title: const Text(
+                            'Display Options',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                           initiallyExpanded: true,
                           children: [
                             Wrap(
                               spacing: 8,
                               runSpacing: 4,
                               children: [
-                                cb('Bounding Boxes', _showBoundingBoxes,
-                                    (v) => _showBoundingBoxes = v),
+                                cb(
+                                  'Bounding Boxes',
+                                  _showBoundingBoxes,
+                                  (v) => _showBoundingBoxes = v,
+                                ),
                                 fcb('Mesh', _showMesh, (v) => _showMesh = v),
-                                cb('Landmarks', _showLandmarks,
-                                    (v) => _showLandmarks = v),
-                                fcb('Irises', _showIrises,
-                                    (v) => _showIrises = v),
-                                fcb('Eye Contour', _showEyeContours,
-                                    (v) => _showEyeContours = v),
-                                fcb('Eye Mesh', _showEyeMesh,
-                                    (v) => _showEyeMesh = v),
-                                fcb('Lipstick', _showLipstick,
-                                    (v) => _showLipstick = v),
-                                cb('Landmark Labels', _showLandmarkLabels,
-                                    (v) => _showLandmarkLabels = v),
-                                cb('Scores & Pose', _showPoseAndScores,
-                                    (v) => _showPoseAndScores = v),
-                                cb('Smile & Eyes', _showClassification,
-                                    (v) => _showClassification = v),
+                                cb(
+                                  'Landmarks',
+                                  _showLandmarks,
+                                  (v) => _showLandmarks = v,
+                                ),
+                                fcb(
+                                  'Irises',
+                                  _showIrises,
+                                  (v) => _showIrises = v,
+                                ),
+                                fcb(
+                                  'Eye Contour',
+                                  _showEyeContours,
+                                  (v) => _showEyeContours = v,
+                                ),
+                                fcb(
+                                  'Eye Mesh',
+                                  _showEyeMesh,
+                                  (v) => _showEyeMesh = v,
+                                ),
+                                fcb(
+                                  'Lipstick',
+                                  _showLipstick,
+                                  (v) => _showLipstick = v,
+                                ),
+                                cb(
+                                  'Landmark Labels',
+                                  _showLandmarkLabels,
+                                  (v) => _showLandmarkLabels = v,
+                                ),
+                                cb(
+                                  'Scores & Pose',
+                                  _showPoseAndScores,
+                                  (v) => _showPoseAndScores = v,
+                                ),
+                                cb(
+                                  'Smile & Eyes',
+                                  _showClassification,
+                                  (v) => _showClassification = v,
+                                ),
                               ],
                             ),
                             const SizedBox(height: 8),
                           ],
                         ),
                         ExpansionTile(
-                          title: const Text('Colors',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          title: const Text(
+                            'Colors',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                           children: [
                             Wrap(
                               spacing: 6,
                               runSpacing: 6,
                               children: [
-                                col('BBox', _boundingBoxColor,
-                                    (c) => _boundingBoxColor = c),
-                                col('Landmarks', _landmarkColor,
-                                    (c) => _landmarkColor = c),
+                                col(
+                                  'BBox',
+                                  _boundingBoxColor,
+                                  (c) => _boundingBoxColor = c,
+                                ),
+                                col(
+                                  'Landmarks',
+                                  _landmarkColor,
+                                  (c) => _landmarkColor = c,
+                                ),
                                 col('Mesh', _meshColor, (c) => _meshColor = c),
-                                col('Irises', _irisColor,
-                                    (c) => _irisColor = c),
-                                col('Eye Contour', _eyeContourColor,
-                                    (c) => _eyeContourColor = c),
-                                col('Eye Mesh', _eyeMeshColor,
-                                    (c) => _eyeMeshColor = c),
-                                col('Lipstick', _lipstickColor,
-                                    (c) => _lipstickColor = c),
+                                col(
+                                  'Irises',
+                                  _irisColor,
+                                  (c) => _irisColor = c,
+                                ),
+                                col(
+                                  'Eye Contour',
+                                  _eyeContourColor,
+                                  (c) => _eyeContourColor = c,
+                                ),
+                                col(
+                                  'Eye Mesh',
+                                  _eyeMeshColor,
+                                  (c) => _eyeMeshColor = c,
+                                ),
+                                col(
+                                  'Lipstick',
+                                  _lipstickColor,
+                                  (c) => _lipstickColor = c,
+                                ),
                               ],
                             ),
                             const SizedBox(height: 8),
                           ],
                         ),
                         ExpansionTile(
-                          title: const Text('Sizes',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          title: const Text(
+                            'Sizes',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                           children: [
-                            sl('BBox', _boundingBoxThickness, 0.5, 10.0,
-                                (v) => _boundingBoxThickness = v),
-                            sl('Landmark', _landmarkSize, 0.5, 15.0,
-                                (v) => _landmarkSize = v),
-                            sl('Mesh', _meshSize, 0.1, 10.0,
-                                (v) => _meshSize = v),
-                            sl('Eye Mesh', _eyeMeshSize, 0.1, 10.0,
-                                (v) => _eyeMeshSize = v),
+                            sl(
+                              'BBox',
+                              _boundingBoxThickness,
+                              0.5,
+                              10.0,
+                              (v) => _boundingBoxThickness = v,
+                            ),
+                            sl(
+                              'Landmark',
+                              _landmarkSize,
+                              0.5,
+                              15.0,
+                              (v) => _landmarkSize = v,
+                            ),
+                            sl(
+                              'Mesh',
+                              _meshSize,
+                              0.1,
+                              10.0,
+                              (v) => _meshSize = v,
+                            ),
+                            sl(
+                              'Eye Mesh',
+                              _eyeMeshSize,
+                              0.1,
+                              10.0,
+                              (v) => _eyeMeshSize = v,
+                            ),
                             const SizedBox(height: 8),
                           ],
                         ),
                         ExpansionTile(
-                          title: const Text('Detection gates',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          title: const Text(
+                            'Detection gates',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                           children: [
-                            sl('minScore', _minScore, 0.0, 1.0,
-                                (v) => _minScore = v),
-                            sl('minFaceSize', _minFaceSize, 0.0, 1.0,
-                                (v) => _minFaceSize = v),
-                            sl('minPresence', _minFacePresenceConfidence, 0.0,
-                                1.0, (v) => _minFacePresenceConfidence = v),
+                            sl(
+                              'minScore',
+                              _minScore,
+                              0.0,
+                              1.0,
+                              (v) => _minScore = v,
+                            ),
+                            sl(
+                              'minFaceSize',
+                              _minFaceSize,
+                              0.0,
+                              1.0,
+                              (v) => _minFaceSize = v,
+                            ),
+                            sl(
+                              'minPresence',
+                              _minFacePresenceConfidence,
+                              0.0,
+                              1.0,
+                              (v) => _minFacePresenceConfidence = v,
+                            ),
                             const SizedBox(height: 8),
                           ],
                         ),
@@ -713,12 +809,15 @@ class _ExampleState extends State<Example> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text('MODEL',
-                    style: TextStyle(
-                        color: Colors.grey[500],
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 1.0)),
+                Text(
+                  'MODEL',
+                  style: TextStyle(
+                    color: Colors.grey[500],
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 1.0,
+                  ),
+                ),
                 const SizedBox(width: 4),
                 DropdownButton<FaceDetectionModel>(
                   value: _detectionModel,
@@ -728,8 +827,10 @@ class _ExampleState extends State<Example> {
                     fontSize: 14,
                   ),
                   underline: const SizedBox(),
-                  icon: Icon(Icons.arrow_drop_down,
-                      color: Theme.of(context).colorScheme.onSurface),
+                  icon: Icon(
+                    Icons.arrow_drop_down,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
                   selectedItemBuilder: (context) => const [
                     _DropdownSelected('Front'),
                     _DropdownSelected('Back'),
@@ -817,7 +918,11 @@ class _ExampleState extends State<Example> {
                               painter: DetectionsPainter(
                                 faces: _gatedFaces(_faces),
                                 imageRectOnCanvas: Rect.fromLTWH(
-                                    0, 0, imageRect.width, imageRect.height),
+                                  0,
+                                  0,
+                                  imageRect.width,
+                                  imageRect.height,
+                                ),
                                 originalImageSize: _originalSize!,
                                 showBoundingBoxes: _showBoundingBoxes,
                                 showMesh: _showMesh,
@@ -849,19 +954,26 @@ class _ExampleState extends State<Example> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.add_photo_alternate,
-                            size: 80, color: Colors.grey[300]),
+                        Icon(
+                          Icons.add_photo_alternate,
+                          size: 80,
+                          color: Colors.grey[300],
+                        ),
                         const SizedBox(height: 16),
                         Text(
                           'No image selected',
-                          style:
-                              TextStyle(fontSize: 18, color: Colors.grey[600]),
+                          style: TextStyle(
+                            fontSize: 18,
+                            color: Colors.grey[600],
+                          ),
                         ),
                         const SizedBox(height: 8),
                         Text(
                           'Tap the + icon to pick an image',
-                          style:
-                              TextStyle(fontSize: 14, color: Colors.grey[500]),
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[500],
+                          ),
                         ),
                       ],
                     ),
@@ -885,9 +997,7 @@ class _ExampleState extends State<Example> {
           if (_isLoading)
             Container(
               color: Colors.black54,
-              child: const Center(
-                child: CircularProgressIndicator(),
-              ),
+              child: const Center(child: CircularProgressIndicator()),
             ),
         ],
       ),
@@ -998,15 +1108,13 @@ class _InferenceMetric extends StatelessWidget {
   final String label;
   final num? microseconds;
 
-  const _InferenceMetric({
-    required this.label,
-    required this.microseconds,
-  });
+  const _InferenceMetric({required this.label, required this.microseconds});
 
   @override
   Widget build(BuildContext context) {
-    final value =
-        microseconds == null ? '—' : formatInferenceMilliseconds(microseconds!);
+    final value = microseconds == null
+        ? '—'
+        : formatInferenceMilliseconds(microseconds!);
     return Semantics(
       label: microseconds == null
           ? '$label inference time unavailable'
@@ -1143,11 +1251,13 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   double _minFacePresenceConfidence = 0.5;
 
   List<Face> _gatedFaces(List<Face> faces) => faces
-      .where((f) =>
-          f.score >= _minScore &&
-          f.widthFraction >= _minFaceSize &&
-          (_minFacePresenceConfidence <= 0.0 ||
-              (f.meshScore ?? double.infinity) >= _minFacePresenceConfidence))
+      .where(
+        (f) =>
+            f.score >= _minScore &&
+            f.widthFraction >= _minFaceSize &&
+            (_minFacePresenceConfidence <= 0.0 ||
+                (f.meshScore ?? double.infinity) >= _minFacePresenceConfidence),
+      )
       .toList();
 
   bool _showSegmentation = false;
@@ -1168,11 +1278,11 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       _accelerometerSub = accelerometerEventStream().listen((event) {
         final next = event.x.abs() > event.y.abs()
             ? (event.x > 0
-                ? DeviceOrientation.landscapeLeft
-                : DeviceOrientation.landscapeRight)
+                  ? DeviceOrientation.landscapeLeft
+                  : DeviceOrientation.landscapeRight)
             : (event.y > 0
-                ? DeviceOrientation.portraitUp
-                : DeviceOrientation.portraitDown);
+                  ? DeviceOrientation.portraitUp
+                  : DeviceOrientation.portraitDown);
         if (next == DeviceOrientation.portraitDown &&
             (_deviceOrientation == DeviceOrientation.landscapeLeft ||
                 _deviceOrientation == DeviceOrientation.landscapeRight)) {
@@ -1241,19 +1351,16 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   }) async {
     if ((_showSegmentation || _showVirtualBackground) &&
         _faceDetector!.isSegmentationReady) {
-      final frame = prepareCameraFrameFromImage(
-        image,
-        rotation: rotation,
-      );
+      final frame = prepareCameraFrameFromImage(image, rotation: rotation);
       if (frame == null) {
         return (faces: <Face>[], segMask: null);
       }
-      final result =
-          await _faceDetector!.detectFacesWithSegmentationFromCameraFrame(
-        frame,
-        mode: _detectionMode,
-        maxDim: maxDim,
-      );
+      final result = await _faceDetector!
+          .detectFacesWithSegmentationFromCameraFrame(
+            frame,
+            mode: _detectionMode,
+            maxDim: maxDim,
+          );
       return (faces: result.faces, segMask: result.segmentationMask);
     }
     final faces = await _faceDetector!.detectFacesFromCameraImage(
@@ -1271,8 +1378,10 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       _resetInferenceStats();
     });
     // ignore: avoid_print
-    print('[live-bench] switching backend -> '
-        '${_useCompiledModel ? 'compiledmodel' : 'xnnpack'}');
+    print(
+      '[live-bench] switching backend -> '
+      '${_useCompiledModel ? 'compiledmodel' : 'xnnpack'}',
+    );
     await _reinitDetectorIsolate();
   }
 
@@ -1379,10 +1488,7 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
                       ),
                     ),
                     const Divider(height: 1, color: Colors.white12),
-                    SizedBox(
-                      height: 35,
-                      child: Center(child: metrics),
-                    ),
+                    SizedBox(height: 35, child: Center(child: metrics)),
                   ],
                 )
               : Row(
@@ -1702,8 +1808,10 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       try {
         await _reinitDetectorIsolate();
       } catch (e) {
-        debugPrint('Detector isolate init failed (segmentation may be '
-            'unavailable): $e');
+        debugPrint(
+          'Detector isolate init failed (segmentation may be '
+          'unavailable): $e',
+        );
         _faceDetector = FaceDetector();
         await _faceDetector!.initialize(
           model: _detectionModel,
@@ -1716,9 +1824,9 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       final cameras = await availableCameras();
       if (cameras.isEmpty) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No cameras available')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('No cameras available')));
         }
         return;
       }
@@ -1775,10 +1883,12 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   bool get _canSwitchCamera {
     if (kIsWeb) return false;
     if (!(Platform.isAndroid || Platform.isIOS)) return false;
-    final hasFront = _availableCameras
-        .any((c) => c.lensDirection == CameraLensDirection.front);
-    final hasBack = _availableCameras
-        .any((c) => c.lensDirection == CameraLensDirection.back);
+    final hasFront = _availableCameras.any(
+      (c) => c.lensDirection == CameraLensDirection.front,
+    );
+    final hasBack = _availableCameras.any(
+      (c) => c.lensDirection == CameraLensDirection.back,
+    );
     return hasFront && hasBack;
   }
 
@@ -1786,8 +1896,9 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     if (_isSwitchingCamera) return;
     if (!_canSwitchCamera) return;
 
-    final target =
-        _isFrontCamera ? CameraLensDirection.back : CameraLensDirection.front;
+    final target = _isFrontCamera
+        ? CameraLensDirection.back
+        : CameraLensDirection.front;
     final next = _availableCameras.firstWhere(
       (c) => c.lensDirection == target,
       orElse: () => _availableCameras.first,
@@ -1818,9 +1929,9 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       debugPrint('Camera switch failed: $e');
       debugPrint('$st');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error switching camera: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error switching camera: $e')));
       }
     } finally {
       if (mounted) setState(() => _isSwitchingCamera = false);
@@ -1842,18 +1953,21 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     if (_fpsCounter.tick() && mounted) {
       setState(() => _fps = _fpsCounter.fps);
       final n = _recentInferenceUs.length;
-      final meanUs =
-          n == 0 ? 0.0 : _recentInferenceUs.reduce((a, b) => a + b) / n;
+      final meanUs = n == 0
+          ? 0.0
+          : _recentInferenceUs.reduce((a, b) => a + b) / n;
       final backend = _useCompiledModel ? 'compiledmodel' : 'xnnpack';
       final lastMs = _inferenceStats.latestUs == null
           ? '-'
           : (_inferenceStats.latestUs! / 1000).toStringAsFixed(3);
       // ignore: avoid_print
-      print('[live-bench] backend=$backend '
-          'cameraFps=$_fps detPerSec=$_detThisSec '
-          'meanInferMs=${(meanUs / 1000).toStringAsFixed(3)} '
-          'lastMs=$lastMs faces=${_faces.length} '
-          'mode=${_detectionMode.name}');
+      print(
+        '[live-bench] backend=$backend '
+        'cameraFps=$_fps detPerSec=$_detThisSec '
+        'meanInferMs=${(meanUs / 1000).toStringAsFixed(3)} '
+        'lastMs=$lastMs faces=${_faces.length} '
+        'mode=${_detectionMode.name}',
+      );
       _recentInferenceUs.clear();
       _detThisSec = 0;
     }
@@ -1862,10 +1976,12 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
       final DeviceOrientation d = _effectiveDeviceOrientation(context);
       if (d != _iosProbeOrientation) {
         _iosProbeOrientation = d;
-        debugPrint('[ios-probe] orient=${d.name} '
-            'sensor=$_sensorOrientation front=$_isFrontCamera '
-            'raw=${image.width}x${image.height} '
-            'planes=${image.planes.length}');
+        debugPrint(
+          '[ios-probe] orient=${d.name} '
+          'sensor=$_sensorOrientation front=$_isFrontCamera '
+          'raw=${image.width}x${image.height} '
+          'planes=${image.planes.length}',
+        );
       }
     }
 
@@ -1904,8 +2020,10 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
 
         stopwatch.stop();
         final detectionTimeUs = stopwatch.elapsedMicroseconds;
-        final shouldRecordTiming =
-            _inferenceStats.record(statsGeneration, detectionTimeUs);
+        final shouldRecordTiming = _inferenceStats.record(
+          statsGeneration,
+          detectionTimeUs,
+        );
         if (shouldRecordTiming) {
           _recentInferenceUs.add(detectionTimeUs);
           _detThisSec++;
@@ -1939,12 +2057,8 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
   Widget build(BuildContext context) {
     if (!_isInitialized || _cameraController == null) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text('Live Camera Detection'),
-        ),
-        body: const Center(
-          child: CircularProgressIndicator(),
-        ),
+        appBar: AppBar(title: const Text('Live Camera Detection')),
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
@@ -1953,10 +2067,11 @@ class _LiveCameraScreenState extends State<LiveCameraScreen> {
     final effectiveOrientation = _effectiveDeviceOrientation(context);
     final bool isPortrait =
         effectiveOrientation == DeviceOrientation.portraitUp ||
-            effectiveOrientation == DeviceOrientation.portraitDown;
+        effectiveOrientation == DeviceOrientation.portraitDown;
 
-    final double displayAspectRatio =
-        isPortrait ? 1.0 / cameraAspectRatio : cameraAspectRatio;
+    final double displayAspectRatio = isPortrait
+        ? 1.0 / cameraAspectRatio
+        : cameraAspectRatio;
 
     final int turns = barQuarterTurns(_deviceOrientation);
     final bool mirrorOverlayHorizontally =
@@ -2123,8 +2238,10 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
       final mask = await _segmenter!.callFromBytes(_imageBytes!);
       stopwatch.stop();
 
-      final Size originalSize =
-          Size(mask.originalWidth.toDouble(), mask.originalHeight.toDouble());
+      final Size originalSize = Size(
+        mask.originalWidth.toDouble(),
+        mask.originalHeight.toDouble(),
+      );
 
       if (mounted) {
         setState(() {
@@ -2152,8 +2269,10 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
 
   Future<void> _pickAndSegment() async {
     final ImagePicker picker = ImagePicker();
-    final XFile? picked =
-        await picker.pickImage(source: ImageSource.gallery, imageQuality: 100);
+    final XFile? picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 100,
+    );
     if (picked == null) return;
 
     final Uint8List bytes = await picked.readAsBytes();
@@ -2201,9 +2320,13 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
                     controller: scrollController,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     children: [
-                      const Text('Model',
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 16)),
+                      const Text(
+                        'Model',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
                       const SizedBox(height: 8),
                       _modelOption(
                         SegmentationModel.general,
@@ -2225,13 +2348,18 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
                       ),
                       const SizedBox(height: 16),
                       if (_selectedModel == SegmentationModel.multiclass) ...[
-                        const Text('Body Part Class',
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 16)),
+                        const Text(
+                          'Body Part Class',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
                         const SizedBox(height: 4),
                         const Text(
-                            'Default shows all classes with rainbow colors',
-                            style: TextStyle(fontSize: 12, color: Colors.grey)),
+                          'Default shows all classes with rainbow colors',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
                         const SizedBox(height: 8),
                         Wrap(
                           spacing: 8,
@@ -2251,9 +2379,13 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
                         ),
                         const SizedBox(height: 16),
                       ],
-                      const Text('Display Options',
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 16)),
+                      const Text(
+                        'Display Options',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
                       const SizedBox(height: 8),
                       SwitchListTile(
                         title: const Text('Show mask only'),
@@ -2287,9 +2419,13 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
                         },
                       ),
                       const SizedBox(height: 16),
-                      const Text('Mask Color',
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 16)),
+                      const Text(
+                        'Mask Color',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
                       const SizedBox(height: 8),
                       Wrap(
                         spacing: 8,
@@ -2326,9 +2462,12 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
         isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
         color: isSelected ? Colors.blue : Colors.grey,
       ),
-      title: Text(title,
-          style: TextStyle(
-              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+      title: Text(
+        title,
+        style: TextStyle(
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+        ),
+      ),
       subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
       onTap: () {
         Navigator.pop(context);
@@ -2454,72 +2593,75 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
                     ),
                   )
                 : hasImage
-                    ? LayoutBuilder(
-                        builder: (context, constraints) {
-                          final fitted = applyBoxFit(
-                            BoxFit.contain,
-                            _originalSize!,
-                            Size(constraints.maxWidth, constraints.maxHeight),
-                          );
-                          final Size renderSize = fitted.destination;
+                ? LayoutBuilder(
+                    builder: (context, constraints) {
+                      final fitted = applyBoxFit(
+                        BoxFit.contain,
+                        _originalSize!,
+                        Size(constraints.maxWidth, constraints.maxHeight),
+                      );
+                      final Size renderSize = fitted.destination;
 
-                          return Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              if (!_showMaskOnly)
-                                Image.memory(
-                                  _imageBytes!,
-                                  width: renderSize.width,
-                                  height: renderSize.height,
-                                  fit: BoxFit.contain,
-                                )
-                              else
-                                Container(
-                                  width: renderSize.width,
-                                  height: renderSize.height,
-                                  color: Colors.grey[900],
-                                ),
-                              if (hasMask)
-                                CustomPaint(
-                                  size: renderSize,
-                                  painter: SegmentationMaskPainter(
-                                    mask: _mask!,
-                                    originalSize: _originalSize!,
-                                    threshold: _threshold,
-                                    binary: _showBinaryMask,
-                                    maskColor: _maskColor,
-                                    classIndex: _selectedClassIndex,
-                                    showAllClasses: _selectedModel ==
-                                            SegmentationModel.multiclass &&
-                                        _selectedClassIndex == null,
-                                    classColors: kSegmentationClassColors,
-                                  ),
-                                ),
-                            ],
-                          );
-                        },
-                      )
-                    : _ScrollableCentered(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.person_outline,
-                                size: 100, color: Colors.blue[200]),
-                            const SizedBox(height: 24),
-                            const Text(
-                              'Pick an image to segment',
-                              style:
-                                  TextStyle(fontSize: 18, color: Colors.grey),
+                      return Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          if (!_showMaskOnly)
+                            Image.memory(
+                              _imageBytes!,
+                              width: renderSize.width,
+                              height: renderSize.height,
+                              fit: BoxFit.contain,
+                            )
+                          else
+                            Container(
+                              width: renderSize.width,
+                              height: renderSize.height,
+                              color: Colors.grey[900],
                             ),
-                            const SizedBox(height: 16),
-                            ElevatedButton.icon(
-                              onPressed: _pickAndSegment,
-                              icon: const Icon(Icons.add_photo_alternate),
-                              label: const Text('Select Image'),
+                          if (hasMask)
+                            CustomPaint(
+                              size: renderSize,
+                              painter: SegmentationMaskPainter(
+                                mask: _mask!,
+                                originalSize: _originalSize!,
+                                threshold: _threshold,
+                                binary: _showBinaryMask,
+                                maskColor: _maskColor,
+                                classIndex: _selectedClassIndex,
+                                showAllClasses:
+                                    _selectedModel ==
+                                        SegmentationModel.multiclass &&
+                                    _selectedClassIndex == null,
+                                classColors: kSegmentationClassColors,
+                              ),
                             ),
-                          ],
+                        ],
+                      );
+                    },
+                  )
+                : _ScrollableCentered(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.person_outline,
+                          size: 100,
+                          color: Colors.blue[200],
                         ),
-                      ),
+                        const SizedBox(height: 24),
+                        const Text(
+                          'Pick an image to segment',
+                          style: TextStyle(fontSize: 18, color: Colors.grey),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          onPressed: _pickAndSegment,
+                          icon: const Icon(Icons.add_photo_alternate),
+                          label: const Text('Select Image'),
+                        ),
+                      ],
+                    ),
+                  ),
           ),
           if (_isLoading)
             Container(
@@ -2530,8 +2672,10 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
                   children: [
                     CircularProgressIndicator(),
                     SizedBox(height: 16),
-                    Text('Segmenting...',
-                        style: TextStyle(color: Colors.white)),
+                    Text(
+                      'Segmenting...',
+                      style: TextStyle(color: Colors.white),
+                    ),
                   ],
                 ),
               ),
@@ -2541,8 +2685,10 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
               top: 12,
               left: 12,
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.black.withAlpha(179),
                   borderRadius: BorderRadius.circular(16),
@@ -2556,8 +2702,8 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
                       color: _inferenceTimeMs! < 100
                           ? Colors.green
                           : _inferenceTimeMs! < 300
-                              ? Colors.lightGreen
-                              : Colors.orange,
+                          ? Colors.lightGreen
+                          : Colors.orange,
                     ),
                     const SizedBox(width: 8),
                     Text(
@@ -2577,8 +2723,10 @@ class _SegmentationDemoScreenState extends State<SegmentationDemoScreen> {
               top: 12,
               right: 12,
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.black.withAlpha(179),
                   borderRadius: BorderRadius.circular(16),
@@ -2637,11 +2785,13 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
   double _minFacePresenceConfidence = 0.5;
 
   List<Face> _gatedFaces(List<Face> faces) => faces
-      .where((f) =>
-          f.score >= _minScore &&
-          f.widthFraction >= _minFaceSize &&
-          (_minFacePresenceConfidence <= 0.0 ||
-              (f.meshScore ?? double.infinity) >= _minFacePresenceConfidence))
+      .where(
+        (f) =>
+            f.score >= _minScore &&
+            f.widthFraction >= _minFaceSize &&
+            (_minFacePresenceConfidence <= 0.0 ||
+                (f.meshScore ?? double.infinity) >= _minFacePresenceConfidence),
+      )
       .toList();
   bool _isInitialized = false;
   bool _isProcessing = false;
@@ -2837,14 +2987,15 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
       cap.release();
       String hint = '';
       if (Platform.isLinux) {
-        hint = '\n\nLinux requires GStreamer plugins. Try:\n'
+        hint =
+            '\n\nLinux requires GStreamer plugins. Try:\n'
             '  sudo apt install gstreamer1.0-libav '
             'gstreamer1.0-plugins-good gstreamer1.0-plugins-bad';
       }
       setState(
         () => _errorMessage =
             'Could not open video.\nFormat may not be supported by the OS '
-                'video backend.$hint',
+            'video backend.$hint',
       );
       return;
     }
@@ -2867,7 +3018,7 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
       setState(
         () => _errorMessage =
             'Could not open writer for $outPath. The "avc1" (H.264) codec '
-                'may not be available on this OS backend.',
+            'may not be available on this OS backend.',
       );
       return;
     }
@@ -2963,17 +3114,20 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
 
   /// Converts a Flutter [Color] to an OpenCV BGR scalar (alpha ignored).
   cv.Scalar _bgr(Color c) => cv.Scalar(
-        (c.b * 255).roundToDouble(),
-        (c.g * 255).roundToDouble(),
-        (c.r * 255).roundToDouble(),
-      );
+    (c.b * 255).roundToDouble(),
+    (c.g * 255).roundToDouble(),
+    (c.r * 255).roundToDouble(),
+  );
 
   /// Burns a segmentation tint into [frame], mirroring what
   /// SegmentationMaskPainter draws on screen: pixels whose probability (or
   /// winning multiclass probability) clears [_segThreshold] are blended with
   /// the overlay color at [_segOpacity].
-  void _blendMaskOnMat(cv.Mat frame, SegmentationMask mask,
-      {required bool multiclass}) {
+  void _blendMaskOnMat(
+    cv.Mat frame,
+    SegmentationMask mask, {
+    required bool multiclass,
+  }) {
     final v = maskValidRegion(mask);
     final int vw = v.x1 - v.x0;
     final int vh = v.y1 - v.y0;
@@ -3028,18 +3182,33 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
     // Write the packed bytes straight into each Mat's native buffer. Mat.fromList
     // takes a List<num> and copies element-by-element; create + data.setAll is a
     // single memcpy and byte-identical for tightly packed data.
-    final colorSmall =
-        cv.Mat.create(rows: vh, cols: vw, type: cv.MatType.CV_8UC3);
+    final colorSmall = cv.Mat.create(
+      rows: vh,
+      cols: vw,
+      type: cv.MatType.CV_8UC3,
+    );
     colorSmall.data.setAll(0, colorData);
-    final selSmall =
-        cv.Mat.create(rows: vh, cols: vw, type: cv.MatType.CV_8UC1);
+    final selSmall = cv.Mat.create(
+      rows: vh,
+      cols: vw,
+      type: cv.MatType.CV_8UC1,
+    );
     selSmall.data.setAll(0, selData);
-    final colorBig = cv.resize(colorSmall, (frame.cols, frame.rows),
-        interpolation: cv.INTER_NEAREST);
-    final selBig = cv.resize(selSmall, (frame.cols, frame.rows),
-        interpolation: cv.INTER_NEAREST);
-    final blended =
-        cv.addWeighted(frame, 1.0 - _segOpacity, colorBig, _segOpacity, 0);
+    final colorBig = cv.resize(colorSmall, (
+      frame.cols,
+      frame.rows,
+    ), interpolation: cv.INTER_NEAREST);
+    final selBig = cv.resize(selSmall, (
+      frame.cols,
+      frame.rows,
+    ), interpolation: cv.INTER_NEAREST);
+    final blended = cv.addWeighted(
+      frame,
+      1.0 - _segOpacity,
+      colorBig,
+      _segOpacity,
+      0,
+    );
     blended.copyTo(frame, mask: selBig);
     for (final m in [colorSmall, selSmall, colorBig, selBig, blended]) {
       m.dispose();
@@ -3068,8 +3237,8 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
       if (_showPoseAndScores && angles != null)
         face.mesh != null
             ? 'P ${angles.x.toStringAsFixed(0)} '
-                'Y ${angles.y.toStringAsFixed(0)} '
-                'R ${angles.z.toStringAsFixed(0)}'
+                  'Y ${angles.y.toStringAsFixed(0)} '
+                  'R ${angles.z.toStringAsFixed(0)}'
             : 'R ${angles.z.toStringAsFixed(0)}',
       if (_showClassification && smile != null)
         'smile ${smile.toStringAsFixed(2)} '
@@ -3144,8 +3313,12 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
         if (!_showPoseAndScores && !_showClassification) {
           final label =
               'Face ${(face.detectionData.score * 100).toStringAsFixed(0)}%';
-          final (sz, _) =
-              cv.getTextSize(label, cv.FONT_HERSHEY_SIMPLEX, 0.6, 2);
+          final (sz, _) = cv.getTextSize(
+            label,
+            cv.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            2,
+          );
           final labelTop = (t - sz.height - 8).clamp(0, h - 1);
           final labelW = (sz.width + 8).clamp(1, w - l);
           final labelH = (sz.height + 8).clamp(1, h - labelTop);
@@ -3201,8 +3374,10 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
         final mesh = face.mesh;
         if (mesh != null) {
           final meshColor = _bgr(_meshColor);
-          final radius =
-              math.max(1, (_meshSize + math.sqrt(w * h) / 1000.0).round());
+          final radius = math.max(
+            1,
+            (_meshSize + math.sqrt(w * h) / 1000.0).round(),
+          );
           for (final pt in mesh.points) {
             cv.circle(
               mat,
@@ -3235,9 +3410,13 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
               cv.ellipse(
                 mat,
                 cv.Point(
-                    ((minX + maxX) / 2).round(), ((minY + maxY) / 2).round()),
-                cv.Point(((maxX - minX) / 2).round().clamp(1, w),
-                    ((maxY - minY) / 2).round().clamp(1, h)),
+                  ((minX + maxX) / 2).round(),
+                  ((minY + maxY) / 2).round(),
+                ),
+                cv.Point(
+                  ((maxX - minX) / 2).round().clamp(1, w),
+                  ((maxY - minY) / 2).round().clamp(1, h),
+                ),
                 0,
                 0,
                 360,
@@ -3327,22 +3506,29 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
 
             Widget cb(String label, bool v, void Function(bool) set) =>
                 CompactCheckbox(
-                    label: label,
-                    value: v,
-                    onChanged: (x) => updateState(() => set(x ?? false)));
+                  label: label,
+                  value: v,
+                  onChanged: (x) => updateState(() => set(x ?? false)),
+                );
             Widget col(String label, Color c, void Function(Color) set) =>
                 _ColorPickerButton(
-                    label: label,
-                    color: c,
-                    onColorChanged: (x) => updateState(() => set(x)));
-            Widget sl(String label, double v, double mn, double mx,
-                    void Function(double) set) =>
-                CompactSlider(
-                    label: label,
-                    value: v,
-                    min: mn,
-                    max: mx,
-                    onChanged: (x) => updateState(() => set(x)));
+                  label: label,
+                  color: c,
+                  onColorChanged: (x) => updateState(() => set(x)),
+                );
+            Widget sl(
+              String label,
+              double v,
+              double mn,
+              double mx,
+              void Function(double) set,
+            ) => CompactSlider(
+              label: label,
+              value: v,
+              min: mn,
+              max: mx,
+              onChanged: (x) => updateState(() => set(x)),
+            );
 
             return Container(
               decoration: const BoxDecoration(
@@ -3375,39 +3561,67 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
                           ),
                         ),
                         ExpansionTile(
-                          title: const Text('Display Options',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          title: const Text(
+                            'Display Options',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                           initiallyExpanded: true,
                           children: [
                             Wrap(
                               spacing: 8,
                               runSpacing: 4,
                               children: [
-                                cb('Bounding Boxes', _showBoundingBoxes,
-                                    (v) => _showBoundingBoxes = v),
+                                cb(
+                                  'Bounding Boxes',
+                                  _showBoundingBoxes,
+                                  (v) => _showBoundingBoxes = v,
+                                ),
                                 cb('Mesh', _showMesh, (v) => _showMesh = v),
-                                cb('Landmarks', _showLandmarks,
-                                    (v) => _showLandmarks = v),
-                                cb('Irises', _showIrises,
-                                    (v) => _showIrises = v),
-                                cb('Eye Contour', _showEyeContours,
-                                    (v) => _showEyeContours = v),
-                                cb('Eye Mesh', _showEyeMesh,
-                                    (v) => _showEyeMesh = v),
-                                cb('Landmark Labels', _showLandmarkLabels,
-                                    (v) => _showLandmarkLabels = v),
-                                cb('Scores & Pose', _showPoseAndScores,
-                                    (v) => _showPoseAndScores = v),
-                                cb('Smile & Eyes', _showClassification,
-                                    (v) => _showClassification = v),
+                                cb(
+                                  'Landmarks',
+                                  _showLandmarks,
+                                  (v) => _showLandmarks = v,
+                                ),
+                                cb(
+                                  'Irises',
+                                  _showIrises,
+                                  (v) => _showIrises = v,
+                                ),
+                                cb(
+                                  'Eye Contour',
+                                  _showEyeContours,
+                                  (v) => _showEyeContours = v,
+                                ),
+                                cb(
+                                  'Eye Mesh',
+                                  _showEyeMesh,
+                                  (v) => _showEyeMesh = v,
+                                ),
+                                cb(
+                                  'Landmark Labels',
+                                  _showLandmarkLabels,
+                                  (v) => _showLandmarkLabels = v,
+                                ),
+                                cb(
+                                  'Scores & Pose',
+                                  _showPoseAndScores,
+                                  (v) => _showPoseAndScores = v,
+                                ),
+                                cb(
+                                  'Smile & Eyes',
+                                  _showClassification,
+                                  (v) => _showClassification = v,
+                                ),
                               ],
                             ),
                             const SizedBox(height: 8),
                           ],
                         ),
                         ExpansionTile(
-                          title: const Text('Segmentation',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          title: const Text(
+                            'Segmentation',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                           initiallyExpanded: _showSegmentation,
                           children: [
                             SwitchListTile(
@@ -3415,7 +3629,8 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
                               contentPadding: EdgeInsets.zero,
                               title: const Text('Segmentation overlay'),
                               subtitle: const Text(
-                                  'Burn a segmentation tint into the output'),
+                                'Burn a segmentation tint into the output',
+                              ),
                               value: _showSegmentation,
                               onChanged: (v) =>
                                   updateState(() => _showSegmentation = v),
@@ -3429,7 +3644,7 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
                                     (SegmentationModel.landscape, 'Landscape'),
                                     (
                                       SegmentationModel.multiclass,
-                                      'Multiclass (6 classes)'
+                                      'Multiclass (6 classes)',
                                     ),
                                   ])
                                     ChoiceChip(
@@ -3444,69 +3659,138 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
                                 ],
                               ),
                               const SizedBox(height: 8),
-                              sl('Threshold', _segThreshold, 0.0, 1.0,
-                                  (v) => _segThreshold = v),
-                              sl('Opacity', _segOpacity, 0.1, 1.0,
-                                  (v) => _segOpacity = v),
+                              sl(
+                                'Threshold',
+                                _segThreshold,
+                                0.0,
+                                1.0,
+                                (v) => _segThreshold = v,
+                              ),
+                              sl(
+                                'Opacity',
+                                _segOpacity,
+                                0.1,
+                                1.0,
+                                (v) => _segOpacity = v,
+                              ),
                               if (_segModel != SegmentationModel.multiclass)
                                 Align(
                                   alignment: Alignment.centerLeft,
-                                  child: col('Mask Color', _segMaskColor,
-                                      (c) => _segMaskColor = c),
+                                  child: col(
+                                    'Mask Color',
+                                    _segMaskColor,
+                                    (c) => _segMaskColor = c,
+                                  ),
                                 ),
                             ],
                             const SizedBox(height: 8),
                           ],
                         ),
                         ExpansionTile(
-                          title: const Text('Colors',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          title: const Text(
+                            'Colors',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                           children: [
                             Wrap(
                               spacing: 6,
                               runSpacing: 6,
                               children: [
-                                col('BBox', _boundingBoxColor,
-                                    (c) => _boundingBoxColor = c),
-                                col('Landmarks', _landmarkColor,
-                                    (c) => _landmarkColor = c),
+                                col(
+                                  'BBox',
+                                  _boundingBoxColor,
+                                  (c) => _boundingBoxColor = c,
+                                ),
+                                col(
+                                  'Landmarks',
+                                  _landmarkColor,
+                                  (c) => _landmarkColor = c,
+                                ),
                                 col('Mesh', _meshColor, (c) => _meshColor = c),
-                                col('Irises', _irisColor,
-                                    (c) => _irisColor = c),
-                                col('Eye Contour', _eyeContourColor,
-                                    (c) => _eyeContourColor = c),
-                                col('Eye Mesh', _eyeMeshColor,
-                                    (c) => _eyeMeshColor = c),
+                                col(
+                                  'Irises',
+                                  _irisColor,
+                                  (c) => _irisColor = c,
+                                ),
+                                col(
+                                  'Eye Contour',
+                                  _eyeContourColor,
+                                  (c) => _eyeContourColor = c,
+                                ),
+                                col(
+                                  'Eye Mesh',
+                                  _eyeMeshColor,
+                                  (c) => _eyeMeshColor = c,
+                                ),
                               ],
                             ),
                             const SizedBox(height: 8),
                           ],
                         ),
                         ExpansionTile(
-                          title: const Text('Sizes',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          title: const Text(
+                            'Sizes',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                           children: [
-                            sl('BBox', _boundingBoxThickness, 0.5, 10.0,
-                                (v) => _boundingBoxThickness = v),
-                            sl('Landmark', _landmarkSize, 0.5, 15.0,
-                                (v) => _landmarkSize = v),
-                            sl('Mesh', _meshSize, 0.1, 10.0,
-                                (v) => _meshSize = v),
-                            sl('Eye Mesh', _eyeMeshSize, 0.1, 10.0,
-                                (v) => _eyeMeshSize = v),
+                            sl(
+                              'BBox',
+                              _boundingBoxThickness,
+                              0.5,
+                              10.0,
+                              (v) => _boundingBoxThickness = v,
+                            ),
+                            sl(
+                              'Landmark',
+                              _landmarkSize,
+                              0.5,
+                              15.0,
+                              (v) => _landmarkSize = v,
+                            ),
+                            sl(
+                              'Mesh',
+                              _meshSize,
+                              0.1,
+                              10.0,
+                              (v) => _meshSize = v,
+                            ),
+                            sl(
+                              'Eye Mesh',
+                              _eyeMeshSize,
+                              0.1,
+                              10.0,
+                              (v) => _eyeMeshSize = v,
+                            ),
                             const SizedBox(height: 8),
                           ],
                         ),
                         ExpansionTile(
-                          title: const Text('Detection gates',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          title: const Text(
+                            'Detection gates',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
                           children: [
-                            sl('minScore', _minScore, 0.0, 1.0,
-                                (v) => _minScore = v),
-                            sl('minFaceSize', _minFaceSize, 0.0, 1.0,
-                                (v) => _minFaceSize = v),
-                            sl('minPresence', _minFacePresenceConfidence, 0.0,
-                                1.0, (v) => _minFacePresenceConfidence = v),
+                            sl(
+                              'minScore',
+                              _minScore,
+                              0.0,
+                              1.0,
+                              (v) => _minScore = v,
+                            ),
+                            sl(
+                              'minFaceSize',
+                              _minFaceSize,
+                              0.0,
+                              1.0,
+                              (v) => _minFaceSize = v,
+                            ),
+                            sl(
+                              'minPresence',
+                              _minFacePresenceConfidence,
+                              0.0,
+                              1.0,
+                              (v) => _minFacePresenceConfidence = v,
+                            ),
                             const SizedBox(height: 8),
                           ],
                         ),
@@ -3543,13 +3827,13 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
               label: const Text('Pick Video'),
             )
           : (_isProcessing
-              ? FloatingActionButton.extended(
-                  onPressed: () => setState(() => _cancelRequested = true),
-                  icon: const Icon(Icons.cancel),
-                  label: const Text('Cancel'),
-                  backgroundColor: Colors.red,
-                )
-              : null),
+                ? FloatingActionButton.extended(
+                    onPressed: () => setState(() => _cancelRequested = true),
+                    icon: const Icon(Icons.cancel),
+                    label: const Text('Cancel'),
+                    backgroundColor: Colors.red,
+                  )
+                : null),
     );
   }
 
@@ -3650,13 +3934,14 @@ class _VideoFileScreenState extends State<VideoFileScreen> {
           ] else if (_outputPath != null && _statusMessage != null)
             VideoResultCard(
               statusMessage: _statusMessage!,
-              summary: 'Total time: ${_formatDuration(_elapsed)} '
+              summary:
+                  'Total time: ${_formatDuration(_elapsed)} '
                   '(${processedFps.toStringAsFixed(1)} fps avg)',
               preview: _buildOutputPreview(),
               onOpenOutput:
                   (Platform.isMacOS || Platform.isLinux || Platform.isWindows)
-                      ? _openOutputFile
-                      : null,
+                  ? _openOutputFile
+                  : null,
             )
           else
             Center(
@@ -3830,8 +4115,10 @@ class VideoPlayerChrome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final double maxPreviewHeight =
-        math.max(120.0, MediaQuery.sizeOf(context).height * 0.45);
+    final double maxPreviewHeight = math.max(
+      120.0,
+      MediaQuery.sizeOf(context).height * 0.45,
+    );
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -4040,10 +4327,9 @@ class FaceSmoother {
         ];
         track.filters[i] = fs;
       }
-      smoothedPoints.add(Point(
-        fs[0].filter(pt.x, tSec),
-        fs[1].filter(pt.y, tSec),
-      ));
+      smoothedPoints.add(
+        Point(fs[0].filter(pt.x, tSec), fs[1].filter(pt.y, tSec)),
+      );
     }
 
     final smoothedIrises = <Point>[];
@@ -4058,10 +4344,9 @@ class FaceSmoother {
         ];
         track.filters[key] = fs;
       }
-      smoothedIrises.add(Point(
-        fs[0].filter(pt.x, tSec),
-        fs[1].filter(pt.y, tSec),
-      ));
+      smoothedIrises.add(
+        Point(fs[0].filter(pt.x, tSec), fs[1].filter(pt.y, tSec)),
+      );
     }
 
     return Face(
@@ -4148,8 +4433,10 @@ class _EmbeddingsScreenState extends State<EmbeddingsScreen> {
     if (_detector == null || !_detector!.isReady) return;
 
     final ImagePicker picker = ImagePicker();
-    final XFile? picked =
-        await picker.pickImage(source: ImageSource.gallery, imageQuality: 100);
+    final XFile? picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 100,
+    );
     if (picked == null) return;
 
     setState(() {
@@ -4162,8 +4449,10 @@ class _EmbeddingsScreenState extends State<EmbeddingsScreen> {
       final Uint8List bytes = await picked.readAsBytes();
       // Only the BlazeFace eye keypoints are needed for embedding alignment,
       // so the lightweight `fast` detection mode is enough here.
-      final List<Face> faces = await _detector!
-          .detectFacesFromBytes(bytes, mode: FaceDetectionMode.fast);
+      final List<Face> faces = await _detector!.detectFacesFromBytes(
+        bytes,
+        mode: FaceDetectionMode.fast,
+      );
 
       Float32List? embedding;
       if (faces.isNotEmpty) {
@@ -4253,14 +4542,20 @@ class _EmbeddingsScreenState extends State<EmbeddingsScreen> {
       return const _Verdict('Same person', Color(0xFF2E7D32), Icons.verified);
     }
     if (cosine >= 0.5) {
-      return const _Verdict('Likely the same person', Color(0xFF558B2F),
-          Icons.thumb_up_alt_outlined);
+      return const _Verdict(
+        'Likely the same person',
+        Color(0xFF558B2F),
+        Icons.thumb_up_alt_outlined,
+      );
     }
     if (cosine >= 0.3) {
       return const _Verdict('Uncertain', Color(0xFFEF6C00), Icons.help_outline);
     }
     return const _Verdict(
-        'Different people', Color(0xFFC62828), Icons.cancel_outlined);
+      'Different people',
+      Color(0xFFC62828),
+      Icons.cancel_outlined,
+    );
   }
 
   @override
@@ -4295,11 +4590,7 @@ class _EmbeddingsScreenState extends State<EmbeddingsScreen> {
                           ],
                         )
                       : Column(
-                          children: [
-                            slotA,
-                            const SizedBox(height: 16),
-                            slotB,
-                          ],
+                          children: [slotA, const SizedBox(height: 16), slotB],
                         );
 
                   return SingleChildScrollView(
@@ -4373,8 +4664,11 @@ class _EmbeddingsScreenState extends State<EmbeddingsScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.add_a_photo_outlined,
-                size: 40, color: Colors.grey.shade400),
+            Icon(
+              Icons.add_a_photo_outlined,
+              size: 40,
+              color: Colors.grey.shade400,
+            ),
             const SizedBox(height: 8),
             Text('Tap to pick', style: TextStyle(color: Colors.grey.shade600)),
           ],
@@ -4444,16 +4738,16 @@ class _EmbeddingsScreenState extends State<EmbeddingsScreen> {
                 Text(
                   '${pct.round()}%',
                   style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: v.color,
-                      ),
+                    fontWeight: FontWeight.bold,
+                    color: v.color,
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Text(
                   'match',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: Colors.grey[600],
-                      ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleMedium?.copyWith(color: Colors.grey[600]),
                 ),
               ],
             ),
@@ -4477,9 +4771,9 @@ class _EmbeddingsScreenState extends State<EmbeddingsScreen> {
                 child: Text(
                   v.label,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: v.color,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    color: v.color,
+                    fontWeight: FontWeight.w600,
+                  ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -4489,10 +4783,9 @@ class _EmbeddingsScreenState extends State<EmbeddingsScreen> {
           const SizedBox(height: 6),
           Text(
             'Cosine similarity: ${cosine.toStringAsFixed(2)}',
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(color: Colors.grey[600]),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
           ),
         ],
       );
@@ -4518,10 +4811,7 @@ class _EmbeddingsScreenState extends State<EmbeddingsScreen> {
           Icon(Icons.info_outline, color: Colors.grey[500], size: 20),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              msg,
-              style: TextStyle(color: Colors.grey[700]),
-            ),
+            child: Text(msg, style: TextStyle(color: Colors.grey[700])),
           ),
         ],
       );
@@ -4529,10 +4819,7 @@ class _EmbeddingsScreenState extends State<EmbeddingsScreen> {
 
     return Card(
       elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: content,
-      ),
+      child: Padding(padding: const EdgeInsets.all(20), child: content),
     );
   }
 }

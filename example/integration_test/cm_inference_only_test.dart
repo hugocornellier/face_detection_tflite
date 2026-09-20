@@ -38,7 +38,8 @@ _Stats _stats(List<int> micros) {
   );
 }
 
-String _fmt(_Stats r) => 'mean ${r.mean.toStringAsFixed(3)} ms, '
+String _fmt(_Stats r) =>
+    'mean ${r.mean.toStringAsFixed(3)} ms, '
     'median ${r.median.toStringAsFixed(3)} ms, '
     'min ${r.min.toStringAsFixed(3)} ms';
 
@@ -83,9 +84,7 @@ void main() {
     for (final model in _models) {
       final bytes = (await rootBundle.load(
         '$_assetBase/$model',
-      ))
-          .buffer
-          .asUint8List();
+      )).buffer.asUint8List();
       // ignore: avoid_print
       print('=== $model ===');
 

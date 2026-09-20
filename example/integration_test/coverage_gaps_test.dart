@@ -60,36 +60,39 @@ void main() {
   // 1. FaceDetector dispose-then-reinitialize lifecycle
   // ===========================================================================
   group('FaceDetector dispose-then-reinitialize', () {
-    test('should work after dispose then re-initialize on same instance',
-        () async {
-      print('\n--- Testing dispose -> re-initialize on same instance ---');
-      final detector = FaceDetector();
+    test(
+      'should work after dispose then re-initialize on same instance',
+      () async {
+        print('\n--- Testing dispose -> re-initialize on same instance ---');
+        final detector = FaceDetector();
 
-      // First lifecycle
-      await detector.initialize();
-      expect(detector.isReady, true);
-      final faces1 = await detector.detectFacesFromBytes(imageBytes);
-      expect(faces1, isNotEmpty);
-      print('First lifecycle: detected ${faces1.length} face(s)');
+        // First lifecycle
+        await detector.initialize();
+        expect(detector.isReady, true);
+        final faces1 = await detector.detectFacesFromBytes(imageBytes);
+        expect(faces1, isNotEmpty);
+        print('First lifecycle: detected ${faces1.length} face(s)');
 
-      // Dispose
-      detector.dispose();
-      // isReady should be false after dispose (meshPool cleared)
-      expect(detector.isReady, false);
+        // Dispose
+        detector.dispose();
+        // isReady should be false after dispose (meshPool cleared)
+        expect(detector.isReady, false);
 
-      // Re-initialize same instance
-      await detector.initialize();
-      expect(detector.isReady, true);
+        // Re-initialize same instance
+        await detector.initialize();
+        expect(detector.isReady, true);
 
-      // Should still work
-      final faces2 = await detector.detectFacesFromBytes(imageBytes);
-      expect(faces2, isNotEmpty);
-      expect(faces2.length, faces1.length);
-      print('Second lifecycle: detected ${faces2.length} face(s)');
+        // Should still work
+        final faces2 = await detector.detectFacesFromBytes(imageBytes);
+        expect(faces2, isNotEmpty);
+        expect(faces2.length, faces1.length);
+        print('Second lifecycle: detected ${faces2.length} face(s)');
 
-      detector.dispose();
-      print('Test passed');
-    }, timeout: testTimeout);
+        detector.dispose();
+        print('Test passed');
+      },
+      timeout: testTimeout,
+    );
 
     test('should work with different model on re-initialize', () async {
       print('\n--- Testing dispose -> re-init with different model ---');
@@ -97,8 +100,10 @@ void main() {
 
       await detector.initialize(model: FaceDetectionModel.backCamera);
       expect(detector.isReady, true);
-      final faces1 = await detector.detectFacesFromBytes(imageBytes,
-          mode: FaceDetectionMode.fast);
+      final faces1 = await detector.detectFacesFromBytes(
+        imageBytes,
+        mode: FaceDetectionMode.fast,
+      );
       expect(faces1, isNotEmpty);
       print('backCamera: ${faces1.length} face(s)');
 
@@ -106,8 +111,10 @@ void main() {
 
       await detector.initialize(model: FaceDetectionModel.frontCamera);
       expect(detector.isReady, true);
-      final faces2 = await detector.detectFacesFromBytes(imageBytes,
-          mode: FaceDetectionMode.fast);
+      final faces2 = await detector.detectFacesFromBytes(
+        imageBytes,
+        mode: FaceDetectionMode.fast,
+      );
       expect(faces2, isNotEmpty);
       print('frontCamera: ${faces2.length} face(s)');
 
@@ -120,8 +127,10 @@ void main() {
       final detector = FaceDetector();
 
       await detector.initialize();
-      final faces1 = await detector.detectFacesFromBytes(imageBytes,
-          mode: FaceDetectionMode.full);
+      final faces1 = await detector.detectFacesFromBytes(
+        imageBytes,
+        mode: FaceDetectionMode.full,
+      );
       expect(faces1, isNotEmpty);
       expect(faces1.first.mesh, isNotNull);
       expect(faces1.first.mesh!.length, 468);
@@ -129,8 +138,10 @@ void main() {
       detector.dispose();
       await detector.initialize();
 
-      final faces2 = await detector.detectFacesFromBytes(imageBytes,
-          mode: FaceDetectionMode.full);
+      final faces2 = await detector.detectFacesFromBytes(
+        imageBytes,
+        mode: FaceDetectionMode.full,
+      );
       expect(faces2, isNotEmpty);
       expect(faces2.first.mesh, isNotNull);
       expect(faces2.first.mesh!.length, 468);
@@ -145,8 +156,10 @@ void main() {
 
       await detector.initialize();
       expect(detector.isEmbeddingReady, true);
-      final faces1 = await detector.detectFacesFromBytes(imageBytes,
-          mode: FaceDetectionMode.fast);
+      final faces1 = await detector.detectFacesFromBytes(
+        imageBytes,
+        mode: FaceDetectionMode.fast,
+      );
       expect(faces1, isNotEmpty);
       final emb1 = await detector.getFaceEmbedding(faces1.first, imageBytes);
       expect(emb1.length, 192);
@@ -155,8 +168,10 @@ void main() {
       await detector.initialize();
       expect(detector.isEmbeddingReady, true);
 
-      final faces2 = await detector.detectFacesFromBytes(imageBytes,
-          mode: FaceDetectionMode.fast);
+      final faces2 = await detector.detectFacesFromBytes(
+        imageBytes,
+        mode: FaceDetectionMode.fast,
+      );
       expect(faces2, isNotEmpty);
       final emb2 = await detector.getFaceEmbedding(faces2.first, imageBytes);
       expect(emb2.length, 192);
@@ -170,36 +185,39 @@ void main() {
       print('Test passed');
     }, timeout: testTimeout);
 
-    test('should support segmentation after dispose-then-reinitialize',
-        () async {
-      if (!modelsAvailable) {
-        print('Skipping: models not available');
-        return;
-      }
+    test(
+      'should support segmentation after dispose-then-reinitialize',
+      () async {
+        if (!modelsAvailable) {
+          print('Skipping: models not available');
+          return;
+        }
 
-      print('\n--- Testing segmentation after dispose -> re-init ---');
-      final detector = FaceDetector();
+        print('\n--- Testing segmentation after dispose -> re-init ---');
+        final detector = FaceDetector();
 
-      await detector.initialize();
-      await detector.initializeSegmentation();
-      expect(detector.isSegmentationReady, true);
-      final mask1 = await detector.getSegmentationMask(imageBytes);
-      expect(mask1.width, greaterThan(0));
+        await detector.initialize();
+        await detector.initializeSegmentation();
+        expect(detector.isSegmentationReady, true);
+        final mask1 = await detector.getSegmentationMask(imageBytes);
+        expect(mask1.width, greaterThan(0));
 
-      detector.dispose();
-      expect(detector.isSegmentationReady, false);
+        detector.dispose();
+        expect(detector.isSegmentationReady, false);
 
-      await detector.initialize();
-      await detector.initializeSegmentation();
-      expect(detector.isSegmentationReady, true);
-      final mask2 = await detector.getSegmentationMask(imageBytes);
-      expect(mask2.width, greaterThan(0));
-      expect(mask2.width, mask1.width);
-      expect(mask2.height, mask1.height);
+        await detector.initialize();
+        await detector.initializeSegmentation();
+        expect(detector.isSegmentationReady, true);
+        final mask2 = await detector.getSegmentationMask(imageBytes);
+        expect(mask2.width, greaterThan(0));
+        expect(mask2.width, mask1.width);
+        expect(mask2.height, mask1.height);
 
-      detector.dispose();
-      print('Test passed');
-    }, timeout: testTimeout);
+        detector.dispose();
+        print('Test passed');
+      },
+      timeout: testTimeout,
+    );
 
     test('should handle multiple dispose-reinitialize cycles', () async {
       print('\n--- Testing 5 dispose -> re-init cycles ---');
@@ -343,8 +361,10 @@ void main() {
         final (_, eyeBytes) = cv.imencode('.png', eyeMat);
         eyeMat.dispose();
 
-        final landmarks =
-            await IrisLandmark.callWithIsolate(eyeBytes, modelPath);
+        final landmarks = await IrisLandmark.callWithIsolate(
+          eyeBytes,
+          modelPath,
+        );
         expect(landmarks, isNotEmpty);
         for (final point in landmarks) {
           expect(point.length, greaterThanOrEqualTo(2));
@@ -393,7 +413,9 @@ void main() {
 
       try {
         await IrisLandmark.callWithIsolate(
-            eyeBytes, '/non/existent/model.tflite');
+          eyeBytes,
+          '/non/existent/model.tflite',
+        );
         fail('Should have thrown StateError');
       } on StateError catch (e) {
         print('Correctly threw StateError: ${e.runtimeType}');
@@ -408,72 +430,82 @@ void main() {
   // 3. SegmentationConfig.maxOutputSize behavior
   // ===========================================================================
   group('SegmentationConfig.maxOutputSize behavior', () {
-    test('mask is returned at model resolution regardless of maxOutputSize',
-        () async {
-      if (!modelsAvailable) {
-        print('Skipping: models not available');
-        return;
-      }
+    test(
+      'mask is returned at model resolution regardless of maxOutputSize',
+      () async {
+        if (!modelsAvailable) {
+          print('Skipping: models not available');
+          return;
+        }
 
-      print('\n--- Testing maxOutputSize is not applied at model level ---');
+        print('\n--- Testing maxOutputSize is not applied at model level ---');
 
-      // Create with very small maxOutputSize
-      final segmenter = await SelfieSegmentation.create(
-        config: const SegmentationConfig(maxOutputSize: 64),
-      );
+        // Create with very small maxOutputSize
+        final segmenter = await SelfieSegmentation.create(
+          config: const SegmentationConfig(maxOutputSize: 64),
+        );
 
-      final mask = await segmenter.callFromBytes(imageBytes);
+        final mask = await segmenter.callFromBytes(imageBytes);
 
-      // Mask should be at model's native resolution (256x256), NOT capped to 64
-      expect(mask.width, segmenter.outputWidth);
-      expect(mask.height, segmenter.outputHeight);
-      print('Model output: ${mask.width}x${mask.height}');
-      print(
-          'maxOutputSize was 64 but mask is at native resolution (not capped)');
+        // Mask should be at model's native resolution (256x256), NOT capped to 64
+        expect(mask.width, segmenter.outputWidth);
+        expect(mask.height, segmenter.outputHeight);
+        print('Model output: ${mask.width}x${mask.height}');
+        print(
+          'maxOutputSize was 64 but mask is at native resolution (not capped)',
+        );
 
-      // Verify the config value is stored correctly
-      expect(segmenter.config.maxOutputSize, 64);
+        // Verify the config value is stored correctly
+        expect(segmenter.config.maxOutputSize, 64);
 
-      // User must manually call upsample with maxSize to apply the cap
-      final upsampled = mask.upsample(maxSize: segmenter.config.maxOutputSize);
-      expect(upsampled.width, lessThanOrEqualTo(64));
-      expect(upsampled.height, lessThanOrEqualTo(64));
-      print(
-          'After manual upsample(maxSize: 64): ${upsampled.width}x${upsampled.height}');
+        // User must manually call upsample with maxSize to apply the cap
+        final upsampled = mask.upsample(
+          maxSize: segmenter.config.maxOutputSize,
+        );
+        expect(upsampled.width, lessThanOrEqualTo(64));
+        expect(upsampled.height, lessThanOrEqualTo(64));
+        print(
+          'After manual upsample(maxSize: 64): ${upsampled.width}x${upsampled.height}',
+        );
 
-      segmenter.dispose();
-      print('Test passed');
-    }, timeout: testTimeout);
+        segmenter.dispose();
+        print('Test passed');
+      },
+      timeout: testTimeout,
+    );
 
-    test('different maxOutputSize configs produce same raw mask dimensions',
-        () async {
-      if (!modelsAvailable) {
-        print('Skipping: models not available');
-        return;
-      }
+    test(
+      'different maxOutputSize configs produce same raw mask dimensions',
+      () async {
+        if (!modelsAvailable) {
+          print('Skipping: models not available');
+          return;
+        }
 
-      print('\n--- Testing maxOutputSize has no effect on raw output ---');
+        print('\n--- Testing maxOutputSize has no effect on raw output ---');
 
-      final segmenter1 = await SelfieSegmentation.create(
-        config: const SegmentationConfig(maxOutputSize: 128),
-      );
-      final segmenter2 = await SelfieSegmentation.create(
-        config: const SegmentationConfig(maxOutputSize: 4096),
-      );
+        final segmenter1 = await SelfieSegmentation.create(
+          config: const SegmentationConfig(maxOutputSize: 128),
+        );
+        final segmenter2 = await SelfieSegmentation.create(
+          config: const SegmentationConfig(maxOutputSize: 4096),
+        );
 
-      final mask1 = await segmenter1.callFromBytes(imageBytes);
-      final mask2 = await segmenter2.callFromBytes(imageBytes);
+        final mask1 = await segmenter1.callFromBytes(imageBytes);
+        final mask2 = await segmenter2.callFromBytes(imageBytes);
 
-      // Both should produce identical dimensions
-      expect(mask1.width, mask2.width);
-      expect(mask1.height, mask2.height);
-      print('maxOutputSize=128 -> ${mask1.width}x${mask1.height}');
-      print('maxOutputSize=4096 -> ${mask2.width}x${mask2.height}');
+        // Both should produce identical dimensions
+        expect(mask1.width, mask2.width);
+        expect(mask1.height, mask2.height);
+        print('maxOutputSize=128 -> ${mask1.width}x${mask1.height}');
+        print('maxOutputSize=4096 -> ${mask2.width}x${mask2.height}');
 
-      segmenter1.dispose();
-      segmenter2.dispose();
-      print('Test passed');
-    }, timeout: testTimeout);
+        segmenter1.dispose();
+        segmenter2.dispose();
+        print('Test passed');
+      },
+      timeout: testTimeout,
+    );
   });
 
   // ===========================================================================
@@ -504,8 +536,7 @@ void main() {
       print('Test passed');
     }, timeout: testTimeout);
 
-    test('validateModel=true rejects mismatched model-config pairing',
-        () async {
+    test('validateModel=true rejects mismatched model-config pairing', () async {
       if (!modelsAvailable) {
         print('Skipping: models not available');
         return;
@@ -537,35 +568,38 @@ void main() {
       print('Test passed');
     }, timeout: testTimeout);
 
-    test('validateModel=false skips validation for mismatched pairing',
-        () async {
-      if (!modelsAvailable) {
-        print('Skipping: models not available');
-        return;
-      }
+    test(
+      'validateModel=false skips validation for mismatched pairing',
+      () async {
+        if (!modelsAvailable) {
+          print('Skipping: models not available');
+          return;
+        }
 
-      print('\n--- Testing validateModel=false bypasses validation ---');
+        print('\n--- Testing validateModel=false bypasses validation ---');
 
-      final generalModelData = await rootBundle.load(
-        'packages/face_detection_tflite/assets/models/selfie_segmenter.tflite',
-      );
-      final generalModelBytes = generalModelData.buffer.asUint8List();
+        final generalModelData = await rootBundle.load(
+          'packages/face_detection_tflite/assets/models/selfie_segmenter.tflite',
+        );
+        final generalModelBytes = generalModelData.buffer.asUint8List();
 
-      // With validateModel=false, mismatched pairing should NOT throw during
-      // creation (though inference may produce garbage or crash).
-      // We only test that creation succeeds.
-      final segmenter = await SelfieSegmentation.createFromBuffer(
-        generalModelBytes,
-        config: const SegmentationConfig(
-          model: SegmentationModel.multiclass,
-          validateModel: false,
-        ),
-      );
+        // With validateModel=false, mismatched pairing should NOT throw during
+        // creation (though inference may produce garbage or crash).
+        // We only test that creation succeeds.
+        final segmenter = await SelfieSegmentation.createFromBuffer(
+          generalModelBytes,
+          config: const SegmentationConfig(
+            model: SegmentationModel.multiclass,
+            validateModel: false,
+          ),
+        );
 
-      print('Created segmenter with validateModel=false (no exception)');
-      segmenter.dispose();
-      print('Test passed');
-    }, timeout: testTimeout);
+        print('Created segmenter with validateModel=false (no exception)');
+        segmenter.dispose();
+        print('Test passed');
+      },
+      timeout: testTimeout,
+    );
   });
 
   // ===========================================================================
@@ -657,8 +691,11 @@ void main() {
       emptyMat.dispose();
 
       // Worker should still be functional
-      final validMat =
-          cv.Mat.create(rows: 256, cols: 256, type: cv.MatType.CV_8UC3);
+      final validMat = cv.Mat.create(
+        rows: 256,
+        cols: 256,
+        type: cv.MatType.CV_8UC3,
+      );
       validMat.setTo(cv.Scalar(100, 150, 200, 255));
 
       final mask = await worker.segmentMat(validMat);
@@ -671,35 +708,38 @@ void main() {
       print('Test passed');
     }, timeout: testTimeout);
 
-    test('should recover after invalid bytes and process valid input',
-        () async {
-      if (!modelsAvailable) {
-        print('Skipping: models not available');
-        return;
-      }
+    test(
+      'should recover after invalid bytes and process valid input',
+      () async {
+        if (!modelsAvailable) {
+          print('Skipping: models not available');
+          return;
+        }
 
-      print('\n--- Testing SegmentationWorker error recovery (bytes) ---');
+        print('\n--- Testing SegmentationWorker error recovery (bytes) ---');
 
-      final worker = SegmentationWorker();
-      await worker.initialize();
+        final worker = SegmentationWorker();
+        await worker.initialize();
 
-      // Send bad input
-      try {
-        await worker.segment(Uint8List.fromList([0, 1, 2, 3]));
-        fail('Should have thrown SegmentationException');
-      } on SegmentationException catch (e) {
-        print('Expected error: ${e.message}');
-      }
+        // Send bad input
+        try {
+          await worker.segment(Uint8List.fromList([0, 1, 2, 3]));
+          fail('Should have thrown SegmentationException');
+        } on SegmentationException catch (e) {
+          print('Expected error: ${e.message}');
+        }
 
-      // Worker should still be functional
-      final mask = await worker.segment(imageBytes);
-      expect(mask.width, greaterThan(0));
-      expect(mask.height, greaterThan(0));
-      print('Recovery successful: ${mask.width}x${mask.height}');
+        // Worker should still be functional
+        final mask = await worker.segment(imageBytes);
+        expect(mask.width, greaterThan(0));
+        expect(mask.height, greaterThan(0));
+        print('Recovery successful: ${mask.width}x${mask.height}');
 
-      worker.dispose();
-      print('Test passed');
-    }, timeout: testTimeout);
+        worker.dispose();
+        print('Test passed');
+      },
+      timeout: testTimeout,
+    );
 
     test('should handle multiple error-recovery cycles', () async {
       if (!modelsAvailable) {
@@ -840,8 +880,11 @@ void main() {
       final detector = FaceDetector();
       await detector.initialize();
 
-      final grayMat =
-          cv.Mat.create(rows: 256, cols: 256, type: cv.MatType.CV_8UC1);
+      final grayMat = cv.Mat.create(
+        rows: 256,
+        cols: 256,
+        type: cv.MatType.CV_8UC1,
+      );
       grayMat.setTo(cv.Scalar(128, 0, 0, 0));
 
       try {
@@ -870,8 +913,11 @@ void main() {
       await detector.initialize();
 
       // Create a 256x256 BGRA Mat directly
-      final bgraMat =
-          cv.Mat.create(rows: 256, cols: 256, type: cv.MatType.CV_8UC4);
+      final bgraMat = cv.Mat.create(
+        rows: 256,
+        cols: 256,
+        type: cv.MatType.CV_8UC4,
+      );
       bgraMat.setTo(cv.Scalar(100, 150, 200, 255));
 
       try {
@@ -928,10 +974,7 @@ void main() {
       await detector.initialize();
       detector.dispose();
 
-      expect(
-        () => detector.detectFacesFromBytes(imageBytes),
-        throwsStateError,
-      );
+      expect(() => detector.detectFacesFromBytes(imageBytes), throwsStateError);
       print('Test passed');
     }, timeout: testTimeout);
 
@@ -943,10 +986,7 @@ void main() {
 
       final mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
       try {
-        expect(
-          () => detector.detectFacesFromMat(mat),
-          throwsStateError,
-        );
+        expect(() => detector.detectFacesFromMat(mat), throwsStateError);
       } finally {
         mat.dispose();
       }
@@ -1032,37 +1072,37 @@ void main() {
 
       detector.dispose();
 
-      expect(
-        () => detector.getSegmentationMask(imageBytes),
-        throwsStateError,
-      );
+      expect(() => detector.getSegmentationMask(imageBytes), throwsStateError);
       print('Test passed');
     }, timeout: testTimeout);
 
-    test('getSegmentationMaskFromMat() throws StateError after dispose',
-        () async {
-      if (!modelsAvailable) {
-        print('Skipping: models not available');
-        return;
-      }
-      print('\n--- Testing getSegmentationMaskFromMat after dispose ---');
-      final detector = FaceDetector();
-      await detector.initialize();
-      await detector.initializeSegmentation();
+    test(
+      'getSegmentationMaskFromMat() throws StateError after dispose',
+      () async {
+        if (!modelsAvailable) {
+          print('Skipping: models not available');
+          return;
+        }
+        print('\n--- Testing getSegmentationMaskFromMat after dispose ---');
+        final detector = FaceDetector();
+        await detector.initialize();
+        await detector.initializeSegmentation();
 
-      detector.dispose();
+        detector.dispose();
 
-      final mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
-      try {
-        expect(
-          () => detector.getSegmentationMaskFromMat(mat),
-          throwsStateError,
-        );
-      } finally {
-        mat.dispose();
-      }
-      print('Test passed');
-    }, timeout: testTimeout);
+        final mat = cv.imdecode(imageBytes, cv.IMREAD_COLOR);
+        try {
+          expect(
+            () => detector.getSegmentationMaskFromMat(mat),
+            throwsStateError,
+          );
+        } finally {
+          mat.dispose();
+        }
+        print('Test passed');
+      },
+      timeout: testTimeout,
+    );
   });
 
   // ===========================================================================
@@ -1136,9 +1176,7 @@ void main() {
       print('\n--- Testing initializeSegmentation with fast config ---');
       final detector = FaceDetector();
       await detector.initialize();
-      await detector.initializeSegmentation(
-        config: SegmentationConfig.fast,
-      );
+      await detector.initializeSegmentation(config: SegmentationConfig.fast);
       expect(detector.isSegmentationReady, true);
 
       final mask = await detector.getSegmentationMask(imageBytes);
@@ -1158,9 +1196,7 @@ void main() {
       final detector = FaceDetector();
       await detector.initialize();
       await detector.initializeSegmentation(
-        config: const SegmentationConfig(
-          model: SegmentationModel.landscape,
-        ),
+        config: const SegmentationConfig(model: SegmentationModel.landscape),
       );
       expect(detector.isSegmentationReady, true);
 

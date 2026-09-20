@@ -38,10 +38,18 @@ void main() {
     }
   }
 
-  Uint8List createTestImage(int width, int height,
-      {int r = 128, int g = 128, int b = 128}) {
-    final mat =
-        cv.Mat.create(rows: height, cols: width, type: cv.MatType.CV_8UC3);
+  Uint8List createTestImage(
+    int width,
+    int height, {
+    int r = 128,
+    int g = 128,
+    int b = 128,
+  }) {
+    final mat = cv.Mat.create(
+      rows: height,
+      cols: width,
+      type: cv.MatType.CV_8UC3,
+    );
     mat.setTo(cv.Scalar(b.toDouble(), g.toDouble(), r.toDouble(), 255));
     final (_, bytes) = cv.imencode('.png', mat);
     mat.dispose();
@@ -58,23 +66,28 @@ void main() {
   // Embedding dimension validation
   // ===========================================================================
   group('Embedding dimension validation', () {
-    test('FaceDetector embedding has exactly kEmbeddingDimension elements',
-        () async {
-      print('\n--- Testing embedding dimension ---');
-      final detector = FaceDetector();
-      await detector.initialize();
+    test(
+      'FaceDetector embedding has exactly kEmbeddingDimension elements',
+      () async {
+        print('\n--- Testing embedding dimension ---');
+        final detector = FaceDetector();
+        await detector.initialize();
 
-      final faces = await detector.detectFacesFromBytes(landmarkBytes);
-      expect(faces, isNotEmpty);
+        final faces = await detector.detectFacesFromBytes(landmarkBytes);
+        expect(faces, isNotEmpty);
 
-      final embedding =
-          await detector.getFaceEmbedding(faces.first, landmarkBytes);
-      expect(embedding.length, 192);
+        final embedding = await detector.getFaceEmbedding(
+          faces.first,
+          landmarkBytes,
+        );
+        expect(embedding.length, 192);
 
-      print('Embedding length: ${embedding.length} (expected 192)');
-      detector.dispose();
-      print('Test passed');
-    }, timeout: testTimeout);
+        print('Embedding length: ${embedding.length} (expected 192)');
+        detector.dispose();
+        print('Test passed');
+      },
+      timeout: testTimeout,
+    );
 
     test('FaceDetector embedding has exactly 192 elements', () async {
       print('\n--- Testing embedding dimension ---');
@@ -84,8 +97,10 @@ void main() {
       final faces = await detector.detectFacesFromBytes(landmarkBytes);
       expect(faces, isNotEmpty);
 
-      final embedding =
-          await detector.getFaceEmbedding(faces.first, landmarkBytes);
+      final embedding = await detector.getFaceEmbedding(
+        faces.first,
+        landmarkBytes,
+      );
       expect(embedding.length, 192);
 
       print('Embedding length: ${embedding.length}');
@@ -146,16 +161,19 @@ void main() {
       print('euclideanDistance([0,0,0], [3,4,0]) = $distance');
     }, timeout: testTimeout);
 
-    test('euclideanDistance throws ArgumentError for mismatched dimensions',
-        () {
-      final a = Float32List.fromList([1.0, 0.0]);
-      final b = Float32List.fromList([1.0, 0.0, 0.0]);
-      expect(
-        () => FaceEmbedding.euclideanDistance(a, b),
-        throwsA(isA<ArgumentError>()),
-      );
-      print('euclideanDistance: dimension mismatch throws correctly');
-    }, timeout: testTimeout);
+    test(
+      'euclideanDistance throws ArgumentError for mismatched dimensions',
+      () {
+        final a = Float32List.fromList([1.0, 0.0]);
+        final b = Float32List.fromList([1.0, 0.0, 0.0]);
+        expect(
+          () => FaceEmbedding.euclideanDistance(a, b),
+          throwsA(isA<ArgumentError>()),
+        );
+        print('euclideanDistance: dimension mismatch throws correctly');
+      },
+      timeout: testTimeout,
+    );
   });
 
   // ===========================================================================
@@ -215,10 +233,12 @@ void main() {
 
       final futures = <Future>[];
       for (int i = 0; i < 5; i++) {
-        futures.add(detector.detectFacesFromBytes(
-          landmarkBytes,
-          mode: FaceDetectionMode.fast,
-        ));
+        futures.add(
+          detector.detectFacesFromBytes(
+            landmarkBytes,
+            mode: FaceDetectionMode.fast,
+          ),
+        );
         futures.add(detector.getSegmentationMask(landmarkBytes));
       }
 

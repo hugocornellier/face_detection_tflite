@@ -25,10 +25,7 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Face Detection Web',
-      home: const HomeScreen(),
-    );
+    return MaterialApp(title: 'Face Detection Web', home: const HomeScreen());
   }
 }
 
@@ -56,9 +53,9 @@ class _HomeScreenState extends State<HomeScreen> {
         _ => null,
       };
       if (target != null) {
-        Navigator.of(context).push(
-          MaterialPageRoute<void>(builder: (_) => target),
-        );
+        Navigator.of(
+          context,
+        ).push(MaterialPageRoute<void>(builder: (_) => target));
       }
     });
   }
@@ -101,7 +98,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 _DemoCard(
                   icon: Icons.movie,
                   title: 'Video File',
-                  subtitle: 'Upload a video and detect faces frame by frame '
+                  subtitle:
+                      'Upload a video and detect faces frame by frame '
                       'with a live overlay.',
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
@@ -145,15 +143,9 @@ class _DemoCard extends StatelessWidget {
             children: [
               Icon(icon, size: 40),
               const SizedBox(height: 12),
-              Text(
-                title,
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
+              Text(title, style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 6),
-              Text(
-                subtitle,
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
+              Text(subtitle, style: Theme.of(context).textTheme.bodyMedium),
             ],
           ),
         ),

@@ -56,9 +56,9 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           builder: (context, child) => MediaQuery(
-            data: MediaQuery.of(context).copyWith(
-              textScaler: TextScaler.linear(textScale),
-            ),
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: TextScaler.linear(textScale)),
             child: child!,
           ),
           home: Scaffold(
@@ -75,8 +75,9 @@ void main() {
       );
     }
 
-    testWidgets('fits a narrow mobile width with enlarged text',
-        (tester) async {
+    testWidgets('fits a narrow mobile width with enlarged text', (
+      tester,
+    ) async {
       await pumpMetrics(
         tester,
         latestUs: 120100,
@@ -92,8 +93,9 @@ void main() {
       expect(find.text('ms'), findsNWidgets(2));
     });
 
-    testWidgets('keeps the unit fixed when the value width changes',
-        (tester) async {
+    testWidgets('keeps the unit fixed when the value width changes', (
+      tester,
+    ) async {
       await pumpMetrics(tester, latestUs: 6012, averageUs: 8012);
       final firstUnitX = tester.getTopLeft(find.text('ms').first).dx;
 

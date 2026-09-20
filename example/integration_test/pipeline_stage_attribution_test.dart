@@ -45,16 +45,12 @@ void main() {
   test('FULL pipeline stage attribution (compiledmodel)', () async {
     final jpegBytes = (await rootBundle.load(
       'assets/samples/landmark-ex1.jpg',
-    ))
-        .buffer
-        .asUint8List();
+    )).buffer.asUint8List();
     final mat = cv.imdecode(jpegBytes, cv.IMREAD_COLOR);
 
     Future<Uint8List> loadModel(String file) async => (await rootBundle.load(
-          'packages/face_detection_tflite/assets/models/$file',
-        ))
-            .buffer
-            .asUint8List();
+      'packages/face_detection_tflite/assets/models/$file',
+    )).buffer.asUint8List();
 
     final detection = await FaceDetection.createCompiledFromBuffer(
       await loadModel(testNameFor(FaceDetectionModel.backCamera)),
@@ -122,8 +118,7 @@ void main() {
           align.size,
           -align.theta,
           outSize: mesh.inputWidth,
-        )!
-            .dispose();
+        )!.dispose();
       }),
     );
 
@@ -183,9 +178,7 @@ void main() {
       rightRoi.theta,
       outSize: irisRight.inputWidth,
     )!;
-    print(
-      'eye crop side: ${leftCrop.cols}px (roi ${leftRoi.size.round()}px)',
-    );
+    print('eye crop side: ${leftCrop.cols}px (roi ${leftRoi.size.round()}px)');
     report(
       'iris: extractAlignedSquare (x2)',
       await _bench(() async {
@@ -196,8 +189,7 @@ void main() {
           leftRoi.size,
           leftRoi.theta,
           outSize: irisLeft.inputWidth,
-        )!
-            .dispose();
+        )!.dispose();
         extractAlignedSquare(
           mat,
           rightRoi.cx,
@@ -205,8 +197,7 @@ void main() {
           rightRoi.size,
           rightRoi.theta,
           outSize: irisRight.inputWidth,
-        )!
-            .dispose();
+        )!.dispose();
       }),
     );
 

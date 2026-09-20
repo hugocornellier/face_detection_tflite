@@ -116,8 +116,9 @@ class _StillImageScreenState extends State<StillImageScreen> {
       setState(() {
         final backend =
             (_detector as dynamic).activeAccelerator as String? ?? 'wasm';
-        final engineName =
-            _engine.useCompiledModel ? 'CompiledModel' : 'Interpreter';
+        final engineName = _engine.useCompiledModel
+            ? 'CompiledModel'
+            : 'Interpreter';
         _status = 'Ready ($engineName · $backend). Pick an image.';
         _isModelReady = true;
       });
@@ -219,8 +220,10 @@ class _StillImageScreenState extends State<StillImageScreen> {
     });
     try {
       final sw = Stopwatch()..start();
-      final faces =
-          await _detector!.detectFacesFromBytes(_pickedBytes!, mode: _mode);
+      final faces = await _detector!.detectFacesFromBytes(
+        _pickedBytes!,
+        mode: _mode,
+      );
       sw.stop();
       SegmentationMask? mask;
       if (_showSegmentation && _detector!.isSegmentationReady) {
@@ -229,7 +232,8 @@ class _StillImageScreenState extends State<StillImageScreen> {
       final shown = _gatedFaces(faces);
       await _drawAnnotations(shown, mask);
       setState(() {
-        _status = 'Detected ${faces.length} face(s), showing ${shown.length} '
+        _status =
+            'Detected ${faces.length} face(s), showing ${shown.length} '
             'in ${sw.elapsedMilliseconds}ms';
       });
     } catch (e) {
@@ -293,7 +297,8 @@ class _StillImageScreenState extends State<StillImageScreen> {
 
     if (_showClassification && face.smilingProbability != null) {
       final tl = face.boundingBox.topLeft;
-      final text = 'smile ${face.smilingProbability!.toStringAsFixed(2)}  '
+      final text =
+          'smile ${face.smilingProbability!.toStringAsFixed(2)}  '
           'eyeL ${face.leftEyeOpenProbability!.toStringAsFixed(2)}  '
           'eyeR ${face.rightEyeOpenProbability!.toStringAsFixed(2)}';
       ctx.font = '13px sans-serif';
@@ -399,7 +404,8 @@ class _StillImageScreenState extends State<StillImageScreen> {
       maskColor: _maskColor,
       threshold: _showBinaryMask ? _segmentationThreshold : -1.0,
       classIndex: _multiclassClassIndex,
-      showAllClasses: _segmentationModel == SegmentationModel.multiclass &&
+      showAllClasses:
+          _segmentationModel == SegmentationModel.multiclass &&
           _multiclassClassIndex == null,
     );
   }
@@ -494,35 +500,83 @@ class _StillImageScreenState extends State<StillImageScreen> {
                   'Sizes',
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
-                _slider('BBox thickness', _boundingBoxThickness, 0.5, 10.0,
-                    (v) => setBoth(() => _boundingBoxThickness = v)),
-                _slider('Landmark size', _landmarkSize, 0.5, 15.0,
-                    (v) => setBoth(() => _landmarkSize = v)),
-                _slider('Mesh size', _meshSize, 0.1, 10.0,
-                    (v) => setBoth(() => _meshSize = v)),
-                _slider('Eye mesh size', _eyeMeshSize, 0.1, 10.0,
-                    (v) => setBoth(() => _eyeMeshSize = v)),
-                _slider('minScore (gate)', _minScore, 0.0, 1.0,
-                    (v) => setBoth(() => _minScore = v)),
-                _slider('minFaceSize (gate)', _minFaceSize, 0.0, 1.0,
-                    (v) => setBoth(() => _minFaceSize = v)),
+                _slider(
+                  'BBox thickness',
+                  _boundingBoxThickness,
+                  0.5,
+                  10.0,
+                  (v) => setBoth(() => _boundingBoxThickness = v),
+                ),
+                _slider(
+                  'Landmark size',
+                  _landmarkSize,
+                  0.5,
+                  15.0,
+                  (v) => setBoth(() => _landmarkSize = v),
+                ),
+                _slider(
+                  'Mesh size',
+                  _meshSize,
+                  0.1,
+                  10.0,
+                  (v) => setBoth(() => _meshSize = v),
+                ),
+                _slider(
+                  'Eye mesh size',
+                  _eyeMeshSize,
+                  0.1,
+                  10.0,
+                  (v) => setBoth(() => _eyeMeshSize = v),
+                ),
+                _slider(
+                  'minScore (gate)',
+                  _minScore,
+                  0.0,
+                  1.0,
+                  (v) => setBoth(() => _minScore = v),
+                ),
+                _slider(
+                  'minFaceSize (gate)',
+                  _minFaceSize,
+                  0.0,
+                  1.0,
+                  (v) => setBoth(() => _minFaceSize = v),
+                ),
                 const Divider(),
                 const Text(
                   'Colors',
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
-                _colorPicker('Bounding box', _boundingBoxColor,
-                    (c) => setBoth(() => _boundingBoxColor = c)),
-                _colorPicker('Landmarks', _landmarkColor,
-                    (c) => setBoth(() => _landmarkColor = c)),
                 _colorPicker(
-                    'Mesh', _meshColor, (c) => setBoth(() => _meshColor = c)),
+                  'Bounding box',
+                  _boundingBoxColor,
+                  (c) => setBoth(() => _boundingBoxColor = c),
+                ),
                 _colorPicker(
-                    'Iris', _irisColor, (c) => setBoth(() => _irisColor = c)),
-                _colorPicker('Eye contour', _eyeContourColor,
-                    (c) => setBoth(() => _eyeContourColor = c)),
-                _colorPicker('Eye mesh', _eyeMeshColor,
-                    (c) => setBoth(() => _eyeMeshColor = c)),
+                  'Landmarks',
+                  _landmarkColor,
+                  (c) => setBoth(() => _landmarkColor = c),
+                ),
+                _colorPicker(
+                  'Mesh',
+                  _meshColor,
+                  (c) => setBoth(() => _meshColor = c),
+                ),
+                _colorPicker(
+                  'Iris',
+                  _irisColor,
+                  (c) => setBoth(() => _irisColor = c),
+                ),
+                _colorPicker(
+                  'Eye contour',
+                  _eyeContourColor,
+                  (c) => setBoth(() => _eyeContourColor = c),
+                ),
+                _colorPicker(
+                  'Eye mesh',
+                  _eyeMeshColor,
+                  (c) => setBoth(() => _eyeMeshColor = c),
+                ),
                 const Divider(),
                 _segmentationSection(setBoth),
                 const Divider(),
@@ -581,8 +635,13 @@ class _StillImageScreenState extends State<StillImageScreen> {
     );
   }
 
-  Widget _slider(String label, double value, double min, double max,
-      void Function(double) onChanged) {
+  Widget _slider(
+    String label,
+    double value,
+    double min,
+    double max,
+    void Function(double) onChanged,
+  ) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -713,8 +772,13 @@ class _StillImageScreenState extends State<StillImageScreen> {
             value: _showBinaryMask,
             onChanged: (v) => setBoth(() => _showBinaryMask = v ?? false),
           ),
-          _slider('Threshold', _segmentationThreshold, 0.0, 1.0,
-              (v) => setBoth(() => _segmentationThreshold = v)),
+          _slider(
+            'Threshold',
+            _segmentationThreshold,
+            0.0,
+            1.0,
+            (v) => setBoth(() => _segmentationThreshold = v),
+          ),
           Wrap(
             spacing: 6,
             children: [

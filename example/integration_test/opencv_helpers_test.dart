@@ -22,8 +22,13 @@ void main() {
   const testTimeout = Timeout(Duration(minutes: 2));
 
   /// Creates a solid color cv.Mat of specified size
-  cv.Mat createSolidMat(int width, int height,
-      {int r = 128, int g = 128, int b = 128}) {
+  cv.Mat createSolidMat(
+    int width,
+    int height, {
+    int r = 128,
+    int g = 128,
+    int b = 128,
+  }) {
     final mat = cv.Mat.zeros(height, width, cv.MatType.CV_8UC3);
     mat.setTo(cv.Scalar(b.toDouble(), g.toDouble(), r.toDouble(), 255));
     return mat;
@@ -100,8 +105,12 @@ void main() {
       final mat = createSolidMat(10, 10, r: 200, g: 100, b: 50);
       final buffer = Float32List(10 * 10 * 3);
 
-      final result =
-          convertImageToTensor(mat, outW: 10, outH: 10, buffer: buffer);
+      final result = convertImageToTensor(
+        mat,
+        outW: 10,
+        outH: 10,
+        buffer: buffer,
+      );
 
       expect(identical(result.tensorNHWC, buffer), isTrue);
 

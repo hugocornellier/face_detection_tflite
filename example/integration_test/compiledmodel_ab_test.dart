@@ -86,9 +86,11 @@ void main() {
               sum += _dist(iMesh[p], cMesh[p]);
             }
             final double meshMad = sum / iMesh.length;
-            print('  mesh mean point deviation: '
-                '${meshMad.toStringAsFixed(2)} px (face diag '
-                '${diag.toStringAsFixed(0)} px)');
+            print(
+              '  mesh mean point deviation: '
+              '${meshMad.toStringAsFixed(2)} px (face diag '
+              '${diag.toStringAsFixed(0)} px)',
+            );
             expect(
               meshMad,
               lessThan(diag * 0.02),

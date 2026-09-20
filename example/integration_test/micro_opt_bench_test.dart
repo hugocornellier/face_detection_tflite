@@ -31,8 +31,10 @@ void main() {
     }
     sw.stop();
     final double nsPerCall = sw.elapsedMicroseconds * 1000 / iters;
-    print('\n[UNPACK] $iters calls: ${sw.elapsedMilliseconds} ms total, '
-        '${nsPerCall.toStringAsFixed(1)} ns/call');
+    print(
+      '\n[UNPACK] $iters calls: ${sw.elapsedMilliseconds} ms total, '
+      '${nsPerCall.toStringAsFixed(1)} ns/call',
+    );
   }, timeout: const Timeout(Duration(minutes: 5)));
 
   test('microbench: FaceLandmark.call 1000 iterations', () async {
@@ -58,8 +60,9 @@ void main() {
       sw.stop();
       final double usPerCall = sw.elapsedMicroseconds / iters;
       print(
-          '\n[FACELANDMARK] $iters calls: ${sw.elapsedMilliseconds} ms total, '
-          '${usPerCall.toStringAsFixed(1)} µs/call');
+        '\n[FACELANDMARK] $iters calls: ${sw.elapsedMilliseconds} ms total, '
+        '${usPerCall.toStringAsFixed(1)} µs/call',
+      );
     } finally {
       mat.dispose();
       landmark.dispose();
@@ -89,8 +92,9 @@ void main() {
       sw.stop();
       final double usPerCall = sw.elapsedMicroseconds / iters;
       print(
-          '\n[IRISLANDMARK] $iters calls: ${sw.elapsedMilliseconds} ms total, '
-          '${usPerCall.toStringAsFixed(1)} µs/call');
+        '\n[IRISLANDMARK] $iters calls: ${sw.elapsedMilliseconds} ms total, '
+        '${usPerCall.toStringAsFixed(1)} µs/call',
+      );
     } finally {
       mat.dispose();
       iris.dispose();
@@ -122,8 +126,9 @@ void main() {
       sw.stop();
       final double usPerCall = sw.elapsedMicroseconds / iters;
       print(
-          '\n[FACEDETECTION] $iters calls: ${sw.elapsedMilliseconds} ms total, '
-          '${usPerCall.toStringAsFixed(1)} µs/call');
+        '\n[FACEDETECTION] $iters calls: ${sw.elapsedMilliseconds} ms total, '
+        '${usPerCall.toStringAsFixed(1)} µs/call',
+      );
     } finally {
       mat.dispose();
       detection.dispose();
@@ -132,13 +137,12 @@ void main() {
 
   test('microbench: FaceDetector.detectFacesFromMat 300 iterations', () async {
     final detector = FaceDetector();
-    await detector.initialize(
-      performanceConfig: PerformanceConfig.xnnpack(),
-    );
+    await detector.initialize(performanceConfig: PerformanceConfig.xnnpack());
     // Real face image so mesh + iris paths are exercised (to hit the big
     // isolate-serialization change: mesh points packed as Float32List).
-    final ByteData data =
-        await rootBundle.load('assets/samples/landmark-ex1.jpg');
+    final ByteData data = await rootBundle.load(
+      'assets/samples/landmark-ex1.jpg',
+    );
     final bytes = data.buffer.asUint8List();
     final mat = cv.imdecode(bytes, cv.IMREAD_COLOR);
     try {
@@ -154,8 +158,9 @@ void main() {
       sw.stop();
       final double usPerCall = sw.elapsedMicroseconds / iters;
       print(
-          '\n[DETECTFACESFROMMAT] $iters calls: ${sw.elapsedMilliseconds} ms total, '
-          '${usPerCall.toStringAsFixed(1)} µs/call');
+        '\n[DETECTFACESFROMMAT] $iters calls: ${sw.elapsedMilliseconds} ms total, '
+        '${usPerCall.toStringAsFixed(1)} µs/call',
+      );
     } finally {
       mat.dispose();
       detector.dispose();

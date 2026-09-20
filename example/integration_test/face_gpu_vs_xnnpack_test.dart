@@ -70,34 +70,44 @@ void main() {
       print('FACE FULL-MODE: GPU vs XNNPACK (p50 ms, end-to-end detectFaces)');
       print('=' * 72);
       print(
-          '${'image'.padRight(42)} ${'xnnpack'.padLeft(9)} ${'gpu'.padLeft(9)}   speedup');
+        '${'image'.padRight(42)} ${'xnnpack'.padLeft(9)} ${'gpu'.padLeft(9)}   speedup',
+      );
       print('-' * 72);
       for (final path in sampleImages) {
         final name = path.split('/').last;
         final xp = _p50(xnn[path]!);
         final gp = _p50(gpu[path]!);
         final spd = (xp / gp);
-        print('${name.padRight(42)} '
-            '${xp.toStringAsFixed(1).padLeft(9)} '
-            '${gp.toStringAsFixed(1).padLeft(9)}   '
-            '${spd.toStringAsFixed(2)}x');
+        print(
+          '${name.padRight(42)} '
+          '${xp.toStringAsFixed(1).padLeft(9)} '
+          '${gp.toStringAsFixed(1).padLeft(9)}   '
+          '${spd.toStringAsFixed(2)}x',
+        );
       }
       print('-' * 72);
       // overall
       final xnnAll = xnn.values.expand((e) => e).toList();
       final gpuAll = gpu.values.expand((e) => e).toList();
       double minMs(List<int> us) => us.reduce((a, b) => a < b ? a : b) / 1000.0;
-      print('XNNPACK  overall p50=${_p50(xnnAll).toStringAsFixed(1)}ms '
-          'mean=${_mean(xnnAll).toStringAsFixed(1)}ms std=${_std(xnnAll).toStringAsFixed(1)}ms');
-      print('GPU      overall p50=${_p50(gpuAll).toStringAsFixed(1)}ms '
-          'mean=${_mean(gpuAll).toStringAsFixed(1)}ms std=${_std(gpuAll).toStringAsFixed(1)}ms');
+      print(
+        'XNNPACK  overall p50=${_p50(xnnAll).toStringAsFixed(1)}ms '
+        'mean=${_mean(xnnAll).toStringAsFixed(1)}ms std=${_std(xnnAll).toStringAsFixed(1)}ms',
+      );
+      print(
+        'GPU      overall p50=${_p50(gpuAll).toStringAsFixed(1)}ms '
+        'mean=${_mean(gpuAll).toStringAsFixed(1)}ms std=${_std(gpuAll).toStringAsFixed(1)}ms',
+      );
       print('per-image min (warmup-immune floor):');
       for (final path in sampleImages) {
-        print('  ${path.split('/').last.padRight(40)} '
-            'xnn=${minMs(xnn[path]!).toStringAsFixed(1)}ms  gpu=${minMs(gpu[path]!).toStringAsFixed(1)}ms');
+        print(
+          '  ${path.split('/').last.padRight(40)} '
+          'xnn=${minMs(xnn[path]!).toStringAsFixed(1)}ms  gpu=${minMs(gpu[path]!).toStringAsFixed(1)}ms',
+        );
       }
       print(
-          'OVERALL SPEEDUP: ${(_p50(xnnAll) / _p50(gpuAll)).toStringAsFixed(2)}x (p50)');
+        'OVERALL SPEEDUP: ${(_p50(xnnAll) / _p50(gpuAll)).toStringAsFixed(2)}x (p50)',
+      );
       print('=' * 72);
     });
   });

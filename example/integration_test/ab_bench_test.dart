@@ -146,152 +146,162 @@ Future<List<double>> _timeLoop(Future<void> Function() op) async {
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  test(
-    'ab bench and parity',
-    () async {
-      final result = <String, dynamic>{
-        'timestamp': DateTime.now().toIso8601String(),
-        'warmup': kWarmup,
-        'iters': kIters,
-      };
+  test('ab bench and parity', () async {
+    final result = <String, dynamic>{
+      'timestamp': DateTime.now().toIso8601String(),
+      'warmup': kWarmup,
+      'iters': kIters,
+    };
 
-      final groupBytes = await _load(kGroupShot);
-      final singleBytes = await _load(kSingleFace);
-      final twoBytes = await _load(kTwoFaces);
+    final groupBytes = await _load(kGroupShot);
+    final singleBytes = await _load(kSingleFace);
+    final twoBytes = await _load(kTwoFaces);
 
-      // Probe: ungated detection on the group shot to derive the S1 gate
-      // threshold (midpoint between the two largest width fractions, so the
-      // gate keeps exactly the largest face).
-      final probe = await FaceDetector.create();
-      final probeFaces = await probe.detectFacesFromBytes(
-        groupBytes,
-        mode: FaceDetectionMode.fast,
-      );
-      final widths = probeFaces.map((f) => f.widthFraction).toList()
-        ..sort((a, b) => b.compareTo(a));
-      expect(widths.length, greaterThan(1),
-          reason: 'group shot must contain multiple faces');
-      final double gateThreshold = (widths[0] + widths[1]) / 2.0;
-      result['probe'] = {
-        'group_faces': widths.length,
-        'width_fractions_desc': widths,
-        'gate_threshold': gateThreshold,
-      };
+    // Probe: ungated detection on the group shot to derive the S1 gate
+    // threshold (midpoint between the two largest width fractions, so the
+    // gate keeps exactly the largest face).
+    final probe = await FaceDetector.create();
+    final probeFaces = await probe.detectFacesFromBytes(
+      groupBytes,
+      mode: FaceDetectionMode.fast,
+    );
+    final widths = probeFaces.map((f) => f.widthFraction).toList()
+      ..sort((a, b) => b.compareTo(a));
+    expect(
+      widths.length,
+      greaterThan(1),
+      reason: 'group shot must contain multiple faces',
+    );
+    final double gateThreshold = (widths[0] + widths[1]) / 2.0;
+    result['probe'] = {
+      'group_faces': widths.length,
+      'width_fractions_desc': widths,
+      'gate_threshold': gateThreshold,
+    };
 
-      // ---------- Parity: ungated, both images, all modes ----------
-      final parity = <String, dynamic>{};
-      for (final entry in {
-        'group': groupBytes,
-        'single': singleBytes,
-      }.entries) {
-        for (final mode in FaceDetectionMode.values) {
-          final faces = await probe.detectFacesFromBytes(
-            entry.value,
-            mode: mode,
-          );
-          final canonical =
-              '${faces.map(_faceCanonical).join('#')}|count=${faces.length}';
-          parity['ungated_${entry.key}_${mode.name}'] = {
-            'count': faces.length,
-            'hash': _fnv1a(canonical).toRadixString(16),
-            'first_face': _firstFaceRaw(faces),
-          };
-        }
-      }
-
-      // Embedding parity: full-precision vector for the single-face image.
-      final embFaces = await probe.detectFacesFromBytes(
-        singleBytes,
-        mode: FaceDetectionMode.full,
-      );
-      final emb = await probe.getFaceEmbedding(embFaces.first, singleBytes);
-      parity['embedding_single'] = {
-        'len': emb.length,
-        'hash':
-            _fnv1a(emb.map((v) => v.toString()).join(',')).toRadixString(16),
-        'first8': emb.take(8).toList(),
-      };
-      await probe.dispose();
-
-      // Parity: gated detector on the group shot, all modes.
-      final gatedParity = await FaceDetector.create(
-        minFaceSize: gateThreshold,
-      );
+    // ---------- Parity: ungated, both images, all modes ----------
+    final parity = <String, dynamic>{};
+    for (final entry in {'group': groupBytes, 'single': singleBytes}.entries) {
       for (final mode in FaceDetectionMode.values) {
-        final faces = await gatedParity.detectFacesFromBytes(
-          groupBytes,
-          mode: mode,
-        );
+        final faces = await probe.detectFacesFromBytes(entry.value, mode: mode);
         final canonical =
             '${faces.map(_faceCanonical).join('#')}|count=${faces.length}';
-        parity['gated_group_${mode.name}'] = {
+        parity['ungated_${entry.key}_${mode.name}'] = {
           'count': faces.length,
           'hash': _fnv1a(canonical).toRadixString(16),
           'first_face': _firstFaceRaw(faces),
         };
       }
-      await gatedParity.dispose();
-      result['parity'] = parity;
+    }
 
-      // ---------- S1: gated group shot, full mode ----------
-      final bench = <String, dynamic>{};
-      {
-        final det = await FaceDetector.create(minFaceSize: gateThreshold);
-        bench['s1_gated_group_full'] = _stats(await _timeLoop(() async {
-          await det.detectFacesFromBytes(groupBytes,
-              mode: FaceDetectionMode.full);
-        }));
-        await det.dispose();
-      }
+    // Embedding parity: full-precision vector for the single-face image.
+    final embFaces = await probe.detectFacesFromBytes(
+      singleBytes,
+      mode: FaceDetectionMode.full,
+    );
+    final emb = await probe.getFaceEmbedding(embFaces.first, singleBytes);
+    parity['embedding_single'] = {
+      'len': emb.length,
+      'hash': _fnv1a(emb.map((v) => v.toString()).join(',')).toRadixString(16),
+      'first8': emb.take(8).toList(),
+    };
+    await probe.dispose();
 
-      // ---------- S2: embedding loop ----------
-      {
-        final det = await FaceDetector.create();
-        final faces = await det.detectFacesFromBytes(singleBytes,
-            mode: FaceDetectionMode.full);
-        final face = faces.first;
-        bench['s2_embedding'] = _stats(await _timeLoop(() async {
+    // Parity: gated detector on the group shot, all modes.
+    final gatedParity = await FaceDetector.create(minFaceSize: gateThreshold);
+    for (final mode in FaceDetectionMode.values) {
+      final faces = await gatedParity.detectFacesFromBytes(
+        groupBytes,
+        mode: mode,
+      );
+      final canonical =
+          '${faces.map(_faceCanonical).join('#')}|count=${faces.length}';
+      parity['gated_group_${mode.name}'] = {
+        'count': faces.length,
+        'hash': _fnv1a(canonical).toRadixString(16),
+        'first_face': _firstFaceRaw(faces),
+      };
+    }
+    await gatedParity.dispose();
+    result['parity'] = parity;
+
+    // ---------- S1: gated group shot, full mode ----------
+    final bench = <String, dynamic>{};
+    {
+      final det = await FaceDetector.create(minFaceSize: gateThreshold);
+      bench['s1_gated_group_full'] = _stats(
+        await _timeLoop(() async {
+          await det.detectFacesFromBytes(
+            groupBytes,
+            mode: FaceDetectionMode.full,
+          );
+        }),
+      );
+      await det.dispose();
+    }
+
+    // ---------- S2: embedding loop ----------
+    {
+      final det = await FaceDetector.create();
+      final faces = await det.detectFacesFromBytes(
+        singleBytes,
+        mode: FaceDetectionMode.full,
+      );
+      final face = faces.first;
+      bench['s2_embedding'] = _stats(
+        await _timeLoop(() async {
           await det.getFaceEmbedding(face, singleBytes);
-        }));
-        await det.dispose();
-      }
+        }),
+      );
+      await det.dispose();
+    }
 
-      // ---------- S3: single face, full mode ----------
-      {
-        final det = await FaceDetector.create();
-        bench['s3_single_full'] = _stats(await _timeLoop(() async {
-          await det.detectFacesFromBytes(singleBytes,
-              mode: FaceDetectionMode.full);
-        }));
-        await det.dispose();
-      }
+    // ---------- S3: single face, full mode ----------
+    {
+      final det = await FaceDetector.create();
+      bench['s3_single_full'] = _stats(
+        await _timeLoop(() async {
+          await det.detectFacesFromBytes(
+            singleBytes,
+            mode: FaceDetectionMode.full,
+          );
+        }),
+      );
+      await det.dispose();
+    }
 
-      // ---------- S4: two faces, standard mode ----------
-      {
-        final det = await FaceDetector.create();
-        bench['s4_two_faces_std'] = _stats(await _timeLoop(() async {
-          await det.detectFacesFromBytes(twoBytes,
-              mode: FaceDetectionMode.standard);
-        }));
-        await det.dispose();
-      }
+    // ---------- S4: two faces, standard mode ----------
+    {
+      final det = await FaceDetector.create();
+      bench['s4_two_faces_std'] = _stats(
+        await _timeLoop(() async {
+          await det.detectFacesFromBytes(
+            twoBytes,
+            mode: FaceDetectionMode.standard,
+          );
+        }),
+      );
+      await det.dispose();
+    }
 
-      // ---------- S5: ungated group shot, full mode ----------
-      {
-        final det = await FaceDetector.create();
-        bench['s5_group_full'] = _stats(await _timeLoop(() async {
-          await det.detectFacesFromBytes(groupBytes,
-              mode: FaceDetectionMode.full);
-        }));
-        await det.dispose();
-      }
+    // ---------- S5: ungated group shot, full mode ----------
+    {
+      final det = await FaceDetector.create();
+      bench['s5_group_full'] = _stats(
+        await _timeLoop(() async {
+          await det.detectFacesFromBytes(
+            groupBytes,
+            mode: FaceDetectionMode.full,
+          );
+        }),
+      );
+      await det.dispose();
+    }
 
-      result['bench'] = bench;
+    result['bench'] = bench;
 
-      print('AB_BENCH_JSON_START');
-      print(const JsonEncoder.withIndent(' ').convert(result));
-      print('AB_BENCH_JSON_END');
-    },
-    timeout: const Timeout(Duration(minutes: 15)),
-  );
+    print('AB_BENCH_JSON_START');
+    print(const JsonEncoder.withIndent(' ').convert(result));
+    print('AB_BENCH_JSON_END');
+  }, timeout: const Timeout(Duration(minutes: 15)));
 }

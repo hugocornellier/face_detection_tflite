@@ -45,8 +45,10 @@ void main() {
     test('should handle 1x1 PNG image', () async {
       final bytes = ImageGenerator.create1x1Png();
 
-      final faces = await detector.detectFacesFromBytes(bytes,
-          mode: FaceDetectionMode.fast);
+      final faces = await detector.detectFacesFromBytes(
+        bytes,
+        mode: FaceDetectionMode.fast,
+      );
 
       expect(faces, isEmpty);
     });
@@ -54,8 +56,10 @@ void main() {
     test('should handle 1x1 cv.Mat', () async {
       final mat = cv.Mat.zeros(1, 1, cv.MatType.CV_8UC3);
 
-      final faces =
-          await detector.detectFacesFromMat(mat, mode: FaceDetectionMode.fast);
+      final faces = await detector.detectFacesFromMat(
+        mat,
+        mode: FaceDetectionMode.fast,
+      );
 
       expect(faces, isEmpty);
       mat.dispose();
@@ -64,8 +68,10 @@ void main() {
     test('should handle 10x10 solid image', () async {
       final mat = ImageGenerator.createSolidMat(10, 10);
 
-      final faces =
-          await detector.detectFacesFromMat(mat, mode: FaceDetectionMode.fast);
+      final faces = await detector.detectFacesFromMat(
+        mat,
+        mode: FaceDetectionMode.fast,
+      );
 
       expect(faces, isEmpty);
       mat.dispose();
@@ -74,8 +80,10 @@ void main() {
     test('should handle 50x50 solid image', () async {
       final mat = ImageGenerator.createSolidMat(50, 50);
 
-      final faces =
-          await detector.detectFacesFromMat(mat, mode: FaceDetectionMode.fast);
+      final faces = await detector.detectFacesFromMat(
+        mat,
+        mode: FaceDetectionMode.fast,
+      );
 
       expect(faces, isEmpty);
       mat.dispose();
@@ -86,8 +94,10 @@ void main() {
     test('should handle 1920x1080 image', () async {
       final mat = ImageGenerator.createLargeMat(1920, 1080);
 
-      final faces =
-          await detector.detectFacesFromMat(mat, mode: FaceDetectionMode.fast);
+      final faces = await detector.detectFacesFromMat(
+        mat,
+        mode: FaceDetectionMode.fast,
+      );
 
       expect(faces, isEmpty);
       mat.dispose();
@@ -96,8 +106,10 @@ void main() {
     test('should handle 4K resolution (3840x2160)', () async {
       final mat = ImageGenerator.createLargeMat(3840, 2160);
 
-      final faces =
-          await detector.detectFacesFromMat(mat, mode: FaceDetectionMode.fast);
+      final faces = await detector.detectFacesFromMat(
+        mat,
+        mode: FaceDetectionMode.fast,
+      );
 
       expect(faces, isEmpty);
       mat.dispose();
@@ -106,8 +118,10 @@ void main() {
     test('should handle non-standard aspect ratio (100x2000)', () async {
       final mat = ImageGenerator.createLargeMat(100, 2000);
 
-      final faces =
-          await detector.detectFacesFromMat(mat, mode: FaceDetectionMode.fast);
+      final faces = await detector.detectFacesFromMat(
+        mat,
+        mode: FaceDetectionMode.fast,
+      );
 
       expect(faces, isEmpty);
       mat.dispose();
@@ -116,8 +130,10 @@ void main() {
     test('should handle wide panorama (3000x500)', () async {
       final mat = ImageGenerator.createLargeMat(3000, 500);
 
-      final faces =
-          await detector.detectFacesFromMat(mat, mode: FaceDetectionMode.fast);
+      final faces = await detector.detectFacesFromMat(
+        mat,
+        mode: FaceDetectionMode.fast,
+      );
 
       expect(faces, isEmpty);
       mat.dispose();
@@ -129,8 +145,10 @@ void main() {
       final bytes = Uint8List(0);
 
       try {
-        final faces = await detector.detectFacesFromBytes(bytes,
-            mode: FaceDetectionMode.fast);
+        final faces = await detector.detectFacesFromBytes(
+          bytes,
+          mode: FaceDetectionMode.fast,
+        );
         expect(faces, isEmpty);
       } catch (e) {
         expect(e, isNotNull);
@@ -141,8 +159,10 @@ void main() {
       final bytes = Uint8List.fromList(List.generate(100, (i) => i % 256));
 
       try {
-        final faces = await detector.detectFacesFromBytes(bytes,
-            mode: FaceDetectionMode.fast);
+        final faces = await detector.detectFacesFromBytes(
+          bytes,
+          mode: FaceDetectionMode.fast,
+        );
         expect(faces, isEmpty);
       } catch (e) {
         expect(e, isNotNull);
@@ -151,12 +171,15 @@ void main() {
 
     test('should handle truncated PNG', () async {
       final validPng = ImageGenerator.create1x1Png();
-      final truncated =
-          Uint8List.fromList(validPng.sublist(0, validPng.length ~/ 2));
+      final truncated = Uint8List.fromList(
+        validPng.sublist(0, validPng.length ~/ 2),
+      );
 
       try {
-        final faces = await detector.detectFacesFromBytes(truncated,
-            mode: FaceDetectionMode.fast);
+        final faces = await detector.detectFacesFromBytes(
+          truncated,
+          mode: FaceDetectionMode.fast,
+        );
         expect(faces, isEmpty);
       } catch (e) {
         expect(e, isNotNull);
@@ -167,14 +190,18 @@ void main() {
       final invalidBytes = Uint8List.fromList([1, 2, 3, 4, 5]);
 
       try {
-        await detector.detectFacesFromBytes(invalidBytes,
-            mode: FaceDetectionMode.fast);
+        await detector.detectFacesFromBytes(
+          invalidBytes,
+          mode: FaceDetectionMode.fast,
+        );
       } catch (e) {
         // Expected - invalid bytes should fail; testing recovery
       }
 
-      final faces = await detector.detectFacesFromBytes(validFaceImage,
-          mode: FaceDetectionMode.fast);
+      final faces = await detector.detectFacesFromBytes(
+        validFaceImage,
+        mode: FaceDetectionMode.fast,
+      );
       expect(faces, isNotEmpty, reason: 'Should recover after invalid input');
     });
   });
@@ -183,8 +210,10 @@ void main() {
     test('should return empty for solid color image', () async {
       final mat = ImageGenerator.createSolidMat(256, 256);
 
-      final faces =
-          await detector.detectFacesFromMat(mat, mode: FaceDetectionMode.fast);
+      final faces = await detector.detectFacesFromMat(
+        mat,
+        mode: FaceDetectionMode.fast,
+      );
 
       expect(faces, isEmpty);
       mat.dispose();
@@ -199,8 +228,10 @@ void main() {
         }
       }
 
-      final faces =
-          await detector.detectFacesFromMat(mat, mode: FaceDetectionMode.fast);
+      final faces = await detector.detectFacesFromMat(
+        mat,
+        mode: FaceDetectionMode.fast,
+      );
 
       expect(faces, isEmpty);
       mat.dispose();
@@ -210,8 +241,10 @@ void main() {
       final mat = cv.Mat.zeros(256, 256, cv.MatType.CV_8UC3);
       cv.randu(mat, cv.Scalar(0, 0, 0, 0), cv.Scalar(255, 255, 255, 255));
 
-      final faces =
-          await detector.detectFacesFromMat(mat, mode: FaceDetectionMode.fast);
+      final faces = await detector.detectFacesFromMat(
+        mat,
+        mode: FaceDetectionMode.fast,
+      );
 
       expect(faces, isNotNull);
       mat.dispose();
@@ -221,10 +254,15 @@ void main() {
   group('Detection Mode Edge Cases', () {
     test('should handle mode switching on same image', () async {
       for (final mode in FaceDetectionMode.values) {
-        final faces =
-            await detector.detectFacesFromBytes(validFaceImage, mode: mode);
-        expect(faces, isNotEmpty,
-            reason: 'Mode ${mode.name} should detect face');
+        final faces = await detector.detectFacesFromBytes(
+          validFaceImage,
+          mode: mode,
+        );
+        expect(
+          faces,
+          isNotEmpty,
+          reason: 'Mode ${mode.name} should detect face',
+        );
       }
     });
 
@@ -333,8 +371,9 @@ void main() {
     late Uint8List groupImage;
 
     setUpAll(() async {
-      final data = await rootBundle
-          .load('assets/samples/group-shot-bounding-box-ex1.jpeg');
+      final data = await rootBundle.load(
+        'assets/samples/group-shot-bounding-box-ex1.jpeg',
+      );
       groupImage = data.buffer.asUint8List();
     });
 
@@ -359,8 +398,11 @@ void main() {
         final bbox = face.boundingBox;
 
         expect(bbox.width, greaterThan(0), reason: 'Face $i has invalid width');
-        expect(bbox.height, greaterThan(0),
-            reason: 'Face $i has invalid height');
+        expect(
+          bbox.height,
+          greaterThan(0),
+          reason: 'Face $i has invalid height',
+        );
       }
     });
 
@@ -377,11 +419,15 @@ void main() {
           final bbox1 = faces[i].boundingBox;
           final bbox2 = faces[j].boundingBox;
 
-          final centerDist = ((bbox1.center.x - bbox2.center.x).abs() +
+          final centerDist =
+              ((bbox1.center.x - bbox2.center.x).abs() +
               (bbox1.center.y - bbox2.center.y).abs());
 
-          expect(centerDist, greaterThan(10),
-              reason: 'Faces $i and $j should have different positions');
+          expect(
+            centerDist,
+            greaterThan(10),
+            reason: 'Faces $i and $j should have different positions',
+          );
         }
       }
     });
@@ -394,8 +440,11 @@ void main() {
 
       for (int i = 0; i < faces.length; i++) {
         expect(faces[i].mesh, isNotNull, reason: 'Face $i missing mesh');
-        expect(faces[i].mesh!.points.length, 468,
-            reason: 'Face $i has wrong mesh size');
+        expect(
+          faces[i].mesh!.points.length,
+          468,
+          reason: 'Face $i has wrong mesh size',
+        );
       }
     });
   });
@@ -443,8 +492,9 @@ void main() {
 
   group('Embedding Edge Cases', () {
     test('should handle embedding for each detected face', () async {
-      final data = await rootBundle
-          .load('assets/samples/group-shot-bounding-box-ex1.jpeg');
+      final data = await rootBundle.load(
+        'assets/samples/group-shot-bounding-box-ex1.jpeg',
+      );
       final groupImage = data.buffer.asUint8List();
 
       final faces = await detector.detectFacesFromBytes(
@@ -456,10 +506,15 @@ void main() {
 
       for (int i = 0; i < faces.length; i++) {
         try {
-          final embedding =
-              await detector.getFaceEmbedding(faces[i], groupImage);
-          expect(embedding.length, greaterThan(0),
-              reason: 'Face $i should have valid embedding');
+          final embedding = await detector.getFaceEmbedding(
+            faces[i],
+            groupImage,
+          );
+          expect(
+            embedding.length,
+            greaterThan(0),
+            reason: 'Face $i should have valid embedding',
+          );
         } catch (e) {
           print('Face $i embedding failed: $e');
         }
@@ -467,8 +522,9 @@ void main() {
     });
 
     test('different faces should have different embeddings', () async {
-      final data = await rootBundle
-          .load('assets/samples/group-shot-bounding-box-ex1.jpeg');
+      final data = await rootBundle.load(
+        'assets/samples/group-shot-bounding-box-ex1.jpeg',
+      );
       final groupImage = data.buffer.asUint8List();
 
       final faces = await detector.detectFacesFromBytes(
@@ -489,8 +545,11 @@ void main() {
       );
 
       print('Different faces similarity: ${similarity.toStringAsFixed(3)}');
-      expect(similarity, lessThan(1.0),
-          reason: 'Different faces should have < 1.0 similarity');
+      expect(
+        similarity,
+        lessThan(1.0),
+        reason: 'Different faces should have < 1.0 similarity',
+      );
     });
   });
 
@@ -500,8 +559,10 @@ void main() {
       await isolate.initialize();
 
       final bytes = ImageGenerator.create1x1Png();
-      final faces = await isolate.detectFacesFromBytes(bytes,
-          mode: FaceDetectionMode.fast);
+      final faces = await isolate.detectFacesFromBytes(
+        bytes,
+        mode: FaceDetectionMode.fast,
+      );
 
       expect(faces, isEmpty);
 
@@ -519,8 +580,10 @@ void main() {
 
       expect(faces, isNotEmpty);
 
-      final embedding =
-          await isolate.getFaceEmbedding(faces.first, validFaceImage);
+      final embedding = await isolate.getFaceEmbedding(
+        faces.first,
+        validFaceImage,
+      );
       expect(embedding.length, greaterThan(0));
 
       await isolate.dispose();

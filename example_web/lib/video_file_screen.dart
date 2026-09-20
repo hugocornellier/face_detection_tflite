@@ -23,15 +23,7 @@ class VideoFileScreen extends StatefulWidget {
   State<VideoFileScreen> createState() => _VideoFileScreenState();
 }
 
-enum _VideoState {
-  idle,
-  modelLoading,
-  ready,
-  playing,
-  paused,
-  ended,
-  error,
-}
+enum _VideoState { idle, modelLoading, ready, playing, paused, ended, error }
 
 class _VideoFileScreenState extends State<VideoFileScreen>
     with WidgetsBindingObserver, DetectionOverlayMixin {
@@ -191,7 +183,8 @@ class _VideoFileScreenState extends State<VideoFileScreen>
         ..width = v.videoWidth
         ..height = v.videoHeight;
       setState(
-          () => _duration = v.duration.isFinite ? v.duration.toDouble() : 0);
+        () => _duration = v.duration.isFinite ? v.duration.toDouble() : 0,
+      );
       await v.play().toDart;
     } catch (e) {
       if (!mounted) return;
@@ -330,7 +323,8 @@ class _VideoFileScreenState extends State<VideoFileScreen>
       _VideoState.error => Icons.error,
       _ => Icons.hourglass_empty,
     };
-    final showStats = _state == _VideoState.playing ||
+    final showStats =
+        _state == _VideoState.playing ||
         _state == _VideoState.paused ||
         _state == _VideoState.ended;
     return Container(
@@ -342,9 +336,11 @@ class _VideoFileScreenState extends State<VideoFileScreen>
           Icon(icon),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(_fileName != null
-                ? '$_fileName · $_statusMessage'
-                : _statusMessage),
+            child: Text(
+              _fileName != null
+                  ? '$_fileName · $_statusMessage'
+                  : _statusMessage,
+            ),
           ),
           if (showStats) ...[
             const SizedBox(width: 8),

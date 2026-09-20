@@ -101,8 +101,9 @@ void main() {
     setUpAll(() async {
       detector = fdt.FaceDetector();
       await detector.initialize();
-      final ByteData data =
-          await rootBundle.load('assets/samples/landmark-ex1.jpg');
+      final ByteData data = await rootBundle.load(
+        'assets/samples/landmark-ex1.jpg',
+      );
       final faces = await detector.detectFacesFromBytes(
         data.buffer.asUint8List(),
         mode: fdt.FaceDetectionMode.full,
@@ -150,43 +151,60 @@ void main() {
         FaceContourType.rightCheek,
       ]) {
         final c = centroid(face.getContour(type)!);
-        expect(c.x, inInclusiveRange(minX, maxX),
-            reason: '$type inside oval x');
-        expect(c.y, inInclusiveRange(minY, maxY),
-            reason: '$type inside oval y');
+        expect(
+          c.x,
+          inInclusiveRange(minX, maxX),
+          reason: '$type inside oval x',
+        );
+        expect(
+          c.y,
+          inInclusiveRange(minY, maxY),
+          reason: '$type inside oval y',
+        );
       }
     });
 
     test('eyebrows sit above the eyes, tops above bottoms', () {
       // Smaller y is higher in image space.
-      expect(meanY(face.getContour(FaceContourType.leftEyebrowTop)!),
-          lessThan(meanY(face.getContour(FaceContourType.leftEyebrowBottom)!)));
       expect(
-          meanY(face.getContour(FaceContourType.rightEyebrowTop)!),
-          lessThan(
-              meanY(face.getContour(FaceContourType.rightEyebrowBottom)!)));
+        meanY(face.getContour(FaceContourType.leftEyebrowTop)!),
+        lessThan(meanY(face.getContour(FaceContourType.leftEyebrowBottom)!)),
+      );
+      expect(
+        meanY(face.getContour(FaceContourType.rightEyebrowTop)!),
+        lessThan(meanY(face.getContour(FaceContourType.rightEyebrowBottom)!)),
+      );
 
-      expect(meanY(face.getContour(FaceContourType.leftEyebrowBottom)!),
-          lessThan(meanY(face.getContour(FaceContourType.leftEye)!)));
-      expect(meanY(face.getContour(FaceContourType.rightEyebrowBottom)!),
-          lessThan(meanY(face.getContour(FaceContourType.rightEye)!)));
+      expect(
+        meanY(face.getContour(FaceContourType.leftEyebrowBottom)!),
+        lessThan(meanY(face.getContour(FaceContourType.leftEye)!)),
+      );
+      expect(
+        meanY(face.getContour(FaceContourType.rightEyebrowBottom)!),
+        lessThan(meanY(face.getContour(FaceContourType.rightEye)!)),
+      );
     });
 
     test('lips are ordered top-to-bottom', () {
       final upperTop = meanY(face.getContour(FaceContourType.upperLipTop)!);
-      final upperBottom =
-          meanY(face.getContour(FaceContourType.upperLipBottom)!);
+      final upperBottom = meanY(
+        face.getContour(FaceContourType.upperLipBottom)!,
+      );
       final lowerTop = meanY(face.getContour(FaceContourType.lowerLipTop)!);
-      final lowerBottom =
-          meanY(face.getContour(FaceContourType.lowerLipBottom)!);
+      final lowerBottom = meanY(
+        face.getContour(FaceContourType.lowerLipBottom)!,
+      );
 
       // The outer arcs bound the mouth; both inner arcs fall strictly between.
       final mouthHeight = lowerBottom - upperTop;
       expect(mouthHeight, greaterThan(0));
       for (final inner in [upperBottom, lowerTop]) {
         expect(inner, greaterThan(upperTop), reason: 'inner below outer-top');
-        expect(inner, lessThan(lowerBottom),
-            reason: 'inner above outer-bottom');
+        expect(
+          inner,
+          lessThan(lowerBottom),
+          reason: 'inner above outer-bottom',
+        );
       }
       // upperLipBottom and lowerLipTop are the single inner mouth line: on a
       // closed mouth they nearly coincide (and may cross by a hair), so assert
@@ -194,8 +212,10 @@ void main() {
       expect((upperBottom - lowerTop).abs(), lessThan(0.4 * mouthHeight));
 
       // The whole mouth is below the nose base.
-      expect(meanY(face.getContour(FaceContourType.noseBottom)!),
-          lessThan(upperTop));
+      expect(
+        meanY(face.getContour(FaceContourType.noseBottom)!),
+        lessThan(upperTop),
+      );
     });
 
     test('nose bridge runs vertically from between the eyes to the tip', () {
@@ -205,39 +225,49 @@ void main() {
       // Bridge is much taller than it is wide (near-vertical midline).
       final xs = bridge.map((p) => p.x);
       final ys = bridge.map((p) => p.y);
-      final xSpread = xs.reduce((a, b) => a > b ? a : b) -
+      final xSpread =
+          xs.reduce((a, b) => a > b ? a : b) -
           xs.reduce((a, b) => a < b ? a : b);
-      final ySpread = ys.reduce((a, b) => a > b ? a : b) -
+      final ySpread =
+          ys.reduce((a, b) => a > b ? a : b) -
           ys.reduce((a, b) => a < b ? a : b);
       expect(ySpread, greaterThan(xSpread));
     });
 
-    test('subject-relative left/right matches the image-relative eye landmarks',
-        () {
-      // Package landmarks are image-relative: leftEye is the image-left eye.
-      final imgLeftEye = face.landmarks.leftEye!;
-      final imgRightEye = face.landmarks.rightEye!;
+    test(
+      'subject-relative left/right matches the image-relative eye landmarks',
+      () {
+        // Package landmarks are image-relative: leftEye is the image-left eye.
+        final imgLeftEye = face.landmarks.leftEye!;
+        final imgRightEye = face.landmarks.rightEye!;
 
-      final subjectLeftEye =
-          centroid(face.getContour(FaceContourType.leftEye)!);
-      final subjectRightEye =
-          centroid(face.getContour(FaceContourType.rightEye)!);
+        final subjectLeftEye = centroid(
+          face.getContour(FaceContourType.leftEye)!,
+        );
+        final subjectRightEye = centroid(
+          face.getContour(FaceContourType.rightEye)!,
+        );
 
-      // Subject's left eye is on the RIGHT of the image (larger x).
-      expect(subjectLeftEye.x, greaterThan(subjectRightEye.x));
+        // Subject's left eye is on the RIGHT of the image (larger x).
+        expect(subjectLeftEye.x, greaterThan(subjectRightEye.x));
 
-      // The subject-right eye contour must be nearer the image-left landmark,
-      // and the subject-left eye contour nearer the image-right landmark.
-      expect(dist(subjectRightEye, imgLeftEye),
-          lessThan(dist(subjectRightEye, imgRightEye)));
-      expect(dist(subjectLeftEye, imgRightEye),
-          lessThan(dist(subjectLeftEye, imgLeftEye)));
+        // The subject-right eye contour must be nearer the image-left landmark,
+        // and the subject-left eye contour nearer the image-right landmark.
+        expect(
+          dist(subjectRightEye, imgLeftEye),
+          lessThan(dist(subjectRightEye, imgRightEye)),
+        );
+        expect(
+          dist(subjectLeftEye, imgRightEye),
+          lessThan(dist(subjectLeftEye, imgLeftEye)),
+        );
 
-      // Cheeks follow the same convention.
-      final leftCheek = face.getContour(FaceContourType.leftCheek)!.first;
-      final rightCheek = face.getContour(FaceContourType.rightCheek)!.first;
-      expect(leftCheek.x, greaterThan(rightCheek.x));
-    });
+        // Cheeks follow the same convention.
+        final leftCheek = face.getContour(FaceContourType.leftCheek)!.first;
+        final rightCheek = face.getContour(FaceContourType.rightCheek)!.first;
+        expect(leftCheek.x, greaterThan(rightCheek.x));
+      },
+    );
 
     test('cheeks lie below the eyes and above the mouth', () {
       final leftCheekY = face.getContour(FaceContourType.leftCheek)!.first.y;
@@ -254,36 +284,42 @@ void main() {
     // polygons on real coordinates. The unit tests cannot check any of this
     // because their fixture mesh is Point(i, i, i), i.e. fully collinear.
 
-    test('lip arc pairs dedupe into 20-point rings with no repeated vertex',
-        () {
-      final outer = ring(
-        face.getContour(FaceContourType.upperLipTop)!,
-        face.getContour(FaceContourType.lowerLipBottom)!,
-        sharedEndpoints: true,
-      );
-      final inner = ring(
-        face.getContour(FaceContourType.upperLipBottom)!,
-        face.getContour(FaceContourType.lowerLipTop)!,
-        sharedEndpoints: true,
-      );
+    test(
+      'lip arc pairs dedupe into 20-point rings with no repeated vertex',
+      () {
+        final outer = ring(
+          face.getContour(FaceContourType.upperLipTop)!,
+          face.getContour(FaceContourType.lowerLipBottom)!,
+          sharedEndpoints: true,
+        );
+        final inner = ring(
+          face.getContour(FaceContourType.upperLipBottom)!,
+          face.getContour(FaceContourType.lowerLipTop)!,
+          sharedEndpoints: true,
+        );
 
-      for (final MapEntry<String, List<fdt.Point>> e
-          in {'outer': outer, 'inner': inner}.entries) {
-        final r = e.value;
-        expect(r.length, 20, reason: '${e.key} ring length');
-        // No vertex may repeat: a duplicate collapses an edge to zero length
-        // and makes winding and fill undefined at that point.
-        final seen = <String>{};
-        for (final p in r) {
-          final key = '${p.x},${p.y}';
-          expect(seen.add(key), isTrue,
-              reason: '${e.key} ring has a duplicated vertex at $key');
+        for (final MapEntry<String, List<fdt.Point>> e in {
+          'outer': outer,
+          'inner': inner,
+        }.entries) {
+          final r = e.value;
+          expect(r.length, 20, reason: '${e.key} ring length');
+          // No vertex may repeat: a duplicate collapses an edge to zero length
+          // and makes winding and fill undefined at that point.
+          final seen = <String>{};
+          for (final p in r) {
+            final key = '${p.x},${p.y}';
+            expect(
+              seen.add(key),
+              isTrue,
+              reason: '${e.key} ring has a duplicated vertex at $key',
+            );
+          }
         }
-      }
-    });
+      },
+    );
 
-    test('lip rings are simple polygons; winding is not stable between them',
-        () {
+    test('lip rings are simple polygons; winding is not stable between them', () {
       final outer = ring(
         face.getContour(FaceContourType.upperLipTop)!,
         face.getContour(FaceContourType.lowerLipBottom)!,
@@ -299,15 +335,20 @@ void main() {
       final innerArea = signedArea(inner);
       final outerX = selfIntersection(outer);
       final innerX = selfIntersection(inner);
-      print('LIP RINGS outerArea=$outerArea innerArea=$innerArea '
-          'innerFrac=${(innerArea.abs() / outerArea.abs()).toStringAsFixed(4)} '
-          'outerSelfIntersect=$outerX innerSelfIntersect=$innerX');
+      print(
+        'LIP RINGS outerArea=$outerArea innerArea=$innerArea '
+        'innerFrac=${(innerArea.abs() / outerArea.abs()).toStringAsFixed(4)} '
+        'outerSelfIntersect=$outerX innerSelfIntersect=$innerX',
+      );
 
       // The outer ring bounds the whole mouth and must be usable as a fill
       // boundary on any face; a self-intersection here would break every
       // even-odd fill built on it.
-      expect(outerX, isNull,
-          reason: 'outer lip ring self-intersects at $outerX');
+      expect(
+        outerX,
+        isNull,
+        reason: 'outer lip ring self-intersects at $outerX',
+      );
       expect(outerArea.abs(), greaterThan(0.0));
 
       // Winding is NOT stable between the two rings and must never be assumed.
@@ -343,11 +384,11 @@ void main() {
       for (final MapEntry<String, List<FaceContourType>> e in {
         'left': [
           FaceContourType.leftEyebrowTop,
-          FaceContourType.leftEyebrowBottom
+          FaceContourType.leftEyebrowBottom,
         ],
         'right': [
           FaceContourType.rightEyebrowTop,
-          FaceContourType.rightEyebrowBottom
+          FaceContourType.rightEyebrowBottom,
         ],
       }.entries) {
         final r = ring(
@@ -359,8 +400,11 @@ void main() {
         final area = signedArea(r);
         final x = selfIntersection(r);
         print('EYEBROW RING ${e.key} area=$area selfIntersect=$x');
-        expect(area.abs(), greaterThan(0.0),
-            reason: '${e.key} eyebrow ring is degenerate');
+        expect(
+          area.abs(),
+          greaterThan(0.0),
+          reason: '${e.key} eyebrow ring is degenerate',
+        );
       }
     });
   });
@@ -376,8 +420,9 @@ void main() {
     tearDownAll(() => detector.dispose());
 
     test('fast mode has no mesh so contours are null', () async {
-      final ByteData data =
-          await rootBundle.load('assets/samples/landmark-ex1.jpg');
+      final ByteData data = await rootBundle.load(
+        'assets/samples/landmark-ex1.jpg',
+      );
       final faces = await detector.detectFacesFromBytes(
         data.buffer.asUint8List(),
         mode: fdt.FaceDetectionMode.fast,
@@ -388,8 +433,9 @@ void main() {
     });
 
     test('standard mode computes a mesh so contours are available', () async {
-      final ByteData data =
-          await rootBundle.load('assets/samples/landmark-ex1.jpg');
+      final ByteData data = await rootBundle.load(
+        'assets/samples/landmark-ex1.jpg',
+      );
       final faces = await detector.detectFacesFromBytes(
         data.buffer.asUint8List(),
         mode: fdt.FaceDetectionMode.standard,
