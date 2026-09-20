@@ -1043,7 +1043,7 @@ class SegmentationMaskPainter extends CustomPainter {
 /// 5. A [CameraDetectionPainter] drawing bounding boxes, mesh, landmarks etc.
 ///    for the provided [faces] (only when [imageSize] is non-null).
 class FaceDetectionCameraOverlay extends StatelessWidget {
-  /// The camera preview widget (typically a [CameraPreview]).
+  /// The camera preview widget (typically a `CameraPreview`).
   final Widget cameraPreview;
 
   /// Aspect ratio of the raw camera frames (width / height). Used by the
