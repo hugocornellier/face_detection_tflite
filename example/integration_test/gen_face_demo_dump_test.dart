@@ -183,7 +183,7 @@ void main() {
         frames.add({
           'i': idx,
           'faces': facesJson,
-          if (maskMeta != null) 'mask': maskMeta,
+          'mask': ?maskMeta,
         });
         idx++;
       }
