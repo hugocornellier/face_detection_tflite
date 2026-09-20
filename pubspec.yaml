@@ -1,6 +1,6 @@
 name: face_detection_tflite
 description: "Advanced face & landmark detection, embedding and segmentation using on-device LiteRT (formerly TensorFlow Lite) models."
-version: 6.8.0
+version: 6.9.0
 
 repository: https://github.com/hugocornellier/face_detection_tflite
 homepage: https://github.com/hugocornellier/face_detection_tflite
@@ -14,14 +14,19 @@ topics:
 
 environment:
   sdk: ">=3.10.0 <4.0.0"
-  flutter: ">=3.38.1"
+  # flutter_test in Flutter 3.44 and earlier pins meta 1.18.0, which cannot
+  # coexist with dartcv4 2.3.1 (meta ^1.19.0). 3.47.5 is the validated floor.
+  flutter: ">=3.47.5"
 
 dependencies:
   flutter:
     sdk: flutter
-  opencv_dart: ^2.2.1+4
-  flutter_litert: ^3.8.0
-  meta: ^1.17.0
+  opencv_dart: ^2.2.2
+  # Direct constraint so resolution can never fall back to a dartcv4 whose iOS
+  # CMake hook hardcodes a 12.0 deployment target (rejected by Xcode 27).
+  # No Dart source imports it; it is a compatibility floor only.
+  dartcv4: ^2.3.1
+  flutter_litert: ^3.9.0
   web: ^1.1.1
   flutter_web_plugins:
     sdk: flutter

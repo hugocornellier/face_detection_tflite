@@ -69,17 +69,17 @@ packages:
     dependency: transitive
     description:
       name: dartcv4
-      sha256: "5764d13550055da3bb35ca28e6866b837579dfb4b594582b7a7753785ca5dfef"
+      sha256: e78c39ea09decc04ee70be9684eb63c092e0cb006b37615d214a08b6e098d5a9
       url: "https://pub.dev"
     source: hosted
-    version: "2.2.1+4"
+    version: "2.3.1"
   face_detection_tflite:
     dependency: "direct main"
     description:
       path: ".."
       relative: true
     source: path
-    version: "6.8.1"
+    version: "6.9.0"
   fake_async:
     dependency: transitive
     description:
@@ -126,10 +126,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_litert
-      sha256: "5428e65455b1f8ea01b4b874f39e0e434e9167e052a1218edb8a2e0ec2c7244a"
+      sha256: "5bdc094c315c6bfdf19494e3ee583589a13ee1158433711901c92fb6f96a5bea"
       url: "https://pub.dev"
     source: hosted
-    version: "3.8.0"
+    version: "3.9.0"
   flutter_test:
     dependency: "direct dev"
     description: flutter
@@ -157,10 +157,10 @@ packages:
     dependency: transitive
     description:
       name: hooks
-      sha256: "025f060e86d2d4c3c47b56e33caf7f93bf9283340f26d23424ebcfccf34f621e"
+      sha256: e79ed1e8e1929bc6ecb6ec85f0cb519c887aa5b423705ded0d0f2d9226def388
       url: "https://pub.dev"
     source: hosted
-    version: "1.0.3"
+    version: "1.0.2"
   integration_test:
     dependency: "direct dev"
     description: flutter
@@ -210,10 +210,10 @@ packages:
     dependency: transitive
     description:
       name: matcher
-      sha256: dc0b7dc7651697ea4ff3e69ef44b0407ea32c487a39fff6a4004fa585e901861
+      sha256: "31bd099b47c10cd1aeb55146a2d46ce0277630ecef3f7dae54ad7873f36696cd"
       url: "https://pub.dev"
     source: hosted
-    version: "0.12.19"
+    version: "0.12.20"
   material_color_utilities:
     dependency: transitive
     description:
@@ -226,26 +226,26 @@ packages:
     dependency: transitive
     description:
       name: meta
-      sha256: "1741988757a65eb6b36abe716829688cf01910bbf91c34354ff7ec1c3de2b349"
+      sha256: "307249ce4ff29d58a18e97f6345f539382eb9c9c29ecda628900f31de0443dd9"
       url: "https://pub.dev"
     source: hosted
-    version: "1.18.0"
+    version: "1.19.0"
   native_toolchain_cmake:
     dependency: transitive
     description:
       name: native_toolchain_cmake
-      sha256: cd4865568c57f03c7ab1f138cc5032c5f77825d27083d6f5a3e9bbb3e8014a87
+      sha256: "8ba223410102665483e873b83d2156720233a6a0181c07f9dc41cb2e961336b0"
       url: "https://pub.dev"
     source: hosted
-    version: "0.2.5"
+    version: "0.3.2"
   opencv_dart:
     dependency: transitive
     description:
       name: opencv_dart
-      sha256: b50ea4788e6d61df6369874e0244445d98ef9210dbb90b8d3c1df198b4ee2333
+      sha256: a135da49e35c1a42f433e8925561711e3c8b5dade59f999fd62787be628491e1
       url: "https://pub.dev"
     source: hosted
-    version: "2.2.1+4"
+    version: "2.2.2"
   path:
     dependency: transitive
     description:
@@ -290,10 +290,10 @@ packages:
     dependency: transitive
     description:
       name: record_use
-      sha256: "2551bd8eecfe95d14ae75f6021ad0248be5c27f138c2ec12fcb52b500b3ba1ed"
+      sha256: "1cb8564af8d43b464294411db9217f5ec04891c6f22ee2c32d73ae05e88a6bd2"
       url: "https://pub.dev"
     source: hosted
-    version: "0.6.0"
+    version: "1.1.1"
   sky_engine:
     dependency: transitive
     description: flutter
@@ -351,10 +351,10 @@ packages:
     dependency: transitive
     description:
       name: test_api
-      sha256: "949a932224383300f01be9221c39180316445ecb8e7547f70a41a35bf421fb9e"
+      sha256: "2a122cbe059f8b610d3a5415f42e255b6c17b1f21eee1d960f31080237fb4f11"
       url: "https://pub.dev"
     source: hosted
-    version: "0.7.11"
+    version: "0.7.12"
   typed_data:
     dependency: transitive
     description:
@@ -367,10 +367,10 @@ packages:
     dependency: transitive
     description:
       name: vector_math
-      sha256: d530bd74fea330e6e364cda7a85019c434070188383e1cd8d9777ee586914c5b
+      sha256: "92b9910f66ed1057fd4da7b040ae7c74cafacf885bdc81be496928d5049b032d"
       url: "https://pub.dev"
     source: hosted
-    version: "2.2.0"
+    version: "2.4.3"
   vm_service:
     dependency: transitive
     description:
@@ -404,5 +404,5 @@ packages:
     source: hosted
     version: "3.1.3"
 sdks:
-  dart: ">=3.10.0 <4.0.0"
-  flutter: ">=3.38.1"
+  dart: ">=3.11.0-0 <4.0.0"
+  flutter: ">=3.47.5"
