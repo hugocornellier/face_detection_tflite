@@ -26,6 +26,10 @@ dependencies:
   # CMake hook hardcodes a 12.0 deployment target (rejected by Xcode 27).
   # No Dart source imports it; it is a compatibility floor only.
   dartcv4: ^2.3.1
+  # dartcv4 2.3.1's link hook uses the hooks 2.x LinkInput API but still
+  # declares hooks >=1.0.0, so a lockfile holding hooks 1.x fails every
+  # profile and release build. Same compatibility-floor role as dartcv4.
+  hooks: ^2.0.0
   flutter_litert: ^3.9.0
   web: ^1.1.1
   flutter_web_plugins:

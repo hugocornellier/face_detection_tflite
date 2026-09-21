@@ -4,6 +4,11 @@
   The direct `dartcv4` constraint exists only so resolution can never keep a
   `dartcv4` release whose iOS CMake hook hardcodes a 12.0 deployment target,
   which Xcode 27 rejects; no Dart source imports it.
+* Also require `hooks ^2.0.0`. The `dartcv4 2.3.1` link hook uses the hooks 2.x
+  `LinkInput` API but still accepts hooks 1.x, so a lockfile that kept hooks
+  1.x failed every profile and release build with a `recordedUses` compile
+  error. The floor makes `pub get` move `hooks` forward (and with it
+  `code_assets` and `objective_c`). No Dart source imports it either.
 * Raise the Flutter floor to 3.47.5. Earlier Flutter releases pin `meta 1.18.0`
   through `flutter_test`, which cannot coexist with `dartcv4 2.3.1`.
 * Building for iOS with Xcode 27 needs an iOS 15 deployment target. Set the
