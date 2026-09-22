@@ -53,10 +53,10 @@ packages:
     dependency: "direct main"
     description:
       name: camera_desktop
-      sha256: bea6ba51ecfa1afa24c543f26a66f10ca9f43ce8525207de7675ebcb4402d66f
+      sha256: "4070ab1e2422c293a3d21a48b8bc361e0e1ce1682f404088b21ef414b921d4aa"
       url: "https://pub.dev"
     source: hosted
-    version: "1.2.1"
+    version: "1.2.2"
   camera_platform_interface:
     dependency: transitive
     description:
@@ -278,10 +278,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_litert
-      sha256: "5bdc094c315c6bfdf19494e3ee583589a13ee1158433711901c92fb6f96a5bea"
+      sha256: a5619c73af40b660136b542f90fb0af13ad7fd5962beaf574e70aa586a012a58
       url: "https://pub.dev"
     source: hosted
-    version: "3.9.0"
+    version: "3.9.1"
   flutter_plugin_android_lifecycle:
     dependency: transitive
     description:
