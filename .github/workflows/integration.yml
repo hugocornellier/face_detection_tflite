@@ -427,6 +427,15 @@ jobs:
           working-directory: example
           script: bash "$RUNNER_TEMP/run-android-tests.sh"
 
+      # A corrupt NDK download ("Archive is not a ZIP archive") leaves a broken
+      # NDK folder that fails every later Gradle build, so a plain retry fails
+      # the same way. Purge it first, as flutter_litert's CI does, so the retry
+      # downloads a clean copy.
+      - name: Purge Android NDK before retry (attempt 2)
+        continue-on-error: true
+        if: steps.android1.outcome == 'failure'
+        run: rm -rf "$ANDROID_HOME"/ndk/* "$ANDROID_HOME"/.temp
+
       - name: Run integration tests on Android emulator (attempt 2)
         id: android2
         continue-on-error: true
@@ -441,6 +450,11 @@ jobs:
           disable-animations: true
           working-directory: example
           script: bash "$RUNNER_TEMP/run-android-tests.sh"
+
+      - name: Purge Android NDK before retry (attempt 3)
+        continue-on-error: true
+        if: steps.android1.outcome == 'failure' && steps.android2.outcome == 'failure'
+        run: rm -rf "$ANDROID_HOME"/ndk/* "$ANDROID_HOME"/.temp
 
       - name: Run integration tests on Android emulator (attempt 3)
         if: steps.android1.outcome == 'failure' && steps.android2.outcome == 'failure'
