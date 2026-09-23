@@ -1,3 +1,10 @@
+## 6.10.0
+
+* Depend on `flutter_litert ^3.9.1`, which updates Android's CompiledModel
+  runtime to LiteRT Next 2.2.0 and the web runtime to LiteRT.js 2.5.3.
+* The example app depends on `camera_desktop ^1.2.2`.
+* No API changes.
+
 ## 6.9.0
 
 * Depend on `flutter_litert ^3.9.0`, `opencv_dart ^2.2.2`, and `dartcv4 ^2.3.1`.
