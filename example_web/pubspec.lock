@@ -79,7 +79,7 @@ packages:
       path: ".."
       relative: true
     source: path
-    version: "6.10.0"
+    version: "6.10.1"
   fake_async:
     dependency: transitive
     description:
