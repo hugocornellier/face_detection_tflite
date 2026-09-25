@@ -643,9 +643,12 @@ class FaceDetector {
   /// shape.
   ///
   /// [isBgra] selects BGRA vs. RGBA for the desktop single-plane path; ignored
-  /// for YUV input (Android/iOS). Defaults to `true` on macOS (BGRA) and
-  /// `false` on Windows/Linux (RGBA). Only pass this explicitly if you are
-  /// using a non-standard camera plugin that delivers a different format.
+  /// for YUV input (Android/iOS). When omitted, the byte order is read from the
+  /// frame's `format.raw`: `'BGRA'` (camera_desktop 2.x on every desktop
+  /// platform) selects BGRA and `'RGBA'` (camera_desktop 1.x on Linux and
+  /// Windows) selects RGBA. Any other value falls back to BGRA on macOS and
+  /// RGBA elsewhere. Only pass this explicitly if you are using a non-standard
+  /// camera plugin that delivers a different format.
   ///
   /// Throws [StateError] if [initialize] has not been called successfully.
   Future<List<Face>> detectFacesFromCameraImage(
@@ -659,7 +662,7 @@ class FaceDetector {
     final frame = prepareCameraFrameFromImage(
       cameraImage,
       rotation: rotation,
-      isBgra: isBgra ?? Platform.isMacOS,
+      isBgra: isBgra,
     );
     if (frame == null) return const <Face>[];
     return detectFacesFromCameraFrame(frame, mode: mode, maxDim: maxDim);

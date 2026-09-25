@@ -22,7 +22,7 @@ dependencies:
   flutter_litert: ^3.9.2
   flutter_colorpicker: ^1.1.0
   camera: ^0.12.0
-  camera_desktop: ^1.2.2
+  camera_desktop: ^2.0.0
   sensors_plus: ^6.1.1
   video_player: ^2.9.2
   path_provider: ^2.1.5

@@ -682,8 +682,10 @@ For real-time face detection from a camera feed, use `detectFacesFromCameraImage
 > ```yaml
 > dependencies:
 >   camera: ^0.12.0
->   camera_desktop: ^1.2.0   # required for Windows, macOS, and Linux streaming
+>   camera_desktop: ^2.0.0   # required for Windows, macOS, and Linux streaming
 > ```
+>
+> The frame's byte order (BGRA or RGBA) is read from `CameraImage.format.raw`, so camera_desktop 1.x and 2.x both work without an `isBgra` argument.
 
 ```dart
 import 'package:camera/camera.dart';
