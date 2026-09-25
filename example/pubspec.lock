@@ -278,10 +278,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_litert
-      sha256: a5619c73af40b660136b542f90fb0af13ad7fd5962beaf574e70aa586a012a58
+      sha256: "272fd3d5951bce5ae351a669d09a951067c24d50e184b47e7c3a1926c9b6f5a6"
       url: "https://pub.dev"
     source: hosted
-    version: "3.9.1"
+    version: "3.9.2"
   flutter_plugin_android_lifecycle:
     dependency: transitive
     description:

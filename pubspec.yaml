@@ -30,7 +30,7 @@ dependencies:
   # declares hooks >=1.0.0, so a lockfile holding hooks 1.x fails every
   # profile and release build. Same compatibility-floor role as dartcv4.
   hooks: ^2.0.0
-  flutter_litert: ^3.9.1
+  flutter_litert: ^3.9.2
   web: ^1.1.1
   flutter_web_plugins:
     sdk: flutter
