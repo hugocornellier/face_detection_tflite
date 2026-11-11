@@ -43,14 +43,14 @@ record() { # platform status seconds first-error
 first_error() { # logfile
   local f=$1 line
   # Gradle prints the cause on the line after "* What went wrong:".
-  line=$(awk '/\* What went wrong:/{getline; print; exit}' "$f")
+  line=$(awk '/\* What went wrong:/{f=1; n=0; next} f && /^\* /{exit} f && NF && n<4{gsub(/^[ >]+/,""); printf "%s%s", (n?" / ":""), $0; n++}' "$f")
   if [ -z "$line" ]; then
     line=$(grep -m1 -E "(error:|Error:|ERROR:|FAILURE:|Exception:|fatal error|Error \(Xcode\)|error [A-Z]+[0-9]+)" "$f" || true)
   fi
   if [ -z "$line" ]; then
     line=$(grep -v '^[[:space:]]*$' "$f" | tail -n 1)
   fi
-  printf '%s' "$line" | tr '\t' ' ' | cut -c1-400
+  printf '%s' "$line" | tr '\t' ' ' | cut -c1-500
 }
 
 cd "$APPROOT" || exit 1
@@ -129,6 +129,30 @@ for p in $TODO; do
     ANY_FAIL=1
     record "$p" FAIL "$DUR" "$(first_error "$LOG")"
   fi
+  # Extra Android cell: the same app after the documented switch to AGP
+  # built-in Kotlin and the new DSL (only when the app template itself no
+  # longer applies the Kotlin Gradle plugin).
+  if [ "$p" = "android" ] && [ $RC -eq 0 ] && [ -f android/gradle.properties ] \
+      && ! grep -q -E "kotlin-android|org\.jetbrains\.kotlin\.android" android/app/build.gradle.kts; then
+    cp android/gradle.properties "$OUT/gradle.properties.before-builtin-kotlin"
+    perl -ni -e 'print unless /^android\.(builtInKotlin|newDsl)=/' android/gradle.properties
+    printf 'android.builtInKotlin=true\nandroid.newDsl=true\n' >> android/gradle.properties
+    LOG="$OUT/build-android-builtin-kotlin.log"
+    echo "::group::android-builtin-kotlin: flutter build apk --release (android.builtInKotlin=true, android.newDsl=true)"
+    START=$SECONDS
+    flutter build apk --release > "$LOG" 2>&1
+    RC=$?
+    DUR=$((SECONDS - START))
+    tail -n 80 "$LOG"
+    echo "::endgroup::"
+    if [ $RC -eq 0 ]; then
+      record "android-builtin-kotlin" PASS "$DUR" ""
+    else
+      ANY_FAIL=1
+      record "android-builtin-kotlin" FAIL "$DUR" "$(first_error "$LOG")"
+    fi
+    cp "$OUT/gradle.properties.before-builtin-kotlin" android/gradle.properties
+  fi
   if [ "$p" = "web" ]; then
     LOG="$OUT/build-web-wasm.log"
     echo "::group::web-wasm: flutter build web --wasm"
@@ -143,6 +167,23 @@ for p in $TODO; do
     else
       ANY_FAIL=1
       record "web-wasm" FAIL "$DUR" "$(first_error "$LOG")"
+    fi
+    # Flutter 3.50 flag: fail the build on the deprecated dart:html family.
+    if flutter build web -h 2>/dev/null | grep -q "deprecated-js-interop"; then
+      LOG="$OUT/build-web-no-deprecated-js-interop.log"
+      echo "::group::web-no-deprecated-js-interop: flutter build web --no-deprecated-js-interop"
+      START=$SECONDS
+      flutter build web --release --no-deprecated-js-interop > "$LOG" 2>&1
+      RC=$?
+      DUR=$((SECONDS - START))
+      tail -n 80 "$LOG"
+      echo "::endgroup::"
+      if [ $RC -eq 0 ]; then
+        record "web-no-deprecated-js-interop" PASS "$DUR" ""
+      else
+        ANY_FAIL=1
+        record "web-no-deprecated-js-interop" FAIL "$DUR" "$(first_error "$LOG")"
+      fi
     fi
   fi
 done

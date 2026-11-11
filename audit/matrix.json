@@ -1,18 +1,5 @@
 {
- "preflight": [
-  "flutter_litert",
-  "flutter_litert_3x",
-  "flutter_litert_flex",
-  "face_detection_tflite",
-  "hand_detection",
-  "pose_detection",
-  "object_detection",
-  "animal_detection",
-  "cat_detection",
-  "dog_detection",
-  "heic_native",
-  "camera_desktop"
- ],
+ "preflight": [],
  "builds": [
   {
    "package": "flutter_litert",
@@ -21,13 +8,37 @@
    "runner": "ubuntu-latest"
   },
   {
-   "package": "flutter_litert",
+   "package": "flutter_litert_3x",
+   "host": "linux",
+   "flutter": "3.50.0",
+   "runner": "ubuntu-latest"
+  },
+  {
+   "package": "flutter_litert_3x",
    "host": "macos",
    "flutter": "3.50.0",
    "runner": "macos-15"
   },
   {
-   "package": "flutter_litert",
+   "package": "flutter_litert_3x",
+   "host": "windows",
+   "flutter": "3.50.0",
+   "runner": "windows-latest"
+  },
+  {
+   "package": "flutter_litert_flex",
+   "host": "linux",
+   "flutter": "3.50.0",
+   "runner": "ubuntu-latest"
+  },
+  {
+   "package": "flutter_litert_flex",
+   "host": "macos",
+   "flutter": "3.50.0",
+   "runner": "macos-15"
+  },
+  {
+   "package": "flutter_litert_flex",
    "host": "windows",
    "flutter": "3.50.0",
    "runner": "windows-latest"
@@ -39,13 +50,109 @@
    "runner": "ubuntu-latest"
   },
   {
-   "package": "face_detection_tflite",
+   "package": "hand_detection",
+   "host": "linux",
+   "flutter": "3.50.0",
+   "runner": "ubuntu-latest"
+  },
+  {
+   "package": "hand_detection",
    "host": "macos",
    "flutter": "3.50.0",
    "runner": "macos-15"
   },
   {
-   "package": "face_detection_tflite",
+   "package": "hand_detection",
+   "host": "windows",
+   "flutter": "3.50.0",
+   "runner": "windows-latest"
+  },
+  {
+   "package": "pose_detection",
+   "host": "linux",
+   "flutter": "3.50.0",
+   "runner": "ubuntu-latest"
+  },
+  {
+   "package": "pose_detection",
+   "host": "macos",
+   "flutter": "3.50.0",
+   "runner": "macos-15"
+  },
+  {
+   "package": "pose_detection",
+   "host": "windows",
+   "flutter": "3.50.0",
+   "runner": "windows-latest"
+  },
+  {
+   "package": "object_detection",
+   "host": "linux",
+   "flutter": "3.50.0",
+   "runner": "ubuntu-latest"
+  },
+  {
+   "package": "object_detection",
+   "host": "macos",
+   "flutter": "3.50.0",
+   "runner": "macos-15"
+  },
+  {
+   "package": "object_detection",
+   "host": "windows",
+   "flutter": "3.50.0",
+   "runner": "windows-latest"
+  },
+  {
+   "package": "animal_detection",
+   "host": "linux",
+   "flutter": "3.50.0",
+   "runner": "ubuntu-latest"
+  },
+  {
+   "package": "animal_detection",
+   "host": "macos",
+   "flutter": "3.50.0",
+   "runner": "macos-15"
+  },
+  {
+   "package": "animal_detection",
+   "host": "windows",
+   "flutter": "3.50.0",
+   "runner": "windows-latest"
+  },
+  {
+   "package": "cat_detection",
+   "host": "linux",
+   "flutter": "3.50.0",
+   "runner": "ubuntu-latest"
+  },
+  {
+   "package": "cat_detection",
+   "host": "macos",
+   "flutter": "3.50.0",
+   "runner": "macos-15"
+  },
+  {
+   "package": "cat_detection",
+   "host": "windows",
+   "flutter": "3.50.0",
+   "runner": "windows-latest"
+  },
+  {
+   "package": "dog_detection",
+   "host": "linux",
+   "flutter": "3.50.0",
+   "runner": "ubuntu-latest"
+  },
+  {
+   "package": "dog_detection",
+   "host": "macos",
+   "flutter": "3.50.0",
+   "runner": "macos-15"
+  },
+  {
+   "package": "dog_detection",
    "host": "windows",
    "flutter": "3.50.0",
    "runner": "windows-latest"
@@ -57,23 +164,335 @@
    "runner": "ubuntu-latest"
   },
   {
-   "package": "heic_native",
+   "package": "camera_desktop",
+   "host": "linux",
+   "flutter": "3.50.0",
+   "runner": "ubuntu-latest"
+  },
+  {
+   "package": "camera_desktop",
    "host": "macos",
    "flutter": "3.50.0",
    "runner": "macos-15"
   },
   {
-   "package": "heic_native",
+   "package": "camera_desktop",
    "host": "windows",
    "flutter": "3.50.0",
+   "runner": "windows-latest"
+  },
+  {
+   "package": "flutter_litert",
+   "host": "linux",
+   "flutter": "3.47.9",
+   "runner": "ubuntu-latest"
+  },
+  {
+   "package": "flutter_litert",
+   "host": "macos",
+   "flutter": "3.47.9",
+   "runner": "macos-15"
+  },
+  {
+   "package": "flutter_litert",
+   "host": "windows",
+   "flutter": "3.47.9",
+   "runner": "windows-latest"
+  },
+  {
+   "package": "flutter_litert_3x",
+   "host": "linux",
+   "flutter": "3.47.9",
+   "runner": "ubuntu-latest"
+  },
+  {
+   "package": "flutter_litert_3x",
+   "host": "macos",
+   "flutter": "3.47.9",
+   "runner": "macos-15"
+  },
+  {
+   "package": "flutter_litert_3x",
+   "host": "windows",
+   "flutter": "3.47.9",
+   "runner": "windows-latest"
+  },
+  {
+   "package": "flutter_litert_flex",
+   "host": "linux",
+   "flutter": "3.47.9",
+   "runner": "ubuntu-latest"
+  },
+  {
+   "package": "flutter_litert_flex",
+   "host": "macos",
+   "flutter": "3.47.9",
+   "runner": "macos-15"
+  },
+  {
+   "package": "flutter_litert_flex",
+   "host": "windows",
+   "flutter": "3.47.9",
+   "runner": "windows-latest"
+  },
+  {
+   "package": "face_detection_tflite",
+   "host": "linux",
+   "flutter": "3.47.9",
+   "runner": "ubuntu-latest"
+  },
+  {
+   "package": "face_detection_tflite",
+   "host": "macos",
+   "flutter": "3.47.9",
+   "runner": "macos-15"
+  },
+  {
+   "package": "face_detection_tflite",
+   "host": "windows",
+   "flutter": "3.47.9",
+   "runner": "windows-latest"
+  },
+  {
+   "package": "hand_detection",
+   "host": "linux",
+   "flutter": "3.47.9",
+   "runner": "ubuntu-latest"
+  },
+  {
+   "package": "hand_detection",
+   "host": "macos",
+   "flutter": "3.47.9",
+   "runner": "macos-15"
+  },
+  {
+   "package": "hand_detection",
+   "host": "windows",
+   "flutter": "3.47.9",
+   "runner": "windows-latest"
+  },
+  {
+   "package": "pose_detection",
+   "host": "linux",
+   "flutter": "3.47.9",
+   "runner": "ubuntu-latest"
+  },
+  {
+   "package": "pose_detection",
+   "host": "macos",
+   "flutter": "3.47.9",
+   "runner": "macos-15"
+  },
+  {
+   "package": "pose_detection",
+   "host": "windows",
+   "flutter": "3.47.9",
+   "runner": "windows-latest"
+  },
+  {
+   "package": "object_detection",
+   "host": "linux",
+   "flutter": "3.47.9",
+   "runner": "ubuntu-latest"
+  },
+  {
+   "package": "object_detection",
+   "host": "macos",
+   "flutter": "3.47.9",
+   "runner": "macos-15"
+  },
+  {
+   "package": "object_detection",
+   "host": "windows",
+   "flutter": "3.47.9",
+   "runner": "windows-latest"
+  },
+  {
+   "package": "animal_detection",
+   "host": "linux",
+   "flutter": "3.47.9",
+   "runner": "ubuntu-latest"
+  },
+  {
+   "package": "animal_detection",
+   "host": "macos",
+   "flutter": "3.47.9",
+   "runner": "macos-15"
+  },
+  {
+   "package": "animal_detection",
+   "host": "windows",
+   "flutter": "3.47.9",
+   "runner": "windows-latest"
+  },
+  {
+   "package": "cat_detection",
+   "host": "linux",
+   "flutter": "3.47.9",
+   "runner": "ubuntu-latest"
+  },
+  {
+   "package": "cat_detection",
+   "host": "macos",
+   "flutter": "3.47.9",
+   "runner": "macos-15"
+  },
+  {
+   "package": "cat_detection",
+   "host": "windows",
+   "flutter": "3.47.9",
+   "runner": "windows-latest"
+  },
+  {
+   "package": "dog_detection",
+   "host": "linux",
+   "flutter": "3.47.9",
+   "runner": "ubuntu-latest"
+  },
+  {
+   "package": "dog_detection",
+   "host": "macos",
+   "flutter": "3.47.9",
+   "runner": "macos-15"
+  },
+  {
+   "package": "dog_detection",
+   "host": "windows",
+   "flutter": "3.47.9",
+   "runner": "windows-latest"
+  },
+  {
+   "package": "heic_native",
+   "host": "linux",
+   "flutter": "3.47.9",
+   "runner": "ubuntu-latest"
+  },
+  {
+   "package": "heic_native",
+   "host": "macos",
+   "flutter": "3.47.9",
+   "runner": "macos-15"
+  },
+  {
+   "package": "heic_native",
+   "host": "windows",
+   "flutter": "3.47.9",
+   "runner": "windows-latest"
+  },
+  {
+   "package": "camera_desktop",
+   "host": "linux",
+   "flutter": "3.47.9",
+   "runner": "ubuntu-latest"
+  },
+  {
+   "package": "camera_desktop",
+   "host": "macos",
+   "flutter": "3.47.9",
+   "runner": "macos-15"
+  },
+  {
+   "package": "camera_desktop",
+   "host": "windows",
+   "flutter": "3.47.9",
    "runner": "windows-latest"
   }
  ],
  "repos": [
   {
-   "repo": "heic_native",
+   "repo": "flutter_litert_flex",
    "flutter": "3.50.0",
    "apk": "1"
+  },
+  {
+   "repo": "face_detection_tflite",
+   "flutter": "3.50.0",
+   "apk": "1"
+  },
+  {
+   "repo": "hand_detection",
+   "flutter": "3.50.0",
+   "apk": "1"
+  },
+  {
+   "repo": "pose_detection",
+   "flutter": "3.50.0",
+   "apk": "1"
+  },
+  {
+   "repo": "object_detection",
+   "flutter": "3.50.0",
+   "apk": "1"
+  },
+  {
+   "repo": "animal_detection",
+   "flutter": "3.50.0",
+   "apk": "1"
+  },
+  {
+   "repo": "cat_detection",
+   "flutter": "3.50.0",
+   "apk": "1"
+  },
+  {
+   "repo": "dog_detection",
+   "flutter": "3.50.0",
+   "apk": "1"
+  },
+  {
+   "repo": "camera_desktop",
+   "flutter": "3.50.0",
+   "apk": "1"
+  },
+  {
+   "repo": "flutter_litert_flex",
+   "flutter": "3.47.9",
+   "apk": "0"
+  },
+  {
+   "repo": "face_detection_tflite",
+   "flutter": "3.47.9",
+   "apk": "0"
+  },
+  {
+   "repo": "hand_detection",
+   "flutter": "3.47.9",
+   "apk": "0"
+  },
+  {
+   "repo": "pose_detection",
+   "flutter": "3.47.9",
+   "apk": "0"
+  },
+  {
+   "repo": "object_detection",
+   "flutter": "3.47.9",
+   "apk": "0"
+  },
+  {
+   "repo": "animal_detection",
+   "flutter": "3.47.9",
+   "apk": "0"
+  },
+  {
+   "repo": "cat_detection",
+   "flutter": "3.47.9",
+   "apk": "0"
+  },
+  {
+   "repo": "dog_detection",
+   "flutter": "3.47.9",
+   "apk": "0"
+  },
+  {
+   "repo": "heic_native",
+   "flutter": "3.47.9",
+   "apk": "0"
+  },
+  {
+   "repo": "camera_desktop",
+   "flutter": "3.47.9",
+   "apk": "0"
   }
  ]
 }

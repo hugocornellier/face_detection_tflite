@@ -32,10 +32,10 @@ step() { # check-name logfile dir command...
     note=$(grep -m1 -E "No issues found|All tests passed|issues? found|Formatted [0-9]+ files" "$log" | tr '\t' ' ' | cut -c1-200)
     record "$name" PASS $((SECONDS - start)) "$note"
   else
-    note=$(awk '/\* What went wrong:/{getline; print; exit}' "$log")
+    note=$(awk '/\* What went wrong:/{f=1; n=0; next} f && /^\* /{exit} f && NF && n<4{gsub(/^[ >]+/,""); printf "%s%s", (n?" / ":""), $0; n++}' "$log")
     [ -z "$note" ] && note=$(grep -m1 -E "^ *(error|warning|info) [-•]|issues? found|Some tests failed|\[E\]|Error:|error:|Changed |version solving failed|Because " "$log")
     [ -z "$note" ] && note=$(grep -v '^[[:space:]]*$' "$log" | tail -n 1)
-    record "$name" FAIL $((SECONDS - start)) "$(printf '%s' "$note" | tr '\t' ' ' | cut -c1-400)"
+    record "$name" FAIL $((SECONDS - start)) "$(printf '%s' "$note" | tr '\t' ' ' | cut -c1-500)"
   fi
   return $rc
 }
@@ -45,7 +45,7 @@ cd "$REPO" || exit 1
 step pub-get "$OUT/pubget.log" . flutter pub get || exit 1
 step analyze "$OUT/analyze.log" . flutter analyze .
 step analyze-fatal-infos "$OUT/analyze-fatal-infos.log" . flutter analyze --fatal-infos .
-step format "$OUT/format.log" . dart format --output=none --set-exit-if-changed lib test
+step format "$OUT/format.log" . dart format --output=none --set-exit-if-changed .
 if [ -d test ]; then
   step test "$OUT/test.log" . flutter test
 else
