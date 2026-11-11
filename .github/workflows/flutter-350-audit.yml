@@ -1,0 +1,194 @@
+name: Flutter 3.50 audit
+
+# Throwaway workflow on a throwaway branch. It builds fresh `flutter create`
+# apps against the PUBLISHED packages on Flutter 3.50.0 and on 3.47.9 (the
+# control), and analyzes/tests each package repo. What runs is listed in
+# audit/matrix.json.
+
+on:
+  push:
+    branches: ['ci/flutter-350-audit']
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    outputs:
+      builds: ${{ steps.m.outputs.builds }}
+      repos: ${{ steps.m.outputs.repos }}
+      preflight: ${{ steps.m.outputs.preflight }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: m
+        run: |
+          echo "builds=$(jq -c .builds audit/matrix.json)" >> "$GITHUB_OUTPUT"
+          echo "repos=$(jq -c .repos audit/matrix.json)" >> "$GITHUB_OUTPUT"
+          echo "preflight=$(jq -r '.preflight | join(" ")' audit/matrix.json)" >> "$GITHUB_OUTPUT"
+
+  preflight:
+    name: Preflight (probe apps resolve and analyze)
+    needs: plan
+    if: ${{ needs.plan.outputs.preflight != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.50.0'
+          channel: stable
+          cache: true
+      - name: Create, resolve and analyze every probe app
+        shell: bash
+        run: |
+          flutter --version
+          fail=0
+          for k in ${{ needs.plan.outputs.preflight }}; do
+            echo "::group::$k"
+            . "audit/pkgs/$k/conf.sh"
+            (
+              set -e
+              cd "$RUNNER_TEMP"
+              flutter create --no-pub --platforms="$(echo "$PLATFORMS" | tr ' ' ',')" "pf_$k" > /dev/null
+              cd "pf_$k"
+              flutter pub add $DEPS
+              cp "$GITHUB_WORKSPACE/audit/pkgs/$k/main.dart" lib/main.dart
+              rm -rf test
+              flutter pub deps --style=compact | grep -E "^- (flutter_litert|flutter_litert_flex|opencv_dart|dartcv4|hooks|camera|camera_[a-z_]+|native_toolchain_[a-z_]+|code_assets|web|meta|$k) " || true
+              flutter analyze --no-fatal-infos --no-fatal-warnings .
+            ) || { fail=1; echo "::error::preflight failed for $k"; }
+            echo "::endgroup::"
+          done
+          exit $fail
+
+  build:
+    name: ${{ matrix.package }} / ${{ matrix.host }} / ${{ matrix.flutter }}
+    needs: [plan, preflight]
+    if: ${{ !cancelled() && needs.preflight.result != 'failure' && needs.plan.outputs.builds != '[]' }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      max-parallel: 12
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.builds) }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Free disk space
+        if: matrix.host == 'linux'
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          df -h /
+
+      - name: Install Linux dependencies
+        if: matrix.host == 'linux'
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-good \
+            libheif-dev libpng-dev
+
+      - uses: actions/setup-java@v6
+        if: matrix.host == 'linux'
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ matrix.flutter }}
+          channel: stable
+          cache: true
+
+      - name: Tool versions
+        shell: bash
+        run: |
+          flutter --version
+          if [ "${{ matrix.host }}" = "macos" ]; then xcodebuild -version; pod --version; sw_vers; fi
+          if [ "${{ matrix.host }}" = "linux" ]; then java -version 2>&1; cmake --version | head -n 1; fi
+          if [ "${{ matrix.host }}" = "windows" ]; then cmake --version | head -n 1; fi
+
+      - name: Build the probe app
+        shell: bash
+        run: |
+          if [ "${{ matrix.host }}" = "windows" ]; then APPROOT=/c/w; else APPROOT="$RUNNER_TEMP/w"; fi
+          bash audit/run.sh "${{ matrix.package }}" "${{ matrix.host }}" "$APPROOT" "$PWD/out"
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          [ -f out/results.tsv ] || exit 0
+          {
+            echo '| package | deps | flutter | platform | status | seconds | first error |'
+            echo '|---|---|---|---|---|---|---|'
+            awk -F'\t' '{gsub(/\|/,"/",$7); printf "| %s | %s | %s | %s | %s | %s | %s |\n",$1,$2,$3,$4,$5,$6,$7}' out/results.tsv
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: build-${{ matrix.package }}-${{ matrix.host }}-${{ matrix.flutter }}
+          path: out
+          if-no-files-found: warn
+
+  repo:
+    name: repo ${{ matrix.repo }} / ${{ matrix.flutter }}
+    needs: plan
+    if: ${{ needs.plan.outputs.repos != '[]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.repos) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: audit-src
+
+      - uses: actions/checkout@v7
+        with:
+          repository: hugocornellier/${{ matrix.repo }}
+          path: repo/${{ matrix.repo }}
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ matrix.flutter }}
+          channel: stable
+          cache: true
+
+      - name: Analyze, format-check, test, example build
+        shell: bash
+        run: |
+          flutter --version
+          git -C "repo/${{ matrix.repo }}" log -1 --format='%H %cI %s'
+          bash audit-src/audit/repo_check.sh "repo/${{ matrix.repo }}" "$PWD/out" "${{ matrix.apk }}"
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          [ -f out/results.tsv ] || exit 0
+          {
+            echo '| repo | flutter | check | status | seconds | note |'
+            echo '|---|---|---|---|---|---|'
+            awk -F'\t' '{gsub(/\|/,"/",$6); printf "| %s | %s | %s | %s | %s | %s |\n",$1,$2,$3,$4,$5,$6}' out/results.tsv
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: repo-${{ matrix.repo }}-${{ matrix.flutter }}
+          path: out
+          if-no-files-found: warn
