@@ -12,6 +12,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: flutter-350-audit
+  cancel-in-progress: true
+
 jobs:
   plan:
     name: Plan
@@ -157,6 +161,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           repository: hugocornellier/${{ matrix.repo }}
+          # For this repo itself checkout would default to the audit branch.
+          ref: main
           path: repo/${{ matrix.repo }}
 
       - uses: actions/setup-java@v6
