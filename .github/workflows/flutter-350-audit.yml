@@ -131,6 +131,8 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         if: always()
+        continue-on-error: true
+        timeout-minutes: 4
         with:
           name: build-${{ matrix.package }}-${{ matrix.host }}-${{ matrix.flutter }}
           path: out
@@ -188,6 +190,8 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         if: always()
+        continue-on-error: true
+        timeout-minutes: 4
         with:
           name: repo-${{ matrix.repo }}-${{ matrix.flutter }}
           path: out

@@ -38,6 +38,9 @@ fi
 record() { # platform status seconds first-error
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$KEY" "$DEPS" "$FLUTTER_VER" "$1" "$2" "$3" "$4" >> "$RES"
   echo "RESULT $KEY | $FLUTTER_VER | $1 | $2 | ${3}s | $4"
+  # Also as an annotation: readable from the API even when logs and
+  # artifacts are not.
+  echo "::notice title=RESULT::$KEY | $DEPS | $FLUTTER_VER | $1 | $2 | ${3}s | $4${5:+ ;; log tail: $5}"
 }
 
 first_error() { # logfile
@@ -51,6 +54,10 @@ first_error() { # logfile
     line=$(grep -v '^[[:space:]]*$' "$f" | tail -n 1)
   fi
   printf '%s' "$line" | tr '\t' ' ' | cut -c1-500
+}
+
+log_tail() { # logfile: the last lines that say something, on one line
+  grep -v -E '^[[:space:]]*$|^\[[= ]*\]|^> (Run with|Get more help)|^\* Try:' "$1" | tail -n 14 | tr '\t' ' ' | cut -c1-260 | awk '{printf "%s%s", (NR>1?" // ":""), $0}' | cut -c1-2600
 }
 
 cd "$APPROOT" || exit 1
@@ -127,7 +134,7 @@ for p in $TODO; do
     record "$p" PASS "$DUR" ""
   else
     ANY_FAIL=1
-    record "$p" FAIL "$DUR" "$(first_error "$LOG")"
+    record "$p" FAIL "$DUR" "$(first_error "$LOG")" "$(log_tail "$LOG")"
   fi
   # Extra Android cell: the same app after the documented switch to AGP
   # built-in Kotlin and the new DSL (only when the app template itself no
@@ -149,7 +156,7 @@ for p in $TODO; do
       record "android-builtin-kotlin" PASS "$DUR" ""
     else
       ANY_FAIL=1
-      record "android-builtin-kotlin" FAIL "$DUR" "$(first_error "$LOG")"
+      record "android-builtin-kotlin" FAIL "$DUR" "$(first_error "$LOG")" "$(log_tail "$LOG")"
     fi
     cp "$OUT/gradle.properties.before-builtin-kotlin" android/gradle.properties
   fi
@@ -166,7 +173,7 @@ for p in $TODO; do
       record "web-wasm" PASS "$DUR" ""
     else
       ANY_FAIL=1
-      record "web-wasm" FAIL "$DUR" "$(first_error "$LOG")"
+      record "web-wasm" FAIL "$DUR" "$(first_error "$LOG")" "$(log_tail "$LOG")"
     fi
     # Flutter 3.50 flag: fail the build on the deprecated dart:html family.
     if flutter build web -h 2>/dev/null | grep -q "deprecated-js-interop"; then
@@ -182,7 +189,7 @@ for p in $TODO; do
         record "web-no-deprecated-js-interop" PASS "$DUR" ""
       else
         ANY_FAIL=1
-        record "web-no-deprecated-js-interop" FAIL "$DUR" "$(first_error "$LOG")"
+        record "web-no-deprecated-js-interop" FAIL "$DUR" "$(first_error "$LOG")" "$(log_tail "$LOG")"
       fi
     fi
   fi

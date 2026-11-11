@@ -17,6 +17,7 @@ FLUTTER_VER=$(flutter --version --machine 2>/dev/null | grep -o '"frameworkVersi
 record() { # check status seconds note
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$NAME" "$FLUTTER_VER" "$1" "$2" "$3" "$4" >> "$RES"
   echo "RESULT $NAME | $FLUTTER_VER | $1 | $2 | ${3}s | $4"
+  echo "::notice title=RESULT::$NAME | $FLUTTER_VER | $1 | $2 | ${3}s | $4${5:+ ;; log tail: $5}"
 }
 
 step() { # check-name logfile dir command...
@@ -35,7 +36,8 @@ step() { # check-name logfile dir command...
     note=$(awk '/\* What went wrong:/{f=1; n=0; next} f && /^\* /{exit} f && NF && n<4{gsub(/^[ >]+/,""); printf "%s%s", (n?" / ":""), $0; n++}' "$log")
     [ -z "$note" ] && note=$(grep -m1 -E "^ *(error|warning|info) [-•]|issues? found|Some tests failed|\[E\]|Error:|error:|Changed |version solving failed|Because " "$log")
     [ -z "$note" ] && note=$(grep -v '^[[:space:]]*$' "$log" | tail -n 1)
-    record "$name" FAIL $((SECONDS - start)) "$(printf '%s' "$note" | tr '\t' ' ' | cut -c1-500)"
+    record "$name" FAIL $((SECONDS - start)) "$(printf '%s' "$note" | tr '\t' ' ' | cut -c1-500)" \
+      "$(grep -v -E '^[[:space:]]*$|^> (Run with|Get more help)|^\* Try:' "$log" | tail -n 14 | tr '\t' ' ' | cut -c1-260 | awk '{printf "%s%s", (NR>1?" // ":""), $0}' | cut -c1-2600)"
   fi
   return $rc
 }
