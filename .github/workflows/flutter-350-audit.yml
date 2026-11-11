@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: flutter-350-audit
+  group: flutter-350-audit-followup
   cancel-in-progress: true
 
 jobs:
@@ -24,6 +24,7 @@ jobs:
       builds: ${{ steps.m.outputs.builds }}
       repos: ${{ steps.m.outputs.repos }}
       preflight: ${{ steps.m.outputs.preflight }}
+      examples: ${{ steps.m.outputs.examples }}
     steps:
       - uses: actions/checkout@v7
       - id: m
@@ -31,6 +32,7 @@ jobs:
           echo "builds=$(jq -c .builds audit/matrix.json)" >> "$GITHUB_OUTPUT"
           echo "repos=$(jq -c .repos audit/matrix.json)" >> "$GITHUB_OUTPUT"
           echo "preflight=$(jq -r '.preflight | join(" ")' audit/matrix.json)" >> "$GITHUB_OUTPUT"
+          echo "examples=$(jq -c '.examples // []' audit/matrix.json)" >> "$GITHUB_OUTPUT"
 
   preflight:
     name: Preflight (probe apps resolve and analyze)
@@ -69,14 +71,14 @@ jobs:
           exit $fail
 
   build:
-    name: ${{ matrix.package }} / ${{ matrix.host }} / ${{ matrix.flutter }}
+    name: ${{ matrix.package }} / ${{ matrix.host }} / ${{ matrix.flutter }}${{ matrix.variant && format(' / {0}', matrix.variant) || '' }}
     needs: [plan, preflight]
     if: ${{ !cancelled() && needs.preflight.result != 'failure' && needs.plan.outputs.builds != '[]' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 150
     strategy:
       fail-fast: false
-      max-parallel: 11
+      max-parallel: 3
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.builds) }}
     steps:
@@ -118,6 +120,9 @@ jobs:
 
       - name: Build the probe app
         shell: bash
+        env:
+          ONLY: ${{ matrix.only }}
+          SPM_OFF: ${{ matrix.spm_off }}
         run: |
           if [ "${{ matrix.host }}" = "windows" ]; then APPROOT=/c/w; else APPROOT="$RUNNER_TEMP/w"; fi
           bash audit/run.sh "${{ matrix.package }}" "${{ matrix.host }}" "$APPROOT" "$PWD/out"
@@ -138,7 +143,7 @@ jobs:
         continue-on-error: true
         timeout-minutes: 4
         with:
-          name: build-${{ matrix.package }}-${{ matrix.host }}-${{ matrix.flutter }}
+          name: build-${{ matrix.package }}-${{ matrix.host }}-${{ matrix.flutter }}${{ matrix.variant && format('-{0}', matrix.variant) || '' }}
           path: out
           if-no-files-found: warn
 
@@ -200,5 +205,50 @@ jobs:
         timeout-minutes: 4
         with:
           name: repo-${{ matrix.repo }}-${{ matrix.flutter }}
+          path: out
+          if-no-files-found: warn
+
+  example:
+    name: example ${{ matrix.repo }} / apple / ${{ matrix.flutter }}
+    needs: plan
+    if: ${{ needs.plan.outputs.examples != '[]' }}
+    runs-on: macos-15
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.examples) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: audit-src
+
+      - uses: actions/checkout@v7
+        with:
+          repository: hugocornellier/${{ matrix.repo }}
+          ref: main
+          path: repo/${{ matrix.repo }}
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ matrix.flutter }}
+          channel: stable
+          cache: true
+
+      - name: Build the repo's example app as its CI does
+        shell: bash
+        run: |
+          flutter --version
+          xcodebuild -version
+          git -C "repo/${{ matrix.repo }}" log -1 --format='%H %cI %s'
+          bash audit-src/audit/example_apple.sh "repo/${{ matrix.repo }}" "$PWD/out" "${{ matrix.platforms }}" "${{ matrix.ios_spm_off }}"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 4
+        with:
+          name: example-${{ matrix.repo }}-${{ matrix.flutter }}
           path: out
           if-no-files-found: warn

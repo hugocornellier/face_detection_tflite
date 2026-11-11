@@ -30,6 +30,20 @@ for p in $HOST_PLATFORMS; do
   case " $PLATFORMS " in *" $p "*) TODO="$TODO $p" ;; esac
 done
 TODO=${TODO# }
+# Follow-up cells: ONLY limits the platforms, SPM_OFF=1 builds the Apple
+# platforms through CocoaPods (Swift Package Manager switched off).
+if [ -n "${ONLY:-}" ]; then
+  KEEP=""
+  for p in $TODO; do
+    case " $ONLY " in *" $p "*) KEEP="$KEEP $p" ;; esac
+  done
+  TODO=${KEEP# }
+fi
+SUFFIX=""
+if [ "${SPM_OFF:-0}" = "1" ]; then
+  flutter config --no-enable-swift-package-manager
+  SUFFIX="-cocoapods"
+fi
 if [ -z "$TODO" ]; then
   echo "nothing to build for $KEY on $HOST"
   exit 0
@@ -131,10 +145,10 @@ for p in $TODO; do
   tail -n 150 "$LOG"
   echo "::endgroup::"
   if [ $RC -eq 0 ]; then
-    record "$p" PASS "$DUR" ""
+    record "$p$SUFFIX" PASS "$DUR" ""
   else
     ANY_FAIL=1
-    record "$p" FAIL "$DUR" "$(first_error "$LOG")" "$(log_tail "$LOG")"
+    record "$p$SUFFIX" FAIL "$DUR" "$(first_error "$LOG")" "$(log_tail "$LOG")"
   fi
   # Extra Android cell: the same app after the documented switch to AGP
   # built-in Kotlin and the new DSL (only when the app template itself no
@@ -176,7 +190,8 @@ for p in $TODO; do
       record "web-wasm" FAIL "$DUR" "$(first_error "$LOG")" "$(log_tail "$LOG")"
     fi
     # Flutter 3.50 flag: fail the build on the deprecated dart:html family.
-    if flutter build web -h 2>/dev/null | grep -q "deprecated-js-interop"; then
+    # (The flag is not listed by `flutter build web -h`, so go by version.)
+    if [ "$(printf '%s\n' "3.50.0" "$FLUTTER_VER" | sort -V | head -n 1)" = "3.50.0" ]; then
       LOG="$OUT/build-web-no-deprecated-js-interop.log"
       echo "::group::web-no-deprecated-js-interop: flutter build web --no-deprecated-js-interop"
       START=$SECONDS
