@@ -8,6 +8,10 @@
   clears pub.dev's "Legacy Kotlin configuration" note.
 * The example app builds on Flutter 3.50 (Gradle 9.5.0, AGP 9.3.1,
   Kotlin 2.4.20).
+* Selfie segmentation works on Flutter 3.51 beta and later. The input
+  tensor buffer is now taken from `Tensor.asFloat32View()`; writes through
+  the read-only `Tensor.data` view are rejected by newer Dart SDKs, which
+  failed every segmentation call with "Cannot modify an unmodifiable list".
 * No API changes.
 
 ## 6.10.1

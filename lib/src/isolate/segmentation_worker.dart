@@ -322,8 +322,8 @@ class SegmentationWorker extends IsolateWorkerBase {
       inputHeight: inH,
       outputWidth: outShape.length >= 3 ? outShape[2] : inW,
       outputHeight: outShape.length >= 2 ? outShape[1] : inH,
-      inputBuffer: inputTensor.data.buffer.asFloat32List(),
-      outputBuffer: outputTensor.data.buffer.asFloat32List(),
+      inputBuffer: inputTensor.asFloat32View(),
+      outputBuffer: outputTensor.asFloat32View(),
     );
   }
 

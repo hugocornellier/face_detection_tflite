@@ -402,8 +402,8 @@ class SelfieSegmentation with _TfliteModelDisposable {
     final Interpreter itp = _itp!;
     _inputTensor = itp.getInputTensor(0);
     _outputTensor = itp.getOutputTensor(0);
-    _inputBuf = _inputTensor.data.buffer.asFloat32List();
-    _outputBuf = _outputTensor.data.buffer.asFloat32List();
+    _inputBuf = _inputTensor.asFloat32View();
+    _outputBuf = _outputTensor.asFloat32View();
 
     final outShape = _outputTensor.shape;
     _outH = outShape.length >= 2 ? outShape[1] : _inH;

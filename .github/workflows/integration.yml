@@ -390,7 +390,10 @@ jobs:
             sleep 2
             LOG="$RUNNER_TEMP/$f.log"
             flutter test "integration_test/$f" -d emulator-5554 2>&1 | tee "$LOG" || true
+            # The test reporter prints "N tests passed, M failed." without
+            # "Some tests failed", so a passed count alone is not a pass.
             if grep -q "Some tests failed" "$LOG" || \
+               grep -qE "(passed, [1-9][0-9]* failed|[1-9][0-9]* tests? failed)" "$LOG" || \
                ! grep -qE "(All tests passed|[1-9][0-9]* tests? passed)" "$LOG"; then
               FAILED+=("$f")
               echo "::error::FAILED: $f"
@@ -559,7 +562,10 @@ jobs:
             pkill -9 -f "face_detection_tflite_example" 2>/dev/null || true
             sleep 2
             flutter test "integration_test/$f" -d linux 2>&1 | tee "$RUNNER_TEMP/$f.log" || true
+            # The test reporter prints "N tests passed, M failed." without
+            # "Some tests failed", so a passed count alone is not a pass.
             if grep -q "Some tests failed" "$RUNNER_TEMP/$f.log" || \
+               grep -qE "(passed, [1-9][0-9]* failed|[1-9][0-9]* tests? failed)" "$RUNNER_TEMP/$f.log" || \
                ! grep -qE "(All tests passed|[1-9][0-9]* tests? passed)" "$RUNNER_TEMP/$f.log"; then
               FAILED+=("$f")
               echo "::error::FAILED: $f"
