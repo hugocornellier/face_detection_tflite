@@ -8,6 +8,11 @@
 # The following line activates a set of recommended lints for Flutter apps,
 # packages, and plugins designed to encourage good coding practices.
 analyzer:
+  # Flutter 3.50 deprecates package:flutter/material.dart in favour of
+  # package:material_ui. The demo keeps the framework import for now, like the
+  # package it shows.
+  errors:
+    deprecated_member_use: ignore
   exclude:
     - build/**
     - android/**
