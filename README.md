@@ -1131,6 +1131,8 @@ flutter build web
 
 - Dart 3.10+ and Flutter 3.47.5+ (`dartcv4 2.3.1` needs `meta 1.19.0`, which
   older `flutter_test` pins rule out).
+- Android `minSdk` 24 and iOS 15.0 or newer, which `flutter_litert` 4.x needs.
+  Both are Flutter's defaults for new apps.
 - iOS builds on Xcode 27 need an iOS 15 deployment target. Set the Runner
   target (and `platform :ios` in `ios/Podfile`) to 15.0 or newer, add the block
   below to your app's `pubspec.yaml`, then run `flutter clean`:
@@ -1157,15 +1159,15 @@ flutter build web
 
 | Platform | Interpreter GPU (default engine) | CompiledModel GPU (`useCompiledModel: true`) |
 |----------|:---:|:---:|
-| Android | ✅ `GpuDelegateV2`* | ✅ |
+| Android | ❌ CPU only (XNNPACK)* | ✅ |
 | iOS / macOS | ✅ Metal* | ✅ |
 | **Windows / Linux** | ❌ CPU only (XNNPACK) | ✅ |
 | Web | WebGPU via `liteRtAccelerator` | (n/a) |
 
-> \*Interpreter GPU/Metal delegates are deprecated (removed in flutter_litert 4.0.0). **On Windows and Linux, GPU is available only through CompiledModel**, because the Interpreter has no desktop GPU delegate.
+> \*flutter_litert 4.0.0 removed the Android Interpreter GPU delegate (`GpuDelegateV2`), because LiteRT 2.x has none, so on Android `PerformanceConfig.gpu()` runs XNNPACK and the GPU is reached through CompiledModel. The Metal delegate on iOS and macOS is unchanged. **On Windows and Linux, GPU is available only through CompiledModel**, because the Interpreter has no desktop GPU delegate.
 
 ```dart
-// Default (Interpreter): CPU everywhere; GPU on Android and Apple only.
+// Default (Interpreter): CPU everywhere; GPU on Apple only.
 final detector = await FaceDetector.create();
 
 // CompiledModel: GPU/NPU where available, automatic CPU fallback.
@@ -1216,7 +1218,7 @@ final detector = await FaceDetector.create(
   performanceConfig: PerformanceConfig.xnnpack(numThreads: 4),
 );
 
-// Force the Interpreter GPU delegate (Android and Apple only; deprecated, prefer CompiledModel)
+// Force the Interpreter GPU delegate (Metal on Apple; XNNPACK on Android since flutter_litert 4.0.0; prefer CompiledModel)
 final detector = await FaceDetector.create(
   performanceConfig: PerformanceConfig.gpu(),
 );
